@@ -11,6 +11,7 @@
 
 import { BrowserWindow, screen } from "electron";
 import { getLocalDb } from "./local-db";
+import { getMainWindowRef } from "./main-window-ref";
 import {
   BUILTIN_EFFECTS,
   ONE_SHOT_EFFECTS,
@@ -193,15 +194,25 @@ export class DripManager {
     return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds;
   }
 
+  /** The window a WINDOWED overlay parents to. `setMainWindow` is the wiring,
+   *  but a missed call must not silently kill every preview (his report,
+   *  2026-09-25) — the shared holder every other module reads is the fallback,
+   *  and a destroyed handle re-reads it rather than going dark. */
+  private hostWindow(): BrowserWindow | null {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) return this.mainWindow;
+    const ref = getMainWindowRef();
+    if (ref) this.mainWindow = ref;
+    return ref;
+  }
+
   private overlayBounds(fullscreen: boolean): Electron.Rectangle | null {
     if (fullscreen) return this.displayBounds();
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return null;
-    return this.mainWindow.getBounds();
+    return this.hostWindow()?.getBounds() ?? null;
   }
 
   private fireOneShot(effect: string, opacity = -1, fullscreen = false): void {
     const bounds = this.overlayBounds(fullscreen);
-    if (!bounds) return;
+    if (!bounds) { console.warn("[drips] no host window — a windowed effect has nothing to parent to"); return; }
     let html = buildOneShotHtml(effect, bounds.width, bounds.height);
     if (opacity > 0) html = html.replace("<body>", `<body style="opacity:${opacity}">`);
     const overlay = this.createOverlay(bounds, fullscreen);
@@ -220,7 +231,7 @@ export class DripManager {
       return;
     }
     const bounds = this.overlayBounds(fullscreen);
-    if (!bounds) return;
+    if (!bounds) { console.warn("[drips] no host window — a windowed effect has nothing to parent to"); return; }
     const html = buildLoopHtml(effect, bounds.width, bounds.height, opacity);
     const overlay = this.createOverlay(bounds, fullscreen);
     overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
@@ -255,7 +266,7 @@ export class DripManager {
     const overlay = new BrowserWindow({
       // Full-screen: a top-level window so it floats over EVERY app. Windowed:
       // parented to the yo window so it only shows inside the app.
-      ...(fullscreen ? {} : { parent: this.mainWindow! }),
+      ...(fullscreen ? {} : { parent: this.hostWindow() ?? undefined }),
       x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
       frame: false, transparent: true, hasShadow: false, resizable: false,
       backgroundColor: "#00000000", skipTaskbar: true, show: false,

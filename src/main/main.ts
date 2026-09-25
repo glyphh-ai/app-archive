@@ -146,11 +146,18 @@ async function createWindow() {
     },
   });
 
+  // A WINDOWED overlay is PARENTED to this window, so the drip manager needs
+  // the handle in EVERY build (his report, 2026-09-25: Play did nothing). It
+  // used to be set inside the !isPackaged debug block below — dev worked, the
+  // shipped app had no parent to hang a preview on and overlayBounds returned
+  // null, so the click was swallowed in silence. Unconditional, and before the
+  // debug wiring so the two can't be confused for one concern again.
+  dripManager?.setMainWindow(mainWindow);
+
   // DEV VISIBILITY: forward the shell renderer's console errors/warnings to
   // the terminal — a renderer that dies during boot otherwise reads as "the
   // splash never dismisses" with zero evidence (2026-09-10).
   if (!app.isPackaged) {
-    dripManager?.setMainWindow(mainWindow);
     mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
       if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`);
     });
