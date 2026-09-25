@@ -28,6 +28,8 @@ import { requestUsesGateway } from "./gateway-token.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop } from "./glyphh-loop.js";
+import { hostDialect, shellInvocation } from "./shell-dialect.js";
+import { isInterrupted, INTERRUPT_SAID } from "./cli-interrupt.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -265,6 +267,17 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
     if (typeof u.cache_read_input_tokens === "number") c.usage.cacheReadTokens = u.cache_read_input_tokens;
     if (typeof u.cache_creation_input_tokens === "number") c.usage.cacheWriteTokens = u.cache_creation_input_tokens;
     emit(c, "glyphh-agent:progress", { runId: c.runId, inTokens: c.usage.inTokens, outTokens: c.usage.outTokens });
+    // A STOP IS NOT A FAILURE, ON THIS PATH TOO (his report, 2026-09-25:
+    // "interrupting the agent throws some kind of failure instead of
+    // continuing on"). The exit handler learned this in September, but the
+    // CLI answers an interrupt FIRST with a `result` frame carrying
+    // is_error — so the error card was emitted here, before the exit path's
+    // guard was ever reached. stopAgentChat already settled the run as
+    // stopped; anything after that is our own kill echoing back.
+    if (c.stopping || isInterrupted(ev)) {
+      emit(c, "glyphh-agent:done", { runId: c.runId, stopped: true });
+      return;
+    }
     if (ev.is_error) {
       const said = String(ev.result ?? "the run failed");
       const fix = cliFix(said, c.cli || "claude");
@@ -381,7 +394,8 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // spins") — the command, secrets blanked, so a silent turn can be read.
   console.warn("[cli-bridge] headless turn", JSON.stringify({ cli: agent.cli, loop: agent.id, model: p.model || "", effort: p.effort || "",
     line: line.replace(/(TOKEN|KEY|SECRET)="[^"]*"/g, '$1="…"').replace(/'[^']{0,4000}'\s*(-c|$)/g, "'…' $1").slice(0, 600) }));
-  const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
+  const [sh, shArgs] = shellInvocation(hostDialect());
+  const proc = spawn(sh, [...shArgs, line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
     env: { ...process.env },
     stdio: ["pipe", "pipe", "pipe"],
@@ -461,6 +475,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
       // its own words becomes a sentence the user can act on (cliFix); an
       // unknown failure keeps the CLI's own text rather than a shrug.
       const said = cliStderrSummary(errTail) || chat.buf.trim().slice(-800) || `${agent.cli} exited ${code}`;
+      if (INTERRUPT_SAID.test(said)) { emit(chat, "glyphh-agent:done", { runId, stopped: true }); return; }
       const fix = cliFix(`${said}\n${chat.buf}`, agent.cli || "claude");
       emit(chat, "glyphh-agent:error", { runId, error: fix ? fix.message : said, fix: fix?.kind === "signin" ? fix : undefined });
     }
@@ -514,7 +529,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   const row = agentRowFor(p.loop || "claude");
   const line = (row ? loopEnvPrefix(row) : "")
     + parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
-  const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
+  const [sh, shArgs] = shellInvocation(hostDialect());
+  const proc = spawn(sh, [...shArgs, line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : homedir(),
     env: { ...process.env },
     stdio: ["pipe", "pipe", "pipe"],
@@ -547,6 +563,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
   proc.on("exit", (code) => {
     live.delete(p.chatId);
+    // Our own SIGTERM (stopAgentChat) exits non-zero; that is not a failure.
+    if (chat.stopping) { emit(chat, "glyphh-agent:done", { runId: chat.runId, stopped: true }); return; }
     if (code !== 0 && code !== null) {
       const said = errTail.trim() || `claude exited ${code}`;
       const fix = cliFix(`${said}\n${chat.buf}`, "claude");

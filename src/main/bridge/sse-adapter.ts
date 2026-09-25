@@ -9,6 +9,8 @@
  * client that did not ask to stream.
  */
 
+import { isInterrupted } from "../cli-interrupt.js";
+
 export interface SseFrame { event: string; data: Record<string, unknown> }
 
 interface Usage { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
@@ -114,6 +116,13 @@ export class MessagesStream {
       if (typeof u.cache_creation_input_tokens === "number") this.usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
       if (ev.is_error) {
         const said = typeof ev.result === "string" && ev.result ? ev.result : "the run failed";
+        // An interrupt is the user's doing, not a failure to report back
+        // (his report, 2026-09-25) — the turn simply ends here.
+        if (isInterrupted(ev)) {
+          if (!this.started) this.start();
+          this.finish("end_turn");
+          return true;
+        }
         this.finishWithText(said);
         return true;
       }

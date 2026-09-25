@@ -58,6 +58,18 @@ describe("MessagesStream", () => {
     expect(frames[frames.length - 1].event).toBe("message_stop");
   });
 
+  // His report, 2026-09-25: an interrupt read as a failure. The turn should
+  // simply end — no error text appended to what the agent had already said.
+  it("ends the turn cleanly on an interrupt instead of reporting a failure", () => {
+    const { s, frames } = collect();
+    s.feed(se({ type: "content_block_start", index: 0, content_block: { type: "text", text: "Half" } }));
+    s.feed({ type: "result", subtype: "error_during_execution", is_error: true, result: "Interrupted by user" });
+    expect(s.finished).toBe(true);
+    expect(s.assistantText).toBe("Half");
+    expect(s.assistantText).not.toContain("Interrupted");
+    expect(frames[frames.length - 1].event).toBe("message_stop");
+  });
+
   it("writes a frame the way Anthropic does", () => {
     expect(sseText({ event: "ping", data: { type: "ping" } })).toBe('event: ping\ndata: {"type":"ping"}\n\n');
   });
