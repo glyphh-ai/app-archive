@@ -467,6 +467,36 @@
                     <span id="settings-echo-per-page-val" class="settings-hint"></span>
                   </div>
                 </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Tiles per row</div>
+                    <div class="set-pref-desc">How many app tiles each row of a launcher page holds.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-echo-cols" min="3" max="14" step="1" />
+                    <span id="settings-echo-cols-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Wall width</div>
+                    <div class="set-pref-desc">How wide the tile layout runs. 0% is the tightest; 100% fills the page, with a little air at the sides.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-echo-wall-width" min="0" max="100" step="5" />
+                    <span id="settings-echo-wall-width-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Tabs per row</div>
+                    <div class="set-pref-desc">How many tabs each row of the sidebar's Tabs tray holds. Auto fits as many as the rail's width allows.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
+                    <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
+                  </div>
+                </div>
 
                 <!-- Echo Agent sliders — OFF the surface (his order, 2026-09-14: "remove the echo agent configs");
                      the prefs + CSS vars behind them stay wired (remove = hide, never delete). -->

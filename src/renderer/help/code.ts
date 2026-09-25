@@ -25,6 +25,7 @@ import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 // The chat ⇄ CLI-session binding rules — pure, shared, and under test.
 import { sessionCliOf, cliSidFor, applyCliBinding, chatForCliSession, forgetCliSession, sessionDisplayTitle, type CliBound } from "./cli-session-binding.js";
+import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -6128,17 +6129,50 @@ export function initCode(): void {
     go();
   };
 
-  // The old newSessionLanding "full reset + landing screen" path is DELETED:
-  // newSessionInPlace (below, bound as __glyphhNewSession) is the ONE new-
-  // session behavior — every entry (the rail's +, Home, the agent header's +,
-  // and the workbench's glyphh tiles) calls the same function, so no second
-  // copy exists to drift.
-  // A new session JUST LOADS THE AGENT in place — no separate "New Session"
-  // screen. The rail's +, Home, and the GLYPHH tile all empty the current
-  // thread and keep the agent exactly where it is (docked, hosted, or full),
-  // the same as the agent header's own + button.
-  el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
+  /**
+   * NEW AGENT (his rule, 2026-09-25) — the rail's "New" and the Echo mark.
+   *
+   * These are a different verb from the agent header's +. They must bring up
+   * ANOTHER AGENT: its own panel, its own CLI instance, its own terminal. Both
+   * used to call newSessionInPlace, which only blanks the thread of the agent
+   * already seated — so a second "New" reused the one panel and the one CLI
+   * process, and the conversation the user thought they had left was simply
+   * cleared out from under them.
+   *
+   * The workbench owns instancing (it holds the loop rows, the seat map and
+   * the pty bookkeeping); it answers false only when it genuinely cannot mint
+   * one — web, where there is no <webview> to host an instance panel — and
+   * then the in-place new session is the honest best effort.
+   */
+  const newAgentInstance = (): void => {
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void;
+      __wbNewAgentInstance?: (loop?: string) => boolean;
+    };
+    w.__initCodeWorkbench?.();
+    let tries = 0;
+    const go = (): void => {
+      if (w.__wbNewAgentInstance) {
+        if (!w.__wbNewAgentInstance(activeLoop() || undefined)) newSessionInPlace();
+        return;
+      }
+      if (tries++ < 40) requestAnimationFrame(go);
+      else newSessionInPlace();   // workbench never came up — still honour the click
+    };
+    go();
+  };
+
+  // The old newSessionLanding "full reset + landing screen" path is DELETED.
+  // TWO verbs now, deliberately (his rule, 2026-09-25):
+  //   • the rail's New / the Echo mark → newAgentInstance: a WHOLE new agent.
+  //   • the agent header's +           → newSessionInPlace: a new chat in THIS
+  //     panel and THIS cli, nothing else disturbed.
+  // __glyphhNewSession keeps meaning the in-place one: its other callers (the
+  // terminal's hop-back, "Try in chat", the boot landing) all mean "empty the
+  // thread I am looking at", never "spawn another agent".
+  el("code-new-chat")?.addEventListener("click", () => newAgentInstance());
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
+  (window as unknown as { __glyphhNewAgent?: () => void }).__glyphhNewAgent = newAgentInstance;
   // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
   // "Edit with <loop>"): loop + folder are held for the session the first send
   // creates; the prompt waits in the composer for the user to send.
@@ -6334,6 +6368,12 @@ export function initCode(): void {
     const n = Number(v);
     document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
   });
+  // Layout sliders (his ask, 2026-09-25): tiles per launcher row, the wall's
+  // overall width, and tabs per rail row. Pure CSS vars — Settings drags them
+  // live through the SAME appliers; these seed them at boot.
+  void window.glyphh.getPreference?.("echoTilesPerRow", 8).then(applyTilesPerRow);
+  void window.glyphh.getPreference?.("echoWallWidth", 0).then(applyWallWidth);
+  void window.glyphh.getPreference?.("railTabsPerRow", 0).then(applyRailTabsPerRow);
   // Echo Agent panel transparency (Appearance slider) — the CSS var the
   // caret panel reads. Settings applies it live; this seeds it at boot.
   void window.glyphh.getPreference?.("echoAgentOpacity", 0.92).then((v) => {

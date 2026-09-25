@@ -3,6 +3,10 @@
  */
 
 import { confirmAction } from "./shared.js";
+import {
+  applyRailTabsPerRow, applyTilesPerRow, applyWallWidth,
+  clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
+} from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-loops.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
@@ -449,6 +453,54 @@ function initSettings() {
         document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
       });
     });
+
+    // Tiles per row + wall width — pure CSS vars on the launcher grid, so
+    // both apply LIVE while dragging (no re-chunk, no re-render). The wall's
+    // own ResizeObserver repositions the dots + arrows off the size change.
+    const cols = document.getElementById("settings-echo-cols") as HTMLInputElement | null;
+    const colsV = document.getElementById("settings-echo-cols-val");
+    const paintCols = (): void => {
+      if (!cols) return;
+      applyTilesPerRow(cols.value);
+      if (colsV) colsV.textContent = cols.value;
+    };
+    cols?.addEventListener("input", paintCols);
+    cols?.addEventListener("change", () => {
+      paintCols();
+      void window.glyphh.setPreference("echoTilesPerRow", Number(cols.value));
+    });
+
+    const ww = document.getElementById("settings-echo-wall-width") as HTMLInputElement | null;
+    const wwv = document.getElementById("settings-echo-wall-width-val");
+    const paintWw = (): void => {
+      if (!ww) return;
+      applyWallWidth(ww.value);
+      if (wwv) wwv.textContent = `${ww.value}%`;
+    };
+    ww?.addEventListener("input", paintWw);
+    ww?.addEventListener("change", () => {
+      paintWw();
+      void window.glyphh.setPreference("echoWallWidth", Number(ww.value));
+    });
+  }
+
+  // Tabs per row — the sidebar's Tabs tray. Its grid reads --rail-tabs-cols;
+  // the icon-rail collapse still overrides to one per row, as it always has.
+  // 0 = Auto, which restores the auto-fill this grid shipped with: a fixed
+  // count would otherwise have to pick a number for every rail width.
+  {
+    const c = document.getElementById("settings-rail-tabs-cols") as HTMLInputElement | null;
+    const cv = document.getElementById("settings-rail-tabs-cols-val");
+    const paint = (): void => {
+      if (!c) return;
+      applyRailTabsPerRow(c.value);
+      if (cv) cv.textContent = railTabsLabel(c.value);
+    };
+    c?.addEventListener("input", paint);
+    c?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("railTabsPerRow", Number(c.value));
+    });
   }
 
   // Icon hover zoom — every icon in the app scales by this on hover.
@@ -650,6 +702,24 @@ async function loadSettings() {
     echoPp.value = String(Number.isFinite(raw) ? Math.max(16, Math.min(96, raw)) : 56);
     const ppv = document.getElementById("settings-echo-per-page-val");
     if (ppv) ppv.textContent = echoPp.value;
+  }
+  const echoCols = document.getElementById("settings-echo-cols") as HTMLInputElement | null;
+  if (echoCols) {
+    echoCols.value = String(clampTilesPerRow(await window.glyphh.getPreference("echoTilesPerRow", 8)));
+    const v = document.getElementById("settings-echo-cols-val");
+    if (v) v.textContent = echoCols.value;
+  }
+  const echoWw = document.getElementById("settings-echo-wall-width") as HTMLInputElement | null;
+  if (echoWw) {
+    echoWw.value = String(clampWallWidth(await window.glyphh.getPreference("echoWallWidth", 0)));
+    const v = document.getElementById("settings-echo-wall-width-val");
+    if (v) v.textContent = `${echoWw.value}%`;
+  }
+  const railCols = document.getElementById("settings-rail-tabs-cols") as HTMLInputElement | null;
+  if (railCols) {
+    railCols.value = String(clampRailTabsPerRow(await window.glyphh.getPreference("railTabsPerRow", 0)));
+    const v = document.getElementById("settings-rail-tabs-cols-val");
+    if (v) v.textContent = railTabsLabel(railCols.value);
   }
   const iconZoom = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
   if (iconZoom) {
