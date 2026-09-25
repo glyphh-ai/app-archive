@@ -23,6 +23,8 @@ import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, ma
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
+// The chat ⇄ CLI-session binding rules — pure, shared, and under test.
+import { sessionCliOf, cliSidFor, applyCliBinding, chatForCliSession, forgetCliSession, sessionDisplayTitle, type CliBound } from "./cli-session-binding.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -1742,13 +1744,30 @@ function syncSpaceAttrs(): void {
 // the bridge's in-memory map hasn't been primed yet (fresh boot). Bindings
 // are per-CLI (his ruling, 2026-09-14): a claude sid must never feed a
 // codex resume.
+/** THE CHAT'S CLI — the loop's own `cli` field, never its description (his
+ *  report, 2026-09-25: a session on the built-in `default` loop resolved its
+ *  key to "The standard Glyphh agent loop." and silently resumed on claude).
+ *  The rules live in shared/cli-session-binding.ts, under test. */
+function sessionCli(c: CodeChat | undefined): string {
+  return sessionCliOf(c?.loop, loops);
+}
+/** The chat holding a CLI session — the per-CLI map is the truth, the legacy
+ *  single slot only a claude-lane fallback. Scanning the map is what makes a
+ *  codex/gemini re-adopt find its own chat instead of forking a new one. */
+function findChatForCliSession(sid: string): CodeChat | undefined {
+  return chatForCliSession(chats as unknown as CliBound[], sid) as CodeChat | undefined;
+}
+/** ONE WRITER for a chat's CLI binding (renderer map + legacy slot + the
+ *  bridge's in-memory resume map), so no surface can hold a half-written
+ *  binding. Returns true when anything actually changed. */
+function bindCliSession(c: CodeChat, cli: string, sid: string): boolean {
+  const changed = applyCliBinding(c as unknown as CliBound, cli, sid);
+  if (sid) void window.glyphh.glyphhBindCliSession?.(c.id, sid, cli || "claude");
+  return changed;
+}
 function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
   if (!c) return null;
-  const activeCli = cli || loops.find((x) => x.id === (c.loop || ""))?.description || "claude";
-  const map = (c as { cliSessionIds?: Record<string, string> }).cliSessionIds;
-  if (map?.[activeCli]) return map[activeCli];
-  // Legacy single-slot binding was always the claude lane.
-  return activeCli === "claude" ? ((c as { cliSessionId?: string }).cliSessionId ?? null) : null;
+  return cliSidFor(c as unknown as CliBound, cli || sessionCli(c));
 }
 (window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId =
   (cli?: string) => sessionCliSid(current() ?? undefined, cli);
@@ -1770,31 +1789,34 @@ function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
       const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId);
       if (!t?.ok) { console.warn("[agent] adopt: transcript unavailable", { sessionId: a.sessionId, error: t?.error }); return; }
       // The chat the hop came from takes the session (his report, 2026-09-20);
-      // otherwise the chat already bound to it; otherwise a new one.
+      // otherwise the chat already bound to it ON ANY CLI; otherwise a new one.
       let c = (a.chatId ? chats.find((x) => x.id === a.chatId) : undefined)
-        ?? chats.find((x) => (x as { cliSessionId?: string }).cliSessionId === a.sessionId);
-      if (c && a.chatId && c.id === a.chatId) {
-        (c as { cliSessionId?: string }).cliSessionId = a.sessionId;
-        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
-      }
+        ?? findChatForCliSession(a.sessionId);
+      const fresh = !c;
       if (!c) {
         c = { id: `c${Date.now().toString(36)}`, title: t.title || a.agentName, createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
-        (c as { cliSessionId?: string }).cliSessionId = a.sessionId;
         if (t.cwd) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
-        // The transcript IS the history — painted once, then the live bridge
-        // stream continues it.
-        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
         chats.unshift(c);
+      }
+      // THE TRANSCRIPT IS THE TRUTH, EVERY TIME (his report, 2026-09-25: "when
+      // the user is in the cli and switches to the glyphh session the state is
+      // not in synch"). Adoption used to repaint the messages ONLY for a chat
+      // the hop named or a chat it had just created — a rail click onto an
+      // already-adopted session skipped both branches and showed the snapshot
+      // taken whenever it was first opened. The one exception is a turn
+      // streaming right now: that run owns the thread until it lands.
+      if (!liveRuns.has(c.id)) {
+        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
+        if (fresh || c.title === "New session") c.title = t.title || c.title || a.agentName;
+        if (t.cwd && !c.workdir) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
       }
       // The adopted session RUNS ON ITS OWN CLI — without the loop stamp the
       // run payload names no loop and main falls back to claude (his report,
       // 2026-09-14: a codex session ran on claude).
       if (a.agentId) c.loop = a.agentId;
-      const cli = a.cli || "claude";
-      ((c as { cliSessionIds?: Record<string, string> }).cliSessionIds ??= {})[cli] = a.sessionId;
+      bindCliSession(c, a.cli || "claude", a.sessionId);
       currentId = c.id;
       lastSession = c.id;
-      void window.glyphh.glyphhBindCliSession?.(c.id, a.sessionId, cli);
       void saveStore();
       renderHistory();
       renderThread();
@@ -4646,11 +4668,7 @@ function initGlyphhAgentEvents(): void {
     const sid = (d as { cliSessionId?: string }).cliSessionId;
     if (sid) {
       const c = current();
-      if (c) {
-        const cli = loops.find((x) => x.id === (c.loop || ""))?.description || "claude";
-        const map = ((c as { cliSessionIds?: Record<string, string> }).cliSessionIds ??= {});
-        if (map[cli] !== sid) { map[cli] = sid; (c as { cliSessionId?: string }).cliSessionId = sid; void saveStore(); }
-      }
+      if (c && bindCliSession(c, sessionCli(c), sid)) void saveStore();
     }
     if (d.phase === "downloading") {
       for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
@@ -5013,6 +5031,11 @@ function openLoopFilterMenu(anchor: HTMLElement): void {
 let railSessionPins: string[] = [];
 const SESS_PINS_PREF = "railSessionPins";
 
+/** ONE TITLE GRAMMAR for a rail row, whatever store it came from (his report,
+ *  2026-09-25: "the left rail session names are way too long"). The rule is
+ *  shared/cli-session-binding.ts; the full text stays on the row's tooltip. */
+const sessDisplayTitle = sessionDisplayTitle;
+
 const SESS_LOCAL_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 const SESS_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
 const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
@@ -5057,7 +5080,7 @@ function sessTogglePin(id: string): void {
 
 async function sessDelete(sess: RailSession): Promise<boolean> {
   const sure = await confirmAction({
-    title: `Delete "${sess.title.slice(0, 60)}"?`,
+    title: `Delete "${sessDisplayTitle(sess.title)}"?`,
     body: "This session's history is gone for good.",
     confirmLabel: "Delete",
     danger: true,
@@ -5092,11 +5115,9 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
     let activeHit = false;
     const cur = current();
     for (const c of chats) {
-      const cc = c as { cliSessionId?: string; cliSessionIds?: Record<string, string> };
-      if (cc.cliSessionId === sess.id) { cc.cliSessionId = undefined; touched = true; if (c === cur) activeHit = true; }
-      for (const [k, v] of Object.entries(cc.cliSessionIds ?? {})) {
-        if (v === sess.id) { delete cc.cliSessionIds![k]; touched = true; if (c === cur) activeHit = true; }
-      }
+      if (!forgetCliSession(c as unknown as CliBound, sess.id)) continue;
+      touched = true;
+      if (c === cur) activeHit = true;
     }
     if (touched) void saveStore();
     if (activeHit) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
@@ -5239,8 +5260,8 @@ function renderRailSessions(): void {
       markEl.title = sess.cli;
       const label = document.createElement("span");
       label.className = "code-history-title";
-      label.textContent = sess.title;
-      label.title = sess.title;
+      label.textContent = sessDisplayTitle(sess.title);
+      label.title = sess.title;   // the FULL name stays one hover away
       const menuBtn = document.createElement("button");
       menuBtn.className = "code-chat-menu-btn";
       menuBtn.title = "More";
@@ -5302,7 +5323,8 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
-      title.textContent = sess.title;
+      title.textContent = sessDisplayTitle(sess.title);
+      title.title = sess.title;
       title.addEventListener("click", () => { menu.remove(); opts.onPick(sess); });
       const pin = document.createElement("button");
       pin.type = "button";
@@ -6800,6 +6822,36 @@ export function initCode(): void {
   };
   (window as unknown as { __glyphhReloadSessions?: () => Promise<void> }).__glyphhReloadSessions = reloadSessionsFromDisk;
   (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => { void reloadSessionsFromDisk(); });
+  // A CLI'S OWN STORE MOVED (his report, 2026-09-25) — the user typed in
+  // Claude or Codex outside this app. The rail re-reads the disk, and the chat
+  // ON SCREEN re-pulls its transcript so the two surfaces never disagree.
+  // Every OTHER chat reconciles the moment it is opened (adoption does it).
+  (window.glyphh as unknown as { onCliSessionsChanged?: (cb: () => void) => void }).onCliSessionsChanged?.(() => {
+    void loadRailSessions();
+    void refreshOpenChatFromCli();
+  });
+}
+
+/** Re-pull the OPEN chat's CLI transcript and take it as the history. Skipped
+ *  while a run streams here (that run owns the thread) and when the chat has
+ *  no binding for its own CLI. */
+async function refreshOpenChatFromCli(): Promise<void> {
+  const c = current();
+  if (!c || liveRuns.has(c.id)) return;
+  const sid = sessionCliSid(c);
+  if (!sid) return;
+  try {
+    const t = await window.glyphh.glyphhCliTranscript?.(sid);
+    if (!t?.ok) return;
+    const turns = (t.turns ?? []);
+    // Nothing new — never repaint a thread the user is reading for no reason.
+    if (turns.length === c.messages.length) return;
+    if (current()?.id !== c.id || liveRuns.has(c.id)) return;   // moved on while we fetched
+    c.messages = turns.map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
+    void saveStore();
+    renderHistory();
+    renderThread();
+  } catch { /* the next change announces again */ }
 }
 
 /**

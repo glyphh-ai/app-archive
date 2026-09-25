@@ -1103,6 +1103,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGlyphhSessionsUpdated: (callback: () => void) => {
     ipcRenderer.on("glyphh-sessions-updated", () => callback());
   },
+  // A CLI's OWN store changed on disk — the user typed a turn in Claude/Codex
+  // outside this app (cli-session-watch.ts). Debounced in main.
+  onCliSessionsChanged: (callback: () => void) => {
+    ipcRenderer.on("cli-sessions-changed", () => callback());
+  },
   glyphhRemember: (fact: string) => ipcRenderer.invoke("glyphh-agent-remember", fact) as Promise<boolean>,
   glyphhCompact: (chatId: string, focus: string) =>
     ipcRenderer.invoke("glyphh-agent-compact", { chatId, focus }) as Promise<{ ok: boolean; reason?: string }>,

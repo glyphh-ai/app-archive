@@ -29,6 +29,7 @@ import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensur
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop } from "./glyphh-loop.js";
 import { hostDialect, quote, shellInvocation } from "./shell-dialect.js";
+import { startCliSessionWatch } from "./cli-session-watch.js";
 import { isInterrupted, INTERRUPT_SAID } from "./cli-interrupt.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -816,7 +817,10 @@ export function registerGlyphhCliBridge(): void {
         let j: Record<string, unknown>;
         try { j = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
         if (!cwd && typeof j.cwd === "string") cwd = j.cwd;
-        if (!title && j.type === "summary" && typeof j.summary === "string") title = j.summary;
+        // The LAST summary, not the first — claude appends them as the
+        // conversation moves on, and the newest is the name its own picker
+        // shows (his report, 2026-09-25: the rail's names didn't match).
+        if (j.type === "summary" && typeof j.summary === "string" && j.summary.trim()) title = j.summary;
         if (j.type !== "user" && j.type !== "assistant") continue;
         const content = (j.message as { content?: unknown } | undefined)?.content;
         let text = "";
@@ -830,11 +834,19 @@ export function registerGlyphhCliBridge(): void {
         if (text.trim()) turns.push({ role: j.type as "user" | "assistant", text: text.trim() });
       }
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-    if (!title) title = turns.find((t) => t.role === "user")?.text.slice(0, 80) ?? "Session";
+    // No summary yet — the first REAL user turn names it. Harness wrappers
+    // (the /resume caveat, a slash-command echo) are never a title.
+    if (!title) title = turns.find((t) => t.role === "user" && !NOISE_TITLE.test(t.text.trim()))?.text.slice(0, 80) ?? "Session";
     return { ok: true, title, cwd, turns: turns.slice(-200) };
   });
 
-  ipcMain.handle("glyphh-agent-sessions-load", () => { watchSessionsFile(); return loadSessionsFile(); });
+  ipcMain.handle("glyphh-agent-sessions-load", () => {
+    watchSessionsFile();
+    // OUR store is only half the truth — the CLIs' own stores are the other
+    // half, and until 2026-09-25 nothing watched them at all.
+    startCliSessionWatch();
+    return loadSessionsFile();
+  });
   ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null; deleted?: string[] }) => {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null, ...(Array.isArray(p?.deleted) ? { deleted: p.deleted.map(String) } : {}) });
     return true;

@@ -20378,13 +20378,28 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 .wtour { position: fixed; inset: 0; z-index: 9500; }
 .wtour-svg { position: absolute; inset: 0; pointer-events: none; }
 .wtour-dim { fill: rgba(0, 0, 0, 0.62); pointer-events: auto; }
-.wtour-arrow { fill: none; stroke: var(--accent, #8c3bf2); stroke-width: 2.5; stroke-linecap: round; }
+/* Keep the marker readable over both the dimmed page and the live control in
+   the hole. The paired light/dark halo prevents a theme accent from sinking
+   into either a white light surface or a black dark surface. */
+.wtour-arrow,
+.wtour-ring {
+  fill: none;
+  stroke: var(--accent, #8c3bf2);
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #000);
+}
+.wtour-svg marker path {
+  fill: var(--accent, #8c3bf2);
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #000);
+}
 .wtour-labels { position: absolute; inset: 0; pointer-events: none; }
 .wtour-arrow-label {
   position: absolute; transform: translateX(-50%);
-  font: 600 12px var(--font-sans); color: #fff;
-  background: var(--accent, #8c3bf2); padding: 4px 10px; border-radius: 999px;
-  white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font: 700 12px var(--font-sans); color: var(--bg, #fff);
+  background: var(--text-bright, #000); padding: 4px 10px; border-radius: 999px;
+  white-space: nowrap; border: 2px solid var(--bg, #fff);
+  box-shadow: 0 0 0 1px var(--text-bright, #000), 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 .wtour-card {
   position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
@@ -20435,7 +20450,7 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   border-radius: 999px; padding: 8px 14px;
 }
 .wtour-mock-send { color: var(--text-3); font-size: 13px; }
-.wtour-ring { fill: none; stroke: var(--accent, #8c3bf2); stroke-width: 2; opacity: 0.9; }
+.wtour-ring { opacity: 1; }
 .wtour-mock-keys { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 22px 12px; }
 .wtour-key {
   display: inline-flex; align-items: center; justify-content: center;
