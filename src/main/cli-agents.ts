@@ -36,6 +36,7 @@ import { bridgeWrap } from "./memory-bridge.js";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
 import { missingCli } from "./cli-install.js";
 import { getWorkingDirectory } from "./working-directory.js";
+import { hostDialect, andThen, cd as shCd, setVar, unsetVar, repointVar, sourceEnvFile, type Dialect } from "./shell-dialect.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -617,8 +618,9 @@ export function modesFor(cli: CliAgentRow["cli"], surface: "panel" | "terminal" 
  *  same env file / model / MCP wiring an interactive open gets. The loop
  *  scheduler runs these (no session mode → the loop config's permission
  *  stands); chat turns pass the SESSION's mode, which wins. */
-export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string, effort?: string): string {
+export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string, effort?: string, dialect?: Dialect): string {
   const row = { ...agent } as CliAgentRow;
+  const d = dialect ?? hostDialect();
   const p = prompt.replace(/'/g, "'\\''");
   const picked = (model ?? row.model ?? "").trim();
   // THE TURN'S LANE (his order, 2026-09-21): the org's switch first, then the
@@ -627,7 +629,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   // (his order, 2026-09-20): left to the CLI it picks one the org never allowed.
   const viaGateway = turnViaGateway(!!row.apiKey, picked);
   const m = picked || (gatewayOn && viaGateway ? requiredModel : "");
-  const strip = viaGateway ? "" : stripGatewayVars(row);
+  const strip = viaGateway ? "" : stripGatewayVars(row, d);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
   const rid = (resumeId ?? "").replace(/'/g, "");
   // Effort (his order, 2026-09-20): the same dial for every CLI that has one.
@@ -661,7 +663,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       const mcpOverrides = row.mcp
         ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
         : "";
-      core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
+      core = (token ? `${setVar("GLYPHH_MCP_TOKEN", token, d)} ` : "")
         + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${codexModelOverride(m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} --json '${p}'`;
       break;
     }
@@ -683,14 +685,14 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
     default:
       throw new Error(`the ${row.cli} CLI has no headless mode, so it can only be used in a terminal tile. Claude, Codex, Gemini, Copilot and Cursor run in the agent panel and on a schedule.`);
   }
-  const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${core}` : core;
+  const line = row.cwd ? andThen([shCd(row.cwd, d), core], d) : core;
   // Source the env file whenever it EXISTS, not only when a BYOK key is set:
   // the gateway injection writes the same file (base URL + minted key), and
   // gating on row.apiKey would have made the whole last mile a silent no-op.
   // A session the strategy keeps OFF the gateway sources it and then drops
   // the gateway's own vars, so the CLI rides the member's login.
   return fs.existsSync(envFile(row.id))
-    ? `set -a; . "${envFile(row.id)}"; set +a;${strip} ${line}`
+    ? `${sourceEnvFile(envFile(row.id), d)}${strip} ${line}`
     : line;
 }
 
@@ -734,12 +736,13 @@ export function agentTerminalFolder(chatFolder: string | undefined, loopFolder: 
   return homedir();
 }
 
-function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
+function composeCommand(row: CliAgentRow, ov?: OpenOverrides, dialect?: Dialect): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
   // The org's lane decides; an unset model is the org's proxy model.
+  const d = dialect ?? hostDialect();
   const picked = (ov?.model ?? row.model ?? "").trim();
   const viaGateway = turnViaGateway(!!row.apiKey, picked);
-  const strip = viaGateway ? "" : stripGatewayVars(row);
+  const strip = viaGateway ? "" : stripGatewayVars(row, d);
   const model = picked || (gatewayOn && viaGateway ? requiredModel : "");
   // A stored folder may read "~" (a display path that leaked into a chat, 2026-09-21):
   // the shell does not expand a quoted tilde, and `cd "~" &&` ran nothing — the
@@ -774,12 +777,18 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
     // ONE HISTORY (his report, 2026-09-21): the terminal reads and writes the
     // panel's own session store, so a chat carries across the hop both ways.
     const sessions = userScopedPath("agent-sessions.json");
-    const env = `GLYPHH_SERVER_URL="${SERVER_URL}" GLYPHH_APP_SESSIONS="${sessions.replace(/"/g, '\\"')}"`
-      + (mcpToken ? ` GLYPHH_APP_MCP_URL="http://127.0.0.1:${port}/mcp" GLYPHH_APP_MCP_TOKEN="${mcpToken}"` : "");
+    // Inline `VAR="v" cmd` is POSIX-only; PowerShell needs the assignments as
+    // their own statements before the command (shell-dialect.setVar).
+    const envPairs: Array<[string, string]> = [["GLYPHH_SERVER_URL", SERVER_URL], ["GLYPHH_APP_SESSIONS", sessions]];
+    if (mcpToken) envPairs.push(["GLYPHH_APP_MCP_URL", `http://127.0.0.1:${port}/mcp`], ["GLYPHH_APP_MCP_TOKEN", mcpToken]);
+    const env = envPairs.map(([k, v]) => setVar(k, v, d)).join("").trim();
     const resume = ov?.resume ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue") : "";
     // The folder was chosen in the app, so the terminal's trust question is answered.
-    const base = `${env} ${row.cmd} --trust${resume}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
-    return cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+    const cmd = `${row.cmd} --trust${resume}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
+    // PowerShell: the assignments are statements, so they lead the line and the
+    // cd joins with them; POSIX keeps the classic one-line `VAR=v cmd` form.
+    const base = d === "powershell" ? `${env} ${cmd}` : `${env} ${cmd}`;
+    return cwd ? andThen([shCd(cwd, d), base], d) : base;
   }
   const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";
   // The codex model override joins the other -c flags BEFORE the subcommand
@@ -794,7 +803,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       // Overrides before the resume subcommand and the prompt (see composeHeadless).
-      base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
+      base = (token ? `${setVar("GLYPHH_MCP_TOKEN", token, d)} ` : "")
         + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider} -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE + codexModel
         + `${resumePart}${promptPart}${permPart}`;
@@ -806,14 +815,14 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
     // ensureCursorMcp).
   }
   // The working folder leads the open — same contract as a workspace's.
-  const line = cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+  const line = cwd ? andThen([shCd(cwd, d), base], d) : base;
   // The API key sources INVISIBLY — the terminal shows the file path, never
   // the value.
   // Source the env file whenever it EXISTS, not only when a BYOK key is set:
   // the gateway injection writes the same file (base URL + minted key), and
   // gating on row.apiKey would have made the whole last mile a silent no-op.
   return fs.existsSync(envFile(row.id))
-    ? `set -a; . "${envFile(row.id)}"; set +a;${strip} ${line}`
+    ? `${sourceEnvFile(envFile(row.id), d)}${strip} ${line}`
     : line;
 }
 
@@ -879,26 +888,26 @@ let gatewayOn = false;
  *  the gateway key and point the base URL back at the bridge. The chat
  *  process used to spawn without it (his report, 2026-09-20: memory captured
  *  nothing in chat), so the bridge never saw a chat turn. */
-export function loopEnvPrefix(row: CliAgentRow): string {
+export function loopEnvPrefix(row: CliAgentRow, d: Dialect = hostDialect()): string {
   if (!fs.existsSync(envFile(row.id))) return "";
-  const strip = requestUsesGateway(!!row.apiKey) ? "" : stripGatewayVars(row);
-  return `set -a; . "${envFile(row.id)}"; set +a;${strip} `;
+  const strip = requestUsesGateway(!!row.apiKey) ? "" : stripGatewayVars(row, d);
+  return `${sourceEnvFile(envFile(row.id), d)}${strip} `;
 }
 
 /** THE ACCOUNT LANE (Bridge Mode, 2026-09-21): the loop's env sourced, then the
  *  gateway lines stripped whatever the org's lane says, so this turn runs on the
  *  CLI's own login with the bridge still in its path for memory. */
-export function accountLanePrefix(row: CliAgentRow): string {
+export function accountLanePrefix(row: CliAgentRow, d: Dialect = hostDialect()): string {
   if (!fs.existsSync(envFile(row.id))) return "";
-  return `set -a; . "${envFile(row.id)}"; set +a;${stripGatewayVars(row)} `;
+  return `${sourceEnvFile(envFile(row.id), d)}${stripGatewayVars(row, d)} `;
 }
 
-function stripGatewayVars(row: CliAgentRow): string {
+function stripGatewayVars(row: CliAgentRow, d: Dialect = hostDialect()): string {
   if (row.apiKey) return "";
-  const key = KEY_ENV[row.cli] ? ` unset ${KEY_ENV[row.cli]};` : "";
+  const key = KEY_ENV[row.cli] ? unsetVar(KEY_ENV[row.cli], d) : "";
   // The base URL is not dropped, it is re-pointed: the bridge wrapping the
   // vendor (GLYPHH_DIRECT_*, written by ensureLoopEnv), else unset.
-  const bases = (CLI_PROFILES[row.cli]?.baseUrlEnv ?? []).map((v) => ` export ${v}="\${${directVar(v)}:-}"; [ -n "$${v}" ] || unset ${v};`).join("");
+  const bases = (CLI_PROFILES[row.cli]?.baseUrlEnv ?? []).map((v) => repointVar(v, directVar(v), d)).join("");
   return key + bases;
 }
 /** THE MODEL THE ORG REQUIRES (his order, 2026-09-18: "when the user switches

@@ -30,6 +30,7 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { accountLanePrefix, agentRowFor, ensureLoopEnv } from "./cli-agents.js";
 import { composeBridgeTuiCommand } from "./bridge-tui-launch.js";
 import { getMainWindowRef } from "./main-window-ref.js";
+import { hostDialect, shellInvocation } from "./shell-dialect.js";
 
 export const BRIDGE_PORT = Number(process.env.GLYPHH_BRIDGE_PORT || 4747);
 const ROUTING_TTL_MS = 30_000;
@@ -104,7 +105,8 @@ function spawnClaude(opts: SpawnOptions): ChildProcessWithoutNullStreams {
   if (opts.appendSystem) parts.push("--append-system-prompt", opts.appendSystem.slice(0, 20_000));
   if (opts.chatOnly) parts.push("--disallowedTools", "Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task");
   const line = (row ? accountLanePrefix(row) : "") + parts.map(q).join(" ");
-  return spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], { cwd: homedir(), env: { ...process.env }, stdio: ["pipe", "pipe", "pipe"] });
+  const [sh, shArgs] = shellInvocation(hostDialect());
+  return spawn(sh, [...shArgs, line], { cwd: homedir(), env: { ...process.env }, stdio: ["pipe", "pipe", "pipe"] });
 }
 
 async function reportUsage(u: BridgeUsage): Promise<void> {
