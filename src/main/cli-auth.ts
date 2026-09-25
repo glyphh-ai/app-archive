@@ -28,8 +28,14 @@ const AFTER: Record<string, string> = {
   claude: "Then type /login.",
 };
 
+/** Phrasings that mean the CLI's OWN LOGIN is out and only a fresh sign-in
+ *  fixes it. Each one is unambiguous on its own — a run reaches the sign-in
+ *  card on the strength of a single match, so nothing vague belongs here.
+ *  The bare word "unauthorized" used to live in this list and was the whole
+ *  bug below: it is what a refusal says, not only what an expired token says. */
 const PATTERNS: RegExp[] = [
   /oauth session expired/i,
+  /oauth token (is )?(expired|invalid)/i,
   /could not be refreshed/i,
   /please run \/login/i,
   /login expired/i,
@@ -37,13 +43,41 @@ const PATTERNS: RegExp[] = [
   /not logged in/i,
   /authentication (has )?expired/i,
   /invalid (api key|credentials)/i,
-  /unauthorized/i,
+  /\b401\b/,
 ];
 
-/** Does this output say the CLI could not authenticate? */
+/** NOT a login problem (his report, 2026-09-25: "any error in the cli is
+ *  returning [Sign in to continue]. When in fact the error was related to not
+ *  being allowed to do something"). A step the user, a hook or the OS refused
+ *  is a PERMISSION decision: the login is fine, and sending someone off to
+ *  sign in again points them at a thing that was never broken. A denial
+ *  phrase anywhere in the output VETOES the auth read. */
+const DENIAL: RegExp[] = [
+  /permissions? (denied|not granted|to use|request)/i,
+  /requested? permissions?/i,
+  /haven'?t granted/i,
+  /\bnot allowed\b/i,
+  /\bnot permitted\b/i,
+  /operation not permitted/i,
+  /\b(EACCES|EPERM)\b/,
+  /user (denied|rejected|declined|doesn'?t want)/i,
+  /doesn'?t want to (proceed|take)/i,
+  /(rejected|denied|declined) (the |this )?(tool|command|action|edit|request)/i,
+  /blocked by (a )?hook/i,
+  /approval (was )?(denied|rejected)/i,
+  /interrupted by user/i,
+];
+
+/** Was this run stopped by a permission decision rather than a broken login? */
+export function isPermissionDenial(text: string): boolean {
+  const s = String(text || "");
+  return s.length > 0 && DENIAL.some((re) => re.test(s));
+}
+
 export function isAuthTrouble(text: string): boolean {
   const s = String(text || "");
-  return s.length > 0 && PATTERNS.some((re) => re.test(s));
+  if (!s || isPermissionDenial(s)) return false;
+  return PATTERNS.some((re) => re.test(s));
 }
 
 export interface AuthFix {
@@ -107,6 +141,11 @@ export function cliFix(text: string, cli: string): CliFix | null {
   if (auth) return auth;
   const s = String(text || "");
   if (!s) return null;
+  // A refusal is read from the SAME list that vetoes the sign-in card, so the
+  // two can never disagree about what a denial looks like.
+  if (isPermissionDenial(s)) {
+    return { kind: "explain", cli, message: `A step in this turn was not allowed, so ${cli} stopped there. The login is fine — approve the step when the app asks, loosen this chat's permission mode, or tell the agent to take a different route, then run the turn again.\n\n${cli} said: ${firstLine(s)}` };
+  }
   for (const k of KNOWN) {
     if (k.cli && k.cli !== cli) continue;
     if (k.re.test(s)) return { kind: "explain", cli, message: `${k.say(cli)}\n\n${cli} said: ${firstLine(s)}` };
