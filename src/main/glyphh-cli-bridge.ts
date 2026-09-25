@@ -28,7 +28,7 @@ import { requestUsesGateway } from "./gateway-token.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop } from "./glyphh-loop.js";
-import { hostDialect, shellInvocation } from "./shell-dialect.js";
+import { hostDialect, quote, shellInvocation } from "./shell-dialect.js";
 import { isInterrupted, INTERRUPT_SAID } from "./cli-interrupt.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -527,9 +527,10 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   // The login shell resolves the user's real PATH — Electron's GUI env
   // doesn't carry it, and `claude` lives wherever the user installed it.
   const row = agentRowFor(p.loop || "claude");
-  const line = (row ? loopEnvPrefix(row) : "")
-    + parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
-  const [sh, shArgs] = shellInvocation(hostDialect());
+  const dialect = hostDialect();
+  const line = (row ? loopEnvPrefix(row, dialect) : "")
+    + parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : quote(a, dialect))).join(" ");
+  const [sh, shArgs] = shellInvocation(dialect);
   const proc = spawn(sh, [...shArgs, line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : homedir(),
     env: { ...process.env },

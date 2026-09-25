@@ -30,7 +30,7 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { accountLanePrefix, agentRowFor, ensureLoopEnv } from "./cli-agents.js";
 import { composeBridgeTuiCommand } from "./bridge-tui-launch.js";
 import { getMainWindowRef } from "./main-window-ref.js";
-import { hostDialect, shellInvocation } from "./shell-dialect.js";
+import { hostDialect, quote, shellInvocation } from "./shell-dialect.js";
 
 export const BRIDGE_PORT = Number(process.env.GLYPHH_BRIDGE_PORT || 4747);
 const ROUTING_TTL_MS = 30_000;
@@ -89,7 +89,7 @@ async function routing(): Promise<RoutingRow[]> {
 
 export function invalidateRouting(): void { routingCache = null; }
 
-const q = (s: string): string => (/^[\w./=:-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+const q = (s: string, d: "posix" | "powershell"): string => (/^[\w./=:-]+$/.test(s) ? s : quote(s, d));
 
 /** A headless `claude` on the member's own login, the bridge in its path for memory, tools per the row. */
 function spawnClaude(opts: SpawnOptions): ChildProcessWithoutNullStreams {
@@ -104,8 +104,9 @@ function spawnClaude(opts: SpawnOptions): ChildProcessWithoutNullStreams {
   if (opts.resume) parts.push("--resume", opts.resume);
   if (opts.appendSystem) parts.push("--append-system-prompt", opts.appendSystem.slice(0, 20_000));
   if (opts.chatOnly) parts.push("--disallowedTools", "Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task");
-  const line = (row ? accountLanePrefix(row) : "") + parts.map(q).join(" ");
-  const [sh, shArgs] = shellInvocation(hostDialect());
+  const dialect = hostDialect();
+  const line = (row ? accountLanePrefix(row, dialect) : "") + parts.map((part) => q(part, dialect)).join(" ");
+  const [sh, shArgs] = shellInvocation(dialect);
   return spawn(sh, [...shArgs, line], { cwd: homedir(), env: { ...process.env }, stdio: ["pipe", "pipe", "pipe"] });
 }
 
