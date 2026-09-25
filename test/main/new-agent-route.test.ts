@@ -2,42 +2,71 @@ import { describe, it, expect } from "vitest";
 import { routeNewAgent, routeNewChatInPanel, resolveLoop } from "../../src/renderer/help/new-agent-route.js";
 
 const LOOPS = ["claude", "codex", "gemini"];
+const VIEWS = ["cli", "glyphh"] as const;
 
 describe("new-agent routing", () => {
-  describe("the reported bug", () => {
-    it("NEVER reuses the seated agent — a new agent is a new instance", () => {
-      // His report: pressing New with an agent already up blanked that
-      // agent's thread and spawned nothing. Whatever else changes, this
-      // must not come back.
-      const a = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: true });
-      expect(a.kind).toBe("instance");
-      expect(a.kind === "instance" && a.loop).toBe("claude");
-    });
-
-    it("mints a FRESH cli conversation, never re-attaching a parked buffer", () => {
-      // Without fresh, openAgentCliCard re-attaches the parked pty and the
-      // "new" agent resumes the old conversation — the same bug wearing a
-      // terminal.
-      const a = routeNewAgent({ loops: LOOPS, view: "cli", agentSeated: true });
-      expect(a).toEqual({ kind: "cli", loop: "claude", fresh: true });
-    });
-
-    it("keeps the header + as its own verb: in place, always", () => {
-      expect(routeNewChatInPanel()).toEqual({ kind: "in-place" });
-    });
-  });
-
-  describe("the two verbs stay distinct", () => {
-    it("a new agent in cli view is never the in-place action", () => {
-      for (const seated of [true, false]) {
-        const a = routeNewAgent({ loops: LOOPS, view: "cli", agentSeated: seated });
-        expect(a.kind).not.toBe("in-place");
+  describe("THE RULE: agents are not singletons", () => {
+    // His ruling, 2026-09-25: "When you open a glyphh agent from the side
+    // panel or from any of the agent icons on the home page they are NOT
+    // singletons... they should open new agent windows every time you click
+    // one. Period."
+    it("opens another agent on EVERY press, in every view, seated or not", () => {
+      for (const view of VIEWS) {
+        for (const agentSeated of [true, false]) {
+          const a = routeNewAgent({ loops: LOOPS, view, agentSeated });
+          expect(a.kind, `view=${view} seated=${agentSeated}`).not.toBe("in-place");
+        }
       }
     });
 
-    it("with nothing seated the ordinary open IS the new agent", () => {
-      const a = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: false });
-      expect(a).toEqual({ kind: "open", loop: "claude" });
+    it("never reuses the seated agent — pressing New twice gives two agents", () => {
+      // The original bug: the second press blanked the first agent's thread
+      // and spawned nothing.
+      const first = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: false });
+      const second = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: true });
+      expect(first.kind).toBe("open");        // uses the page's own agent
+      expect(second.kind).toBe("instance");   // a whole second panel
+      expect(second.kind === "instance" && second.loop).toBe("claude");
+    });
+
+    it("keeps minting instances however many are already up", () => {
+      // Seated stays true from the second press onward; it must never
+      // saturate into "just focus the one that exists".
+      for (let n = 0; n < 5; n++) {
+        expect(routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: true }).kind).toBe("instance");
+      }
+    });
+  });
+
+  describe("THE ONE EXCEPTION: the agent header's +", () => {
+    it("starts a new chat in place — never a new agent", () => {
+      // His ruling: "the only new agent door that doesn't is the + button in
+      // the top right of the agent window."
+      expect(routeNewChatInPanel()).toEqual({ kind: "in-place" });
+    });
+
+    it("is the ONLY route that ever answers in-place", () => {
+      for (const view of VIEWS) {
+        for (const agentSeated of [true, false]) {
+          expect(routeNewAgent({ loops: LOOPS, view, agentSeated }).kind).not.toBe("in-place");
+        }
+      }
+    });
+  });
+
+  describe("cli view", () => {
+    it("mints a FRESH cli conversation, never re-attaching a parked buffer", () => {
+      // Without fresh, openAgentCliCard re-attaches the parked pty and the
+      // "new" agent silently resumes the old conversation.
+      expect(routeNewAgent({ loops: LOOPS, view: "cli", agentSeated: true }))
+        .toEqual({ kind: "cli", loop: "claude", fresh: true });
+    });
+
+    it("still opens an agent when no cli is installed to spawn", () => {
+      // view says cli, but there is no loop — it must still produce an agent
+      // rather than falling through to doing nothing.
+      const a = routeNewAgent({ loops: [], view: "cli", agentSeated: true });
+      expect(a).toEqual({ kind: "instance", loop: null });
     });
   });
 
@@ -56,32 +85,7 @@ describe("new-agent routing", () => {
     });
 
     it("survives a machine with no loops at all", () => {
-      const a = routeNewAgent({ loops: [], view: "cli", agentSeated: false });
-      expect(a).toEqual({ kind: "open", loop: null });
-    });
-
-    it("falls back to the chat open when cli view has no loop to run", () => {
-      // view is "cli" but nothing is installed — there is no cli to spawn.
-      const a = routeNewAgent({ loops: [], view: "cli", agentSeated: true });
-      expect(a.kind).toBe("instance");
-    });
-  });
-
-  describe("web", () => {
-    it("falls back in place only where an instance panel is impossible", () => {
-      // No <webview> on web, so the instance panel cannot be hosted.
-      const a = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: true, web: true });
-      expect(a).toEqual({ kind: "in-place" });
-    });
-
-    it("still opens normally on web when nothing is seated", () => {
-      const a = routeNewAgent({ loops: LOOPS, view: "glyphh", agentSeated: false, web: true });
-      expect(a).toEqual({ kind: "open", loop: "claude" });
-    });
-
-    it("still mints a fresh cli on web when the view is cli", () => {
-      const a = routeNewAgent({ loops: LOOPS, view: "cli", agentSeated: true, web: true });
-      expect(a).toEqual({ kind: "cli", loop: "claude", fresh: true });
+      expect(routeNewAgent({ loops: [], view: "glyphh", agentSeated: false })).toEqual({ kind: "open", loop: null });
     });
   });
 });

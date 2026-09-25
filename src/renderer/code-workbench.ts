@@ -314,6 +314,11 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 // dock backfill read this same filtered list, so a saved "preview" slot
 // simply stops materializing there.
 const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+/** This document is a SOLO panel (?solo=tool:…) — one agent, one tool, hosted
+ *  in a card or its own window. It is not the command center, so it must never
+ *  replay the saved wall or open a default workspace inside itself. */
+const IS_SOLO_WINDOW = typeof window !== "undefined"
+  && (new URLSearchParams(window.location.search).get("solo") || "").startsWith("tool:");
 /** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
 function openNewTabForm(): void {
   (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
@@ -3556,6 +3561,13 @@ async function init(): Promise<void> {
     function restoreWallOnce(layouts: LayoutRow[], saved: WallState | null): void {
       if (wallRestored) return;
       wallRestored = true;   // arm saves + block a second restore on remount
+      // A SOLO AGENT PANEL IS NOT THE WALL (his report, 2026-09-25, with the
+      // screenshot: a new agent came up carrying Files, Editor, Diff, Terminal
+      // and another Glyphh inside it — "a whole new space"). Each instance
+      // loads home.html, so this ran there too and replayed the saved wall
+      // (his `dev` workspace) INSIDE the card. A solo window shows exactly the
+      // one thing it was opened for; home.ts builds that single cell itself.
+      if (IS_SOLO_WINDOW) return;
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
@@ -6500,12 +6512,13 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       //
-      // Pressing it is the NEW-AGENT door (his rule, 2026-09-25): another
-      // agent, its own cli. An agent tile whose own card is already open is
-      // the exception — that is "show me that one", and re-fronting it is
-      // what the flash in openShell/openAgentPanel does.
+      // EVERY press is a NEW AGENT (his ruling, 2026-09-25: "any of the agent
+      // icons on the home page... should open new agent windows every time you
+      // click one"). No `!e.card` exception: a tile whose card is already open
+      // used to re-front that one, which is precisely the singleton behaviour
+      // being removed.
       if (t.slug === "glyphh-home" || t.kind === "agent") {
-        activateGlyphh(e, { fresh: !e.card });
+        activateGlyphh(e, { fresh: true });
         return;
       }
       // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
@@ -6653,7 +6666,6 @@ async function init(): Promise<void> {
         loops: cliAgentRows.map((x) => x.id),
         view: resolveAgentView(),
         agentSeated: openList.some((x) => x.card && x.tile.kind === "agent"),
-        web: IS_WEB_TARGET,
       });
       switch (act.kind) {
         case "cli": {
@@ -6680,26 +6692,26 @@ async function init(): Promise<void> {
     /** THE agent door (his order, 2026-09-16): every loop, from every tile,
      *  opens in the view Settings resolve (chat or CLI).
      *
-     *  A LOOP SWAPS INTO THE OPEN AGENT (his order, 2026-09-19: a second loop
-     *  used to get its own panel, "spawning crazy shit in other panels"). With
-     *  an agent seated, picking Claude, Codex or Gemini switches THAT agent's
-     *  loop and keeps everything else it has: the session, the working folder,
-     *  the workspace it is in, its mode. The model follows the loop's own
-     *  resolution (the gateway pins it for Claude and Codex). Only an explicit
-     *  "again" still opens another panel. */
-    function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
+     *  EVERY PRESS IS ANOTHER AGENT (his ruling, 2026-09-25): "any of the
+     *  agent icons on the home page... should open new agent windows every
+     *  time you click one. Period."
+     *
+     *  This supersedes the 2026-09-19 loop-swap rule, where picking Claude,
+     *  Codex or Gemini with an agent seated re-bound THAT agent's loop instead
+     *  of opening one. That rule was written to stop panels spawning where
+     *  they were not wanted; the answer now is that a deliberate press on an
+     *  agent icon always wants one. `again` is therefore redundant — kept only
+     *  so existing callers type-check — and a swap is no longer a door.
+     *
+     *  Workspaces do NOT come through here: a workspace seats its own agent
+     *  cell and applies that cell's saved config. */
+    function openAgentForLoop(id: string, _opts: { again?: boolean } = {}): void {
       const row = cliAgentRows.find((x) => x.id === id);
       if (!row) return;
-      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, opts.again ? { fresh: true } : undefined); return; }
-      const seated = openList.find((x) => x.card && x.tile.kind === "agent");
-      const bound = seated?.card?.dataset.boundAgent;
-      if (opts.again && seated) { openAppCard(agentInstanceTile(id)); return; }
-      if (seated && bound && bound !== id) {
-        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(id);
-        if (seated.card) seated.card.dataset.boundAgent = id;
-        flash(seated.card);
-        return;
-      }
+      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, { fresh: true }); return; }
+      // Seated already → this press is the SECOND (or fifth) agent, so it gets
+      // its own panel. Nothing seated → the page's own agent element is free.
+      if (openList.some((x) => x.card && x.tile.kind === "agent")) { openAppCard(agentInstanceTile(id)); return; }
       openAgentChatCard(id);
     }
     /** Open a CLI agent: dependencies first (the local MCP server), then the

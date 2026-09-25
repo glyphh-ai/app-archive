@@ -956,12 +956,37 @@ function showGroupTab(group: string, sub: string): void {
   loadSettingsSub(sub);
 }
 
-/** Every borrowed panel goes back to its .settings-panels pen. */
+/**
+ * Every borrowed panel goes back to its .settings-panels pen.
+ *
+ * THE CYCLE (his report, 2026-09-25: "when customize from the left rail is
+ * opened the settings panel will never open again"). A group's panel can be a
+ * host for a WHOLE adopted section — #settings-tabs-host holds the apps
+ * section — and that section is an ancestor of the entire settings layout,
+ * pen included. So by the time we try `pen.appendChild(panel)`, the pen sits
+ * INSIDE the panel, and the DOM refuses:
+ *
+ *   HierarchyRequestError: The new child element contains the parent.
+ *
+ * openSettingsModal calls this FIRST, so the throw escaped before the overlay
+ * was ever built — settings stopped opening, permanently, with no visible
+ * error. Unmounting the adopted sections first breaks the cycle; the
+ * try/catch is the belt-and-braces guarantee that one bad node can never
+ * again cost the user their settings.
+ */
 function returnGroupPanels(): void {
+  // Park adopted sections BEFORE moving their hosts: a section mounted into a
+  // group panel makes that panel an ancestor of the pen it must return to.
+  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   for (const sub of Object.keys(groupPanelPen)) {
     const pen = groupPanelPen[sub];
     const panel = document.querySelector<HTMLElement>(`.settings-group-host .settings-panel[data-sub="${sub}"]`);
-    if (panel && pen) { panel.classList.remove("active"); pen.appendChild(panel); }
+    if (!panel || !pen) continue;
+    // Still cyclic (an adopted node we don't own)? Skip this one panel rather
+    // than take the whole settings surface down with it.
+    if (panel.contains(pen)) continue;
+    panel.classList.remove("active");
+    try { pen.appendChild(panel); } catch { /* leave it where it is */ }
   }
 }
 

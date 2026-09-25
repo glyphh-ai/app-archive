@@ -18,7 +18,9 @@
 export type NewAgentAction =
   /** Open this loop's CLI in its own terminal card, on a fresh conversation. */
   | { kind: "cli"; loop: string; fresh: true }
-  /** Mint another agent panel (the shell in a webview) — the chat singleton is taken. */
+  /** Another whole agent panel (the shell in a webview). NOT what the New door
+   *  returns — that is the explicit "New agent panel" command, which asks for
+   *  a separate shell on purpose. */
   | { kind: "instance"; loop: string | null }
   /** Nothing is seated: the ordinary agent open IS the new agent. */
   | { kind: "open"; loop: string | null }
@@ -36,8 +38,6 @@ export interface NewAgentInput {
   view: "cli" | "glyphh";
   /** Is a chat agent card already on the stage? */
   agentSeated: boolean;
-  /** Web target — no <webview>, so no instance panel. */
-  web?: boolean;
 }
 
 /**
@@ -60,22 +60,31 @@ export function resolveLoop(i: NewAgentInput): string | null {
  */
 export function routeNewAgent(i: NewAgentInput): NewAgentAction {
   const loop = resolveLoop(i);
-  // CLI view: each open already mints its own terminal + pty. `fresh` is what
-  // makes it a new CONVERSATION — without it a parked buffer is re-attached
-  // and the "new" agent silently resumes the old one.
-  if (loop && i.view === "cli") return { kind: "cli", loop, fresh: true };
-  // Chat view: the chat panel is a singleton, so a second one can only be
-  // another instance of the shell, with its own state and its own cli.
-  if (i.agentSeated) return i.web ? { kind: "in-place" } : { kind: "instance", loop };
-  // Nothing seated — the ordinary open is already a new agent.
-  return { kind: "open", loop };
+  // AGENTS ARE NOT SINGLETONS (his ruling, 2026-09-25): "When you open a
+  // glyphh agent from the side panel or from any of the agent icons on the
+  // home page they are NOT singletons... they should open new agent windows
+  // every time you click one. Period."
+  //
+  // So EVERY press opens another agent panel. The only asymmetry is cost, not
+  // behaviour: with nothing seated yet, the page's own agent element is free
+  // and already there, so the first press uses it; each press after that mints
+  // a full instance. Either way the user gets one more agent panel per click,
+  // which is the whole rule.
+  //
+  // Workspaces are the ONE exception, and they do not come through here: a
+  // workspace adds its agent cell itself and applies that cell's saved config.
+  if (i.view === "cli" && loop) return { kind: "cli", loop, fresh: true };
+  return i.agentSeated ? { kind: "instance", loop } : { kind: "open", loop };
 }
 
 /**
- * The agent header's + — the OTHER verb. A new chat in THIS panel and THIS
- * cli; no panel, no process, nothing else on the stage is touched. Constant by
- * design: it exists so the distinction is stated in one place and cannot drift
- * back into "new agent" the way it had.
+ * The agent header's + — THE ONLY DOOR THAT DOES NOT OPEN A NEW AGENT (his
+ * ruling, 2026-09-25: "the only new agent door that doesn't is the + button in
+ * the top right of the agent window").
+ *
+ * A new chat in THIS panel and THIS cli; no panel, no process, nothing else on
+ * the stage touched. Constant by design: it states the one exception in one
+ * place so it cannot drift back into "new agent" the way every other door had.
  */
 export function routeNewChatInPanel(): { kind: "in-place" } {
   return { kind: "in-place" };
