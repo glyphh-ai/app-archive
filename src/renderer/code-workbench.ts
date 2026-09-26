@@ -22,7 +22,6 @@ import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-te
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
-import { routeNewAgent } from "./help/new-agent-route.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 
@@ -4674,18 +4673,21 @@ async function init(): Promise<void> {
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
           if (key === "glyphh") {
-            // THE NEW-AGENT DOOR (his rule, 2026-09-25) — this slot is titled
-            // "New session" and it now means it: a new INSTANCE, with its own
-            // panel and its own cli. The old rules here ("never double a
-            // layout's agent", "an agent on the stage is THE agent") were
-            // exactly the guards that made a second press re-front the one
-            // panel instead of bringing up another agent.
-            //
+            // Same rule as the pages' mark (2026-08-19): OPEN the agent —
+            // never reset to a new session, never double a layout's agent.
+            const inLayout = openList.some((x) => x.layoutId != null);
+            const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
+            if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
+            // An agent already on the stage is THE agent — the mark re-fronts
+            // it and never doubles it, layout or not.
+            if (agentShowing) { void openAgentPanel(); return; }
             // THE DEFAULTS ARE THE DEFAULTS (his report, 2026-09-17): the mark
             // took the view from Settings but opened a loopless panel, so the
             // configured loop never bound and the model rode whatever the chat
-            // found. newAgentInstance resolves the default loop the same way.
-            activateGlyphh(undefined, { fresh: true });
+            // found. Same door the shift-open uses, minus the "again".
+            const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+            if (wanted) openAgentForLoop(wanted.id);
+            else void openAgentPanel();
             return;
           }
           // CC and Close all are permanent slots that go INERT with nothing
@@ -6256,21 +6258,14 @@ async function init(): Promise<void> {
      * terminal is fine, but revert when possible) — chat only when the
      * last-used view was chat; terminal otherwise.
      * THE DEFAULT LOOP (Settings → General → Agent loop) first, then its view (his order, 2026-09-16).
-     *
-     * `fresh` is the USER pressing the door (his rule, 2026-09-25): a new
-     * agent means a NEW INSTANCE — its own panel, its own cli, its own pty —
-     * not the seated agent re-fronted with its thread wiped. Boot passes no
-     * flag: with nothing seated the two are the same open anyway, and a boot
-     * that minted instances would stack a panel on every launch.
      */
-    const activateGlyphh = (_self?: TileEntry, opts: { fresh?: boolean } = {}): void => {
-      if (opts.fresh && newAgentInstance()) return;
+    const activateGlyphh = (_self?: TileEntry): void => {
       const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
       if (first) { openAgentForLoop(first.id); return; }
       void openAgentPanel();
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
-    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh(undefined, { fresh: true });
+    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh();
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
@@ -6496,10 +6491,7 @@ async function init(): Promise<void> {
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        // The mark traded onto the pages is the SAME new-agent door as its
-        // dock self (his rule, 2026-09-25) — it used to blank the seated
-        // agent's thread via __glyphhNewSession instead of minting one.
-        if (t.navKey === "glyphh") activateGlyphh(undefined, { fresh: true });
+        if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "newtab") openNewTabForm();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
@@ -6511,16 +6503,7 @@ async function init(): Promise<void> {
       // (Glyphh) with ONE behavior. The wall activates tiles DIRECTLY (this
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
-      //
-      // EVERY press is a NEW AGENT (his ruling, 2026-09-25: "any of the agent
-      // icons on the home page... should open new agent windows every time you
-      // click one"). No `!e.card` exception: a tile whose card is already open
-      // used to re-front that one, which is precisely the singleton behaviour
-      // being removed.
-      if (t.slug === "glyphh-home" || t.kind === "agent") {
-        activateGlyphh(e, { fresh: true });
-        return;
-      }
+      if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
       // loop tile opens the SAME agent chat panel every other door opens,
       // with this loop set. The terminal is the >_ hop, never a door.
@@ -6640,78 +6623,31 @@ async function init(): Promise<void> {
       return { name: "Glyphh", slug: `agent-panel:${agentInstances}`, kind: "app", url, workbench: true };
     };
     (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
-    /**
-     * NEW AGENT (his rule, 2026-09-25) — the rail's "New" and the wall's mark.
-     *
-     * These MUST mint a new INSTANCE: its own panel, its own CLI, its own pty.
-     * Both used to call newSessionInPlace, which only empties the thread of the
-     * agent already seated — one agent, a blanked conversation, no new process
-     * anywhere. The machinery for a second instance was already here behind
-     * `again` (shift-click); nothing routed the two front doors into it.
-     *
-     * The other verb is the agent header's +, which stays in place: a new chat
-     * in THAT panel and THAT cli, nothing else touched.
-     *
-     * Returns false when it cannot mint one (web has no <webview> to host an
-     * instance panel) so the caller can fall back to the in-place new session
-     * instead of this function reaching back into code.ts and recursing.
-     */
-    const newAgentInstance = (loop?: string): boolean => {
-      // The DECISION lives in help/new-agent-route.ts, under test; this only
-      // performs it. (This file is bundled by esbuild and typechecked by
-      // nothing, so a rule written inline here is a rule nothing guards.)
-      const act = routeNewAgent({
-        ...(loop ? { loop } : {}),
-        defaultLoop: defaultLoopPref,
-        loops: cliAgentRows.map((x) => x.id),
-        view: resolveAgentView(),
-        agentSeated: openList.some((x) => x.card && x.tile.kind === "agent"),
-      });
-      switch (act.kind) {
-        case "cli": {
-          const row = cliAgentRows.find((x) => x.id === act.loop);
-          if (!row) return false;
-          openAgentCliCard(cliAgentTileOf(row), undefined, { fresh: true });
-          return true;
-        }
-        case "instance":
-          openAppCard(agentInstanceTile(act.loop ?? undefined));
-          return true;
-        case "open":
-          if (act.loop) openAgentForLoop(act.loop);
-          else void openAgentPanel();
-          return true;
-        case "in-place":
-          return false;   // caller falls back to the in-place new session
-      }
-    };
-    (window as unknown as { __wbNewAgentInstance?: (loop?: string) => boolean }).__wbNewAgentInstance =
-      (loop) => newAgentInstance(loop);
     /** THE CLI INSTALLER (his order, 2026-09-19): a terminal panel running the
      *  installer TUI. Opens after the first sign-in and from Settings. */
     /** THE agent door (his order, 2026-09-16): every loop, from every tile,
      *  opens in the view Settings resolve (chat or CLI).
      *
-     *  EVERY PRESS IS ANOTHER AGENT (his ruling, 2026-09-25): "any of the
-     *  agent icons on the home page... should open new agent windows every
-     *  time you click one. Period."
-     *
-     *  This supersedes the 2026-09-19 loop-swap rule, where picking Claude,
-     *  Codex or Gemini with an agent seated re-bound THAT agent's loop instead
-     *  of opening one. That rule was written to stop panels spawning where
-     *  they were not wanted; the answer now is that a deliberate press on an
-     *  agent icon always wants one. `again` is therefore redundant — kept only
-     *  so existing callers type-check — and a swap is no longer a door.
-     *
-     *  Workspaces do NOT come through here: a workspace seats its own agent
-     *  cell and applies that cell's saved config. */
-    function openAgentForLoop(id: string, _opts: { again?: boolean } = {}): void {
+     *  A LOOP SWAPS INTO THE OPEN AGENT (his order, 2026-09-19: a second loop
+     *  used to get its own panel, "spawning crazy shit in other panels"). With
+     *  an agent seated, picking Claude, Codex or Gemini switches THAT agent's
+     *  loop and keeps everything else it has: the session, the working folder,
+     *  the workspace it is in, its mode. The model follows the loop's own
+     *  resolution (the gateway pins it for Claude and Codex). Only an explicit
+     *  "again" still opens another panel. */
+    function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
       const row = cliAgentRows.find((x) => x.id === id);
       if (!row) return;
-      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, { fresh: true }); return; }
-      // Seated already → this press is the SECOND (or fifth) agent, so it gets
-      // its own panel. Nothing seated → the page's own agent element is free.
-      if (openList.some((x) => x.card && x.tile.kind === "agent")) { openAppCard(agentInstanceTile(id)); return; }
+      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, opts.again ? { fresh: true } : undefined); return; }
+      const seated = openList.find((x) => x.card && x.tile.kind === "agent");
+      const bound = seated?.card?.dataset.boundAgent;
+      if (opts.again && seated) { openAppCard(agentInstanceTile(id)); return; }
+      if (seated && bound && bound !== id) {
+        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(id);
+        if (seated.card) seated.card.dataset.boundAgent = id;
+        flash(seated.card);
+        return;
+      }
       openAgentChatCard(id);
     }
     /** Open a CLI agent: dependencies first (the local MCP server), then the
