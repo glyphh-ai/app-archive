@@ -6265,7 +6265,12 @@ async function init(): Promise<void> {
       void openAgentPanel();
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
-    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh();
+    (window as unknown as { __wbOpenGlyphhAgent?: () => void; __wbHasAgentPanel?: () => boolean }).__wbOpenGlyphhAgent = () => activateGlyphh();
+    // The rail's New button needs to distinguish "open the first agent" from
+    // "start another chat in the agent already showing". Keep that state in
+    // the workbench, where layout/adopted seats are visible.
+    (window as unknown as { __wbHasAgentPanel?: () => boolean }).__wbHasAgentPanel =
+      () => openList.some((x) => x.card && x.tile.kind === "agent");
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete

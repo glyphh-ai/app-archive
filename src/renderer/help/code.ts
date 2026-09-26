@@ -6138,7 +6138,18 @@ export function initCode(): void {
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
-  el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
+  el("code-new-chat")?.addEventListener("click", () => {
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void;
+      __wbHasAgentPanel?: () => boolean;
+      __wbOpenGlyphhAgent?: () => void;
+    };
+    w.__initCodeWorkbench?.();
+    // With no agent card, New is the first-agent door. Once one is open, it
+    // keeps its established meaning: a fresh chat in that panel.
+    if (!w.__wbHasAgentPanel?.()) { w.__wbOpenGlyphhAgent?.(); return; }
+    newSessionInPlace();
+  });
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
   // "Edit with <loop>"): loop + folder are held for the session the first send
