@@ -69,9 +69,44 @@ async function loadDoc(file: string): Promise<DesignDoc | null> {
   if (hit) return hit;
   const res = await api().designRead?.(file);
   if (!res?.ok || !res.document) return null;
-  const doc = res.document as DesignDoc;
+  const doc = normalizeDoc(res.document, file);
   docCache.set(file, doc);
   return doc;
+}
+
+/** EVERY DESIGN PAINTS (his report, 2026-09-27, Windows: opening the Design
+ *  app died in paintShot on `fonts.body`). The library is a folder of JSON
+ *  and anything can land there — a hand-written file, an agent's draft, an
+ *  older shape — and the painters trusted every field. A loaded document is
+ *  filled against the starter where a REQUIRED part is missing or malformed
+ *  (colors' primary/background/text, the display and body fonts); optional
+ *  parts stay exactly as written. The fill is logged with the file's name and
+ *  is written back on the document's next save, so the file heals. */
+export function normalizeDoc(raw: unknown, file: string): DesignDoc {
+  const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
+  const r = obj(raw);
+  const name = typeof r.name === "string" && r.name.trim() ? r.name : file.replace(/\.json$/i, "");
+  const base = starterDoc(name);
+  const filled: string[] = [];
+  const colorsIn = obj(r.colors);
+  const colors = { ...colorsIn } as DesignDoc["colors"];
+  for (const k of ["primary", "background", "text"] as const) {
+    if (typeof colorsIn[k] !== "string" || !colorsIn[k]) { colors[k] = base.colors[k]; filled.push(`colors.${k}`); }
+  }
+  const fontsIn = obj(r.fonts);
+  const validFont = (v: unknown): DFont | null => { const f = obj(v); return typeof f.family === "string" && f.family.trim() ? f as unknown as DFont : null; };
+  const required = (key: "display" | "body"): DFont => {
+    const f = validFont(fontsIn[key]);
+    if (f) return f;
+    filled.push(`fonts.${key}`);
+    return base.fonts[key];
+  };
+  // mono is optional: absent stays absent; present but malformed is filled.
+  const monoIn = fontsIn.mono;
+  const mono = monoIn === undefined ? undefined : (validFont(monoIn) ?? (filled.push("fonts.mono"), base.fonts.mono));
+  const fonts: DesignDoc["fonts"] = { display: required("display"), body: required("body"), ...(mono ? { mono } : {}) };
+  if (filled.length) console.warn("[design] filled a document's missing parts from the starter", JSON.stringify({ file, filled }));
+  return { ...(r as Partial<DesignDoc>), version: 1, name, colors, fonts } as DesignDoc;
 }
 
 const SHADOWS: Record<string, string> = {
