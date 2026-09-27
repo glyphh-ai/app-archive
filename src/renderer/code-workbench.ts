@@ -256,7 +256,8 @@ function makeTermId(): string {
   return `wbt-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 }
 function basename(p: string): string {
-  return p.replace(/\/+$/, "").split("/").pop() || p;
+  // Either separator: a Windows folder is `C:\\Users\\me\\repo`, not one long name.
+  return p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 }
 function homeShorten(p: string): string {
   return p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
@@ -8926,8 +8927,9 @@ async function init(): Promise<void> {
       const root = cwd.replace(/\/+$/, "");
       // Exact match first; the suffix form covers fs.watch's occasionally
       // symlink-normalized paths without catching nested */plan.md files.
-      const base = root.split("/").pop() || "";
-      return abs === `${root}/plan.md` || (!!base && abs.endsWith(`/${base}/plan.md`));
+      const base = root.split(/[\\/]/).pop() || "";
+      const sep = root.includes("\\") ? "\\" : "/";
+      return abs === `${root}${sep}plan.md` || (!!base && abs.endsWith(`${sep}${base}${sep}plan.md`));
     }
     const unsubscribeWatch = window.wb.onFileChanged(async (abs: string) => {
       if (!cwd) return;

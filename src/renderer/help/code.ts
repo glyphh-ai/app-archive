@@ -1697,6 +1697,15 @@ let cwdStampSuppressedUntil = 0;
  *  terminals, everything follows the thread (his report, 2026-08-30: opening
  *  a thread left the previous folder up). Local sources only; cloud sources
  *  re-root through the source chip's own machinery. */
+/** A REAL file URL for a local path on any OS (his report, 2026-09-27: on
+ *  Windows `file://` + `C:\\…` loaded nothing). Backslashes become slashes, a
+ *  drive letter gets its leading slash, every segment is encoded. */
+function localFileUrl(p: string): string {
+  let s = String(p || "").replace(/\\/g, "/");
+  if (!s.startsWith("/")) s = "/" + s;
+  return "file://" + s.split("/").map(encodeURIComponent).join("/");
+}
+
 function applySessionFolder(c: CodeChat | null | undefined): void {
   const dir = c?.workdir || (c?.source?.kind === "local" ? c.source.path || "" : "");
   if (!dir) return;
@@ -3311,7 +3320,7 @@ function attachPreviewEl(a: AttachRef): HTMLElement {
   fig.className = "code-attach-preview";
   fig.title = a.path;
   const img = document.createElement("img");
-  img.src = `file://${encodeURI(a.path)}`;
+  img.src = localFileUrl(a.path);
   img.alt = a.name;
   img.loading = "lazy";
   img.onerror = () => { fig.replaceWith(attachChipEl(a)); };
@@ -3398,7 +3407,7 @@ function attachChipEl(a: AttachRef, onRemove?: () => void): HTMLElement {
   chip.title = a.path;
   if (a.kind === "image") {
     const img = document.createElement("img");
-    img.src = `file://${encodeURI(a.path)}`;
+    img.src = localFileUrl(a.path);
     img.alt = "";
     // Unloadable thumb (moved file, odd format) degrades to the file glyph.
     img.onerror = () => {
