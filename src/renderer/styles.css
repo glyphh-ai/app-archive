@@ -9487,13 +9487,20 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .yo-msg-assistant > .yo-md-h3:first-child,
 .yo-msg-assistant > .yo-md-h4:first-child { margin-top: 0; }
 
+/* Inline code READS in every theme (his report, 2026-09-27, again): the chip
+   used the border colour as its ground and the accent-ish --code-inline as
+   its ink — purple on dark purple, grey on grey. It is a raised surface with
+   the theme's own body text now, so whatever a theme defines for text on its
+   surfaces is what the chip shows. High-vis by construction. */
 .yo-md-inline {
-  background: var(--border);
-  color: var(--code-inline);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-2);
   padding: 1px 5px;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 500;
 }
 .yo-md-cmd {
   cursor: pointer;

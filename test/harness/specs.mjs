@@ -675,6 +675,25 @@ export const SPECS = [
         JSON.stringify({ sent, adopted, panels: panels().length, boot }));
     `,
   },
+  {
+    name: "dock: the Glyphh loop wears Sage, the fixed New tile keeps the brand mark",
+    fresh: true,
+    seedAgents: [
+      { id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" },
+      { id: "glyphh", name: "Glyphh", cli: "glyphh", icon: "", cmd: "glyphh", mcp: false, cwd: "/tmp/harness", command: "glyphh" },
+    ],
+    body: `
+      killTransitions();
+      await until(() => $$(".echo-icon, .echo-dock-btn").length >= 3, 12000);
+      const tiles = $$(".echo-icon, .echo-dock-btn");
+      const fixed = tiles.find((t) => (t.dataset.dock || t.dataset.key) === "glyphh" || /new session/i.test(t.title || ""));
+      const loop = tiles.find((t) => t.querySelector('svg[aria-label="Sage"]'));
+      const fixedImg = fixed?.querySelector("img")?.getAttribute("src") || "";
+      return ok(!!loop && /glyphh-mark\\.png$/.test(fixedImg) && loop !== fixed,
+        JSON.stringify({ fixedImg, loopFound: !!loop, tiles: tiles.length }));
+    `,
+  },
 ];
+
 
 

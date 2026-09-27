@@ -21,6 +21,7 @@ import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type Error
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
+import { mascotSvg, GLYPHH_LOOP_MASCOT } from "./help/mascots.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
@@ -2521,7 +2522,7 @@ async function init(): Promise<void> {
         : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
         : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
         : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
-        : a.cli === "glyphh" ? { iconUrl: GLYPHH_MASCOT_SRC }
+        : a.cli === "glyphh" ? { glyphSvg: mascotSvg(GLYPHH_LOOP_MASCOT) }   // Sage, not the brand mark the New tile wears
         : { glyphSvg: CLI_AGENT_GLYPH }),
       kind: "tool",
       toolView: "terminal",
@@ -6325,12 +6326,14 @@ async function init(): Promise<void> {
     };
     const isAgentInstance = (e: TileEntry): boolean => (e.tile.slug || "").startsWith("agent-panel:");
     const agentInstanceEntries = (): TileEntry[] => openList.filter((x) => !!x.card?.isConnected && isAgentInstance(x));
-    /** The agent panel the user touched last — where a rail click lands. */
+    /** WHERE A RAIL CLICK LANDS (his rule, 2026-09-27): the agent panel that
+     *  has focus; with none focused, the FIRST open one; with none open, a
+     *  new one. Focus is a click or focus inside a panel, or the rail
+     *  fronting it — never merely having been opened last. */
     let lastAgentInstance: TileEntry | null = null;
     const activeAgentInstance = (): TileEntry | null => {
       if (lastAgentInstance && lastAgentInstance.card?.isConnected && openList.includes(lastAgentInstance)) return lastAgentInstance;
-      const all = agentInstanceEntries();
-      return all[all.length - 1] ?? null;
+      return agentInstanceEntries()[0] ?? null;
     };
     /** Steering an instance from THIS document (help/code.ts answers inside
      *  the panel): a rail session to open, a prompt to send, a fresh session. */
@@ -6363,7 +6366,6 @@ async function init(): Promise<void> {
       const wire = (tries = 0): void => {
         const entry = openList.find((x) => x.tile.slug === tile.slug && x.card);
         if (!entry) { if (tries < 60) requestAnimationFrame(() => wire(tries + 1)); return; }
-        lastAgentInstance = entry;
         entry.card!.addEventListener("focusin", () => { lastAgentInstance = entry; activatePanelOf(entry); });
         entry.card!.addEventListener("mousedown", () => { lastAgentInstance = entry; activatePanelOf(entry); }, true);
         if (!cmd) return;
@@ -6398,7 +6400,7 @@ async function init(): Promise<void> {
     };
     /** The panel hosting a run (its webContents id, from the live ledger),
      *  fronted; false when that panel is not in this document. */
-    (window as unknown as { __wbFocusLiveHost?: (senderId: number) => boolean }).__wbFocusLiveHost = (senderId) => {
+    (window as unknown as { __wbFocusLiveHost?: (senderId: number, cmd?: PanelCommand) => boolean }).__wbFocusLiveHost = (senderId, cmd) => {
       for (const e of agentInstanceEntries()) {
         const wv = e.card!.querySelector("webview") as WebviewEl | null;
         let id: number | undefined;
@@ -6409,6 +6411,8 @@ async function init(): Promise<void> {
         flash(e.card);
         e.card!.scrollIntoView?.({ block: "nearest" });
         try { wv?.focus(); } catch { /* not focusable yet */ }
+        // The host may be on another chat: the running thread is brought up in it.
+        if (cmd) sendPanelCommand(e, cmd);
         return true;
       }
       return false;

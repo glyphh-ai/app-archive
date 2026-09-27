@@ -19,7 +19,7 @@ import { shell } from "electron";
 import type { DevicePrompt } from "@glyphh/sdk";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
-import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
+import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, SERVER_FILE_SUFFIX, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
 import { loadPreferences, clearPreferences } from "./stores/preferences-db.js";
 
 export const AUTH_SERVER = SERVER_URL;
@@ -35,7 +35,7 @@ const ORG_POLL_INTERVAL = 60 * 1000;
 // New-server session tokens are opaque (no JWT sub to decode), so the last
 // authenticated identity is mirrored to a sidecar file for OFFLINE boot: it
 // only scopes local per-user state, never authorization.
-const IDENTITY_FILE = path.join(GLYPHH_DIR, ".identity");
+const IDENTITY_FILE = path.join(GLYPHH_DIR, `.identity${SERVER_FILE_SUFFIX}`);
 
 // ── Types (shapes the app's UI/IPC were built around) ────────
 

@@ -31,7 +31,7 @@ import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTu
 import { hostDialect, quote, shellInvocation } from "./shell-dialect.js";
 import { startCliSessionWatch } from "./cli-session-watch.js";
 import { isInterrupted, INTERRUPT_SAID } from "./cli-interrupt.js";
-import { agentLive } from "./agent-live.js";
+import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -185,6 +185,7 @@ function emit(c: LiveChat, channel: string, payload: unknown): void {
   // entry the moment the CLI names it, so the rail can match its own rows.
   if (channel === "glyphh-agent:done") agentLive.done(c.chatId, c.runId);
   else if (channel === "glyphh-agent:setup" && c.cliSessionId) agentLive.update(c.chatId, { cliSessionId: c.cliSessionId });
+  else if (channel === "glyphh-agent:delta") noteRunDelta(c.chatId, String((payload as { delta?: string })?.delta ?? ""));
   try { if (!c.sender.isDestroyed()) c.sender.send(channel, payload); } catch { /* window closed mid-run */ }
 }
 
@@ -734,6 +735,14 @@ export function respondAgentApproval(id: string, allow: boolean): boolean {
 }
 
 export function registerGlyphhCliBridge(): void {
+  // Another panel adopting a chat's run: its frames go there from now on.
+  registerRunRebinder((chatId, sender) => {
+    const c = live.get(chatId);
+    if (!c || c.proc.exitCode !== null) return { rebound: false, previous: null };
+    const previous = c.sender;
+    c.sender = sender;
+    return { rebound: true, previous };
+  });
   ipcMain.handle("glyphh-agent-run", (e, p: RunPayload & { steer?: string; prompt?: string }) => runAgentTurn(e.sender, p));
 
   ipcMain.handle("glyphh-agent-stop", (_e, p: { chatId?: string }) => stopAgentChat(p.chatId ?? ""));

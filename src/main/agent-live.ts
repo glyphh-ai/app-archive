@@ -11,17 +11,57 @@
  * and back down to the host document as `agent-panel:open`.
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, type WebContents } from "electron";
 import { broadcast } from "./broadcast.js";
-import { createAgentLiveRegistry } from "./agent-live-registry.js";
+import { createAgentLiveRegistry, type LiveAgentRun } from "./agent-live-registry.js";
 import { activateAgentPanel } from "./working-directory.js";
 
 export type { LiveAgentRun } from "./agent-live-registry.js";
 
-export const agentLive = createAgentLiveRegistry((runs) => broadcast("glyphh-agent:live", runs));
+const registry = createAgentLiveRegistry((runs) => broadcast("glyphh-agent:live", runs));
+
+// ── A RUN CAN CHANGE HANDS (his report, 2026-09-27: a running thread opened
+// from the rail "isn't re-connecting to the stream"). A run's frames go to ONE
+// webContents — the panel that started it. When another panel opens that
+// thread it adopts the run: main re-points the frames at it, hands it the
+// turn's text so far, and tells the old panel to let go. Each engine registers
+// how to re-point its own run. ──
+const turnText = new Map<string, string>();
+type Rebinder = (chatId: string, sender: WebContents) => { rebound: boolean; previous: WebContents | null };
+const rebinders: Rebinder[] = [];
+export function registerRunRebinder(fn: Rebinder): void { rebinders.push(fn); }
+/** The turn's streamed text so far, for a panel adopting it mid-turn. */
+export function noteRunDelta(chatId: string, delta: string): void {
+  if (!delta) return;
+  turnText.set(chatId, (turnText.get(chatId) ?? "") + delta);
+}
+
+export const agentLive = {
+  ...registry,
+  start(run: Omit<LiveAgentRun, "startedAt">): void { turnText.delete(run.chatId); registry.start(run); },
+  done(chatId: string, runId?: string): void { registry.done(chatId, runId); if (!registry.isRunning(chatId)) turnText.delete(chatId); },
+};
 
 export function registerAgentLiveIpc(): void {
   ipcMain.handle("glyphh-agent-live-list", () => agentLive.list());
+  ipcMain.handle("glyphh-agent-run-adopt", (e, p: { chatId?: string } | undefined) => {
+    const chatId = String(p?.chatId ?? "");
+    const run = agentLive.list().find((r) => r.chatId === chatId);
+    if (!run) return { ok: false as const };
+    let previous: WebContents | null = null;
+    let rebound = false;
+    for (const fn of rebinders) {
+      const r = fn(chatId, e.sender);
+      if (r.rebound) { rebound = true; previous = r.previous; break; }
+    }
+    if (!rebound) return { ok: false as const };
+    if (previous && previous.id !== e.sender.id && !previous.isDestroyed()) {
+      try { previous.send("glyphh-agent:handoff", { runId: run.runId, chatId }); } catch { /* gone */ }
+    }
+    agentLive.update(chatId, { senderId: e.sender.id });
+    console.warn("[agent] run adopted", JSON.stringify({ chatId, runId: run.runId, from: previous?.id ?? null, to: e.sender.id }));
+    return { ok: true as const, runId: run.runId, cliSessionId: run.cliSessionId, cli: run.cli, startedAt: run.startedAt, text: turnText.get(chatId) ?? "" };
+  });
   ipcMain.handle("agent-panel-open", (_e, p: { loop?: string } | undefined) => {
     broadcast("agent-panel:open", { loop: String(p?.loop ?? "") });
     return true;

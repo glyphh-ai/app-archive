@@ -28,7 +28,20 @@ export const appCache = createTtlCache();
 export const SERVER_URL = process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai";
 export const PLATFORM_URL = process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai";
 
-export const SESSION_FILE = path.join(GLYPHH_DIR, ".session");
+// ONE SESSION FILE PER SERVER (his repeated re-logins, 2026-09-27): the
+// installed app on api.glyphh.ai and a dev build on a local child shared
+// ~/.glyphh/.session, so whichever ran last overwrote the other's tokens and
+// the next one was refused and forced back through sign-in. Production keeps
+// the plain name; any other server gets its own file.
+const DEFAULT_SERVER_URL = "https://api.glyphh.ai";
+function sessionSuffix(): string {
+  if (SERVER_URL === DEFAULT_SERVER_URL) return "";
+  const host = SERVER_URL.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/[^a-z0-9.-]+/gi, "_");
+  return `.${host}`;
+}
+export const SESSION_FILE = path.join(GLYPHH_DIR, `.session${sessionSuffix()}`);
+/** The same per-server suffix for the identity sidecar: user ids differ between servers. */
+export const SERVER_FILE_SUFFIX = sessionSuffix();
 
 /** Mode-0600 JSON file store (the SDK's FileTokenStore needs subpath exports
  *  our CJS tsconfig can't resolve, so it's inlined — same shape, same perms). */

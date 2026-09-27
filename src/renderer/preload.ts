@@ -1228,6 +1228,13 @@ contextBridge.exposeInMainWorld("glyphh", {
    *  cold read, then pushed on every change. The rail pulses by it. */
   glyphhLiveList: () =>
     ipcRenderer.invoke("glyphh-agent-live-list") as Promise<Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>>,
+  /** Take over a chat's running turn from the panel that started it (agent-live.ts). */
+  glyphhRunAdopt: (chatId: string) =>
+    ipcRenderer.invoke("glyphh-agent-run-adopt", { chatId }) as Promise<{ ok: false } | { ok: true; runId: string; cliSessionId: string | null; cli: string; startedAt: number; text: string }>,
+  /** Another panel took this run over — let go of it here (no message is written). */
+  onGlyphhAgentHandoff: (callback: (d: { runId: string; chatId: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:handoff", (_event, d) => callback(d));
+  },
   onGlyphhLive: (callback: (runs: Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>) => void) => {
     ipcRenderer.on("glyphh-agent:live", (_event, runs) => callback(Array.isArray(runs) ? runs : []));
   },

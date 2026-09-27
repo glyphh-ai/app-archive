@@ -26,6 +26,7 @@ import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "
 // The chat ⇄ CLI-session binding rules — pure, shared, and under test.
 import { sessionCliOf, cliSidFor, applyCliBinding, chatForCliSession, forgetCliSession, sessionDisplayTitle, type CliBound } from "./cli-session-binding.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
+import { glyphhLoopMarkUrl } from "./mascots.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -1830,6 +1831,7 @@ function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
       void saveStore();
       renderHistory();
       renderThread();
+      adoptRunIfElsewhere(c);   // a thread running in another panel streams here now
     })();
   };
   // Space labels: the source chip's "Your spaces" list names a workspace by
@@ -2293,6 +2295,7 @@ function selectChat(c: CodeChat): void {
   ensureCodeSection();
   renderHistory();
   renderThread();
+  adoptRunIfElsewhere(c);
   void checkWorkdirGate();
   applySessionFolder(c);   // the workbench follows the thread's folder
   // The opened session's OWN source drives the chip, the head locus and the
@@ -4842,6 +4845,18 @@ function initGlyphhAgentEvents(): void {
     if (!e) return;
     finishRun(e[0], e[1].text, d.stopped);
   });
+  // ANOTHER PANEL TOOK THIS RUN OVER: let go without writing a message — the
+  // adopting panel lands the turn in the shared store, and this one re-reads it.
+  (window.glyphh as unknown as { onGlyphhAgentHandoff?: (cb: (d: { runId: string; chatId: string }) => void) => void }).onGlyphhAgentHandoff?.((d) => {
+    const hit = [...liveRuns].find(([id, r]) => r.runId === d.runId || id === d.chatId);
+    if (!hit) return;
+    const chatId = hit[0];
+    liveRuns.delete(chatId);
+    clearToolRows(chatId);
+    stopRunTickerIfIdle();
+    renderHistory();
+    if (chatId === currentId) { broadcastTimeline(false); setThinking(false); renderThread(); }
+  });
   window.glyphh.onGlyphhAgentError?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
@@ -4985,7 +5000,7 @@ const RAIL_CLI_MARK_URLS: Record<string, string> = {
 };
 // cli → data URL, cached. The Glyphh loop wears the brand mascot (the mark
 // every other surface wears) from day one — nothing to fetch (his order, 2026-09-21).
-const railCliMarks: Record<string, string> = { glyphh: GLYPHH_MASCOT_SRC };
+const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
@@ -5024,6 +5039,28 @@ function sessLiveEntry(sess: RailSession): LiveAgentRun | null {
   return liveElsewhere.find((r) => r.chatId === sess.id || (!!r.cliSessionId && r.cliSessionId === sess.id)) ?? null;
 }
 function sessIsLive(sess: RailSession): boolean { return liveRuns.has(sess.id) || !!sessLiveEntry(sess); }
+
+/** OPENING A RUNNING THREAD RE-CONNECTS TO ITS STREAM (his report, 2026-09-27).
+ *  A run's frames go to the panel that started it; when THIS panel opens a
+ *  chat the ledger says is running elsewhere, main re-points the frames here,
+ *  hands over the turn's text so far, and the old panel lets go. Seeded like
+ *  a local turn, so the spinner, the rail pulse and the stream paint at once. */
+function adoptRunIfElsewhere(c: CodeChat): void {
+  if (liveRuns.has(c.id)) return;
+  const sid = sessionCliSid(c);
+  const r = liveElsewhere.find((x) => x.chatId === c.id || (!!sid && x.cliSessionId === sid));
+  if (!r) return;
+  const adopt = (window.glyphh as unknown as { glyphhRunAdopt?: (chatId: string) => Promise<{ ok: false } | { ok: true; runId: string; startedAt: number; text: string }> }).glyphhRunAdopt;
+  if (!adopt) return;
+  void adopt(r.chatId).then((res) => {
+    if (!res?.ok || liveRuns.has(c.id) || !chats.some((x) => x.id === c.id)) return;
+    stopObserving(c.id);
+    liveRuns.set(c.id, { runId: res.runId, text: res.text || "", bubble: null, startAt: res.startedAt || Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
+    ensureRunTicker();
+    renderHistory();
+    if (c.id === currentId) { broadcastTimeline(true); setThinking(true); renderThread(); queueStreamPaint(c.id); }
+  }).catch(() => { /* the ledger announces again if it is still running */ });
+}
 
 // ── STEERING FROM THE SHELL (agent-panel:command) — a solo agent panel takes
 //    orders from the host document: the rail's session click, the Home
@@ -5250,15 +5287,18 @@ function sessOpen(sess: RailSession): void {
   // in-document agent (a workspace's seat) keeps the old behaviour below.
   const shell = window as unknown as {
     __wbAgentInstanced?: () => boolean;
-    __wbFocusLiveHost?: (senderId: number) => boolean;
+    __wbFocusLiveHost?: (senderId: number, cmd?: { type: "open-session"; sess: RailSession }) => boolean;
     __wbAgentRoute?: (cmd: { type: "open-session"; sess: RailSession }) => boolean;
     __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "open-session"; sess: RailSession }) => void;
     __wbHasAgentPanel?: () => boolean;
   };
   if (shell.__wbAgentInstanced?.()) {
-    const live = sessLiveEntry(sess);
-    if (live && shell.__wbFocusLiveHost?.(live.senderId)) return;
     const cmd = { type: "open-session" as const, sess };
+    // A RUNNING thread lands in the panel that runs it (and that panel switches
+    // to it); any other thread lands in the focused panel, else the first open
+    // one, else a fresh one (his rule, 2026-09-27).
+    const live = sessLiveEntry(sess);
+    if (live && shell.__wbFocusLiveHost?.(live.senderId, cmd)) return;
     if (shell.__wbAgentRoute?.(cmd)) return;
     if (!shell.__wbHasAgentPanel?.()) { shell.__wbOpenAgentInstanceWith?.(agentForSess(sess)?.id, cmd); return; }
   }

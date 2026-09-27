@@ -19,7 +19,7 @@ import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { bareModel, orgRequiredModel } from "./cli-agents.js";
-import { agentLive } from "./agent-live.js";
+import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 
 export type { LoopPermission };
 
@@ -64,6 +64,15 @@ const loop = new GlyphhLoop({
  *  than one exchange means another host (the terminal) wrote turns into the
  *  shared store, so the engine's copy is stale and re-seeds from the history. */
 const seenTurns = new Map<string, number>();
+/** Where each chat's frames go — the panel that started the turn, until
+ *  another panel adopts the run (agent-live.ts re-points it here). */
+const loopSenders = new Map<string, WebContents>();
+registerRunRebinder((chatId, sender) => {
+  if (!loop.has(chatId)) return { rebound: false, previous: null };
+  const previous = loopSenders.get(chatId) ?? null;
+  loopSenders.set(chatId, sender);
+  return { rebound: true, previous };
+});
 
 export function glyphhLoopHas(chatId: string): boolean { return loop.has(chatId); }
 export const isGlyphhApproval = (id: string): boolean => GlyphhLoop.isApproval(id);
@@ -80,13 +89,16 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   // taken the turn, cleared on its done — and a turn that settled before run()
   // even returned is never marked at all.
   let finished = false;
+  loopSenders.set(p.chatId, sender);
   const emit = (ev: LoopEvent & { runId: string }): void => {
     const { type, ...payload } = ev;
-    if (type === "done") { finished = true; agentLive.done(p.chatId, ev.runId); }
+    if (type === "done") { finished = true; agentLive.done(p.chatId, ev.runId); loopSenders.delete(p.chatId); }
+    else if (type === "delta") noteRunDelta(p.chatId, String((payload as { delta?: string }).delta ?? ""));
+    const to = loopSenders.get(p.chatId) ?? sender;
     // The chat id IS the terminal's session id: the panel binds it per CLI, and
     // the >_ hop opens `glyphh --resume <id>` on the same conversation.
     const extra = type === "setup" ? { cliSessionId: p.chatId } : {};
-    try { if (!sender.isDestroyed()) sender.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
+    try { if (!to.isDestroyed()) to.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
   };
   const started = await loop.run({
     chatId: p.chatId, text, model,

@@ -274,3 +274,13 @@ export function timeMascotSvg(hour: number = new Date().getHours()): string {
 export function mascotSvg(m: Mascot): string {
   return `<svg viewBox="0 0 48 48" role="img" aria-label="${m.name}">${CHARACTERS[m.key](m.color)}</svg>`;
 }
+
+/** THE GLYPHH LOOP'S OWN FACE (his report, 2026-09-27: with the Glyphh loop
+ *  enabled the dock showed the brand mark twice — the fixed New-session tile
+ *  and the loop). The loop wears Sage from the docs cast, in Sage's colour, so
+ *  the two tiles read as two things. */
+export const GLYPHH_LOOP_MASCOT: Mascot = { name: "Sage", key: "sage", color: "#22c55e" };
+/** Sage as a data URL for <img> marks (a data-URL SVG cannot see CSS variables). */
+export function glyphhLoopMarkUrl(): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(mascotSvg(GLYPHH_LOOP_MASCOT))}`;
+}
