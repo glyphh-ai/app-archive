@@ -3994,9 +3994,11 @@ function send(): void {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text && !pendingAttach.length) return;
+  const fromHome = document.body.classList.contains("composer-on-home");
+  const instanced = !!(window as unknown as { __wbAgentInstanced?: () => boolean }).__wbAgentInstanced?.();
   // Sending from the HOME-adopted composer: the footer goes back to the
   // agent and the chat opens alone — the stream lands where the user is.
-  if (document.body.classList.contains("composer-on-home")) {
+  if (fromHome && !instanced) {
     adoptComposer(null);
     gotoSection("agent");
   }
@@ -4047,6 +4049,22 @@ function send(): void {
     void saveStore();
     renderHistory();
     renderThread();
+    return;
+  }
+  // THE HOME COMPOSER OPENS AN AGENT PANEL (his ruling, 2026-09-26: agent
+  // panels are independent instances): the text and its attachments ride into
+  // a fresh panel, which sends them; Home keeps its own composer.
+  if (fromHome && instanced) {
+    const attach = pendingAttach.slice();
+    pendingAttach = [];
+    paintAttachChips();
+    ta.value = "";
+    autoGrow(ta);
+    const lp = activeLoop();
+    const loop = lp && lp !== "default" ? lp : undefined;
+    const folder = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() ?? null;
+    (window as unknown as { __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "prompt"; text: string; attach?: AttachRef[]; cwd?: string; loop?: string; send?: boolean }) => void })
+      .__wbOpenAgentInstanceWith?.(loop, { type: "prompt", text, attach, ...(folder ? { cwd: folder } : {}), ...(loop ? { loop } : {}), send: true });
     return;
   }
   if (!current()) newChat();
@@ -4983,6 +5001,46 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number }
 let railSessions: RailSession[] = [];
+
+// ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
+//    running ANYWHERE in the app: this document, another agent panel, the CLI.
+//    The rail's rows pulse by it (his report, 2026-09-26: the blinking icon
+//    on a running thread died with the CLI approach), and a click on a
+//    running row fronts the panel that hosts it. ──
+interface LiveAgentRun { chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }
+let liveElsewhere: LiveAgentRun[] = [];
+/** The ledger's entry for a rail row: the Glyphh loop's sessions ARE chats
+ *  (chatId); a CLI's rows carry the CLI's own session id. */
+function sessLiveEntry(sess: RailSession): LiveAgentRun | null {
+  return liveElsewhere.find((r) => r.chatId === sess.id || (!!r.cliSessionId && r.cliSessionId === sess.id)) ?? null;
+}
+function sessIsLive(sess: RailSession): boolean { return liveRuns.has(sess.id) || !!sessLiveEntry(sess); }
+
+// ── STEERING FROM THE SHELL (agent-panel:command) — a solo agent panel takes
+//    orders from the host document: the rail's session click, the Home
+//    composer's send, "New agent panel". Registered at module load so an early
+//    command is queued, never lost; the shell sends each one on every readiness
+//    signal, so ids de-duplicate. ──
+type PanelCommand =
+  | { id: string; type: "open-session"; sess: RailSession }
+  | { id: string; type: "prompt"; text: string; attach?: AttachRef[]; cwd?: string; loop?: string; send?: boolean }
+  | { id: string; type: "new-session" };
+const seenPanelCommands = new Set<string>();
+const queuedPanelCommands: PanelCommand[] = [];
+let panelCommandHandler: ((cmd: PanelCommand) => void) | null = null;
+(window as unknown as { glyphh?: { onAgentPanelCommand?: (cb: (cmd: unknown) => void) => void } }).glyphh?.onAgentPanelCommand?.((raw) => {
+  const cmd = raw as PanelCommand | null;
+  if (!cmd || typeof cmd !== "object" || typeof cmd.id !== "string" || seenPanelCommands.has(cmd.id)) return;
+  seenPanelCommands.add(cmd.id);
+  if (panelCommandHandler) panelCommandHandler(cmd);
+  else queuedPanelCommands.push(cmd);
+});
+/** The panel is ready for an order once the store and the loop roster are in
+ *  (a send before loadStore lands would be overwritten by the disk). */
+function whenPanelReady(fn: () => void, tries = 0): void {
+  if ((storeLoaded && railAgents.length > 0) || tries >= 80) { fn(); return; }
+  window.setTimeout(() => whenPanelReady(fn, tries + 1), 100);
+}
 /** Recents filter by loop (his order, 2026-09-16): loop ids; empty = every loop. Persisted. */
 let loopFilter: string[] = [];
 const LOOP_FILTER_PREF = "recentsLoopFilter";
@@ -5164,23 +5222,51 @@ function sessSectionHead(label: string, title: string): HTMLDivElement {
   return head;
 }
 
+/** The loop a rail row resumes on: a Glyphh-loop chat's own loop, else the
+ *  agent on the row's CLI (its folder's first), else the roster's first. */
+function agentForSess(sess: RailSession): RailCliAgent | undefined {
+  if (sess.cli === "glyphh") {
+    const chat = chats.find((x) => x.id === sess.id);
+    return railAgents.find((a) => !!chat && a.id === chat.loop) ?? railAgents.find((a) => a.cli === "glyphh");
+  }
+  return railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
+    ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
+    ?? railAgents[0];
+}
+
 function sessOpen(sess: RailSession): void {
+  // AGENT PANELS ARE INSTANCES in the shell (his ruling, 2026-09-26): a
+  // running session fronts the panel that runs it; any other lands in the
+  // panel the user touched last, else in a fresh one. The shell's own
+  // in-document agent (a workspace's seat) keeps the old behaviour below.
+  const shell = window as unknown as {
+    __wbAgentInstanced?: () => boolean;
+    __wbFocusLiveHost?: (senderId: number) => boolean;
+    __wbAgentRoute?: (cmd: { type: "open-session"; sess: RailSession }) => boolean;
+    __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "open-session"; sess: RailSession }) => void;
+    __wbHasAgentPanel?: () => boolean;
+  };
+  if (shell.__wbAgentInstanced?.()) {
+    const live = sessLiveEntry(sess);
+    if (live && shell.__wbFocusLiveHost?.(live.senderId)) return;
+    const cmd = { type: "open-session" as const, sess };
+    if (shell.__wbAgentRoute?.(cmd)) return;
+    if (!shell.__wbHasAgentPanel?.()) { shell.__wbOpenAgentInstanceWith?.(agentForSess(sess)?.id, cmd); return; }
+  }
   // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
   // (select first — seating a different loop stamps the CURRENT chat).
   if (sess.cli === "glyphh") {
     const chat = chats.find((x) => x.id === sess.id);
     if (!chat) return;
     selectChat(chat);
-    const loop = railAgents.find((a) => a.id === chat.loop) ?? railAgents.find((a) => a.cli === "glyphh");
+    const loop = agentForSess(sess);
     if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
     return;
   }
   // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
   // recent opens in the agent CHAT panel, adopted with its transcript and
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
-  const agent = railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
-    ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
-    ?? railAgents[0];
+  const agent = agentForSess(sess);
   if (!agent) return;
   (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
   (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
@@ -5248,11 +5334,19 @@ function renderRailSessions(): void {
     for (const sess of sec.rows) {
       const row = document.createElement("div");
       row.className = "code-history-item";
+      // Leading slot: the RUNNING pulse while the session has a live turn —
+      // here, in another agent panel, or in the CLI — else the locus icon.
+      // Either way it toggles the pin.
+      const live = sessIsLive(sess);
       const dot = document.createElement("span");
-      dot.className = "code-sess-ic";
-      dot.innerHTML = SESS_LOCAL_SVG;
+      if (live) {
+        dot.className = "code-chat-dot working";
+      } else {
+        dot.className = "code-sess-ic";
+        dot.innerHTML = SESS_LOCAL_SVG;
+      }
       dot.classList.toggle("pinned", sessPinned(sess.id));
-      dot.title = `Local — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
+      dot.title = `${live ? "Working" : "Local"} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
       dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
       const mark = railCliMarks[sess.cli];
       const markEl = document.createElement("span");
@@ -5321,6 +5415,12 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row";
+      if (sessIsLive(sess)) {
+        const live = document.createElement("span");
+        live.className = "code-chat-dot working";
+        live.title = "Working";
+        row.appendChild(live);
+      }
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
@@ -6143,14 +6243,54 @@ export function initCode(): void {
       __initCodeWorkbench?: () => void;
       __wbHasAgentPanel?: () => boolean;
       __wbOpenGlyphhAgent?: () => void;
+      __wbAgentInstanced?: () => boolean;
+      __wbOpenAgentInstance?: (loop?: string) => void;
     };
     w.__initCodeWorkbench?.();
-    // With no agent card, New is the first-agent door. Once one is open, it
-    // keeps its established meaning: a fresh chat in that panel.
-    if (!w.__wbHasAgentPanel?.()) { w.__wbOpenGlyphhAgent?.(); return; }
-    newSessionInPlace();
+    // The workbench boots async — a press before its doors exist waits for
+    // them (a bounded poll, the same pattern every other early door uses).
+    const go = (tries = 0): void => {
+      if (!w.__wbAgentInstanced && !w.__wbOpenGlyphhAgent) { if (tries < 40) requestAnimationFrame(() => go(tries + 1)); return; }
+      // ANOTHER AGENT PANEL (his ruling, 2026-09-26): New is a door, and every
+      // door opens its own panel. The + inside a panel is the in-place new.
+      if (w.__wbAgentInstanced?.()) {
+        const lp = activeLoop();
+        w.__wbOpenAgentInstance?.(lp && lp !== "default" ? lp : undefined);
+        return;
+      }
+      // With no agent card, New is the first-agent door. Once one is open, it
+      // keeps its established meaning: a fresh chat in that panel.
+      if (!w.__wbHasAgentPanel?.()) { w.__wbOpenGlyphhAgent?.(); return; }
+      newSessionInPlace();
+    };
+    go();
   });
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
+  // THE SHELL'S ORDERS (agent-panel:command) — this panel is one instance
+  // among many; the host document routes rail clicks and Home sends here.
+  panelCommandHandler = (cmd) => {
+    if (cmd.type === "new-session") { newSessionInPlace(); return; }
+    if (cmd.type === "open-session") { whenPanelReady(() => sessOpen(cmd.sess)); return; }
+    if (cmd.type === "prompt") {
+      whenPanelReady(() => {
+        newSessionInPlace();
+        if (cmd.loop) setLoop(cmd.loop);
+        if (cmd.cwd) { pendingWorkdir = cmd.cwd; applySessionFolder({ workdir: cmd.cwd } as CodeChat); }
+        const put = (tries = 0): void => {
+          const ta = input();
+          if (!ta) { if (tries < 60) requestAnimationFrame(() => put(tries + 1)); return; }
+          ta.value = cmd.text;
+          ta.dispatchEvent(new Event("input", { bubbles: true }));
+          if (Array.isArray(cmd.attach) && cmd.attach.length) { pendingAttach = cmd.attach.slice(); paintAttachChips(); }
+          ta.focus();
+          ta.setSelectionRange(ta.value.length, ta.value.length);
+          if (cmd.send !== false) send();
+        };
+        put();
+      });
+    }
+  };
+  for (const cmd of queuedPanelCommands.splice(0)) panelCommandHandler(cmd);
   // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
   // "Edit with <loop>"): loop + folder are held for the session the first send
   // creates; the prompt waits in the composer for the user to send.
@@ -6848,6 +6988,12 @@ export function initCode(): void {
     void loadRailSessions();
     void refreshOpenChatFromCli();
   });
+  // THE LIVE LEDGER (main's agent-live.ts): which sessions are running
+  // anywhere in the app — the rail's rows pulse by it.
+  const liveApi = window.glyphh as unknown as { glyphhLiveList?: () => Promise<LiveAgentRun[]>; onGlyphhLive?: (cb: (runs: LiveAgentRun[]) => void) => void };
+  const takeLive = (runs: LiveAgentRun[]): void => { liveElsewhere = Array.isArray(runs) ? runs : []; renderRailSessions(); };
+  void liveApi.glyphhLiveList?.().then(takeLive).catch(() => {});
+  liveApi.onGlyphhLive?.(takeLive);
 }
 
 /** Re-pull the OPEN chat's CLI transcript and take it as the history. Skipped

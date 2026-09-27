@@ -21,6 +21,11 @@
   <meta name="twitter:title" content="Glyphh">
   <meta name="twitter:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
   <meta name="twitter:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <!-- A SOLO AGENT PANEL boots this whole shell inside a webview. Before the
+       first paint: hide everything until the agent is seated (the workbench
+       lifts data-solo-booting), and take the host's theme from the URL so the
+       reveal is the right colour on the first frame, not after getTheme lands. -->
+  <script>(function(){try{var q=new URLSearchParams(location.search);if((q.get("solo")||"").indexOf("tool:")===0){document.documentElement.setAttribute("data-solo-booting","");var t=q.get("theme");if(t)document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();</script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="monaco/editor/editor.main.css">
   <!-- xterm — the Code workbench's Terminal slots -->

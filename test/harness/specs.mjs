@@ -539,4 +539,142 @@ export const SPECS = [
       }) };
     `,
   },
+  // ── Group: agent panels are INDEPENDENT INSTANCES (his ruling, 2026-09-26) ──
+  {
+    name: "agent panels: rail New opens ANOTHER panel on every press, never the shell's singleton",
+    fresh: true,
+    seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
+    body: `
+      killTransitions();
+      await until(() => $("#code-new-chat"));
+      const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
+      // A cold boot with nothing to restore opens the agent by itself — as an instance now.
+      click($("#code-new-chat"));
+      await until(() => panels().length >= 1, 10000);
+      await sleep(600);
+      const boot = panels().length;
+      click($("#code-new-chat"));
+      await until(() => panels().length === boot + 1, 8000);
+      click($("#code-new-chat"));
+      await until(() => panels().length === boot + 2, 8000);
+      click($("#code-new-chat"));
+      await until(() => panels().length === boot + 3, 8000);
+      const slugs = panels().map((w) => w.closest(".echo-card")?.querySelector(".echo-card-head > span")?.textContent);
+      const instances = panels().map((w) => new URL(w.getAttribute("src")).searchParams.get("instance"));
+      const loops = panels().map((w) => new URL(w.getAttribute("src")).searchParams.get("loop"));
+      const singleton = !!$(".echo-agent-card");
+      const distinct = new Set(instances).size === panels().length;
+      return ok(boot <= 2 && distinct && !singleton && loops.every((l) => l === "claude"), JSON.stringify({ boot, instances, loops, singleton, slugs }));
+    `,
+  },
+  {
+    name: "agent panels: the Terminal tool opens beside an agent's CLI card instead of resolving to it",
+    fresh: true,
+    seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
+    body: `
+      killTransitions();
+      await until(() => $("#code-new-chat"));
+      click($("#code-new-chat"));
+      await until(() => window.__wbOpenAgentCli && window.__wbOpenTool, 10000);
+      const named = (n) => $$(".echo-card").filter((c) => (c.querySelector(".echo-card-head > span")?.textContent || "") === n);
+      window.__wbOpenAgentCli("claude", undefined, { fresh: true });
+      await until(() => named("Claude").length === 1, 8000);
+      const terminalsBefore = named("Terminal").length;
+      window.__wbOpenTool("terminal");
+      await until(() => named("Terminal").length === 1, 8000);
+      // and the plain Terminal tool still de-duplicates against ITSELF
+      window.__wbOpenTool("terminal");
+      await sleep(400);
+      return ok(terminalsBefore === 0 && named("Terminal").length === 1 && named("Claude").length === 1,
+        JSON.stringify({ terminalsBefore, terminals: named("Terminal").length, claude: named("Claude").length }));
+    `,
+  },
+  {
+    name: "agent panels: a session running anywhere pulses in the rail, and stops when its turn ends",
+    fresh: true,
+    seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
+    seedSessions: [{ id: "sid-1", cli: "claude", title: "Fix the rail", cwd: "/tmp/harness", mtime: 1758900000000 }],
+    body: `
+      const row = () => $$("#recent-sessions-list .code-history-item").find((r) => r.textContent.includes("Fix the rail"));
+      await until(row, 8000);
+      const idle = !!row().querySelector(".code-sess-ic") && !row().querySelector(".code-chat-dot.working");
+      window.__stub.live([{ chatId: "c1", cliSessionId: "sid-1", cli: "claude", runId: "c1:1", senderId: 999, startedAt: Date.now() }]);
+      await until(() => row()?.querySelector(".code-chat-dot.working"), 4000);
+      const working = true;
+      window.__stub.live([]);
+      await until(() => row() && !row().querySelector(".code-chat-dot.working") && row().querySelector(".code-sess-ic"), 4000);
+      return ok(idle && working, JSON.stringify({ idle, working }));
+    `,
+  },
+  {
+    name: "agent panels: a rail click fronts the panel running the session, and routes an idle one into the last panel",
+    fresh: true,
+    seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
+    seedSessions: [
+      { id: "sid-1", cli: "claude", title: "Fix the rail", cwd: "/tmp/harness", mtime: 1758900000000 },
+      { id: "sid-2", cli: "claude", title: "Write the docs", cwd: "/tmp/harness", mtime: 1758800000000 },
+    ],
+    body: `
+      killTransitions();
+      await until(() => $("#code-new-chat"));
+      const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
+      click($("#code-new-chat"));
+      await until(() => panels().length >= 1, 10000);
+      await sleep(600);
+      const boot = panels().length;
+      click($("#code-new-chat"));
+      await until(() => panels().length === boot + 1, 8000);
+      const wv = panels()[panels().length - 1];
+      const card = wv.closest(".echo-card");
+      const wcId = await until(() => { try { return wv.getWebContentsId(); } catch { return 0; } }, 10000);
+      const row = (t) => $$("#recent-sessions-list .code-history-item").find((r) => r.textContent.includes(t));
+      await until(() => row("Fix the rail") && row("Write the docs"), 8000);
+      window.__stub.live([{ chatId: "c1", cliSessionId: "sid-1", cli: "claude", runId: "c1:1", senderId: wcId, startedAt: Date.now() }]);
+      await until(() => row("Fix the rail")?.querySelector(".code-chat-dot.working"), 4000);
+      click(row("Fix the rail"));
+      await until(() => card.classList.contains("flash"), 2000);
+      await until(() => !card.classList.contains("flash"), 2000);
+      const stillSame = panels().length === boot + 1;
+      // an IDLE session lands in the panel the user touched last — no new panel
+      click(row("Write the docs"));
+      await until(() => card.classList.contains("flash"), 2000);
+      await sleep(500);
+      return ok(stillSame && panels().length === boot + 1, JSON.stringify({ stillSame, boot, panels: panels().length }));
+    `,
+  },
+  {
+    name: "agent panels: the shell's orders land INSIDE the panel — a routed session adopts, a prompt sends",
+    fresh: true,
+    seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
+    seedSessions: [{ id: "sid-1", cli: "claude", title: "Fix the rail", cwd: "/tmp/harness", mtime: 1758900000000 }],
+    body: `
+      killTransitions();
+      await until(() => $("#code-new-chat"));
+      const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
+      click($("#code-new-chat"));
+      await until(() => panels().length >= 1, 10000);
+      await sleep(600);
+      const boot = panels().length;
+      // A prompt rides into a FRESH panel and is sent there (the Home composer's path).
+      window.__wbOpenAgentInstanceWith("claude", { type: "prompt", text: "hello from the shell", send: true });
+      await until(() => panels().length === boot + 1, 8000);
+      const fresh = panels()[panels().length - 1];
+      const inGuest = (wv, js) => wv.executeJavaScript(js, true);
+      const sent = await until(async () => {
+        try { const r = await inGuest(fresh, "({ runs: window.__stub.calls.glyphhRun.map((p) => p.chatId), chats: window.__stub.store().chats.map((c) => c.messages.map((m) => m.text)) })"); return r.runs.length === 1 ? r : null; }
+        catch { return null; }
+      }, 25000, 250);
+      // An idle rail session lands in the panel the user touched last (that fresh one) and adopts.
+      const row = $$("#recent-sessions-list .code-history-item").find((r) => r.textContent.includes("Fix the rail"));
+      click(row);
+      const adopted = await until(async () => {
+        try { const t = await inGuest(fresh, "document.querySelector('#code-session-title')?.textContent || ''"); return t.includes("Fix the rail") ? t : null; }
+        catch { return null; }
+      }, 15000, 250);
+      return ok(sent.chats.some((m) => m.includes("hello from the shell")) && adopted && panels().length === boot + 1,
+        JSON.stringify({ sent, adopted, panels: panels().length, boot }));
+    `,
+  },
 ];
+
+

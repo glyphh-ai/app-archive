@@ -1224,6 +1224,24 @@ contextBridge.exposeInMainWorld("glyphh", {
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
   glyphhBindCliSession: (chatId: string, cliSessionId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId, cli }) as Promise<boolean>,
   glyphhCliSessionOf: (chatId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId, cli }) as Promise<string | null>,
+  /** Every chat with a turn running ANYWHERE in this app (agent-live.ts) —
+   *  cold read, then pushed on every change. The rail pulses by it. */
+  glyphhLiveList: () =>
+    ipcRenderer.invoke("glyphh-agent-live-list") as Promise<Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>>,
+  onGlyphhLive: (callback: (runs: Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>) => void) => {
+    ipcRenderer.on("glyphh-agent:live", (_event, runs) => callback(Array.isArray(runs) ? runs : []));
+  },
+  /** A solo agent panel asks the shell for ANOTHER agent panel (a webview
+   *  never nests one) — main relays it to the host document. */
+  agentPanelOpen: (p: { loop?: string }) => ipcRenderer.invoke("agent-panel-open", p) as Promise<boolean>,
+  onAgentPanelOpen: (callback: (p: { loop?: string }) => void) => {
+    ipcRenderer.on("agent-panel:open", (_event, p) => callback(p ?? {}));
+  },
+  /** The host document steering THIS agent panel (webview.send): a rail
+   *  session click, the Home composer's send, a fresh session. */
+  onAgentPanelCommand: (callback: (cmd: unknown) => void) => {
+    ipcRenderer.on("agent-panel:command", (_event, cmd) => callback(cmd));
+  },
   glyphhCliTranscript: (sessionId: string) => ipcRenderer.invoke("glyphh-agent-transcript", { sessionId }) as Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>,
   /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
    *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */

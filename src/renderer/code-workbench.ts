@@ -318,6 +318,13 @@ const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as {
  *  replay the saved wall or open a default workspace inside itself. */
 const IS_SOLO_WINDOW = typeof window !== "undefined"
   && (new URLSearchParams(window.location.search).get("solo") || "").startsWith("tool:");
+/** AGENT PANELS ARE INDEPENDENT INSTANCES here (his ruling, 2026-09-26): every
+ *  Glyphh door — the rail's New, the dock mark, the wall's tiles, a loop icon,
+ *  the Home composer's send — opens ANOTHER agent panel, a solo shell in its
+ *  own webview, so any number can run side by side and none of them borrows
+ *  the Terminal tool. The solo shell seats the one agent it was opened for; the
+ *  web build (no webview) keeps the in-document agent. */
+const AGENT_INSTANCED = !IS_SOLO_WINDOW && !IS_WEB_TARGET;
 /** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
 function openNewTabForm(): void {
   (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
@@ -3543,6 +3550,9 @@ async function init(): Promise<void> {
         // a reopened app "reverted to claude" (his report, 2026-09-10).
         else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
         else if (t.kind === "tool" && t.toolView) cards.push({ kind: "tool", toolView: t.toolView });
+        // An agent PANEL instance is the agent (his ruling, 2026-09-26) — the
+        // boot opens a fresh one; replaying yesterday's beside it doubled them.
+        else if (t.slug && t.slug.startsWith("agent-panel:")) continue;
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
       return { layout: null, cards };
@@ -3565,8 +3575,28 @@ async function init(): Promise<void> {
       // and another Glyphh inside it — "a whole new space"). Each instance
       // loads home.html, so this ran there too and replayed the saved wall
       // (his `dev` workspace) INSIDE the card. A solo window shows exactly the
-      // one thing it was opened for; home.ts builds that single cell itself.
-      if (IS_SOLO_WINDOW) return;
+      // one thing it was opened for. THE SEAT HAPPENS HERE (his report,
+      // 2026-09-26: a new panel sat black for seconds, or forever): this runs
+      // the moment the wall's doors exist, so no poll in home.ts can miss them.
+      if (IS_SOLO_WINDOW) {
+        const loop = new URLSearchParams(window.location.search).get("loop") || "";
+        if (loop) openAgentForLoop(loop); else activateGlyphh();
+        // THE REVEAL (his report, 2026-09-26: "the entire app turns into a new
+        // agent panel frame by frame"): the document was hidden from its first
+        // paint (home.html's head script); it shows in ONE step once the agent's
+        // card has landed and its surface is on screen — bounded, so a seat
+        // that fails still shows the panel rather than a blank one.
+        const t0 = Date.now();
+        const reveal = (): void => {
+          const card = document.querySelector<HTMLElement>(".echo-card.placed.echo-agent-card, .echo-card.placed.echo-cli-card");
+          const surface = document.getElementById("code-input") ?? card?.querySelector(".xterm");
+          const ready = !!card && !!surface && surface.offsetParent !== null;
+          if (ready || Date.now() - t0 > 20_000) { document.documentElement.removeAttribute("data-solo-booting"); return; }
+          requestAnimationFrame(reveal);
+        };
+        reveal();
+        return;
+      }
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
@@ -3582,6 +3612,9 @@ async function init(): Promise<void> {
         if (saved?.cards?.length) {
           for (const c of saved.cards) {
             if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
+            // A saved CLI agent card comes back as an agent PANEL now (its loop
+            // in hand) — the shell never seats an agent's CLI itself anymore.
+            else if (c.kind === "agent" && c.agent && AGENT_INSTANCED) openAgentInstance(c.agent);
             else if (c.kind === "agent" && c.agent) (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(c.agent);
             else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
             else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
@@ -4673,6 +4706,12 @@ async function init(): Promise<void> {
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
           if (key === "glyphh") {
+            // ANOTHER agent panel (his ruling, 2026-09-26) — the mark is a door.
+            if (AGENT_INSTANCED) {
+              const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+              openAgentInstance(wanted?.id);
+              return;
+            }
             // Same rule as the pages' mark (2026-08-19): OPEN the agent —
             // never reset to a new session, never double a layout's agent.
             const inLayout = openList.some((x) => x.layoutId != null);
@@ -5191,6 +5230,7 @@ async function init(): Promise<void> {
       // AGENT cards (his order, 2026-09-10): the dev tools that rode the
       // glyphh agent's ⋯ menu follow each CLI agent — a ⋮ right of Expand.
       if ((e.tile.slug || "").startsWith("agent:")) {
+        card.classList.add("echo-cli-card");   // the solo styles strip its chrome like the chat's
         // The agent card's HEAD stays bare (his spec, 2026-09-11): the
         // toggle/recents/+/⋮ cluster lives on the agent HEADER ROW (the old
         // tab row). The dev-tools menu is served to that row from here,
@@ -5531,6 +5571,8 @@ async function init(): Promise<void> {
      *  this retries briefly rather than typing into nothing. */
     (window as unknown as { __wbComposeToAgent?: (text: string) => void }).__wbComposeToAgent = (text: string) => {
       const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+      // The text waits in a FRESH panel's composer (unsent, as before).
+      if (AGENT_INSTANCED) { openAgentInstance(wanted?.id, { type: "prompt", text, send: false }); return; }
       if (wanted) openAgentForLoop(wanted.id);
       else void openAgentPanel();
       let tries = 0;
@@ -6259,8 +6301,122 @@ async function init(): Promise<void> {
      * last-used view was chat; terminal otherwise.
      * THE DEFAULT LOOP (Settings → General → Agent loop) first, then its view (his order, 2026-09-16).
      */
+    /** ANOTHER Glyphh agent panel (his order, 2026-09-16; THE agent door since
+     *  2026-09-26): the shell itself, in a webview locked to the agent
+     *  (home.html?solo=tool:coding), so each panel has its own state — its own
+     *  sessions, its own runs, its own >_ hop — and the sessions store merges
+     *  their saves. An independent work panel like any other app. */
+    let agentInstances = 0;
+    // Returns EchoTile & the REQUIRED slug/url openAppCard wants, so an
+    // instance open needs no cast — this tile always carries both.
+    const agentInstanceTile = (loop?: string): EchoTile & { slug: string; url: string } => {
+      // The slug is unique ACROSS boots: a restored wall replays yesterday's
+      // instances by slug, and a fresh open must never collide with one of
+      // them (a collision re-fronts the old card and New "does nothing").
+      const id = `${Date.now().toString(36)}-${++agentInstances}`;
+      // The host's theme rides along so the panel's first frame is already the right colour.
+      const theme = document.documentElement.getAttribute("data-theme") || "";
+      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}${theme ? `&theme=${encodeURIComponent(theme)}` : ""}&instance=${encodeURIComponent(id)}`, window.location.href).href;
+      return { name: "Glyphh", slug: `agent-panel:${id}`, kind: "app", url, workbench: true };
+    };
+    const isAgentInstance = (e: TileEntry): boolean => (e.tile.slug || "").startsWith("agent-panel:");
+    const agentInstanceEntries = (): TileEntry[] => openList.filter((x) => !!x.card?.isConnected && isAgentInstance(x));
+    /** The agent panel the user touched last — where a rail click lands. */
+    let lastAgentInstance: TileEntry | null = null;
+    const activeAgentInstance = (): TileEntry | null => {
+      if (lastAgentInstance && lastAgentInstance.card?.isConnected && openList.includes(lastAgentInstance)) return lastAgentInstance;
+      const all = agentInstanceEntries();
+      return all[all.length - 1] ?? null;
+    };
+    /** Steering an instance from THIS document (help/code.ts answers inside
+     *  the panel): a rail session to open, a prompt to send, a fresh session. */
+    type PanelCommand = { type: "open-session"; sess: unknown } | { type: "prompt"; text: string; attach?: unknown[]; cwd?: string; loop?: string; send?: boolean } | { type: "new-session" };
+    const panelCommandId = (): string => `pc${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const sendPanelCommand = (e: TileEntry, cmd: PanelCommand, id = panelCommandId()): boolean => {
+      const wv = e.card?.querySelector("webview") as WebviewEl | null;
+      if (!wv?.send) return false;
+      try { wv.send("agent-panel:command", { ...cmd, id }); } catch { return false; }
+      return true;
+    };
+    const openAgentInstance = (loop?: string, cmd?: PanelCommand): void => {
+      const tile = agentInstanceTile(loop);
+      // NEVER SILENT (the house rule): every instance names the door that opened it.
+      console.warn("[agent] instance open", JSON.stringify({ slug: tile.slug, loop: loop || "", cmd: cmd?.type || "" }), (new Error().stack || "").split("\n").slice(2, 6).map((s) => s.trim()).join(" < "));
+      // Echo may still be mounting at a cold boot (the first press after
+      // launch) — the open waits for it, bounded, instead of dying on a frame
+      // budget the wall build can miss.
+      const open = (tries = 0): void => {
+        if (!echoCtl) {
+          openEchoSurface();
+          if (tries < 200) window.setTimeout(() => open(tries + 1), 50);
+          else console.warn("[agent] instance open: Echo never mounted");
+          return;
+        }
+        openAppCard(tile);
+        wire();
+      };
+      // The card exists once openApp has placed it — wire the instance then.
+      const wire = (tries = 0): void => {
+        const entry = openList.find((x) => x.tile.slug === tile.slug && x.card);
+        if (!entry) { if (tries < 60) requestAnimationFrame(() => wire(tries + 1)); return; }
+        lastAgentInstance = entry;
+        entry.card!.addEventListener("focusin", () => { lastAgentInstance = entry; });
+        entry.card!.addEventListener("mousedown", () => { lastAgentInstance = entry; }, true);
+        if (!cmd) return;
+        const wv = entry.card!.querySelector("webview") as WebviewEl | null;
+        if (!wv) return;
+        // The panel de-duplicates by id, so the command rides EVERY readiness
+        // signal instead of guessing the one moment its listener exists.
+        const id = panelCommandId();
+        const push = (): void => { sendPanelCommand(entry, cmd, id); };
+        wv.addEventListener("dom-ready", push);
+        wv.addEventListener("did-finish-load", push);
+        window.setTimeout(push, 2500);
+      };
+      open();
+    };
+    (window as unknown as { __wbAgentInstanced?: () => boolean }).__wbAgentInstanced = () => AGENT_INSTANCED;
+    (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => {
+      // Inside a solo panel the request goes UP to the shell — a webview never nests one.
+      if (IS_SOLO_WINDOW) { void (window as unknown as { glyphh?: { agentPanelOpen?: (p: { loop?: string }) => Promise<boolean> } }).glyphh?.agentPanelOpen?.({ loop: loop || "" }); return; }
+      if (IS_WEB_TARGET) { if (loop) openAgentForLoop(loop); else activateGlyphh(); return; }
+      openAgentInstance(loop);
+    };
+    (window as unknown as { __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: PanelCommand) => void }).__wbOpenAgentInstanceWith = (loop, cmd) => { openAgentInstance(loop, cmd); };
+    /** Route a command into the agent panel the user touched last; false when none is open. */
+    (window as unknown as { __wbAgentRoute?: (cmd: PanelCommand) => boolean }).__wbAgentRoute = (cmd) => {
+      const e = activeAgentInstance();
+      if (!e || !sendPanelCommand(e, cmd)) return false;
+      lastAgentInstance = e;
+      flash(e.card);
+      e.card?.scrollIntoView?.({ block: "nearest" });
+      return true;
+    };
+    /** The panel hosting a run (its webContents id, from the live ledger),
+     *  fronted; false when that panel is not in this document. */
+    (window as unknown as { __wbFocusLiveHost?: (senderId: number) => boolean }).__wbFocusLiveHost = (senderId) => {
+      for (const e of agentInstanceEntries()) {
+        const wv = e.card!.querySelector("webview") as WebviewEl | null;
+        let id: number | undefined;
+        try { id = wv?.getWebContentsId?.(); } catch { id = undefined; }
+        if (id === undefined || id !== senderId) continue;
+        lastAgentInstance = e;
+        flash(e.card);
+        e.card!.scrollIntoView?.({ block: "nearest" });
+        try { wv?.focus(); } catch { /* not focusable yet */ }
+        return true;
+      }
+      return false;
+    };
+    // A solo panel's "New agent panel" arrives here via main (agent-panel:open).
+    if (AGENT_INSTANCED) {
+      (window as unknown as { glyphh?: { onAgentPanelOpen?: (cb: (p: { loop?: string }) => void) => void } }).glyphh
+        ?.onAgentPanelOpen?.((p) => openAgentInstance(p?.loop || undefined));
+    }
     const activateGlyphh = (_self?: TileEntry): void => {
       const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+      // EVERY door is another panel (his ruling, 2026-09-26).
+      if (AGENT_INSTANCED) { openAgentInstance(first?.id); return; }
       if (first) { openAgentForLoop(first.id); return; }
       void openAgentPanel();
     };
@@ -6617,17 +6773,8 @@ async function init(): Promise<void> {
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
     };
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
-    /** ANOTHER Glyphh agent panel (his order, 2026-09-16): the shell itself, in a
-     *  webview locked to the agent (home.html?solo=tool:coding), so each panel
-     *  has its own state; the sessions store merges their saves. */
-    let agentInstances = 0;
-    // Returns EchoTile & the REQUIRED slug/url openAppCard wants, so an
-    // instance open needs no cast — this tile always carries both.
-    const agentInstanceTile = (loop?: string): EchoTile & { slug: string; url: string } => {
-      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}&instance=${++agentInstances}`, window.location.href).href;
-      return { name: "Glyphh", slug: `agent-panel:${agentInstances}`, kind: "app", url, workbench: true };
-    };
-    (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
+    // (agentInstanceTile / openAgentInstance — the agent-panel instance
+    // manager — sit beside activateGlyphh above.)
     /** THE CLI INSTALLER (his order, 2026-09-19): a terminal panel running the
      *  installer TUI. Opens after the first sign-in and from Settings. */
     /** THE agent door (his order, 2026-09-16): every loop, from every tile,
@@ -6640,9 +6787,23 @@ async function init(): Promise<void> {
      *  the workspace it is in, its mode. The model follows the loop's own
      *  resolution (the gateway pins it for Claude and Codex). Only an explicit
      *  "again" still opens another panel. */
-    function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
+    function openAgentForLoop(id: string, opts: { again?: boolean; refetched?: boolean } = {}): void {
       const row = cliAgentRows.find((x) => x.id === id);
-      if (!row) return;
+      // THE ROSTER LOADS ASYNC — a door pressed before it lands (a solo panel
+      // seating its loop at boot) used to return silently and open nothing.
+      // Fetch it once, then open; an unknown loop falls back to the default door.
+      if (!row) {
+        if (opts.refetched) { activateGlyphh(); return; }
+        void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+          if (r?.ok) cliAgentRows = r.agents;
+          openAgentForLoop(id, { ...opts, refetched: true });
+        }).catch(() => activateGlyphh());
+        return;
+      }
+      // ANOTHER PANEL, EVERY TIME (his ruling, 2026-09-25/26): the loop rides
+      // into a fresh instance, which applies the view Settings resolve (chat
+      // or CLI) INSIDE itself — the shell's Terminal tool is never borrowed.
+      if (AGENT_INSTANCED) { openAgentInstance(id); return; }
       if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, opts.again ? { fresh: true } : undefined); return; }
       const seated = openList.find((x) => x.card && x.tile.kind === "agent");
       const bound = seated?.card?.dataset.boundAgent;
@@ -6742,9 +6903,15 @@ async function init(): Promise<void> {
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
     const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
-      let entry = openList.find((x) => x.tile.toolView === view);
+      // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
+      // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
+      // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
+      // resolved to the agent's card and flashed it). Only a plain tool card
+      // counts here; the agent keeps its own.
+      const plainTool = (x: TileEntry): boolean => x.tile.toolView === view && !(x.tile.slug || "").startsWith("agent:");
+      let entry = openList.find(plainTool);
       if (!entry) {
-        entry = entries.find((x) => x.tile.toolView === view)
+        entry = entries.find(plainTool)
           ?? adHoc({ name: VIEW_META[view].title, slug: view, kind: "tool", toolView: view });
         activateTile(entry);
       }
@@ -6828,7 +6995,7 @@ async function init(): Promise<void> {
         const entry = getOrOpenTool("terminal");
         let tries = 0;
         const settle = (): void => {
-          const target = entry.toolSlot ? entry : openList.find((x) => x.tile.toolView === "terminal" && x.toolSlot);
+          const target = entry.toolSlot ? entry : openList.find((x) => x.tile.toolView === "terminal" && x.toolSlot && !(x.tile.slug || "").startsWith("agent:"));
           const slot = target?.toolSlot;
           if (slot?.view === "terminal") { typeIntoTerminal(slot.terminals[slot.activeIdx] ?? slot.terminals[0], cmd); return; }
           if (tries++ < 40) requestAnimationFrame(settle);
@@ -7093,6 +7260,8 @@ async function init(): Promise<void> {
 
   type WebviewEl = HTMLElement & {
     getWebContentsId?: () => number;
+    /** Host → guest message on the guest's ipcRenderer (agent-panel:command). */
+    send?: (channel: string, ...args: unknown[]) => void;
     loadURL?: (url: string) => void;
     reload?: () => void;
     goBack?: () => void;

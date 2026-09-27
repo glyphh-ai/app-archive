@@ -11,7 +11,7 @@
 
 const listeners = new Map();   // channel → Set<cb>
 const prefs = new Map();
-const calls = { glyphhRun: [], setPreference: [], execCommand: [], connectorsConnect: [], connectRespond: [] };
+const calls = { glyphhRun: [], setPreference: [], execCommand: [], connectorsConnect: [], connectRespond: [], cliAgentOpen: [], agentPanelOpen: [] };
 let runSeq = 0;
 
 const APPS = [
@@ -64,6 +64,28 @@ try {
   if (seeded) sessionStore = { chats: JSON.parse(seeded), currentId: "" };
 } catch { /* unseeded boot */ }
 
+// Loop roster, CLI session list and the live-run ledger — seeded per spec via
+// the boot query (agents / sessions), or at run time through window.__stub.
+let agentRows = [];
+let cliSessions = [];
+let liveRuns = [];
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get("agents")) agentRows = JSON.parse(q.get("agents"));
+  if (q.get("sessions")) cliSessions = JSON.parse(q.get("sessions"));
+  // An agent-panel instance carries no seed of its own: it runs the one loop
+  // the specs seed the shell with.
+  if (!agentRows.length && (q.get("solo") || "").startsWith("tool:")) {
+    agentRows = [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }];
+  }
+} catch { /* unseeded boot */ }
+// The host document steers an instance over the REAL guest channel
+// (webview.send → ipcRenderer); the stub relays it to the preload's on* name.
+try {
+  const { ipcRenderer } = require("electron");
+  ipcRenderer.on("agent-panel:command", (_event, cmd) => emit("onAgentPanelCommand", cmd));
+} catch { /* no ipc in this context */ }
+
 function emit(channel, payload) {
   for (const cb of listeners.get(channel) ?? []) {
     try { cb(payload); } catch { /* test surface */ }
@@ -103,6 +125,12 @@ const YO_OVERRIDES = {
   localMcpStatus: () => Promise.resolve({ running: false, port: 8123 }),
   connectorsConnect: (appSlug) => { calls.connectorsConnect.push(appSlug); return Promise.resolve({ ok: true }); },
   glyphhAgentConnectRespond: (p) => { calls.connectRespond.push(JSON.parse(JSON.stringify(p))); return Promise.resolve(true); },
+  cliAgentsList: () => Promise.resolve({ ok: true, agents: JSON.parse(JSON.stringify(agentRows)) }),
+  cliAgentOpen: (id) => { calls.cliAgentOpen.push(id); return Promise.resolve({ ok: true, command: "echo " + id, cwd: "/tmp/harness" }); },
+  cliSessionsList: () => Promise.resolve({ ok: true, sessions: JSON.parse(JSON.stringify(cliSessions)) }),
+  glyphhLiveList: () => Promise.resolve(JSON.parse(JSON.stringify(liveRuns))),
+  glyphhCliTranscript: (sessionId) => Promise.resolve({ ok: true, title: cliSessions.find((s) => s.id === sessionId)?.title || "Fix the rail", cwd: "/tmp/harness", turns: [{ role: "user", text: "fix the rail" }, { role: "assistant", text: "on it" }] }),
+  agentPanelOpen: (p) => { calls.agentPanelOpen.push(p); return Promise.resolve(true); },
 };
 
 const WB_OVERRIDES = {
@@ -154,5 +182,11 @@ window.__stub = {
   agentDone: (runId, stopped = false) => emit("onGlyphhAgentDone", { runId, stopped }),
   agentError: (runId, error) => emit("onGlyphhAgentError", { runId, error }),
   agentConnect: (id, app) => emit("onGlyphhAgentConnect", { id, app }),
+  /** The live-run ledger changed (main's agent-live.ts broadcast). */
+  live: (runs) => { liveRuns = runs; emit("onGlyphhLive", JSON.parse(JSON.stringify(runs))); },
+  /** The shell relayed a solo panel's "New agent panel" (agent-panel:open). */
+  panelOpen: (p) => emit("onAgentPanelOpen", p),
+  seedAgents(rows) { agentRows = rows; },
+  seedCliSessions(rows) { cliSessions = rows; },
   lastRunId: () => `run-${runSeq}`,
 };

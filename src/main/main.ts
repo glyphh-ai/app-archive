@@ -81,6 +81,7 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
 import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { registerAgentLiveIpc } from "./agent-live";
 import { bridgeBackground, bridgeForced, installBridgeTurnHandler, registerBridgeModeIpc } from "./bridge-mode";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
@@ -463,6 +464,7 @@ async function boot() {
     // The Glyphh Agent panel's engine — a bridge over the claude CLI
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
     registerGlyphhCliBridge();
+    registerAgentLiveIpc();
     // Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude.
     registerBridgeModeIpc();
   }

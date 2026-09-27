@@ -21320,3 +21320,28 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .mem-summary { color: var(--muted, #c4c4c4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mem-when { color: var(--dim, #828282); font-size: 12px; white-space: nowrap; }
 .settings-panel.mem-page-open > :not(#memory-browser) { display: none; }
+
+/* ── A SOLO AGENT PANEL IS THE AGENT (his report, 2026-09-26: "a window in a
+   window"). The instance webview hosts Echo as its only surface; here the
+   dock, the layout bar and the page dots never show, and the agent's own card
+   (chat or CLI) drops its head, border and shadow so the panel's edge is the
+   agent's edge. Tool cards opened beside it keep their heads. ── */
+[data-home-scope="solo-tool"] .echo-dock,
+[data-home-scope="solo-tool"] .echo-topbar,
+[data-home-scope="solo-tool"] .echo-pages,
+[data-home-scope="solo-tool"] .echo-page-dots { display: none !important; }
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card,
+[data-home-scope="solo-tool"] .echo-card.echo-cli-card { border: 0; border-radius: 0; box-shadow: none; }
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card > .echo-card-head,
+[data-home-scope="solo-tool"] .echo-card.echo-cli-card > .echo-card-head { display: none; }
+/* The solo agent card appears in place — no slide-in from an entrance rect
+   inside a panel that is itself just arriving. */
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card,
+[data-home-scope="solo-tool"] .echo-card.echo-cli-card { transition: none; }
+/* A guest paints nothing until its page loads; the panel behind it is the
+   surface colour, never black, while an agent panel boots. */
+.echo-card webview { background: var(--surface); }
+/* A solo agent panel shows NOTHING until its agent is seated (home.html's head
+   script sets this before the first paint; the workbench lifts it). The body's
+   own background still paints, so the panel is the surface colour meanwhile. */
+[data-solo-booting] body > * { visibility: hidden !important; }

@@ -26,8 +26,12 @@ const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
-async function boot(win, seed) {
-  await win.loadFile(homeHtml, seed ? { query: { chats: JSON.stringify(seed) } } : undefined);
+async function boot(win, seed, spec) {
+  const query = {};
+  if (seed) query.chats = JSON.stringify(seed);
+  if (spec?.seedAgents) query.agents = JSON.stringify(spec.seedAgents);
+  if (spec?.seedSessions) query.sessions = JSON.stringify(spec.seedSessions);
+  await win.loadFile(homeHtml, Object.keys(query).length ? { query } : undefined);
   // home boots async (prefs, sessions, sections) — give it a beat
   await new Promise((r) => setTimeout(r, 800));
 }
@@ -46,13 +50,21 @@ app.whenReady().then(async () => {
     },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Agent-panel instances (home.html?solo=tool:coding in a <webview>) boot the
+  // same stub as the host, so a spec can steer them and read their state.
+  win.webContents.on("will-attach-webview", (_event, prefs, params) => {
+    if (!String(params?.src || "").includes("solo=tool:coding")) return;
+    prefs.preload = preload;
+    prefs.contextIsolation = false;
+    prefs.nodeIntegration = false;
+  });
 
   const specs = SPECS.filter((s) => !filter || s.name.toLowerCase().includes(filter));
   let failed = 0;
   await boot(win);
 
   for (const spec of specs) {
-    if (spec.fresh) await boot(win, spec.seed);
+    if (spec.fresh) await boot(win, spec.seed, spec);
     let result;
     try {
       result = await win.webContents.executeJavaScript(

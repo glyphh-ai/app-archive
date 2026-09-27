@@ -326,6 +326,28 @@ void (async () => {
       const soloLabel = SOLO_LABELS[kind] || kind;
       // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
       document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
+      // AN AGENT PANEL IS THE AGENT, NOTHING AROUND IT (his report, 2026-09-26:
+      // "it is putting a window in a window"). The layout path below seated the
+      // agent in a rail slot with its own header, and Echo mounted beside it
+      // with the dock — two slots, so the solo rule never applied. The agent
+      // panel hosts Echo as its ONLY surface and opens the agent through the
+      // same door the shell uses (chat or CLI per Settings, the >_ hop, tools
+      // beside it); the solo styles strip the card chrome, so the panel IS
+      // the agent.
+      // This only MOUNTS Echo; the workbench seats the agent itself the moment
+      // the wall's doors exist (restoreWallOnce's solo branch), so there is no
+      // poll here that can expire first and leave the panel black.
+      if (kind === "coding") {
+        const wa = window as unknown as { __wbOpenEchoHome?: () => void };
+        let mountTries = 0;
+        const mount = (): void => {
+          if (wa.__wbOpenEchoHome) { wa.__wbOpenEchoHome(); return; }
+          if (mountTries++ < 600) window.setTimeout(mount, 50);
+          else console.warn("[solo] the workbench never came up — nothing to mount the agent in");
+        };
+        mount();
+        return;
+      }
       const payload = {
         cols: 1, colWidths: [], rowHeights: [],
         cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],

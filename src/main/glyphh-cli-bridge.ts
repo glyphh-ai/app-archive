@@ -31,6 +31,7 @@ import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTu
 import { hostDialect, quote, shellInvocation } from "./shell-dialect.js";
 import { startCliSessionWatch } from "./cli-session-watch.js";
 import { isInterrupted, INTERRUPT_SAID } from "./cli-interrupt.js";
+import { agentLive } from "./agent-live.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -136,6 +137,8 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
 // ── live processes ───────────────────────────────────────────────────────────
 
 export interface LiveChat {
+  /** The Glyphh thread this process serves — the live-run ledger's key. */
+  chatId: string;
   proc: ChildProcessWithoutNullStreams;
   runId: string;
   sender: WebContents;
@@ -177,6 +180,11 @@ const PERM_FLAG: Record<LiveChat["permission"], string> = {
 };
 
 function emit(c: LiveChat, channel: string, payload: unknown): void {
+  // THE LEDGER RIDES THE STREAM (agent-live.ts): a turn is over when its done
+  // frame goes out, whoever is listening; the CLI's session id joins the
+  // entry the moment the CLI names it, so the rail can match its own rows.
+  if (channel === "glyphh-agent:done") agentLive.done(c.chatId, c.runId);
+  else if (channel === "glyphh-agent:setup" && c.cliSessionId) agentLive.update(c.chatId, { cliSessionId: c.cliSessionId });
   try { if (!c.sender.isDestroyed()) c.sender.send(channel, payload); } catch { /* window closed mid-run */ }
 }
 
@@ -406,6 +414,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // long as the pipe stayed open (his repro, 2026-09-20, third round).
   try { proc.stdin.end(); } catch { /* already closed */ }
   const chat: LiveChat = {
+    chatId: p.chatId,
     proc: proc as ChildProcessWithoutNullStreams,
     runId, sender,
     cliSessionId: null,
@@ -417,6 +426,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     pending: new Map(),
   };
   live.set(p.chatId, chat);
+  agentLive.start({ chatId: p.chatId, cliSessionId: resumeIds.get(rkey(p.chatId, agent.cli)) ?? null, cli: agent.cli || "claude", runId, senderId: sender.id });
   emit(chat, "glyphh-agent:setup", { phase: "ready", model: p.model ?? agent.model ?? undefined });
   let sawJson = false;
   proc.stdout.on("data", (b: Buffer) => {
@@ -464,6 +474,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
   proc.on("exit", (code) => {
     live.delete(p.chatId);
+    agentLive.done(p.chatId, runId);
     console.warn("[cli-bridge] headless turn ended", JSON.stringify({ cli: agent.cli, code, sawJson, stderr: errTail.trim().slice(-300) }));
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
     // A STOP IS NOT A FAILURE (his report, 2026-09-23): stopAgentChat already
@@ -538,6 +549,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     stdio: ["pipe", "pipe", "pipe"],
   });
   const chat: LiveChat = {
+    chatId: p.chatId,
     proc, sender,
     runId: `${p.chatId}:${Date.now()}`,
     cliSessionId: resume ?? null,
@@ -565,6 +577,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
   proc.on("exit", (code) => {
     live.delete(p.chatId);
+    agentLive.done(p.chatId);   // no process, no turn — whatever the exit code says
     // Our own SIGTERM (stopAgentChat) exits non-zero; that is not a failure.
     if (chat.stopping) { emit(chat, "glyphh-agent:done", { runId: chat.runId, stopped: true }); return; }
     if (code !== 0 && code !== null) {
@@ -675,7 +688,10 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload & { steer?
       c.runId = `${p.chatId}:${Date.now()}`;
     }
     const atts = validAttachments(p.attachments);
-    if (text || atts.length) writeUserTurn(c, text, atts);
+    if (text || atts.length) {
+      writeUserTurn(c, text, atts);
+      agentLive.start({ chatId: p.chatId, cliSessionId: c.cliSessionId ?? resumeIds.get(rkey(p.chatId, "claude")) ?? null, cli: "claude", runId: c.runId, senderId: sender.id });
+    }
     return { runId: c.runId };
 }
 

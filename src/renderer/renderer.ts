@@ -218,6 +218,12 @@ declare global {
       copyToClipboard: (text: string) => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
+      // The live-run ledger and agent-panel steering (agent-live.ts).
+      glyphhLiveList?: () => Promise<Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>>;
+      onGlyphhLive?: (callback: (runs: Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>) => void) => void;
+      agentPanelOpen?: (p: { loop?: string }) => Promise<boolean>;
+      onAgentPanelOpen?: (callback: (p: { loop?: string }) => void) => void;
+      onAgentPanelCommand?: (callback: (cmd: unknown) => void) => void;
       agentDockIgnoreMouse?: (ignore: boolean) => void;
       agentDockCaptureTarget?: () => Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>;
       micAccessStatus?: () => Promise<{ status: string; error?: string }>;

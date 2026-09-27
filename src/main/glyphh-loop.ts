@@ -19,6 +19,7 @@ import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { bareModel, orgRequiredModel } from "./cli-agents.js";
+import { agentLive } from "./agent-live.js";
 
 export type { LoopPermission };
 
@@ -75,20 +76,27 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const prev = seenTurns.get(p.chatId);
   if (prev !== undefined && n - prev > 2) loop.forget(p.chatId);
   seenTurns.set(p.chatId, n);
+  // The live-run ledger (agent-live.ts): marked running once the engine has
+  // taken the turn, cleared on its done — and a turn that settled before run()
+  // even returned is never marked at all.
+  let finished = false;
   const emit = (ev: LoopEvent & { runId: string }): void => {
     const { type, ...payload } = ev;
+    if (type === "done") { finished = true; agentLive.done(p.chatId, ev.runId); }
     // The chat id IS the terminal's session id: the panel binds it per CLI, and
     // the >_ hop opens `glyphh --resume <id>` on the same conversation.
     const extra = type === "setup" ? { cliSessionId: p.chatId } : {};
     try { if (!sender.isDestroyed()) sender.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
   };
-  return loop.run({
+  const started = await loop.run({
     chatId: p.chatId, text, model,
     ...(p.permission ? { permission: p.permission } : {}),
     ...(p.workdir ? { workdir: p.workdir } : {}),
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
+  if (!finished) agentLive.start({ chatId: p.chatId, cliSessionId: p.chatId, cli: "glyphh", runId: started.runId, senderId: sender.id });
+  return started;
 }
 
 export function stopGlyphhLoop(chatId: string): boolean { return loop.stop(chatId); }
