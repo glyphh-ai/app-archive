@@ -132,11 +132,20 @@ function stripHidden(html: string): string {
  *  tail-appended nodes are hoisted into <body> and run before
  *  DOMContentLoaded, after the deck's own init. */
 export function staticDoc(html: string, slide: number): string {
+  // THE THUMB IS ITS SLIDE, WHATEVER THE DECK DOES (his report, 2026-09-27: on
+  // Windows every thumbnail showed the same slide). A deck's own script can
+  // re-apply its current slide after DOMContentLoaded — on load, on a timer,
+  // from a resume it stored — and win over the one-shot toggle. The frozen
+  // slide is asserted on DOMContentLoaded and load, and re-asserted by a
+  // mutation observer for two seconds whenever a slide's class changes.
   return html
     + `<style>*{transition:none!important;animation:none!important}</style>`
-    + `<script>addEventListener("DOMContentLoaded",()=>{document.querySelectorAll(".slide").forEach((s,k)=>{`
-    + `s.classList.toggle("on",k===${slide});`
-    + `if(k===${slide})s.querySelectorAll(".frag").forEach(f=>f.classList.add("show"));});});</script>`;
+    + `<script>(()=>{const N=${slide};const set=()=>{document.querySelectorAll(".slide").forEach((s,k)=>{`
+    + `if(s.classList.contains("on")!==(k===N))s.classList.toggle("on",k===N);`
+    + `if(k===N)s.querySelectorAll(".frag").forEach(f=>f.classList.add("show"));});};`
+    + `addEventListener("DOMContentLoaded",()=>{set();const mo=new MutationObserver(set);`
+    + `mo.observe(document.documentElement,{attributes:true,attributeFilter:["class"],subtree:true});`
+    + `setTimeout(()=>mo.disconnect(),2000);});addEventListener("load",set);})();</script>`;
 }
 
 /** The READER document: the deck plus a capture-phase driver that replaces
@@ -180,6 +189,9 @@ export function fillThumbs(jobs: Array<{ host: HTMLElement; doc: string }>): voi
       if (!job.host.isConnected) continue;
       const frame = document.createElement("iframe");
       frame.setAttribute("tabindex", "-1");
+      // Scripts only: a thumbnail's deck gets no storage and no reach into the
+      // panel, so a stored "resume at slide N" cannot repaint every thumb.
+      frame.setAttribute("sandbox", "allow-scripts");
       frame.srcdoc = job.doc;
       job.host.appendChild(frame);
     }

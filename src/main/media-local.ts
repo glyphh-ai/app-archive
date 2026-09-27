@@ -15,6 +15,7 @@
 
 import fs from "fs";
 import path from "path";
+import { pathToFileURL } from "url";
 import { appDataDir } from "./glyphh-app-services.js";
 
 export type MediaKind = "image" | "audio" | "video";
@@ -129,9 +130,11 @@ export function remove(id: string): void {
   if (full) fs.rmSync(full, { force: true });
 }
 
-/** What the panel plays: the file itself, straight off the disk. */
+/** What the panel plays: the file itself, straight off the disk — as a REAL
+ *  file URL (his report, 2026-09-27: on Windows no image showed a preview;
+ *  `file://C:\\Users\\…` is not a URL, pathToFileURL's `file:///C:/Users/…` is). */
 export function fileUrl(id: string): string {
   const full = pathOf(id);
   if (!full) throw new Error("that file is no longer in your library");
-  return `file://${full}`;
+  return pathToFileURL(full).href;
 }

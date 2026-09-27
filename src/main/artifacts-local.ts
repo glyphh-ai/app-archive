@@ -15,6 +15,7 @@
 
 import fs from "fs";
 import path from "path";
+import { pathToFileURL } from "url";
 import { appDataDir } from "./glyphh-app-services.js";
 
 export type ArtifactKind = "code" | "text" | "markdown" | "image" | "pdf" | "other";
@@ -98,7 +99,7 @@ function rowOf(name: string): LocalArtifact | null {
     sizeBytes: st.size,
     createdAt: new Date(st.mtimeMs).toISOString(),
     path: full,
-    downloadUrl: `file://${full}`,
+    downloadUrl: pathToFileURL(full).href,
   };
 }
 

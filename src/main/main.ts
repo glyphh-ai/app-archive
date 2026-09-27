@@ -308,7 +308,7 @@ async function boot() {
     if (!fs.existsSync(filePath)) {
       return new Response(`yo-asset not found: ${assetName}`, { status: 404 });
     }
-    return net.fetch(`file://${filePath}`);
+    return net.fetch(pathToFileURL(filePath).href);   // a real file URL — `file://` + a Windows path is not one
   });
 
   // ── glyphh-preview:// — streams a local file into the Browser panel's
@@ -331,7 +331,7 @@ async function boot() {
     { urls: ["file://*chart.umd.min.js"] },
     (details: { url: string }, callback: (response: { redirectURL?: string }) => void) => {
       if (details.url.includes(skillsDir)) {
-        callback({ redirectURL: `file://${path.join(rendererDir, "chart.umd.min.js")}` });
+        callback({ redirectURL: pathToFileURL(path.join(rendererDir, "chart.umd.min.js")).href });
       } else {
         callback({});
       }
