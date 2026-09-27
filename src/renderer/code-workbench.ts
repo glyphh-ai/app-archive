@@ -4305,7 +4305,10 @@ async function init(): Promise<void> {
      *  playing the agent) fill the grid the SAME way — column owner, never
      *  reflowed, composer off while it seats a layout. The Terminal TOOL is a
      *  different thing and keeps its own rules. */
-    const isAgentEntry = (e: TileEntry): boolean => e.tile.kind === "agent" || (e.tile.slug || "").startsWith("agent:");
+    // An agent PANEL instance (agent-panel:) is the agent too (his report,
+    // 2026-09-26: a second agent opened UNDER the first) — it owns its column
+    // and is never reflowed under another card; a new one lands to the right.
+    const isAgentEntry = (e: TileEntry): boolean => e.tile.kind === "agent" || /^agent(-panel)?:/.test(e.tile.slug || "");
     const wireCardDrag = (e: TileEntry, card: HTMLElement, head: HTMLElement): void => {
       head.addEventListener("pointerdown", (ev) => {
         if (ev.button !== 0) return;
@@ -6360,8 +6363,8 @@ async function init(): Promise<void> {
         const entry = openList.find((x) => x.tile.slug === tile.slug && x.card);
         if (!entry) { if (tries < 60) requestAnimationFrame(() => wire(tries + 1)); return; }
         lastAgentInstance = entry;
-        entry.card!.addEventListener("focusin", () => { lastAgentInstance = entry; });
-        entry.card!.addEventListener("mousedown", () => { lastAgentInstance = entry; }, true);
+        entry.card!.addEventListener("focusin", () => { lastAgentInstance = entry; activatePanelOf(entry); });
+        entry.card!.addEventListener("mousedown", () => { lastAgentInstance = entry; activatePanelOf(entry); }, true);
         if (!cmd) return;
         const wv = entry.card!.querySelector("webview") as WebviewEl | null;
         if (!wv) return;
@@ -6401,6 +6404,7 @@ async function init(): Promise<void> {
         try { id = wv?.getWebContentsId?.(); } catch { id = undefined; }
         if (id === undefined || id !== senderId) continue;
         lastAgentInstance = e;
+        activatePanelOf(e);
         flash(e.card);
         e.card!.scrollIntoView?.({ block: "nearest" });
         try { wv?.focus(); } catch { /* not focusable yet */ }
@@ -6408,10 +6412,39 @@ async function init(): Promise<void> {
       }
       return false;
     };
+    // INSIDE A PANEL: a click or focus in here makes this the agent being
+    // worked in — main re-roots the shell to this agent's folder (his
+    // decision, 2026-09-27: the shell follows the agent you're working in).
+    if (IS_SOLO_WINDOW) {
+      let lastActivate = 0;
+      const activate = (): void => {
+        if (Date.now() - lastActivate < 400) return;
+        lastActivate = Date.now();
+        void (window as unknown as { glyphh?: { agentPanelActivate?: (p?: { wcId?: number }) => Promise<boolean> } }).glyphh?.agentPanelActivate?.();
+      };
+      document.addEventListener("mousedown", activate, true);
+      document.addEventListener("focusin", activate, true);
+    }
+    /** The shell fronted or the user touched THIS panel's card: tell main which
+     *  webContents is being worked in (its folder becomes the shell's). */
+    const activatePanelOf = (e: TileEntry): void => {
+      const wv = e.card?.querySelector("webview") as WebviewEl | null;
+      let id: number | undefined;
+      try { id = wv?.getWebContentsId?.(); } catch { id = undefined; }
+      if (id === undefined) return;
+      void (window as unknown as { glyphh?: { agentPanelActivate?: (p?: { wcId?: number }) => Promise<boolean> } }).glyphh?.agentPanelActivate?.({ wcId: id });
+    };
     // A solo panel's "New agent panel" arrives here via main (agent-panel:open).
     if (AGENT_INSTANCED) {
-      (window as unknown as { glyphh?: { onAgentPanelOpen?: (cb: (p: { loop?: string }) => void) => void } }).glyphh
-        ?.onAgentPanelOpen?.((p) => openAgentInstance(p?.loop || undefined));
+      const g = (window as unknown as { glyphh?: { onAgentPanelOpen?: (cb: (p: { loop?: string }) => void) => void; onAgentPanelOpenTool?: (cb: (p: { view: string; cwd?: string }) => void) => void } }).glyphh;
+      g?.onAgentPanelOpen?.((p) => openAgentInstance(p?.loop || undefined));
+      // A panel's ⋮ tool lands in THIS grid, beside the panel, rooted where
+      // the panel's agent works (the folder rides along; main already made it
+      // the working folder when the panel picked it).
+      g?.onAgentPanelOpenTool?.((p) => {
+        if (!p?.view) return;
+        (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(p.view);
+      });
     }
     const activateGlyphh = (_self?: TileEntry): void => {
       const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
@@ -10631,6 +10664,16 @@ async function init(): Promise<void> {
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
     if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
+    // slot beside the panel (his report, 2026-09-26: Files opened inside the
+    // agent). The request goes up through main; only the agent's own views
+    // (its chat/CLI seat) stay in here.
+    if (IS_SOLO_WINDOW && v !== "coding" && v !== "echo") {
+      const cwdNow = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() || cwd || "";
+      void (window as unknown as { glyphh?: { agentPanelOpenTool?: (p: { view: string; cwd?: string }) => Promise<boolean> } }).glyphh
+        ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
+      return;
+    }
     if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };

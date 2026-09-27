@@ -14,6 +14,7 @@
 import { ipcMain } from "electron";
 import { broadcast } from "./broadcast.js";
 import { createAgentLiveRegistry } from "./agent-live-registry.js";
+import { activateAgentPanel } from "./working-directory.js";
 
 export type { LiveAgentRun } from "./agent-live-registry.js";
 
@@ -23,6 +24,22 @@ export function registerAgentLiveIpc(): void {
   ipcMain.handle("glyphh-agent-live-list", () => agentLive.list());
   ipcMain.handle("agent-panel-open", (_e, p: { loop?: string } | undefined) => {
     broadcast("agent-panel:open", { loop: String(p?.loop ?? "") });
+    return true;
+  });
+  // A panel's ⋮ tools (Files, Terminal, Editor, …) open in the SHELL's grid,
+  // beside the panel — never inside it (his report, 2026-09-26).
+  ipcMain.handle("agent-panel-open-tool", (e, p: { view?: string; cwd?: string } | undefined) => {
+    // THE SHELL FOLLOWS THE AGENT YOU'RE WORKING IN (his decision, 2026-09-27):
+    // opening a tool from a panel makes that panel the active one first, so the
+    // tool comes up rooted in ITS folder (the folder change lands before the open).
+    activateAgentPanel(e.sender.id);
+    broadcast("agent-panel:open-tool", { view: String(p?.view ?? ""), cwd: String(p?.cwd ?? "") });
+    return true;
+  });
+  // A panel became the one being worked in — a click or focus inside it (the
+  // panel says so itself), or the shell fronting it (with the panel's id).
+  ipcMain.handle("agent-panel-activate", (e, p: { wcId?: number } | undefined) => {
+    activateAgentPanel(typeof p?.wcId === "number" ? p.wcId : e.sender.id);
     return true;
   });
 }

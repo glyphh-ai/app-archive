@@ -1237,6 +1237,13 @@ contextBridge.exposeInMainWorld("glyphh", {
   onAgentPanelOpen: (callback: (p: { loop?: string }) => void) => {
     ipcRenderer.on("agent-panel:open", (_event, p) => callback(p ?? {}));
   },
+  /** This panel became the one being worked in (or, from the shell, the panel with that webContents id). */
+  agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
+  /** A solo panel asks the shell to open a workbench tool beside it. */
+  agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  onAgentPanelOpenTool: (callback: (p: { view: string; cwd?: string }) => void) => {
+    ipcRenderer.on("agent-panel:open-tool", (_event, p) => callback(p ?? { view: "" }));
+  },
   /** The host document steering THIS agent panel (webview.send): a rail
    *  session click, the Home composer's send, a fresh session. */
   onAgentPanelCommand: (callback: (cmd: unknown) => void) => {

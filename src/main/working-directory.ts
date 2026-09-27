@@ -10,7 +10,7 @@
  * Welcome surface and the left-rail bottom pane render the same list.
  */
 
-import { ipcMain, dialog, BrowserWindow, shell, app } from "electron";
+import { ipcMain, dialog, BrowserWindow, shell, app, type WebContents } from "electron";
 import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -52,6 +52,61 @@ export type RecentEntry = {
 /** The fallback working directory — the user's OS home folder. A user can
  *  override the default later (workingDirDefault); until then we land on
  *  ~ rather than prompting on first run. */
+// ── Agent panels: THE SHELL FOLLOWS THE AGENT YOU'RE WORKING IN (his
+// decision, 2026-09-27). Each agent panel (a home.html?solo=tool:coding guest)
+// keeps its own folder here; only the ACTIVE panel — the one last clicked,
+// focused, fronted, or opening a tool — drives the shell's working folder.
+// A folder set from a background panel is recorded for that panel alone and
+// applied the moment it becomes active. A panel reads back its own folder.
+const panelFolders = new Map<number, string>();
+const trackedPanels = new Set<number>();
+let activePanel: number | null = null;
+
+export function isAgentPanel(wc: WebContents): boolean {
+  try { return !wc.isDestroyed() && wc.getURL().includes("solo=tool:coding"); } catch { return false; }
+}
+
+function trackPanel(wc: WebContents): void {
+  if (trackedPanels.has(wc.id)) return;
+  trackedPanels.add(wc.id);
+  wc.once("destroyed", () => {
+    trackedPanels.delete(wc.id);
+    panelFolders.delete(wc.id);
+    if (activePanel === wc.id) activePanel = null;   // the shell keeps its folder; the tools stay
+  });
+}
+
+/** The panel with this webContents id is the one being worked in: its folder
+ *  becomes the shell's. Unknown ids (not a panel) are ignored. */
+export function activateAgentPanel(wcId: number): void {
+  if (activePanel === wcId) return;
+  activePanel = wcId;
+  const dir = panelFolders.get(wcId);
+  if (dir && dir !== getWorkingDirectory()) {
+    console.warn("[workdir] the shell follows the active agent panel", JSON.stringify({ wcId, dir }));
+    setWorkingDirectory(dir);
+  }
+}
+
+/** A folder set by a renderer: from a panel it is that panel's own folder and
+ *  reaches the shell only while that panel is active; from the shell it is the
+ *  shell's, as ever. Returns what the caller now sees as its folder. */
+function applyFolderFrom(sender: WebContents, dir: string | null): string {
+  if (!isAgentPanel(sender)) { setWorkingDirectory(dir); return getWorkingDirectory(); }
+  trackPanel(sender);
+  const value = dir ? normalizeDir(dir) : "";
+  if (value && isDir(value)) panelFolders.set(sender.id, value); else panelFolders.delete(sender.id);
+  if (activePanel === null) activePanel = sender.id;
+  if (activePanel !== sender.id) return value || getWorkingDirectory();
+  setWorkingDirectory(dir);
+  return getWorkingDirectory();
+}
+
+function folderFor(sender: WebContents): string {
+  if (isAgentPanel(sender)) { trackPanel(sender); const own = panelFolders.get(sender.id); if (own) return own; }
+  return getWorkingDirectory();
+}
+
 export function defaultWorkingDirectory(): string {
   return getPreference<string | null>("workingDirDefault", null) || os.homedir();
 }
@@ -496,8 +551,7 @@ export function registerWorkingDirectoryIpc(deps: {
   }, 0);
   if (deps.openRecent) openRecentEntry = deps.openRecent;
 
-  ipcMain.handle("working-dir:get", () =>
-    getWorkingDirectory());
+  ipcMain.handle("working-dir:get", (e) => folderFor(e.sender));
   ipcMain.handle("working-dir:recents", () => getWorkingDirRecents());
 
   // ── Recents (rich) ──
@@ -534,29 +588,28 @@ export function registerWorkingDirectoryIpc(deps: {
     getExplicitWorkingDirectory());
 
   // Set the current dir to an already-known path (e.g. picked from recents).
-  ipcMain.handle("working-dir:set", (_e, dir: string) => {
+  ipcMain.handle("working-dir:set", (e, dir: string) => {
     // Empty = RESET to the default (home) — the new-session clean slate.
-    setWorkingDirectory(dir || null);
-    return getWorkingDirectory();
+    return applyFolderFrom(e.sender, dir || null);
   });
 
   // OS folder picker. `opts.startIn` opens the dialog in the current dir;
   // `opts.asDefault` also stores the pick as the first-run default.
-  ipcMain.handle("working-dir:pick", async (_e, opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => {
+  ipcMain.handle("working-dir:pick", async (e, opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => {
     const win = getMainWindow();
     const dialogOpts = {
       properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
-      defaultPath: getWorkingDirectory(),
+      defaultPath: folderFor(e.sender),
     };
     const result = win
       ? await dialog.showOpenDialog(win, dialogOpts)
       : await dialog.showOpenDialog(dialogOpts);
     if (result.canceled || result.filePaths.length === 0) {
-      return opts?.nullOnCancel ? null : getWorkingDirectory();
+      return opts?.nullOnCancel ? null : folderFor(e.sender);
     }
     const picked = result.filePaths[0];
     if (opts?.asDefault) setDefaultWorkingDirectory(picked);
-    setWorkingDirectory(picked);
+    applyFolderFrom(e.sender, picked);
     return picked;
   });
 
