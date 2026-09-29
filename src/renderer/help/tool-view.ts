@@ -100,6 +100,37 @@ function badge(added: number, removed: number): string {
   return `<span class="tv-badge"><span class="tv-add">+${added}</span><span class="tv-del">−${removed}</span></span>`;
 }
 
+/** The same badge as nodes, for appending beside other nodes. */
+function badgeEl(added: number, removed: number): HTMLElement {
+  const b = document.createElement("span");
+  b.className = "tv-badge";
+  const a = document.createElement("span");
+  a.className = "tv-add";
+  a.textContent = `+${added}`;
+  const r = document.createElement("span");
+  r.className = "tv-del";
+  r.textContent = `−${removed}`;
+  b.append(a, r);
+  return b;
+}
+
+/** Markup this module built itself (escaped, highlighted), appended as nodes. */
+function appendMarkup(parent: HTMLElement, html: string): void {
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  parent.append(t.content);
+}
+
+/** A fold between hunks: "⋯ 12 unchanged lines". */
+function gapEl(text: string): HTMLElement {
+  const g = document.createElement("div");
+  g.className = "tv-gap";
+  const s = document.createElement("span");
+  s.textContent = text;
+  g.appendChild(s);
+  return g;
+}
+
 function copyButton(text: () => string, label = "Copy"): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
@@ -183,7 +214,12 @@ function stepHead(r: ToolRec): HTMLElement {
   else if (d?.kind === "list") meta.textContent = `${d.count} item${d.count === 1 ? "" : "s"}`;
   else if (d?.kind === "command" && d.exitCode && d.exitCode !== 0) meta.innerHTML = `<span class="tv-exit">exit ${d.exitCode}</span>`;
   const dur = duration(r);
-  if (dur) meta.insertAdjacentHTML("beforeend", `<span class="tv-dur">${dur}</span>`);
+  if (dur) {
+    const span = document.createElement("span");
+    span.className = "tv-dur";
+    span.textContent = dur;
+    meta.appendChild(span);
+  }
   head.appendChild(meta);
 
   const state = document.createElement("span");
@@ -207,7 +243,7 @@ export function diffEl(d: Extract<ToolDetail, { kind: "diff" }>): HTMLElement {
   p.textContent = shortPath(d.path);
   p.title = d.path;
   bar.append(p);
-  bar.insertAdjacentHTML("beforeend", badge(d.added, d.removed));
+  bar.appendChild(badgeEl(d.added, d.removed));
   box.appendChild(bar);
 
   const lang = languageOf(extOf(d.path)) ? extOf(d.path) : "";
@@ -217,9 +253,9 @@ export function diffEl(d: Extract<ToolDetail, { kind: "diff" }>): HTMLElement {
   for (const h of d.hunks) {
     if (prevEnd && h.oldStart > prevEnd.o) {
       const gap = h.oldStart - prevEnd.o;
-      table.insertAdjacentHTML("beforeend", `<div class="tv-gap"><span>⋯ ${gap} unchanged line${gap === 1 ? "" : "s"}</span></div>`);
+      table.appendChild(gapEl(`⋯ ${gap} unchanged line${gap === 1 ? "" : "s"}`));
     } else if (!prevEnd && h.oldStart > 1 && !d.created) {
-      table.insertAdjacentHTML("beforeend", `<div class="tv-gap"><span>⋯ ${h.oldStart - 1} line${h.oldStart - 1 === 1 ? "" : "s"} above</span></div>`);
+      table.appendChild(gapEl(`⋯ ${h.oldStart - 1} line${h.oldStart - 1 === 1 ? "" : "s"} above`));
     }
     let o = h.oldStart;
     let n = h.newStart;
@@ -233,10 +269,10 @@ export function diffEl(d: Extract<ToolDetail, { kind: "diff" }>): HTMLElement {
       if (l.t !== "+") o++;
       if (l.t !== "-") n++;
     }
-    table.insertAdjacentHTML("beforeend", rows.join(""));
+    appendMarkup(table, rows.join(""));
     prevEnd = { o, n };
   }
-  if (!d.hunks.length) table.insertAdjacentHTML("beforeend", `<div class="tv-gap"><span>No changes</span></div>`);
+  if (!d.hunks.length) table.appendChild(gapEl("No changes"));
   box.appendChild(table);
   if (d.truncated) {
     const t = document.createElement("div");
@@ -344,7 +380,7 @@ export function stepEl(r: ToolRec, open: boolean, onToggle: () => void): HTMLEle
   btn.className = "tv-step-btn";
   btn.setAttribute("aria-expanded", open ? "true" : "false");
   btn.appendChild(head);
-  btn.insertAdjacentHTML("beforeend", CHEV);
+  appendMarkup(btn, CHEV);
   btn.addEventListener("click", onToggle);
   el.appendChild(btn);
   if (open) {

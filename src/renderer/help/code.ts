@@ -471,7 +471,7 @@ function renderModelMenu(): void {
       const resolved = resolvedDefaultModel();
       defName.textContent = resolved ? `Default · ${resolved}` : "Default";
       defMain.appendChild(defName);
-      if (!selectedModel()) defMain.insertAdjacentHTML("beforeend", check);
+      if (!selectedModel()) appendMarkup(defMain, check);
       def.appendChild(defMain);
       def.addEventListener("click", () => { void choose(null); });
       list.appendChild(def);
@@ -502,7 +502,7 @@ function renderModelMenu(): void {
         const span = document.createElement("span");
         span.textContent = m.name;
         main.appendChild(span);
-        if (selectedModel()?.id === m.id) main.insertAdjacentHTML("beforeend", check);
+        if (selectedModel()?.id === m.id) appendMarkup(main, check);
         const sub = document.createElement("div");
         sub.className = "drop-sub";
         sub.textContent = m.providerSlug;
@@ -1076,10 +1076,21 @@ function paintBubble(bubble: HTMLElement, text: string): void {
   }
   const cut = streamStableCut(text);
   if (cut > st.frozenLen) {
-    st.frozen.insertAdjacentHTML("beforeend", formatMarkdown(text.slice(st.frozenLen, cut)));
+    // Appended, never re-rendered: a finished block keeps its nodes (and any
+    // selection in them) while the reply streams on.
+    const block = document.createElement("template");
+    block.innerHTML = formatMarkdown(text.slice(st.frozenLen, cut));
+    st.frozen.append(block.content);
     st.frozenLen = cut;
   }
   st.tail.innerHTML = formatMarkdown(text.slice(st.frozenLen));
+}
+
+/** Markup this file built itself (escaped, or a fixed icon), appended as nodes. */
+function appendMarkup(parent: Element, html: string): void {
+  const t = document.createElement("template");
+  t.innerHTML = html;
+  parent.append(t.content);
 }
 
 function paintStream(): void {
@@ -2541,7 +2552,7 @@ function toolLineEl(text: string): HTMLElement {
   line.className = "code-tool-line";
   if (badge) {
     line.textContent = rest + " ";
-    line.insertAdjacentHTML("beforeend", badge);
+    appendMarkup(line, badge);
   } else {
     line.textContent = text;
   }
