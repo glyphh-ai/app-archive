@@ -822,11 +822,6 @@ async function download(): Promise<void> {
   if (!r.ok) fail(r.error || "Download failed.");
 }
 
-type LoopRow = { id: string; name: string; icon?: string };
-async function configuredLoops(): Promise<LoopRow[]> {
-  const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents?: LoopRow[] }> }).cliAgentsList?.().catch(() => null);
-  return r?.ok && r.agents ? r.agents : [];
-}
 
 /** A new session in the workbench: in `loop` (or the current one), rooted at
  *  `cwd` when given, with `prompt` waiting in the composer. */
@@ -842,10 +837,10 @@ function tryInChat(): void {
   openSessionWith({ prompt: `Use the "${current.name}" skill: ${current.description || "show me what it does"}.` });
 }
 
-function editWith(loop: LoopRow): void {
+function editWith(): void {
   if (!current) return;
   openSessionWith({
-    loop: loop.id, cwd: current.dir,
+    cwd: current.dir,
     prompt: `This folder is the "${current.name}" skill (Agent Skills format: SKILL.md with name/description frontmatter, instructions below, optional scripts and references). Read it and help me improve it. Keep the format.`,
   });
 }
@@ -1098,24 +1093,11 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
  * One row per agent the bundle ships — `agents/*.md` per the standard, or a
  * task's slots, which are the same thing under an older name. Far left the
  * mark of what runs it, then its name and description, and on the right the
- * three things a person changes: what it runs on, which model, and its clock.
+ * two things a person changes: which model, and its clock.
  */
-const LOOP_FAVICON: Record<string, string> = {
-  claude: "https://claude.ai/favicon.ico",
-  codex: "https://openai.com/favicon.ico",
-  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
-  copilot: "https://github.com/favicon.ico",
-  cursor: "https://cursor.com/favicon.ico",
-  glyphh: GLYPHH_MASCOT_SRC,
-};
-let loopRows: LoopRow[] = [];
-
-/** A fixed loop's id IS its CLI (claude, codex, gemini…), which is what the
- *  dock keys its marks on, so the row wears the same face as the agent tile. */
-const loopMark = (id: string): string => {
-  const url = LOOP_FAVICON[String(id || "").toLowerCase()];
-  return url ? `<img src="${url}" alt="" />` : AGENT_ICON;
-};
+/** Every agent runs on the Glyphh loop (2026-09-28), so every row wears the
+ *  same face the agent tile does. */
+const loopMark = (_id: string): string => `<img src="${GLYPHH_MASCOT_SRC}" alt="" />`;
 
 const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 
@@ -1216,13 +1198,11 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
 async function paintBundleAgents(s: SkillDetail): Promise<void> {
   const host = el("skill-agents-list"); const count = el("skill-agent-count");
   if (!host) return;
-  const [env, loops, scheds] = await Promise.all([
+  const [env, scheds] = await Promise.all([
     api().skillAgents(s.id) as Promise<Env<BundleAgentRow[]>>,
-    (api() as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: LoopRow[] }> }).cliAgentsList?.().catch(() => ({ ok: false, agents: [] })) ?? Promise.resolve({ ok: false, agents: [] as LoopRow[] }),
     api().schedulesList() as Promise<Env<ScheduleRow[]>>,
   ]);
   const agents = env.ok ? env.data ?? [] : [];
-  loopRows = loops.ok ? loops.agents ?? [] : [];
   const slug = s.id.slice(s.id.indexOf(":") + 1);
   const rows = scheds.ok ? scheds.data ?? [] : [];
   const isTask = typeOf(s) === "task";
@@ -1253,26 +1233,15 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
       continue;
     }
 
-    // WHAT IT RUNS ON.
+    // WHICH MODEL — every agent runs on the Glyphh loop (2026-09-28), so the
+    // only choice left is the model.
     const modelSel = document.createElement("select");
-    const loopSel = document.createElement("select");
-    loopSel.className = "settings-input skill-slot-select";
-    loopSel.title = "What this agent runs on";
-    loopSel.innerHTML = `<option value="">Default</option>` + loopRows.map((l) => `<option value="${escapeHtml(l.id)}"${l.id === a.loop ? " selected" : ""}>${escapeHtml(l.name)}</option>`).join("");
-    loopSel.addEventListener("change", () => {
-      // The models follow immediately; the write and the repaint come after.
-      void fillModelChoices(modelSel, loopSel.value, a.model);
-      void setAgent(s, a, { loop: loopSel.value }, `${a.name} runs on ${loopRows.find((l) => l.id === loopSel.value)?.name ?? "the default"}`);
-    });
-    right.appendChild(loopSel);
-
-    // WHICH MODEL — the loop's own choices, so nothing offers a model it can't run.
     modelSel.className = "settings-input skill-model-select";
     modelSel.title = "Model for this agent";
     modelSel.innerHTML = `<option value="">Model: default</option>${a.model ? `<option value="${escapeHtml(a.model)}" selected>${escapeHtml(a.model)}</option>` : ""}`;
     modelSel.addEventListener("change", () => void setAgent(s, a, { model: modelSel.value }, `${a.name} uses ${modelSel.value || "the default model"}`));
     right.appendChild(modelSel);
-    void fillModelChoices(modelSel, a.loop || loopRows[0]?.id || "", a.model);
+    void fillModelChoices(modelSel, a.model);
 
     // ITS CLOCK.
     const schedBtn = document.createElement("button");
@@ -1287,11 +1256,6 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
   }
 }
 
-/** Which provider a loop can actually run. A CLI speaks its own vendor's
- *  models; anything else (a custom loop) gets the whole catalog. */
-const LOOP_PROVIDER: Record<string, string> = {
-  claude: "anthropic", codex: "openai", gemini: "google", copilot: "openai", cursor: "anthropic",
-};
 interface CatalogModel { id: string; name: string; providerSlug: string; active: boolean }
 let modelCatalog: CatalogModel[] | null = null;
 
@@ -1301,15 +1265,13 @@ let modelCatalog: CatalogModel[] | null = null;
  * models, so it always came back with nothing and kept the one default entry.
  * The org's model catalog is the list, narrowed to what the chosen loop runs.
  */
-async function fillModelChoices(sel: HTMLSelectElement, loop: string, chosen: string): Promise<void> {
+async function fillModelChoices(sel: HTMLSelectElement, chosen: string): Promise<void> {
   if (!modelCatalog) {
     const all = await (window.glyphh as unknown as { catalogModels?: () => Promise<CatalogModel[]> }).catalogModels?.().catch(() => []);
     modelCatalog = Array.isArray(all) ? all : [];
   }
-  const provider = LOOP_PROVIDER[String(loop || "").toLowerCase()];
   const models = modelCatalog
     .filter((m) => m.active !== false)
-    .filter((m) => !provider || m.providerSlug === provider)
     .sort((a, b) => a.name.localeCompare(b.name));
   const options = [`<option value="">Model: default</option>`];
   // A model the agent already names survives even when the catalog moved on.
@@ -1317,7 +1279,7 @@ async function fillModelChoices(sel: HTMLSelectElement, loop: string, chosen: st
   for (const m of models) options.push(`<option value="${escapeHtml(m.id)}"${m.id === chosen ? " selected" : ""}>${escapeHtml(m.name)}</option>`);
   sel.innerHTML = options.join("");
   sel.disabled = models.length === 0 && !chosen;
-  sel.title = provider ? `Models ${loop} can run` : "Model for this agent";
+  sel.title = "Model for this agent";
 }
 
 interface TaskRunRow { id: string; trigger: string; startedAt: string; durationMs: number | null; status: string; error: string | null; input: unknown; result: unknown; journal: { checkpoints: Record<string, unknown>; events: Array<Record<string, unknown> & { t: string; kind: string }> } }
@@ -1818,10 +1780,9 @@ function wire(): void {
   el("skill-kebab")?.addEventListener("click", async (e) => {
     if (!current) return;
     const anchor = e.currentTarget as HTMLElement;
-    const loops = await configuredLoops();
     openMenu(anchor, [
       { label: "Try in chat", onClick: tryInChat },
-      ...loops.map((l) => ({ label: `Edit with ${l.name}`, onClick: () => editWith(l) })),
+      { label: "Edit with Glyphh", onClick: () => editWith() },
       { label: "Check for updates", onClick: () => void checkForUpdates() },
       ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
       ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),

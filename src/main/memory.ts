@@ -1,30 +1,23 @@
 /**
- * memory-bridge — the CLI → vendor interception seam (his order, 2026-09-14:
- * "the cli -> bridge is our only place to capture and inject").
+ * memory — WHAT GLYPHH REMEMBERS, and how it gets back into a turn.
  *
- * A loopback HTTP proxy every loop's BASE_URL can point at. Three jobs:
+ * This was a loopback HTTP proxy in front of every CLI (memory-bridge). The
+ * bridge is gone (his order, 2026-09-28: "all the bridge code goes period. The
+ * memory lane stays native through the glyphh agent loop"), so the two jobs it
+ * did by reading other people's traffic are now plain calls the loop makes:
  *
- *   FORWARD — transparently, streaming (SSE passes through unbuffered), to
- *             the upstream encoded in the path: /fwd/<b64url(upstream)>/rest.
- *             Headers ride as-is (the CLI's own OAuth/key auth included), so
- *             the org-gateway lane, BYOK, and the CLI's own login all work.
- *   INJECT  — on Anthropic-wire chat calls (POST …/v1/messages), a compact
- *             <glyphh_memory> fact block appended to the system prompt:
- *             top-k retrieval over the reserved memory store for the last
- *             user message. Appended as ONE stable-shaped block at the end
- *             of system, so prompt caching keeps its prefix.
- *   CAPTURE — the turn's user text + the streamed assistant text, chunked +
- *             embedded into the reserved store AFTER the response completes,
- *             off the hot path. The store rides the same per-app substrate
- *             (glyphh-app-ai) under the reserved slug "glyphh-memory", so
- *             the semantic tools can query the same memory.
+ *   INJECT  — `memoryFacts()` returns a compact <glyphh_memory> block, top-k
+ *             retrieval over the reserved store for this turn's user text. The
+ *             loop appends it as its own uncached system block, so the cached
+ *             prefix above it is untouched.
+ *   CAPTURE — `memoryCapture()` chunks and embeds the finished turn after the
+ *             answer is in, off the hot path.
  *
- * Enabled by the `memoryBridgeEnabled` preference (Settings → General,
- * beside the embeddings upgrade). Injection/capture failures NEVER block a
- * forward — worst case the bridge is a plain pipe.
+ * The store is the same per-app substrate (glyphh-app-ai) under the reserved
+ * slug "glyphh-memory", so the semantic tools and the memory panel read exactly
+ * what the loop wrote. Neither lane can fail a turn: both swallow their errors.
  */
 
-import http from "node:http";
 import { getPreference } from "./stores/preferences-db.js";
 import { llmChunk, vectorUpsert, vectorSearch, vectorDelete, vectorItems } from "./glyphh-app-ai.js";
 import { getClient } from "./glyphh-client.js";
@@ -94,24 +87,7 @@ export function deleteMemoryPage(id: string): { deleted: number } {
 }
 
 const CAPTURE_CAP = 32_000;        // chars of user/assistant text kept per turn
-const SSE_ACCUM_CAP = 512_000;     // bytes of response we tee for capture
-const BODY_CAP = 10_000_000;       // request bodies we buffer for injection
 const FACTS_K = 5;
-
-let server: http.Server | null = null;
-let port = 0;
-/** A per-launch secret in every bridged URL (review finding, 2026-09-18): the
- *  bridge is loopback-only and opt-in, but without this any local process or
- *  panel page could use it as an open forwarder. It rides in the path, which
- *  is the one place every CLI's base-URL variable carries through untouched. */
-const LAUNCH_SECRET = (() => {
-  const { randomBytes } = require("node:crypto") as typeof import("node:crypto");
-  return randomBytes(18).toString("base64url");
-})();
-
-export function memoryBridgeEnabled(): boolean {
-  return getPreference<boolean>("memoryBridgeEnabled", false) === true;
-}
 
 /** THE POLICY (his order, 2026-09-19). Nothing is remembered until the user
  *  accepts the memory policy on Settings → Memory; then each lane follows the
@@ -207,14 +183,14 @@ export function registerMemoryIpc(): void {
       return { ok: true, deleted };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  // COMPILE PAGES NOW (his order, 2026-09-20): the curator skill runs through
-  // the default loop, on its schedule (nightly) or from the Memory page. The
+  // COMPILE PAGES NOW (his order, 2026-09-20): the curator skill runs on the
+  // Glyphh loop, on its schedule (nightly) or from the Memory page. The
   // schedule is made the first time it is asked for.
   ipcMain.handle("memory-curate-now", async () => {
     try {
       const { listSchedulesView, saveSchedule, runSchedule } = await import("./local-library.js");
       const have = listSchedulesView().find((s) => s.kind === "skill" && s.target === CURATOR_SLUG);
-      const id = have?.id ?? saveSchedule({ name: "Memory curator", kind: "skill", target: CURATOR_SLUG, agentId: getPreference<string>("glyphhLoop", "") || null, cron: "0 21 * * *", enabled: true }).id;
+      const id = have?.id ?? saveSchedule({ name: "Memory curator", kind: "skill", target: CURATOR_SLUG, agentId: null, cron: "0 21 * * *", enabled: true }).id;
       await runSchedule(id);
       return { ok: true };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -225,201 +201,32 @@ export function registerMemoryIpc(): void {
   });
 }
 
-/** Wrap an upstream base URL through the bridge (starts it on first use).
- *  Returns null when the bridge is disabled or failed to start. */
-/** THE BRIDGE IS ALWAYS IN THE PATH (his rule, 2026-09-14, restored
- *  2026-09-19: "we can't run a loop without our bridge"). It used to be an
- *  opt-in toggle; now every loop with a base-URL seam rides through it, and
- *  the Memory settings decide what it does with the traffic, never whether
- *  it is there. A wire the bridge cannot parse is forwarded untouched. */
 /** WHERE A TURN HAPPENED (his order, 2026-09-20): the folder a loop ran in
  *  and the workspace it ran under, so memory groups by project. */
 export interface MemoryScope { folder?: string; workspace?: string }
 
-export async function bridgeWrap(upstream: string, scope?: MemoryScope): Promise<string | null> {
-  const p = await startMemoryBridge();
-  if (!p) return null;
-  const clean: MemoryScope = { ...(scope?.folder ? { folder: scope.folder } : {}), ...(scope?.workspace ? { workspace: scope.workspace } : {}) };
-  const lane = Object.keys(clean).length ? JSON.stringify({ u: upstream, s: clean }) : upstream;
-  const b64 = Buffer.from(lane, "utf-8").toString("base64url");
-  return `http://127.0.0.1:${p}/fwd/${LAUNCH_SECRET}/${b64}`;
+// ── the two hooks the loop calls ────────────────────────────────────────────
+
+/**
+ * The fact block for a turn, or "" when there is nothing to say or the inject
+ * lane is off. The loop passes this straight to the model as its own system
+ * block; an empty string means it adds none.
+ */
+export async function memoryFacts(userText: string, _scope: MemoryScope = {}): Promise<string> {
+  // Retrieval is org-wide on purpose: a fact learned in one folder is still
+  // true in the next. The scope rides on capture so the panel can group.
+  if (!(await lane("inject"))) return "";
+  return factBlock(userText);
 }
 
-export function startMemoryBridge(): Promise<number | null> {
-  if (server && port) return Promise.resolve(port);
-  return new Promise((resolveP) => {
-    const s = http.createServer((req, res) => void handle(req, res));
-    s.on("error", (err) => {
-      console.warn("[memory-bridge] failed to start:", err instanceof Error ? err.message : err);
-      server = null; port = 0;
-      resolveP(null);
-    });
-    s.listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      port = typeof addr === "object" && addr ? addr.port : 0;
-      server = s;
-      console.info("[memory-bridge] listening", { port });
-      resolveP(port || null);
-    });
-  });
-}
-
-export function stopMemoryBridge(): void {
-  try { server?.close(); } catch { /* closing */ }
-  server = null; port = 0;
-}
-
-// ── the proxy ───────────────────────────────────────────────────────────────
-
-function upstreamOf(url: string): { base: string; rest: string; scope: MemoryScope } | null {
-  const m = /^\/fwd\/([A-Za-z0-9_-]+)(\/.*)?$/.exec(url);
-  if (!m) return null;
-  try {
-    const decoded = Buffer.from(m[1], "base64url").toString("utf-8");
-    let base = decoded; let scope: MemoryScope = {};
-    if (decoded.startsWith("{")) {
-      const j = JSON.parse(decoded) as { u?: string; s?: MemoryScope };
-      base = String(j.u || ""); scope = j.s && typeof j.s === "object" ? j.s : {};
-    }
-    base = base.replace(/\/$/, "");
-    if (!/^https?:\/\//.test(base)) return null;
-    return { base, rest: m[2] || "/", scope };
-  } catch { return null; }
-}
-
-/** An Anthropic-wire chat call — the one shape we inject into (v1; the
- *  OpenAI/Gemini shapes pass through untouched until their lanes land). */
-const FORWARD_IDLE_MS = 180_000;
-
-function isMessagesCall(method: string | undefined, rest: string): boolean {
-  const pathOnly = rest.split("?")[0];
-  return method === "POST" && /\/v1\/messages$/.test(pathOnly);
-}
-
-async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const prefix = `/fwd/${LAUNCH_SECRET}/`;
-  if (!(req.url || "").startsWith(prefix)) { res.statusCode = 404; res.end("unknown lane"); return; }
-  const up = upstreamOf("/fwd/" + (req.url || "").slice(prefix.length));
-  if (!up) { res.statusCode = 404; res.end("unknown lane"); return; }
-  const target = new URL(up.base + up.rest);
-
-  const headers: Record<string, string | string[]> = {};
-  for (const [k, v] of Object.entries(req.headers)) {
-    if (v == null) continue;
-    const lk = k.toLowerCase();
-    if (lk === "host" || lk === "connection" || lk === "content-length") continue;
-    headers[k] = v;
-  }
-  headers.host = target.host;
-
-  const inject = isMessagesCall(req.method, up.rest);
-  // The reply is teed for capture as text: ask the vendor for it uncompressed,
-  // else the tee holds gzip and the assistant's words never parse (reply: 0).
-  if (inject) delete headers["accept-encoding"];
-  if (inject) console.warn("[memory-bridge] messages call through the bridge", JSON.stringify({ upstream: target.host }));
-  let body: Buffer | null = null;
-  let userText = "";
-  if (inject) {
-    body = await readBody(req, BODY_CAP);
-    try {
-      const parsed = JSON.parse(body.toString("utf-8")) as Record<string, unknown>;
-      userText = lastUserText(parsed);
-      const facts = (await lane("inject")) ? await factBlock(userText) : "";
-      if (facts) {
-        appendSystem(parsed, facts);
-        body = Buffer.from(JSON.stringify(parsed), "utf-8");
-      }
-    } catch { /* not JSON / retrieval failed — forward untouched */ }
-    headers["content-length"] = String(body.length);
-  }
-
-  console.warn("[memory-bridge] forward", JSON.stringify({ method: req.method, upstream: target.host, path: target.pathname }));
-  const pr = (target.protocol === "https:" ? await import("node:https") : await import("node:http")).request(
-    { protocol: target.protocol, hostname: target.hostname, port: target.port || undefined,
-      method: req.method, path: target.pathname + target.search, headers },
-    (pres) => {
-      res.writeHead(pres.statusCode || 502, pres.headers);
-      // Tee the response for capture while streaming it through untouched.
-      let accum = "";
-      pres.on("data", (chunk: Buffer) => {
-        res.write(chunk);
-        if (inject && accum.length < SSE_ACCUM_CAP) accum += chunk.toString("utf-8");
-      });
-      pres.on("end", () => {
-        res.end();
-        if (inject && userText) void captureTurn(userText, assistantTextOf(accum), up.scope);
-      });
-      pres.on("error", () => { try { res.end(); } catch { /* gone */ } });
-    },
-  );
-  pr.on("error", (err) => {
-    if (!res.headersSent) res.writeHead(502);
-    res.end(`bridge forward error: ${err instanceof Error ? err.message : String(err)}`);
-  });
-  // A hung upstream must not hang the CLI forever (his report, 2026-09-20: a
-  // Codex turn sat for minutes with nothing on the wire). No bytes at all for
-  // this long ends the request as a 504 the CLI can show.
-  pr.setTimeout(FORWARD_IDLE_MS, () => {
-    console.warn("[memory-bridge] forward timed out", JSON.stringify({ upstream: target.host, path: target.pathname }));
-    if (!res.headersSent) res.writeHead(504);
-    try { res.end("bridge forward timed out"); } catch { /* gone */ }
-    pr.destroy(new Error("bridge forward timed out"));
-  });
-  if (body) pr.end(body);
-  else { req.pipe(pr); req.on("error", () => pr.destroy()); }
-}
-
-function readBody(req: http.IncomingMessage, cap: number): Promise<Buffer> {
-  return new Promise((resolveB, rejectB) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > cap) { rejectB(new Error("body too large")); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => resolveB(Buffer.concat(chunks)));
-    req.on("error", rejectB);
-  });
-}
-
-// ── anthropic-wire helpers ──────────────────────────────────────────────────
-
-function lastUserText(body: Record<string, unknown>): string {
-  const messages = Array.isArray(body.messages) ? body.messages as Array<Record<string, unknown>> : [];
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role !== "user") continue;
-    if (typeof m.content === "string") return m.content.slice(0, CAPTURE_CAP);
-    if (Array.isArray(m.content)) {
-      const t = (m.content as Array<{ type?: string; text?: string }>)
-        .filter((c) => c.type === "text" && c.text).map((c) => c.text).join("\n");
-      if (t.trim()) return t.slice(0, CAPTURE_CAP);
-    }
-  }
-  return "";
-}
-
-function appendSystem(body: Record<string, unknown>, block: string): void {
-  if (typeof body.system === "string") body.system = `${body.system}\n\n${block}`;
-  else if (Array.isArray(body.system)) (body.system as unknown[]).push({ type: "text", text: block });
-  else body.system = block;
-}
-
-/** Streamed assistant text out of the teed SSE (or a non-streamed JSON body). */
-function assistantTextOf(raw: string): string {
-  let out = "";
-  const re = /"type":"text_delta","text":"((?:[^"\\]|\\.)*)"/g;
-  for (let m = re.exec(raw); m && out.length < CAPTURE_CAP; m = re.exec(raw)) {
-    try { out += JSON.parse(`"${m[1]}"`); } catch { /* skip bad escape */ }
-  }
-  if (!out) {
-    try {
-      const j = JSON.parse(raw) as { content?: Array<{ type?: string; text?: string }> };
-      out = (j.content ?? []).filter((c) => c.type === "text" && c.text).map((c) => c.text).join("\n");
-    } catch { /* streamed but empty — nothing to capture */ }
-  }
-  return out.slice(0, CAPTURE_CAP);
+/**
+ * Remember a finished turn. Fire-and-forget by design — the loop has already
+ * told the user the turn is done, and memory must never hold that up or fail it.
+ */
+export function memoryCapture(userText: string, answer: string, scope: MemoryScope = {}): void {
+  // The cap the bridge applied on the wire now applies here: a long turn is
+  // remembered by its head, not by every token of a pasted file.
+  void captureTurn(userText.slice(0, CAPTURE_CAP), answer.slice(0, CAPTURE_CAP), scope);
 }
 
 // ── the fact tree + capture ─────────────────────────────────────────────────
@@ -444,9 +251,9 @@ async function captureTurn(userText: string, assistantText: string, scope: Memor
     const key = `${userText}\u0000${assistantText}`;
     if (key === lastCaptured.key && Date.now() - lastCaptured.at < 10 * 60_000) return;
     lastCaptured = { key, at: Date.now() };
-    if (!(await lane("capture"))) { console.warn("[memory-bridge] turn not captured: the capture lane is off (policy, org rule, or your switch)"); return; }
+    if (!(await lane("capture"))) { console.warn("[memory] turn not captured: the capture lane is off (policy, org rule, or your switch)"); return; }
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;
-    if (!(await lane("sensitive")) && SENSITIVE.test(text)) { console.warn("[memory-bridge] turn not captured: sensitive topic and the sensitive lane is off"); return; }
+    if (!(await lane("sensitive")) && SENSITIVE.test(text)) { console.warn("[memory] turn not captured: sensitive topic and the sensitive lane is off"); return; }
     const { chunks } = llmChunk({ text, maxChars: 1_200 });
     if (!chunks.length) return;
     const sourceId = `turn-${Date.now().toString(36)}`;
@@ -459,8 +266,8 @@ async function captureTurn(userText: string, assistantText: string, scope: Memor
         })),
       });
     }
-    console.warn("[memory-bridge] captured", JSON.stringify({ chunks: chunks.length, reply: assistantText.length }));
+    console.warn("[memory] captured", JSON.stringify({ chunks: chunks.length, reply: assistantText.length }));
   } catch (err) {
-    console.warn("[memory-bridge] capture failed:", err instanceof Error ? err.message : err);
+    console.warn("[memory] capture failed:", err instanceof Error ? err.message : err);
   }
 }

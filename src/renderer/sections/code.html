@@ -6,12 +6,14 @@
             <!-- Center — the agent -->
             <section class="code-agent">
               <div class="code-agent-head">
-                <!-- In-thread session head (SessionHeader port): ‹ + locus icon
-                     + name — ‹/name opens the space's list view. -->
-                <button id="code-session-back" class="session-head-back" title="All sessions" type="button">
-                  <svg class="session-head-chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                  <span id="code-session-locus" class="session-head-locus" title="Where this session runs"></span>
-                </button>
+                <!-- In-thread session head: the thread's TYPE + its name (his
+                     order, 2026-09-29: the ‹ arrow and the locus icon come off
+                     — the arrow's target, the CLI hop, is gone, and the icon
+                     that reads is WHAT THIS IS). Same glyph the rail rows and
+                     the + New button wear. -->
+                <span id="code-session-back" class="session-head-back">
+                  <span id="code-session-locus" class="session-head-locus" title="Session type"></span>
+                </span>
                 <!-- The NAME lives OUTSIDE the back button: an input swapped
                      into a <button> is inert (nested interactive content) —
                      that is why inline rename "didn't work". Plain span:
@@ -59,6 +61,8 @@
 
               </div>
               <div class="code-composer">
+                <!-- The money banner: no plan, near a budget's line, or past it (help/code.ts paintSpendBanner). -->
+                <div id="code-spend-banner" class="code-spend-banner" hidden></div>
                 <div id="code-ask-dock" class="code-ask-dock" hidden></div>
                 <!-- Notes typed while the agent is running. They wait here until the
                      run ends, then go as the next turn — deletable until they do. -->
@@ -159,12 +163,6 @@
                   <div class="code-bar-right">
                     <div id="code-model-wrap" class="code-chipwrap">
                       <button id="code-model-chip" class="code-chip" type="button"></button>
-                    </div>
-                    <div id="code-effort-wrap" class="code-chipwrap">
-                      <button id="code-effort-chip" class="code-chip" type="button"></button>
-                    </div>
-                    <div id="code-level-wrap" class="code-chipwrap hidden">
-                      <button id="code-level-chip" class="code-chip" type="button" title="Effort"></button>
                     </div>
                   </div>
                 </div>

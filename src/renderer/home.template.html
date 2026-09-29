@@ -103,11 +103,29 @@
         <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
              platform — filled by initOrgSwitcher(); hidden for single-org users. -->
         <div id="org-switch-rail" class="org-switch hidden"></div>
-        <!-- Every session is ONE type (the most-capable Code toolset). The
-             Chat/Work/Code space tabs were removed — + New session creates a
-             Code session; the list below is the Recents for it. -->
-        <button id="code-new-chat" class="btn btn-primary btn-lg code-new-session-rail" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <!-- TWO TYPES (his order, 2026-09-29: "bring the two types back…
+             Each chat should carry a type and switching the tabs shows the two
+             respective lists in the left rail"). The tab IS the type: it
+             filters Recents, it is what + New creates, and it decides how big
+             a toolbelt the turn carries (Chat sends almost no tool defs; Code
+             sends the lot). The agent panel's own recents dropdown carries the
+             same toggle. -->
+        <div id="rail-type-tabs" class="rail-type-tabs" role="tablist" aria-label="Session type">
+          <button class="rail-type-tab" data-type="work" role="tab" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M2.5 12h19"/></svg>
+            <span>Work</span>
+          </button>
+          <button class="rail-type-tab active" data-type="code" role="tab" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 4 12 9 18"/><polyline points="15 6 20 12 15 18"/></svg>
+            <span>Code</span>
+          </button>
+        </div>
+        <!-- + New creates a session of the ACTIVE type. A QUIET ROW, not a
+             filled button (his order + screenshot, 2026-09-29): it reads as one
+             of the rail's own destinations, in the same grammar as Customize
+             and More below. Which type it creates is the tab's job to say. -->
+        <button id="code-new-chat" class="app-rail-nav-item code-new-session-rail" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New</span>
         </button>
         <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
@@ -148,7 +166,6 @@
         <div id="rail-recents-body" class="app-rail-section-body" data-rail-section="recents">
           <div class="app-rail-search">
             <input id="recent-sessions-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
-            <button id="recent-sessions-filter" class="rail-filter-btn" type="button" title="Filter by loop"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></button>
           </div>
           <div id="recent-sessions-list" class="code-history"></div>
         </div>

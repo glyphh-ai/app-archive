@@ -5,7 +5,7 @@
  * (Formerly bundled into drop-ipc; the Drop is gone, these handlers are not.)
  */
 
-import { ipcMain, webContents } from "electron";
+import { ipcMain } from "electron";
 import type { ConnectorManager } from "./connectors";
 import {
   syncLocalMcpServer,
@@ -15,6 +15,7 @@ import {
   localMcpListTokens,
   localMcpRevokeToken,
 } from "./local-mcp-server";
+import { sendToHomeShell } from "./broadcast";
 import { setPreference } from "./stores/preferences-db";
 import { getAccountInfo, getAuthStatus } from "./auth";
 import { getClient } from "./glyphh-client";
@@ -35,10 +36,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   // The SHELL (boot gate / tutorial) steering the home panel's section —
   // e.g. "land on Home after the first-run walkthrough".
   ipcMain.handle("home-goto-section", (_e, section: string) => {
-    const homes = webContents.getAllWebContents().filter((wc) => {
-      try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
-    });
-    for (const wc of homes) wc.send("home:goto-section", String(section));
+    sendToHomeShell("home:goto-section", String(section));
     return { ok: true };
   });
 

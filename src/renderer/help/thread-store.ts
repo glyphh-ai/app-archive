@@ -37,7 +37,7 @@ export interface ThreadChat {
   title: string;
   createdAt: number;
   messages: unknown[];
-  mode?: "chat" | "cowork" | "code";
+  mode?: "work" | "code" | /** legacy stamps (help/code.ts modeOf folds them to Work) */ "chat" | "cowork";
   source?: unknown;
   updatedAt?: number;
   messageCount?: number;
@@ -163,6 +163,13 @@ const PUSH_DEBOUNCE_MS = 1500;
 const RETRY_MS = 60_000;
 const BODY_RETRY_MS = 30_000;
 
+/** A THREAD'S TYPE, as this build knows them (his order, 2026-09-29: two types,
+ *  Work and Code). `work` was missing from this guard, so a thread the server
+ *  handed back arrived stamped `code` and a Work session moved tabs behind the
+ *  user's back. The legacy `chat`/`cowork` stamps still ride through; help/code
+ *  folds them to Work. */
+const isMode = (m: unknown): m is NonNullable<ThreadChat["mode"]> =>
+  m === "work" || m === "code" || m === "chat" || m === "cowork";
 const stampOf = (c: ThreadChat): number => c.updatedAt ?? c.createdAt;
 const modeOf = (c: ThreadChat): string => c.mode ?? ((c as { chat?: boolean }).chat ? "chat" : "code");
 /** The content that syncs — title/mode/source/messages (local-only fields excluded). */
@@ -234,7 +241,7 @@ async function reconcile(): Promise<void> {
       // Unknown thread from another surface — adopt metadata, bodies lazy.
       const adopted: ThreadChat = {
         id: m.id, title: m.title, createdAt: m.createdAt, updatedAt: m.updatedAt,
-        mode: (m.mode === "chat" || m.mode === "cowork" || m.mode === "code") ? m.mode : "code",
+        mode: isMode(m.mode) ? m.mode : "code",
         messages: [], messageCount: m.messageCount,
       };
       if (m.source != null) adopted.source = m.source;
@@ -247,7 +254,7 @@ async function reconcile(): Promise<void> {
         // Server strictly newer → adopt (meta now, bodies eagerly — this
         // thread has local history on screen paths; keep local on a miss).
         local.title = m.title;
-        if (m.mode === "chat" || m.mode === "cowork" || m.mode === "code") local.mode = m.mode;
+        if (isMode(m.mode)) local.mode = m.mode;
         if (m.source != null) local.source = m.source;
         local.updatedAt = m.updatedAt;
         local.messageCount = m.messageCount;
@@ -272,10 +279,17 @@ async function reconcile(): Promise<void> {
   // server-known → drop it locally, never resurrect) OR a never-synced local thread
   // (the desktop's pre-cutover history → migration-push it once). Without this split, a
   // web-side delete was mistaken for a local thread and pushed back — resurrecting it.
+  // AN EMPTY ANSWER IS NOT A DELETION (his report, 2026-09-29: a recent listed
+  // in the rail did nothing when clicked — the row was painted from main's
+  // shared file while this document's array no longer had the thread). The
+  // desktop's thread channels are dead-ended in main today, so `list()` returns
+  // `[]`; every previously-synced thread then looked remotely deleted and was
+  // spliced out of the live array. A server that returns nothing has told us
+  // nothing, so nothing is dropped on it.
   const remoteGone: string[] = [];
   for (const c of chatsRef) {
     if (serverById.has(c.id) || deleted[c.id] !== undefined) continue;
-    if (serverSeen.has(c.id)) remoteGone.push(c.id);         // deleted elsewhere → drop
+    if (serverList.length && serverSeen.has(c.id)) remoteGone.push(c.id); // deleted elsewhere → drop
     else { pending.add(c.id); snapshot.set(c.id, projection(c)); } // never synced → push
   }
   for (const id of remoteGone) {

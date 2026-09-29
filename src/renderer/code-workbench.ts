@@ -17,11 +17,11 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
+import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
-import { mascotSvg, GLYPHH_LOOP_MASCOT } from "./help/mascots.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
@@ -108,7 +108,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -148,10 +148,6 @@ interface TermSlot {
   /** THIS terminal's folder (an agent's, resolved by main) — the pty spawns
    *  here, never in the workbench's global folder. Absent = the workbench's. */
   cwd?: string;
-  /** Set ONLY by openAgentCliCard: this terminal is an AGENT view, and its
-   *  tab row becomes the agent header (session name + the shared control
-   *  cluster). Plain terminals never carry it — their tabs are untouched. */
-  agent?: { id: string; name: string };
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
@@ -206,6 +202,11 @@ interface PreviewSlot {
 
 
 
+/** THE AGENTS PANEL (his order, 2026-09-29): every sub-agent the Glyphh loop
+ *  started, each an expandable row with its own feed. It holds no state of its
+ *  own — main's ledger is the source (agents-panel.ts). */
+interface AgentsSlot { id: number; view: "agents"; sticky?: boolean }
+
 interface PlanSlot {
   id: number; view: "plan";
   sticky?: boolean;
@@ -249,7 +250,7 @@ interface GDriveSlot {
 interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 /** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
 interface GMediaSlot extends MediaSlotState { sticky?: boolean }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -290,6 +291,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   // as the Echo agent card ("Glyphh") — the internal view key stays "coding"
   // (persisted layouts reference it).
   coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
+  agents:   { title: "Agents",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
@@ -416,66 +418,25 @@ type WallState = { layout: string | null; cards: WallCard[] };
 
 const prefsYo = (): { getPreference?: (k: string, d?: unknown) => Promise<unknown> } =>
   (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).glyphh ?? {};
-// AGENT LOOP DEFAULTS (his order, 2026-09-16): the app-wide loop and how it
-// opens (glyphh = the chat panel, cli = the loop's own terminal). Cached so the
-// synchronous layout-open path can read them; Settings re-fires the event.
-/** Settings → General → Default view. "last" = defer to the workspace cell, then the remembered view. */
-let defaultLoopView: "glyphh" | "cli" | "last" = "glyphh";
-/** THE VIEW AN AGENT OPENS IN (his order, 2026-09-16), in this precedence:
- *  the app setting when it names a view; else the workspace cell's own view;
- *  else the last view used before the restart. */
-/** WHICH FACE AN AGENT OPENS WITH. The most specific setting wins (his
- *  report, 2026-09-17: a workspace set to Glyphh opened as CLI because the app
- *  default short-circuited it): the agent's own cell, then the workspace it
- *  sits in, then the app default, and only if that says "last" the last face
- *  the user left an agent on. */
-function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "cli" {
-  // A closed terminal door outranks every preference: a workspace cell saved
-  // as "cli" must not reopen it.
-  if (!cliAllowed) return "glyphh";
-  if (cellView === "glyphh" || cellView === "cli") return cellView;
-  if (layoutView === "glyphh" || layoutView === "cli") return layoutView;
-  if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
-  return uiStateGet("agentLastView") === "chat" ? "glyphh" : "cli";
-}
-/** THE CLI AGENTS, module-wide. The wall renderer owned this list as a local,
- *  so every sibling that reads it (the terminal head, the session adopter)
- *  threw "cliAgentRows is not defined" the moment it ran (his report,
- *  2026-09-17). code-workbench.ts is bundled by esbuild and typechecked by
- *  nothing, so the compiler never said a word. */
-interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
-let cliAgentRows: CliAgentRowLite[] = [];
+
+/** THE ONE LOOP (his order, 2026-09-28: "no cli switching etc"). This was a
+ *  roster the user kept — a named pre-config per vendor CLI — and every door
+ *  had to pick from it. There is one loop now, ours, so the id is a constant
+ *  and no door carries a choice. */
+const GLYPHH_LOOP_ID = "glyphh";
 
 /** How long the pointer rests on the top edge before a tucked dock drops
  *  down. Settings owns it; 0 is the moment it arrives. */
 let dockRevealMs = 350;
 
-/** THE ORG CAN CLOSE THE TERMINAL DOOR (his order, 2026-09-18): restricting
- *  loops and models is meaningless while a member can hop into the CLI and
- *  run whatever they like. Open by default, and only the server enforces. */
-let cliAllowed = true;
-async function refreshCliAllowed(): Promise<void> {
-  try {
-    const g = await (window as unknown as { glyphh?: { planGates?: () => Promise<{ cliAllowed?: boolean }> } }).glyphh?.planGates?.();
-    cliAllowed = g?.cliAllowed !== false;
-  } catch { /* offline — whatever we last knew stands */ }
-  if (!cliAllowed) document.getElementById("code-term-toggle")?.remove();
-  else (window as unknown as { __wbEnsureTermToggle?: () => void }).__wbEnsureTermToggle?.();
-}
-void refreshCliAllowed();
-window.addEventListener("glyphh:plan-gates-changed", () => void refreshCliAllowed());
+// (THE TERMINAL DOOR IS OPEN TO EVERYONE — his order, 2026-09-29: the org's
+//  Terminal-access switch went with the gateway switches. The Terminal is a
+//  plain panel; nothing gates it in here.)
 // The org's switches reach the shell as account-updated (main's org poll);
 // nothing raised the gates event before, so a flip waited for a restart
 // (his report, 2026-09-20).
 (window as unknown as { glyphh?: { onAccountUpdated?: (cb: () => void) => void } }).glyphh?.onAccountUpdated?.(() => window.dispatchEvent(new Event("glyphh:plan-gates-changed")));
 
-let defaultLoopPref = "";
-const refreshLoopPrefs = (): void => {
-  void prefsYo().getPreference?.("defaultLoopView", "glyphh").then((v) => { defaultLoopView = v === "cli" || v === "last" ? v : "glyphh"; }).catch(() => {});
-  void prefsYo().getPreference?.("defaultLoop", "").then((v) => { defaultLoopPref = String(v ?? ""); }).catch(() => {});
-};
-refreshLoopPrefs();
-window.addEventListener("glyphh:pref-changed", refreshLoopPrefs);
 
 /**
  * The configured start page. Cached after the first read so the paint path
@@ -1171,7 +1132,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "agents" || v === "echo" || v === "monaco" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -1337,7 +1298,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1353,19 +1314,6 @@ async function init(): Promise<void> {
   // The app-standard confirm modal, bridged from the help bundle (the
   // workbench bundle can't import help modules; #confirm-modal lives in
   // this document). Bridge absent → proceed, matching the old paths.
-  /** What main answers when a loop's binary is not on PATH (cli-install.ts). */
-  type MissingCliInfo = { name: string; install: string; login: string; note?: string };
-  /** A LOOP WHOSE CLI IS NOT INSTALLED (his order, 2026-09-21: the installer
-   *  gate is gone; a missing CLI is a dialog at open time). The app modal
-   *  names the install line; the primary button copies it. */
-  async function askInstallCli(m: MissingCliInfo): Promise<void> {
-    const signIn = m.login ? ` Then sign in with \`${m.login}\`${m.note ? ` (${m.note})` : ""}.` : "";
-    const body = m.install
-      ? `${m.name} is not on this machine's PATH. Install it from a terminal: ${m.install}${signIn} Then open the loop again.`
-      : `${m.name} is not on this machine's PATH. Install it, make sure a terminal can run it, then open the loop again.`;
-    const copy = await appConfirm({ title: `${m.name} is not installed`, body, confirmLabel: m.install ? "Copy install command" : "OK", cancelLabel: "Close" });
-    if (copy && m.install) void (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard?.(m.install);
-  }
   function appConfirm(opts: { title: string; body?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<boolean> {
     const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
     return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
@@ -1433,7 +1381,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"): void;
     /** Open (or re-front) the terminal card and type a command into its shell:
      *  straight into a live pty, or as the first command of one still booting. */
     openTerminalWith(cmd: string): void;
@@ -1565,6 +1513,7 @@ async function init(): Promise<void> {
     if (view === "gdesign") return { id, view };
     if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
+    if (view === "agents") return { id, view };
     return { id, view: "preview", url: "" };
   }
   /**
@@ -2166,6 +2115,7 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+    else if (slot.view === "agents") mountAgentsPanel(body);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "gpoint") {
       body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
@@ -2251,53 +2201,6 @@ async function init(): Promise<void> {
     return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
   }
   (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => { openToolWithPayload("gdrive", () => {}); };
-  // BRIDGE MODE (his order, 2026-09-21): the bridge TUI over everything, a
-  // full-screen terminal overlay. With the org forcing Bridge Mode this IS the
-  // app; the × hides the window and the bridge keeps serving.
-  let bridgeOverlay: { el: HTMLElement; slot: TermSlot } | null = null;
-  const closeBridgeTui = (): void => {
-    if (!bridgeOverlay) return;
-    for (const t of bridgeOverlay.slot.terminals) { try { killTerminal(t); } catch { /* gone */ } }
-    bridgeOverlay.el.remove();
-    bridgeOverlay = null;
-  };
-  (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui = async () => {
-    if (bridgeOverlay) return;
-    const g = window.glyphh as unknown as { bridgeTuiCommand?: () => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }>; bridgeState?: () => Promise<{ forced: boolean }> };
-    const r = await g.bridgeTuiCommand?.().catch(() => null);
-    if (!r?.ok || !r.command) { console.warn("[bridge] no command", r?.error); return; }
-    const forced = !!(await g.bridgeState?.().catch(() => null))?.forced;
-    const el = document.createElement("div");
-    el.id = "cli-installer-overlay";
-    el.className = "booting";
-    // Forced: no × at all. Finish in the TUI is the only way out, and it closes
-    // the window (the bridge keeps running behind the tray).
-    el.innerHTML = `${forced ? "" : `<button type="button" class="cli-installer-quit" title="Close the bridge TUI">&times;</button>`}<div class="cli-installer-host ws-rail-slot-body"></div>`;
-    window.setTimeout(() => el.classList.remove("booting"), 1400);
-    el.querySelector<HTMLButtonElement>(".cli-installer-quit")?.addEventListener("click", () => closeBridgeTui());
-    document.body.appendChild(el);
-    const slot = makeSlot("terminal") as TermSlot;
-    slot.terminals[0].initCmd = r.command;
-    bridgeOverlay = { el, slot };
-    renderTerminalIntoSlot(el.querySelector<HTMLElement>(".cli-installer-host")!, slot);
-    console.warn("[bridge] TUI open (full screen)", JSON.stringify({ forced }));
-  };
-  const bridgeDoors = window.glyphh as unknown as { onBridgeOpenTui?: (cb: () => void) => void; onBridgeFinished?: (cb: () => void) => void; bridgeState?: () => Promise<{ forced: boolean }> };
-  bridgeDoors.onBridgeOpenTui?.(() => {
-    void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.();
-  });
-  // Finish in the bridge TUI: the overlay goes, and under a forced org the
-  // window goes with it (main hides it; the bridge keeps serving).
-  bridgeDoors.onBridgeFinished?.(() => {
-    void bridgeDoors.bridgeState?.().then((st) => {
-      closeBridgeTui();
-      if (st?.forced) window.setTimeout(() => window.glyphh.windowClose?.(), 400);
-    }).catch(() => closeBridgeTui());
-  });
-  // Forced before this renderer existed (a restart with the org already
-  // requiring it): open at once rather than wait for the next gates poll.
-  void bridgeDoors.bridgeState?.().then((st) => { if (st?.forced) void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.(); }).catch(() => undefined);
-
   let gdesignPanel: DesignPanel | null = null;
   function gdesignPanelInstance(): DesignPanel {
     if (!gdesignPanel) gdesignPanel = initDesign({ confirm: (o) => appConfirm(o), icon: VIEW_META.gdesign.icon });
@@ -2490,7 +2393,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow;  kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
@@ -2508,26 +2411,6 @@ async function init(): Promise<void> {
       layoutId?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; iconUrl?: string | null }> = [];
-    // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
-    // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
-    // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
-    const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
-      name: a.name,
-      slug: `agent:${a.id}`,
-      orderKey: `agent:${a.id}`,
-      // Branded CLIs wear their public marks; custom ones the robot.
-      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" }
-        : a.cli === "codex" ? { iconUrl: "https://openai.com/favicon.ico" }
-        : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
-        : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
-        : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
-        : a.cli === "glyphh" ? { glyphSvg: mascotSvg(GLYPHH_LOOP_MASCOT) }   // Sage, not the brand mark the New tile wears
-        : { glyphSvg: CLI_AGENT_GLYPH }),
-      kind: "tool",
-      toolView: "terminal",
-      cliAgent: { id: a.id, command: a.command },
-    });
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -3379,8 +3262,6 @@ async function init(): Promise<void> {
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
-      cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
-      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean; prompt?: string; light?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -3394,8 +3275,7 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-      yoApi?.cliAgentsList?.().catch(() => null) ?? null,
-    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref, cliAgentsRes]) => {
+    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
       await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
@@ -3446,20 +3326,20 @@ async function init(): Promise<void> {
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
       const toolTiles: EchoTile[] = [];
-      // AGENT tiles ride the wall like workspaces do — one per saved CLI config.
-      cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
-        ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
-      const agentTiles = cliAgentRows.map(cliAgentTileOf);
-      const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      // NO SECOND AGENT TILE (his order, 2026-09-29: "there is no need for the
+      // second glyphh agent anymore on the echo panel, that can be removed").
+      // The roster era put one tile per CLI config on the wall and in the dock;
+      // with one loop that was the mark's own door wearing a different face
+      // (the green mascot beside the brand mark). The dock's "New session"
+      // mark IS the agent door now.
+      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
-      // right to left as Close all, Command center, Settings, with the agent
-      // loops and the two openers ahead of them — but it is only the DEFAULT.
-      // Once the dock has been arranged, that arrangement is law: nothing here
-      // re-sorts it, and the only things that move are a loop that no longer
-      // exists (out) and a slot the user has never seen (in).
-      const DEFAULT_DOCK = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "settings", "cc", "closeall"];
+      // right to left as Close all, Command center, Settings, with the two
+      // openers ahead of them — but it is only the DEFAULT. Once the dock has
+      // been arranged, that arrangement is law: nothing here re-sorts it, and
+      // the only thing that moves is a slot the user has never seen (in).
+      const DEFAULT_DOCK = ["glyphh", "newtab", "settings", "cc", "closeall"];
       const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
-      const liveAgent = new Set(agentTiles.map((t) => t.orderKey!));
       // A key from an older dock (logout, Tabs, Workspaces, Drips) names a
       // button that no longer exists; it leaves rather than haunting the order.
       const saved = Array.isArray(dockPref)
@@ -3468,7 +3348,8 @@ async function init(): Promise<void> {
       if (!saved?.length) {
         dockKeys = DEFAULT_DOCK;
       } else {
-        dockKeys = saved.filter((k) => !k.startsWith("agent:") || liveAgent.has(k));
+        // An `agent:*` key is a tile from the roster era — it leaves with it.
+        dockKeys = saved.filter((k) => !k.startsWith("agent:"));
         // A slot that shipped after this dock was saved joins it — unless the
         // user deliberately parked it on the pages, which the page order says.
         const parked = new Set((Array.isArray(orderPref) ? (orderPref as unknown[]).map(legacyKey) : []).flatMap((k) => [k, k.replace(/^dock:/, "")]));
@@ -3506,28 +3387,6 @@ async function init(): Promise<void> {
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
       buildWall([[...pageTiles, ...rest]]);
-      // The Agents section announces saves/deletes — reconcile the wall's
-      // agent tiles in place (no rebuild: geometry and open cards survive).
-      window.addEventListener("glyphh:cli-agents-changed", () => {
-        void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
-          if (!r?.ok) return;
-          cliAgentRows = r.agents;
-          const have = new Map(entries.filter((e) => e.tile.cliAgent).map((e) => [e.tile.cliAgent!.id, e]));
-          for (const a of r.agents) {
-            const e = have.get(a.id);
-            if (e) {
-              e.tile.name = a.name;
-              e.tile.cliAgent = { id: a.id, command: a.command };
-              have.delete(a.id);
-            } else {
-              const t = makeTileEntry(cliAgentTileOf(a));
-              (wallBands[0] ?? (wallBands[0] = [])).push(t);
-            }
-          }
-          for (const [, e] of have) dropTileEntry(e);
-          renderPages();
-        }).catch(() => {});
-      });
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
       // First run: the guided tour points at the live dock + tiles, once per
@@ -3614,10 +3473,9 @@ async function init(): Promise<void> {
         if (saved?.cards?.length) {
           for (const c of saved.cards) {
             if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
-            // A saved CLI agent card comes back as an agent PANEL now (its loop
-            // in hand) — the shell never seats an agent's CLI itself anymore.
-            else if (c.kind === "agent" && c.agent && AGENT_INSTANCED) openAgentInstance(c.agent);
-            else if (c.kind === "agent" && c.agent) (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(c.agent);
+            // A saved agent card comes back as an agent PANEL — the shell
+            // never seats a CLI of its own anymore.
+            else if (c.kind === "agent" && c.agent) { if (AGENT_INSTANCED) openAgentInstance(c.agent); else openAgentForLoop(GLYPHH_LOOP_ID); }
             else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
             else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
           }
@@ -4014,7 +3872,7 @@ async function init(): Promise<void> {
     const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings", "section"]);
     const holdsDocState = (view: string): boolean => !NO_DOC_STATE.has(view);
     /** A loose card's identity, enough to reopen it: what the wall tile or ad-hoc
-     *  entry carried, minus the live objects (layoutRow, cells, cliAgent). */
+     *  entry carried, minus the live objects (layoutRow, cells). */
     type ExtraTileRef = Pick<EchoTile, "name" | "slug" | "kind" | "toolView" | "url" | "glyphh" | "appId" | "iconUrl" | "workbench" | "sticky">;
     /** What a named workspace remembers between opens. `cells` are the
      *  DEFINITION's panels (keyed), `extras` everything the user opened beside
@@ -4191,7 +4049,8 @@ async function init(): Promise<void> {
           openSectionCard(slug.slice(5), t.name);
           entry = openList.find((e) => (e.tile.slug || "").toLowerCase() === slug) ?? null;
         } else if (slug.startsWith("agent:")) {
-          (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(slug.slice(6));
+          // A restored agent card: the chat panel, not a CLI terminal.
+          (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent?.();
           continue;
         } else if (t.kind === "tool" && t.toolView) {
           entry = adHoc({ name: t.name, slug: t.slug, kind: "tool", toolView: t.toolView, appId: t.appId, iconUrl: t.iconUrl, sticky: t.sticky });
@@ -4706,32 +4565,21 @@ async function init(): Promise<void> {
         if (ev.shiftKey) {
           if (key === "newtab") { openNewTabForm(); return; }
           const again = key === "glyphh" ? null : entriesByKey().get(key);
-          if (again && !again.tile.cliAgent) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
+          if (again) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
         }
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
           if (key === "glyphh") {
-            // ANOTHER agent panel (his ruling, 2026-09-26) — the mark is a door.
-            if (AGENT_INSTANCED) {
-              const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
-              openAgentInstance(wanted?.id);
-              return;
-            }
-            // Same rule as the pages' mark (2026-08-19): OPEN the agent —
-            // never reset to a new session, never double a layout's agent.
-            const inLayout = openList.some((x) => x.layoutId != null);
-            const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
-            if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
-            // An agent already on the stage is THE agent — the mark re-fronts
-            // it and never doubles it, layout or not.
-            if (agentShowing) { void openAgentPanel(); return; }
-            // THE DEFAULTS ARE THE DEFAULTS (his report, 2026-09-17): the mark
-            // took the view from Settings but opened a loopless panel, so the
-            // configured loop never bound and the model rode whatever the chat
-            // found. Same door the shift-open uses, minus the "again".
-            const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
-            if (wanted) openAgentForLoop(wanted.id);
-            else void openAgentPanel();
+            // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it
+            // should ALWAYS load a new agent with a new session no matter
+            // what… for some reason it is loading a previous state and the ui
+            // gets stuck"). No re-fronting an open panel, no reusing a
+            // layout's seat: another panel, told to start clean the moment it
+            // answers. The panel also refuses the store's pointer on its own
+            // (help/code.ts), so a dropped command cannot leave it on the
+            // last thread.
+            if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
+            openAgentForLoop(GLYPHH_LOOP_ID);
             return;
           }
           // CC and Close all are permanent slots that go INERT with nothing
@@ -5248,6 +5096,7 @@ async function init(): Promise<void> {
             { view: "preview", label: "Browser" },
             { view: "diff", label: "Diff" },
             { view: "plan", label: "Plan" },
+            { view: "agents", label: "Agents" },
             { view: "rail", label: "Rail" },
           ];
           showTileMenu(ev, AGENT_DEV_TOOLS.map((t) => ({
@@ -5477,77 +5326,11 @@ async function init(): Promise<void> {
      *  so pinned layouts hold on) — parks the agent home and the composer
      *  returns. */
     /** The agent's CHAT VIEW — openAgentPanel, PERIOD (his report,
-     *  2026-09-11: every extra state write forked the head). The only
-     *  addition is the >_ hop, LEFT of expand, which reopens the loop's
-     *  terminal card; the CLI's own continue-last carries the session. */
-    /** The >_ hop on the chat's head (Terminal view), injected once into the
-     *  singleton whenever the chat card comes up — from a loop tile, the Glyphh
-     *  mark, a workspace cell, or the boot (his report, 2026-09-16: it vanished
-     *  when the card opened without a loop in hand). */
-    (window as unknown as { __wbEnsureTermToggle?: () => void }).__wbEnsureTermToggle = () => ensureTermToggle();
-    function ensureTermToggle(): void {
-      if (!cliAllowed) { document.getElementById("code-term-toggle")?.remove(); return; }
-      const headActions = document.querySelector<HTMLElement>(".session-head-actions");
-      if (headActions && !document.getElementById("code-term-toggle")) {
-        const termBtn = document.createElement("button");
-        termBtn.id = "code-term-toggle";
-        termBtn.className = "code-icon-btn";
-        termBtn.title = "Terminal view";
-        termBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
-        termBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          void (async () => {
-            // The ACTIVE LOOP wins (his report, 2026-09-14: the switcher
-            // always opened claude) — the session's current loop IS the CLI
-            // to hop into; the bound agent and the roster's first row are
-            // fallbacks for a session with no loop of its own.
-            const live = (window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop?.() || "";
-            const boundId = (live && live !== "default" && cliAgentRows.some((x) => x.id === live) ? live : "")
-              || openList.find((x) => x.card && x.tile.kind === "agent")?.card?.dataset.boundAgent
-              || cliAgentRows[0]?.id;
-            if (!boundId) return;   // nowhere to go — the chat STAYS (never close-into-nothing)
-            // The chat's live CLI session follows into the terminal — the
-            // bridge's live map first, else the chat's PERSISTED binding,
-            // BOTH resolved for the TARGET CLI only (his report, 2026-09-14:
-            // a claude sid fed a codex resume → "No saved session found").
-            // No binding for that CLI → the terminal opens FRESH, honestly.
-            const targetCli = cliAgentRows.find((r) => r.id === boundId)?.cli ?? "claude";
-            const chatId = (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId?.() ?? null;
-            const sid = (chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string, cli?: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId, targetCli) : null)
-              ?? (window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId?.(targetCli);
-            // OPEN FIRST, close after (his report, 2026-09-11: close-first
-            // left nothing when the async open missed — 'the arrow closes
-            // the agent'). SEAT HANDOFF (2026-09-14): the terminal takes the
-            // chat's grid cell atomically at open — one reflow, geometry
-            // kept; the rAF loop only backstops the no-seat case.
-            const hopChat = openList.find((x) => x.card && x.tile.kind === "agent");
-            if (hopChat) seatHandoff = { donor: hopChat, closeOpts: { keepSession: true } };
-            cliHop = { chatId: chatId || "", at: Date.now() };
-            // THE CHAT'S OWN FOLDER rides into the terminal (his order, 2026-09-21):
-            // the pty starts where the agent works, not in the workbench's global folder.
-            const chatFolder = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() ?? null;
-            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
-              .__wbOpenAgentCli?.(boundId, undefined, { ...(sid ? { resumeId: sid } : {}), ...(chatFolder ? { cwd: chatFolder } : {}) });
-            const closeChatWhenTermUp = (tries = 0): void => {
-              const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
-              if (term) {
-                seatHandoff = null;   // consumed by the open, or moot now
-                const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
-                if (chatCard) closeCard(chatCard, { keepSession: true });
-                return;
-              }
-              if (tries < 80) requestAnimationFrame(() => closeChatWhenTermUp(tries + 1));
-              else seatHandoff = null;   // the open never landed — never leak the seat to a later open
-            };
-            closeChatWhenTermUp();
-          })();
-        });
-        headActions.insertBefore(termBtn, headActions.firstChild);
-      }
-    }
+     *  2026-09-11: every extra state write forked the head). The >_ hop that
+     *  used to sit on this head is gone with the CLI lane: the agent has one
+     *  face, and the Terminal is its own plain panel again. */
     const openAgentChatCard = (agentId: string): TileEntry | null => {
-      const row = cliAgentRows.find((x) => x.id === agentId);
-      if (!row) return null;
+      if (agentId !== GLYPHH_LOOP_ID) return null;
       const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
       // SEAT HANDOFF (his repro, 2026-09-14): the chat takes the terminal's
       // grid seat in place — declared before the open so openShell consumes
@@ -5561,12 +5344,6 @@ async function init(): Promise<void> {
       const holder = openList.find((x) => x.card && x.tile.kind === "agent");
       const card = holder?.card ?? null;
       if (card) card.dataset.boundAgent = agentId;
-      (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(agentId);
-      uiStateSet("agentLastView", "chat");
-      // The >_ toggle rides the panel's OWN header cluster, first in the
-      // row — identical anatomy to the terminal header. Injected once into
-      // the singleton; the bound agent is read live at click.
-      ensureTermToggle();
       return entry;
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
@@ -5575,11 +5352,9 @@ async function init(): Promise<void> {
      *  The composer lives in the agent's own document, which mounts async, so
      *  this retries briefly rather than typing into nothing. */
     (window as unknown as { __wbComposeToAgent?: (text: string) => void }).__wbComposeToAgent = (text: string) => {
-      const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
       // The text waits in a FRESH panel's composer (unsent, as before).
-      if (AGENT_INSTANCED) { openAgentInstance(wanted?.id, { type: "prompt", text, send: false }); return; }
-      if (wanted) openAgentForLoop(wanted.id);
-      else void openAgentPanel();
+      if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "prompt", text, send: false }); return; }
+      openAgentForLoop(GLYPHH_LOOP_ID);
       let tries = 0;
       const fill = (): void => {
         const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
@@ -5593,24 +5368,6 @@ async function init(): Promise<void> {
       };
       window.setTimeout(fill, 120);
     };
-    // The terminal ⇄ chat SWITCH on a card: same seat, same loop, in place — never the door that could open a second panel.
-    (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat = (id) => {
-      // THE SLOT IS THE THING (his rule, 2026-09-16): the conversion lands in the
-      // terminal's own slot, and never takes the chat away from another loop in
-      // another slot. When the singleton chat is another loop's, this loop gets
-      // its own full panel in the terminal's seat.
-      const seated = openList.find((x) => x.card && x.tile.kind === "agent");
-      const bound = seated?.card?.dataset.boundAgent;
-      if (seated && bound && bound !== id) {
-        const term = openList.find((x) => x.tile.slug === `agent:${id}`);
-        if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
-        openAppCard(agentInstanceTile(id));
-        if (term && seatHandoff) { seatHandoff = null; closeCard(term, { parkTerms: true }); }
-        return;
-      }
-      openAgentChatCard(id);
-    };
-
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
       if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }
@@ -5622,7 +5379,6 @@ async function init(): Promise<void> {
         `<div class="ws-agent-placeholder" data-agent-host="echo"></div>`;
       scheduleAgentSync();
       ensureAgentSession();
-      ensureTermToggle();
       return entry;
     };
     /** The agent NEVER lands on a blank panel. A session with real content
@@ -5718,17 +5474,12 @@ async function init(): Promise<void> {
         // an agent cell IS a loop; the Glyphh panel cell takes its loop from
         // the cell, then the workspace, then the app default. A cell's VIEW
         // (or the app default) decides chat panel vs the loop's terminal.
-        const loopIdKnown = (lp: string): boolean => !!lp && cliAgentRows.some((x) => x.id === lp);
-        const appDefaultLoop = (): string => (loopIdKnown(defaultLoopPref) ? defaultLoopPref : cliAgentRows[0]?.id ?? "");
-        const surfaceOf = (c: { panelId?: string; config?: CellConfig }): { id: string; loop: string } => {
+        // AN AGENT CELL IS THE CHAT PANEL, whichever way it was saved: the
+        // CLI face is gone (his order, 2026-09-28), so a cell stored as
+        // `agent:<loop>` in the switching era opens the one loop we have.
+        const surfaceOf = (c: { panelId?: string }): { id: string; loop: string } => {
           const pid = (c.panelId || "").trim().toLowerCase();
-          const cf = (c.config || {}) as CellConfig;
-          const view = resolveAgentView(cf.view, (layout as { view?: string }).view);
-          if (pid === "tool:coding") {
-            const lp = [cf.loop, layout.loop, appDefaultLoop()].find((x) => loopIdKnown(x || "")) || "";
-            return view === "cli" && lp ? { id: `agent:${lp}`, loop: lp } : { id: pid, loop: lp };
-          }
-          if (pid.startsWith("agent:")) return view === "glyphh" ? { id: "tool:coding", loop: pid.slice(6) } : { id: pid, loop: pid.slice(6) };
+          if (pid === "tool:coding" || pid.startsWith("agent:")) return { id: "tool:coding", loop: GLYPHH_LOOP_ID };
           return { id: pid, loop: "" };
         };
         const codingCell = cells.find((c) => surfaceOf(c).id === "tool:coding");
@@ -5747,70 +5498,7 @@ async function init(): Promise<void> {
           // workspace-level session mode, which moved onto agent cells.
           const st = saved?.state;
           let entry: TileEntry | null = null;
-          if (id.startsWith("agent:")) {
-            // A CLI agent cell: a terminal that plays the agent's pre-config,
-            // with the WORKSPACE's overrides (model / folder) beating it.
-            const aid = id.slice(6);
-            const arow = cliAgentRows.find((x) => x.id === aid);
-            const cellCfg = (cell.config || {}) as CellConfig;
-            const mode = cellCfg.session ?? arow?.session ?? (cellCfg.keepAlive === false ? "new" : "keep");
-            // NO cliAgent on the cell tile — activateTile would bounce it
-            // back to openAgentCliCard instead of minting the terminal.
-            entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
-            // The cell's SESSION choice overrides the agent's (each slotted
-            // agent on a page can behave differently); legacy keepAlive:false
-            // still reads as "new".
-            entry.keepTermsAlive = mode !== "new";
-            const parkedA = mode !== "new" ? parkedTerms.get(`agent::${id}`) : undefined;
-            if (mode === "new") {
-              const stale = parkedTerms.get(`agent::${id}`);
-              if (stale) { parkedTerms.delete(`agent::${id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
-            }
-            if (parkedA) { parkedTerms.delete(`agent::${id}`); pendingParkedTerms = parkedA; }
-            activateTile(entry);
-            pendingParkedTerms = null;
-            if (!parkedA && arow) {
-              // The cell's own folder, else the workspace's (his order, 2026-09-16).
-              const overrides = {
-                light: appIsLight(),
-                ...(cellCfg.model ? { model: cellCfg.model } : {}),
-                ...(cellCfg.folder || layout.folder ? { cwd: cellCfg.folder || layout.folder } : {}),
-                ...(mode === "last" ? { resume: true } : {}),
-              };
-              if (Object.keys(overrides).length) {
-                // Overridden opens compose in MAIN — the command lands as
-                // initCmd if the shell hasn't spawned, else types straight
-                // into the live pty (same 600ms grace the boot typing uses).
-                const target = entry;
-                const fallbackCmd = arow.command;
-                void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
-                  // The CLI may not be installed: the dialog says what to install.
-                  // The terminal still opens and runs the line — the shell's own
-                  // "command not found" is honest, a closed door is not.
-                  if (r?.missing) void askInstallCli(r.missing);
-                  // NEVER a silent bare shell: a failed open (MCP port
-                  // squabble, missing agent file) still starts the agent
-                  // with its default command — resume/model just don't ride.
-                  if (r && !r.ok && r.error) console.warn("[agents] workspace open:", r.error);
-                  const cmd = (r?.ok && r.command) || fallbackCmd;
-                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
-                  if (!t) return;
-                  if (t.spawned) { setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
-                  else t.initCmd = cmd;
-                }).catch(() => {
-                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; spawned?: boolean; ptyId?: string }> } | undefined)?.terminals?.[0];
-                  if (t && !t.spawned) t.initCmd = fallbackCmd;
-                });
-              } else {
-                const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
-                if (ts?.terminals?.[0]) ts.terminals[0].initCmd = arow.command;
-                // dependencies (the local MCP server) come up in the background;
-                // a missing CLI is said out loud (the terminal alone would only
-                // print "command not found").
-                void yoApi?.cliAgentOpen?.(aid).then((r) => { if (r?.missing) void askInstallCli(r.missing); }).catch(() => {});
-              }
-            }
-          } else if (id.startsWith("tool:")) {
+          if (id.startsWith("tool:")) {
             const raw = id.slice(5);
             const v = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
             // The agent cell mounts the agent as a PANEL — the layout owns
@@ -5823,18 +5511,7 @@ async function init(): Promise<void> {
               entry = adHoc(agentInstanceTile(cellLoop || undefined));
             } else if (v === "coding") {
               seatedAgent = true;
-              const want = cellLoop || cliAgentRows[0]?.id || "";
-              if (want && cliAgentRows.some((x) => x.id === want)) entry = openAgentChatCard(want) ?? openAgentPanel();
-              else {
-                // BOOT RACE (his report, 2026-09-14): a workspace restoring at
-                // boot ran this before the agent roster landed — the seat came
-                // up bare, with no bound agent and no >_ toggle. Seat first,
-                // then bind the chat chrome the moment the roster arrives.
-                entry = openAgentPanel();
-                void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
-                  if (r?.ok && r.agents[0]) { cliAgentRows = r.agents; openAgentChatCard(r.agents.some((x) => x.id === want) ? want : r.agents[0].id); }
-                }).catch(() => {});
-              }
+              entry = openAgentChatCard(GLYPHH_LOOP_ID) ?? openAgentPanel();
             }
             else if (v === "rail") { continue; }   // the rail is the fixed sidebar (2026-09-16): a Rail cell opens nothing
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
@@ -6242,12 +5919,6 @@ async function init(): Promise<void> {
           Object.assign(slot as unknown as Record<string, unknown>, e.pendingSlotState);
           e.pendingSlotState = undefined;
         }
-        // AGENT terminals stamp from the ENTRY SLUG — every door (layout
-        // cells, restores, fresh opens) carries it, so the agent header can
-        // never miss (his report, 2026-09-11: a layout cell rendered tabs).
-        if (slot.view === "terminal" && (t.slug || "").startsWith("agent:")) {
-          (slot as TermSlot).agent = { id: (t.slug || "").slice(6), name: t.name };
-        }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
         else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
@@ -6255,6 +5926,7 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
+        else if (slot.view === "agents") mountAgentsPanel(body);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
         else if (slot.view === "gpoint") {
           body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
@@ -6450,13 +6122,17 @@ async function init(): Promise<void> {
         if (!p?.view) return;
         (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(p.view);
       });
+      (g as { onAgentPanelOpenFile?: (cb: (p: { path: string; mode?: string }) => void) => void } | undefined)?.onAgentPanelOpenFile?.((p) => {
+        if (!p?.path) return;
+        const door = p.mode === "browse" ? "__wbBrowseFile" : p.mode === "edit" ? "__wbEditFile" : "__wbOpenFile";
+        (window as unknown as Record<string, ((path: string) => void) | undefined>)[door]?.(p.path);
+      });
     }
     const activateGlyphh = (_self?: TileEntry): void => {
-      const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
-      // EVERY door is another panel (his ruling, 2026-09-26).
-      if (AGENT_INSTANCED) { openAgentInstance(first?.id); return; }
-      if (first) { openAgentForLoop(first.id); return; }
-      void openAgentPanel();
+      // EVERY door is another panel (his ruling, 2026-09-26) and every panel
+      // starts on a NEW session (his order, 2026-09-29).
+      if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
+      openAgentForLoop(GLYPHH_LOOP_ID);
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
     (window as unknown as { __wbOpenGlyphhAgent?: () => void; __wbHasAgentPanel?: () => boolean }).__wbOpenGlyphhAgent = () => activateGlyphh();
@@ -6690,7 +6366,12 @@ async function init(): Promise<void> {
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        if (t.navKey === "glyphh") w.__glyphhNewSession?.();
+        // The mark on a page is the dock's mark: a new agent on a new
+        // session (his order, 2026-09-29), never an in-place reset.
+        if (t.navKey === "glyphh") {
+          if (AGENT_INSTANCED) openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" });
+          else w.__glyphhNewSession?.();
+        }
         else if (t.navKey === "newtab") openNewTabForm();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
@@ -6703,10 +6384,6 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
-      // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
-      // loop tile opens the SAME agent chat panel every other door opens,
-      // with this loop set. The terminal is the >_ hop, never a door.
-      if (t.cliAgent) { openAgentForLoop(t.cliAgent.id); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -6815,121 +6492,16 @@ async function init(): Promise<void> {
     // manager — sit beside activateGlyphh above.)
     /** THE CLI INSTALLER (his order, 2026-09-19): a terminal panel running the
      *  installer TUI. Opens after the first sign-in and from Settings. */
-    /** THE agent door (his order, 2026-09-16): every loop, from every tile,
-     *  opens in the view Settings resolve (chat or CLI).
-     *
-     *  A LOOP SWAPS INTO THE OPEN AGENT (his order, 2026-09-19: a second loop
-     *  used to get its own panel, "spawning crazy shit in other panels"). With
-     *  an agent seated, picking Claude, Codex or Gemini switches THAT agent's
-     *  loop and keeps everything else it has: the session, the working folder,
-     *  the workspace it is in, its mode. The model follows the loop's own
-     *  resolution (the gateway pins it for Claude and Codex). Only an explicit
-     *  "again" still opens another panel. */
-    function openAgentForLoop(id: string, opts: { again?: boolean; refetched?: boolean } = {}): void {
-      const row = cliAgentRows.find((x) => x.id === id);
-      // THE ROSTER LOADS ASYNC — a door pressed before it lands (a solo panel
-      // seating its loop at boot) used to return silently and open nothing.
-      // Fetch it once, then open; an unknown loop falls back to the default door.
-      if (!row) {
-        if (opts.refetched) { activateGlyphh(); return; }
-        void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
-          if (r?.ok) cliAgentRows = r.agents;
-          openAgentForLoop(id, { ...opts, refetched: true });
-        }).catch(() => activateGlyphh());
-        return;
-      }
-      // ANOTHER PANEL, EVERY TIME (his ruling, 2026-09-25/26): the loop rides
-      // into a fresh instance, which applies the view Settings resolve (chat
-      // or CLI) INSIDE itself — the shell's Terminal tool is never borrowed.
+    /** THE agent door (his order, 2026-09-16, simplified 2026-09-28 when the
+     *  CLI lane went): every tile opens the one agent panel. "again" is the
+     *  explicit ask for another instance. */
+    function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
+      // ANOTHER PANEL, EVERY TIME (his ruling, 2026-09-25/26).
       if (AGENT_INSTANCED) { openAgentInstance(id); return; }
-      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, opts.again ? { fresh: true } : undefined); return; }
       const seated = openList.find((x) => x.card && x.tile.kind === "agent");
-      const bound = seated?.card?.dataset.boundAgent;
       if (opts.again && seated) { openAppCard(agentInstanceTile(id)); return; }
-      if (seated && bound && bound !== id) {
-        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(id);
-        if (seated.card) seated.card.dataset.boundAgent = id;
-        flash(seated.card);
-        return;
-      }
       openAgentChatCard(id);
     }
-    /** Open a CLI agent: dependencies first (the local MCP server), then the
-     *  pre-config types into a fresh terminal card named for the agent. */
-    type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };
-    const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
-      const a = t.cliAgent;
-      if (!a) return;
-      const appLight = appIsLight();
-      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
-        .glyphh?.cliAgentOpen?.(a.id, { light: appLight, ...(opts?.cwd ? { cwd: opts.cwd } : {}) }).then((r) => {
-          // Possibly not installed: the dialog says so; the terminal opens anyway.
-          if (r?.missing) void askInstallCli(r.missing);
-          if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
-          const row = cliAgentRows.find((x) => x.id === a.id);
-          // fresh (+ button) and resume-a-specific-session both need their
-          // OWN pty — a parked buffer is a different conversation.
-          const mode = opts?.fresh || opts?.resumeId ? "new" : row?.session ?? "keep";
-          // NO cliAgent on the minted tile — activateTile routes cliAgent
-          // tiles back HERE (that was an infinite loop, his report).
-          const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
-          entry.keepTermsAlive = mode !== "new";
-          // keep/last re-attach a parked session (same pty, same buffer);
-          // "new" always starts fresh — a stale parked session is killed.
-          const parked = mode !== "new" ? parkedTerms.get(`agent::agent:${a.id}`) : undefined;
-          if (mode === "new") {
-            const stale = parkedTerms.get(`agent::agent:${a.id}`);
-            if (stale) { parkedTerms.delete(`agent::agent:${a.id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
-          }
-          if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
-          // The terminal's folder is main's answer — the chat's, the loop's,
-          // the workbench's, home — and the pty spawns there.
-          setPendingAgentTermMeta({ id: a.id, name: t.name, ...(r?.cwd ? { cwd: r.cwd } : {}) });
-          uiStateSet("agentLastView", "terminal");
-          activateTile(entry);
-          pendingParkedTerms = null;
-          if (parked && prompt) {
-            // The session is already live — the task types in as a message.
-            const tt = (entry.toolSlot as unknown as { terminals?: Array<{ ptyId?: string }> } | undefined)?.terminals?.[0];
-            if (tt?.ptyId) setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${prompt}\r`); }, 400);
-          }
-          if (!parked) {
-            // "last" with nothing parked: the CLI resumes ITS last
-            // conversation (claude --continue / codex resume --last).
-            const wantResume = mode === "last";
-            const finish = (cmd: string): void => {
-              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined;
-              const tt = ts?.terminals?.[0];
-              if (!tt) return;
-              if (tt.spawned) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
-              else tt.initCmd = cmd;
-            };
-            if (wantResume || prompt || opts?.resumeId || opts?.cwd) {
-              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; prompt?: string; light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string }> } })
-                .glyphh?.cliAgentOpen?.(a.id, {
-                  light: appLight,
-                  ...(opts?.resumeId ? { resume: opts.resumeId } : wantResume ? { resume: true } : {}),
-                  ...(opts?.cwd ? { cwd: opts.cwd } : {}),
-                  ...(prompt ? { prompt } : {}),
-                })
-                .then((rr) => finish((rr?.ok && rr.command) || a.command));
-            } else {
-              finish((r?.ok && r.command) || a.command);
-            }
-          }
-        });
-    };
-    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli = (id: string, prompt?: string, opts?: AgentOpenOpts) => {
-      const row = cliAgentRows.find((x) => x.id === id);
-      if (row) { openAgentCliCard(cliAgentTileOf(row), prompt, opts); return; }
-      // Section saved an agent this session hasn't cached yet — fetch, then open.
-      void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
-        if (!r?.ok) return;
-        cliAgentRows = r.agents;
-        const fresh = cliAgentRows.find((x) => x.id === id);
-        if (fresh) openAgentCliCard(cliAgentTileOf(fresh), prompt, opts);
-      }).catch(() => {});
-    };
     /** "Here it is" — surface a card the user just aimed at. Landing in an
      *  EXISTING card (a pinned slot, an already-open app) has to leave
      *  shadow mode just like opening a new one does, or the app they picked
@@ -6940,7 +6512,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"): TileEntry => {
       // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
       // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
       // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
@@ -9409,28 +8981,14 @@ async function init(): Promise<void> {
       try { t.options.theme = theme; } catch { liveTerms.delete(t); }
     }
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  // The agent stamp rides a pending var because the slot is minted inside
-  // activateTile — and PLACEMENT MAY RENDER ASYNC, so the stamp carries a
-  // short deadline instead of being nulled right after activate (nulling it
-  // synchronously raced the render and the tab row won — his screenshot).
-  let pendingAgentTermMeta: { id: string; name: string; cwd?: string; at: number } | null = null;
-  function setPendingAgentTermMeta(m: { id: string; name: string; cwd?: string } | null): void {
-    pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
-  }
-
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
-    if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
-      slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
-      if (pendingAgentTermMeta.cwd) slot.cwd = pendingAgentTermMeta.cwd;
-      pendingAgentTermMeta = null;
-    }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
     // pod has no pty surface. Say so honestly instead of opening a local shell
     // that silently works on the WRONG filesystem.
     const src = (window as unknown as { __glyphhActiveSource?: () => { kind?: string } | null }).__glyphhActiveSource?.();
     // NEVER SILENT (his report, 2026-09-21: a black card and nothing to go on):
     // one line per render says which terminal, which source, and what it did.
-    console.warn("[wb-term] render", JSON.stringify({ agent: slot.agent?.id ?? null, source: src?.kind ?? null, terms: slot.terminals.length, active: slot.activeIdx, spawned: !!slot.terminals[slot.activeIdx]?.spawned }));
+    console.warn("[wb-term] render", JSON.stringify({ source: src?.kind ?? null, terms: slot.terminals.length, active: slot.activeIdx, spawned: !!slot.terminals[slot.activeIdx]?.spawned }));
     if (src && src.kind && src.kind !== "local") {
       body.innerHTML = `<div class="ws-term-cloud-note">Terminal isn't available for cloud sessions — ask the agent to run commands in its workspace instead.</div>`;
       return;
@@ -9447,7 +9005,6 @@ async function init(): Promise<void> {
     mountTerminal(hostEl, slot);
   }
   function paintTermTabs(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot): void {
-    if (slot.agent) { paintAgentTermHead(tabsEl, hostEl, slot, slot.agent); return; }
     tabsEl.innerHTML = "";
     slot.terminals.forEach((t, i) => {
       const tab = document.createElement("div");
@@ -9491,208 +9048,6 @@ async function init(): Promise<void> {
    *  session on the machine (dev terminals included); adopting the global
    *  newest cross-bred conversations (his report, 2026-09-11: 'out of
    *  synch' — the panel resumed an unrelated dev session). */
-  /** A loop's LANE — its cli and its folder. Both are the filters the shared
-   *  sessions menu already takes; resolving them here is the whole job. */
-  async function loopLane(agentId: string): Promise<{ cli?: string; cwd?: string }> {
-    const g = window as unknown as { glyphh?: {
-      cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; cli?: string; cwd?: string | null }> }>;
-    }; wb?: { getCwd?: () => Promise<string> } };
-    const [agents, wbCwd] = await Promise.all([
-      g.glyphh?.cliAgentsList?.() ?? Promise.resolve(null),
-      g.wb?.getCwd?.().catch(() => "") ?? Promise.resolve(""),
-    ]);
-    const row = agents?.ok ? agents.agents.find((a) => a.id === agentId) : null;
-    const cwd = row?.cwd || wbCwd || "";
-    return { ...(row?.cli ? { cli: row.cli } : {}), ...(cwd ? { cwd } : {}) };
-  }
-
-  /** The CLI sessions the hop back may adopt: those in THIS terminal's own
-   *  folder first (the folder main spawned it in — his report, 2026-09-21: a
-   *  new session's terminal ran in the resolved folder, the lane's guess was
-   *  empty, nothing matched, and the conversation was "not there"); else the
-   *  lane's folder; else every session, newest first — the caller's
-   *  typed-since-the-hop check keeps a stale one from being adopted. */
-  async function scopedCliSessions(agentId: string, termCwd?: string): Promise<Array<{ id: string; title: string; cwd: string; mtime?: number }>> {
-    const g = window as unknown as { glyphh?: {
-      cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string; mtime?: number }> }>;
-    } };
-    const [sess, lane] = await Promise.all([
-      g.glyphh?.cliSessionsList?.() ?? Promise.resolve(null),
-      loopLane(agentId),
-    ]);
-    if (!sess?.ok) return [];
-    const norm = (p: string): string => p.replace(/[\\/]+$/, "");
-    const byTime = [...sess.sessions].sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
-    for (const scope of [termCwd, lane.cwd]) {
-      if (!scope) continue;
-      const inScope = byTime.filter((x) => norm(x.cwd) === norm(scope));
-      if (inScope.length) return inScope;
-    }
-    return byTime;
-  }
-
-  /** Swap the session running in THIS card: ask main to compose the loop's
-   *  resume command, then respawn the slot's active terminal with it as the
-   *  init command — the same replace-and-remount the tab strip does, so the
-   *  card, its geometry and its place in the layout all stay put. */
-  async function resumeHere(
-    hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string,
-  ): Promise<void> {
-    const light = appIsLight();
-    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
-      .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
-    if (r?.missing) void askInstallCli(r.missing);
-    const cmd = r?.ok ? r.command : undefined;
-    if (!cmd) {
-      console.warn("[loops] resume:", r?.error ?? "no command composed");
-      return;
-    }
-    const old = slot.terminals[slot.activeIdx];
-    if (old) { try { killTerminal(old); } catch { /* already gone */ } }
-    slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };
-    paintTermTabs(tabsEl, hostEl, slot);
-    mountTerminal(hostEl, slot);
-  }
-
-  function paintAgentTermHead(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot, agent: { id: string; name: string }): void {
-    tabsEl.innerHTML = "";
-    tabsEl.classList.add("ws-agent-termhead");
-    // The SAME conversation follows into chat — newest session IN THIS
-    // LOOP'S LANE only; nothing in the lane opens a fresh chat.
-    const toChat = (): void => {
-      void scopedCliSessions(agent.id, slot.cwd).then((rows) => {
-        const w = window as unknown as {
-          __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string; chatId?: string }) => void;
-          __glyphhHasSession?: (id: string) => boolean;
-          __glyphhOpenLocalSession?: (id: string) => void;
-          __glyphhNewSession?: () => void;
-          __glyphhSetLoop?: (id: string) => void;
-          __wbSwitchToChat?: (id: string) => void;
-        };
-        w.__wbSwitchToChat?.(agent.id);
-        const cli = cliAgentRows.find((r) => r.id === agent.id)?.cli;
-        // THE GLYPHH LOOP: the terminal and the panel share ONE store. The
-        // terminal marked the chat it was on as current; refresh from disk and
-        // open that chat — the one you left, or the one the terminal started.
-        if (cli === "glyphh") {
-          const hop = cliHop; cliHop = null;
-          void (async () => {
-            await (window as unknown as { __glyphhReloadSessions?: () => Promise<void> }).__glyphhReloadSessions?.();
-            const s = await (window.glyphh as unknown as { glyphhSessionsLoad?: () => Promise<{ chats: Array<{ id: string; loop?: string; updatedAt?: number }>; currentId: string | null }> }).glyphhSessionsLoad?.();
-            const mark = s?.chats.find((c) => c.id === s.currentId && c.loop === "glyphh");
-            const fresh = !!mark && !!hop && (mark.updatedAt ?? 0) >= hop.at - 2000;
-            const target = fresh && mark ? mark.id : hop?.chatId;
-            if (target && w.__glyphhHasSession?.(target)) w.__glyphhOpenLocalSession?.(target);
-            else { w.__glyphhNewSession?.(); w.__glyphhSetLoop?.(agent.id); }
-          })();
-          return;
-        }
-        const newest = rows[0];
-        // BACK TO THE CHAT YOU LEFT (his report, 2026-09-20: the hop back
-        // opened an older thread with its own loop and model). The hop
-        // remembers which chat it came from; that chat is what returns, and
-        // the terminal's session lands IN IT only when it is newer than the
-        // hop (a fresh terminal that was never typed in adopts nothing).
-        const hop = cliHop; cliHop = null;
-        const typedSince = !!newest && !!hop && (newest.mtime ?? 0) >= hop.at - 2000;
-        if (hop && hop.chatId && w.__glyphhHasSession?.(hop.chatId)) {
-          if (typedSince && newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli, chatId: hop.chatId });
-          else w.__glyphhOpenLocalSession?.(hop.chatId);
-          return;
-        }
-        if (hop && !hop.chatId) {
-          // The hop left a pending NEW session: come back to a new session on
-          // this loop, adopting the terminal's session only if one was made.
-          if (typedSince && newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli });
-          else { w.__glyphhNewSession?.(); w.__glyphhSetLoop?.(agent.id); }
-          return;
-        }
-        if (newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli });
-      });
-    };
-    // ← + session name, top left — the SAME back-to-chat the chat header
-    // carries, mirrored in CLI mode (his report, 2026-09-14: it was missing).
-    const back = document.createElement("button");
-    back.className = "code-icon-btn";
-    back.title = "Back to chat";
-    back.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
-    back.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
-    const title = document.createElement("span");
-    title.className = "ws-agent-term-title";
-    title.textContent = agent.name;
-    title.style.cursor = "pointer";
-    title.title = "Back to chat";
-    title.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
-    // The CLI's newest session in this agent's lane names the row.
-    void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }> } })
-      .glyphh?.cliSessionsList?.().then((r) => {
-        const first = r?.ok ? r.sessions[0] : undefined;
-        if (first?.title) title.textContent = first.title;
-      });
-    const spacer = document.createElement("span");
-    spacer.style.flex = "1";
-    const btn = (label: string, svg: string, onClick: (ev: MouseEvent) => void): HTMLButtonElement => {
-      const b = document.createElement("button");
-      b.className = "code-icon-btn";
-      b.title = label;
-      b.innerHTML = svg;
-      b.addEventListener("click", (ev) => { ev.stopPropagation(); onClick(ev as MouseEvent); });
-      return b;
-    };
-    const chat = btn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-      toChat);
-    const drips = btn("Drips", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
-      () => (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips?.());
-    const recents = btn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-      (ev) => {
-        // THE recents menu — help/code.ts's openSessionsDropdown, exposed as
-        // __glyphhSessionsMenu. Search, Pinned + by-directory sections, pin
-        // and delete icons: the chat head's exact dropdown, not a lookalike.
-        // It filters by cli + cwd itself, so the lane is all we supply.
-        const anchor = ev.currentTarget as HTMLElement;
-        void loopLane(agent.id).then((lane) => {
-          (window as unknown as { __glyphhSessionsMenu?: (
-            a: HTMLElement, o: { cli?: string; cwd?: string; onPick: (s: { id: string; cli?: string }) => void },
-          ) => void }).__glyphhSessionsMenu?.(anchor, {
-            ...lane,
-            // IN THIS WINDOW (his rule, 2026-09-11) when the pick is this
-            // lane's own CLI; the list is COMBINED now (his order,
-            // 2026-09-14), so another CLI's session routes to ITS agent —
-            // a codex id must never compose into a claude resume.
-            onPick: (sess) => {
-              // A Glyphh-loop session is a stored chat, never a CLI resume.
-              if (sess.cli === "glyphh") { (window as unknown as { __glyphhOpenLoopSession?: (id: string) => void }).__glyphhOpenLoopSession?.(sess.id); return; }
-              const sameCli = !sess.cli || sess.cli === (cliAgentRows.find((r) => r.id === agent.id)?.cli ?? "claude");
-              if (sameCli) { void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id); return; }
-              // Another CLI's session — the ONE chat surface adopts it,
-              // bound to run on ITS agent (never a cross-CLI resume).
-              const target = cliAgentRows.find((r) => r.cli === sess.cli);
-              if (!target) return;
-              (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat?.(target.id);
-              (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
-                .__glyphhAdoptCliSession?.({ agentName: target.name, sessionId: sess.id, agentId: target.id, cli: target.cli });
-            },
-          });
-        });
-      });
-    const fresh = btn("New session", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-      () => {
-        // NEW SESSION IN *THIS* SLOT (his report, 2026-09-23: in a layout the +
-        // opened another terminal panel instead of a fresh CLI in the slot the
-        // user was looking at). The open is the same door; what was missing is
-        // the SEAT — without a handoff openShell treats it as a brand-new card
-        // and, inside a layout, gives it its own column. Hand it this card's
-        // cell and let the old pty die: a new session is not a parked one.
-        const mine = openList.find((x) => x.toolSlot === slot && x.card);
-        if (mine) seatHandoff = { donor: mine, closeOpts: { parkTerms: false } };
-        (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void })
-          .__wbOpenAgentCli?.(agent.id, undefined, { fresh: true });
-      });
-    const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
-      (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
-    tabsEl.append(back, title, spacer, chat, drips, recents, fresh, dev);
-  }
-
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {
     hostEl.innerHTML = "";
     const wbt = slot.terminals[slot.activeIdx];
@@ -10137,10 +9492,38 @@ async function init(): Promise<void> {
 
   // Thread → workbench bridges: the Code thread's file cards open a Monaco
   // tab; its run cards reveal (or spawn) a terminal slot.
-  (window as unknown as { __wbOpenFile?: (path: string) => void }).__wbOpenFile = (path) => {
+  /**
+   * THREE WAYS TO OPEN A FILE, said on purpose (his report, 2026-09-29: "the
+   * preview card, and open in browser, etc. are showing raw code. We need
+   * preview -> web view, Open in browser should be as a render not as source,
+   * Edit -> open in Editor / Monaco"):
+   *   open   — the smart default (a tree click: html is SOURCE, as it should
+   *            be when you are browsing a project's files)
+   *   browse — RENDERED, in the browser panel
+   *   edit   — the editor, whatever the file is
+   * Inside an agent panel every one goes to the shell's grid, beside the
+   * panel — the same rule the ⋮ tools follow (the Gmail-twice bug class).
+   */
+  type FileMode = "open" | "browse" | "edit";
+  const openFileAs = (path: string, mode: FileMode): void => {
+    if (IS_SOLO_WINDOW) {
+      void (window as unknown as { glyphh?: { agentPanelOpenFile?: (p: { path: string; mode?: FileMode }) => Promise<boolean> } }).glyphh
+        ?.agentPanelOpenFile?.({ path, mode });
+      return;
+    }
     const name = path.split(/[\\/]/).pop() || path;
+    if (mode === "browse") { openPreviewUrl(fileUrl(path)); return; }
+    if (mode === "edit") {
+      void window.wb.readFile(path).then((res) => {
+        openFileInMonaco({ name, path }, res.error ? `// error: ${res.error}` : res.content);
+      });
+      return;
+    }
     void openFileSmart({ name, path });
   };
+  (window as unknown as { __wbOpenFile?: (path: string) => void }).__wbOpenFile = (path) => openFileAs(path, "open");
+  (window as unknown as { __wbBrowseFile?: (path: string) => void }).__wbBrowseFile = (path) => openFileAs(path, "browse");
+  (window as unknown as { __wbEditFile?: (path: string) => void }).__wbEditFile = (path) => openFileAs(path, "edit");
   (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal = () => {
     if (echoCtl) { echoCtl.openTool("terminal"); return; }
     // MULTI-INSTANCE: every terminal command spawns its own panel.
@@ -10641,13 +10024,6 @@ async function init(): Promise<void> {
     const ids = rails.flatMap((r) => r.slots.filter((s) => s.view !== "echo").map((s) => s.id));
     for (const id of ids) closeSlot(id);
     openEchoSurface();
-    // DEFAULT VIEW = CLI (Settings → General → Agent loop): + New opens the
-    // default loop in its own terminal instead of the chat panel.
-    if (resolveAgentView() === "cli") {
-      const w = window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void };
-      const lp = defaultLoopPref || "";
-      if (w.__wbOpenAgentCli && lp) { w.__wbOpenAgentCli(lp, undefined, { fresh: true }); return; }
-    }
     let tries = 0;
     const go = (): void => {
       if (!echoCtl) { if (tries++ < 40) requestAnimationFrame(go); return; }
@@ -10669,7 +10045,7 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
     // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
     // slot beside the panel (his report, 2026-09-26: Files opened inside the
     // agent). The request goes up through main; only the agent's own views
@@ -10680,7 +10056,7 @@ async function init(): Promise<void> {
         ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
       return;
     }
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

@@ -375,6 +375,9 @@ type CustomDomainWire = {
   createdAt: string;
 };
 
+/** Which sub-agent a frame came from; absent on the main agent's own. */
+interface SubAgentRef { childId: string; slug: string; name: string; model: string }
+
 contextBridge.exposeInMainWorld("glyphh", {
   copyToClipboard: (text: string) => ipcRenderer.invoke("copy-to-clipboard", text),
   // Toggle the full-screen command overlay (also bound to a global hotkey).
@@ -417,18 +420,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   workspacesConnTools: (slug: string) => ipcRenderer.invoke("workspaces-conn-tools", slug) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesAppSearch: (search: string, limit?: number) => ipcRenderer.invoke("workspaces-app-search", search, limit) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   // Org-admin Models page (mirrors the platform's Configure → Models).
-  orgModelsList: () => ipcRenderer.invoke("org-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  orgModelsSetSupported: (id: string, supported: boolean) => ipcRenderer.invoke("org-models-set-supported", id, supported) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgCustomModelsList: () => ipcRenderer.invoke("org-custom-models-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  orgCustomModelsSave: (input: unknown) => ipcRenderer.invoke("org-custom-models-save", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgCustomModelsDelete: (id: string) => ipcRenderer.invoke("org-custom-models-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  orgCustomProvidersList: () => ipcRenderer.invoke("org-custom-providers-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  orgCustomProvidersSave: (input: unknown) => ipcRenderer.invoke("org-custom-providers-save", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgCustomProvidersDelete: (slug: string) => ipcRenderer.invoke("org-custom-providers-delete", slug) as Promise<{ ok: boolean; error?: string }>,
-  orgProvidersList: () => ipcRenderer.invoke("org-providers-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  orgProviderEnable: (slug: string, key?: string) => ipcRenderer.invoke("org-provider-enable", slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgProviderDisable: (slug: string) => ipcRenderer.invoke("org-provider-disable", slug) as Promise<{ ok: boolean; error?: string }>,
-  orgProviderClearKey: (slug: string) => ipcRenderer.invoke("org-provider-clear-key", slug) as Promise<{ ok: boolean; error?: string }>,
   windowMaximize: () => ipcRenderer.send("window-maximize"),
   // Screen layout (Settings → Appearance): dock mode + draggable fraction.
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
@@ -460,33 +451,16 @@ contextBridge.exposeInMainWorld("glyphh", {
   wsStateLoad: () => ipcRenderer.invoke("wsstate-load") as Promise<Record<string, { v: string; at: number }>>,
   wsStateSave: (snapshot: Record<string, { v: string; at: number }>) => ipcRenderer.invoke("wsstate-save", snapshot) as Promise<boolean>,
 
-  // CLI agents — named pre-configs for terminal-driven CLIs (Claude first)
-  cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
-  // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
-  // BYOK — key write-only, calls direct from this machine, never proxied.
-  /** Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude. */
-  bridgeState: () => ipcRenderer.invoke("bridge-state") as Promise<{ running: boolean; url: string; port: number; wanted: boolean; forced: boolean; allowed: boolean; background: boolean; enabled: boolean; member: string | null; sessions: number; clients: number; activity: string[] }>,
-  bridgeSetEnabled: (on: boolean) => ipcRenderer.invoke("bridge-set-enabled", on) as Promise<unknown>,
-  bridgeSetBackground: (on: boolean) => ipcRenderer.invoke("bridge-set-background", on) as Promise<unknown>,
-  bridgeTuiCommand: () => ipcRenderer.invoke("bridge-tui-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
-  onBridgeOpenTui: (callback: () => void) => { ipcRenderer.on("bridge-open-tui", () => callback()); },
-  onBridgeFinished: (callback: () => void) => { ipcRenderer.on("bridge-finished", () => callback()); },
+  // Embeddings upgrade (Settings → Memory): the org's embedding models on the
+  // gateway; memory itself rides the loop (main's memory.ts).
   memoryStats: () => ipcRenderer.invoke("memory-stats") as Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>,
   memoryClear: () => ipcRenderer.invoke("memory-clear") as Promise<{ ok: boolean; deleted?: number; error?: string }>,
   memoryTurnList: () => ipcRenderer.invoke("memory-turn-list") as Promise<{ ok: boolean; rows: Array<{ id: string; kind: string; section: string; title: string; text: string; at: string; folder: string; workspace: string; parts: number }>; error?: string }>,
   memoryTurnUpdate: (input: { source: string; title?: string; summary?: string; details: string[] }) => ipcRenderer.invoke("memory-turn-update", input) as Promise<{ ok: boolean; chunks?: number; error?: string }>,
-  onCliAgentsChanged: (callback: (r: { enabled: string[] }) => void) => { ipcRenderer.on("cli-agents-changed", (_e, r: { enabled: string[] }) => callback(r)); },
   memoryCurateNow: () => ipcRenderer.invoke("memory-curate-now") as Promise<{ ok: boolean; error?: string }>,
   memoryTurnForget: (source: string) => ipcRenderer.invoke("memory-turn-forget", source) as Promise<{ ok: boolean; deleted?: number; error?: string }>,
   embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,
   embeddingsConfigSet: (input: { model?: string }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; model?: string; error?: string }>,
-  cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
-  cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; error?: string; missing?: { cli: string; name: string; bin: string; install: string; login: string; note?: string } }>,
-  /** Recent CLI sessions (Claude's store) — the rail Recents + agent-card history. */
-  cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
-  cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,
 
   // Loops + skills (local library) — hand-create + schedules
   loopsCreate: (input: { name?: string }) => ipcRenderer.invoke("loops-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
@@ -500,11 +474,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   dripsBuiltinEffects: () => ipcRenderer.invoke("drips-builtin-effects") as Promise<Array<{ name: string; kind: "one-shot" | "loop" }>>,
   dripsStop: () => ipcRenderer.invoke("drips-stop") as Promise<string>,
   dripsRunning: () => ipcRenderer.invoke("drips-running") as Promise<string[]>,
-
-  // Mid-run prompt injection — add a user message to the CURRENT live run of a
-  // session; the pod starts a fresh turn at the next between-turn boundary.
-  glyphhInject: (chatId: string, text: string) =>
-    ipcRenderer.invoke("glyphh-agent-inject", { chatId, text }) as Promise<{ injected: boolean }>,
 
   // Run-stream observer (the desktop transport behind attachToActiveRun): the
   // renderer supplies its own subscription token, so pushed frames are
@@ -540,6 +509,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   setBackgroundMode: (enabled: boolean) => ipcRenderer.invoke("set-background-mode", enabled) as Promise<boolean>,
   // Fires in every panel when a preference is changed anywhere — lets forms
   // (e.g. Settings → Agent Defaults) reflect a change made elsewhere live.
+  /** The server's model list or the org's defaults moved (main/model-watch.ts). */
+  onModelsChanged: (cb: (c: { models: { ok: boolean; source: string; models: Array<{ id: string; name: string; providerSlug: string }> }; defaultModel: string; gatewayOn: boolean; connectionsOn: boolean }) => void) => {
+    const h = (_e: unknown, c: Parameters<typeof cb>[0]) => cb(c);
+    ipcRenderer.on("models:changed", h);
+    return () => { ipcRenderer.removeListener("models:changed", h); };
+  },
   onPreferenceChanged: (cb: (key: string, value: unknown) => void) => {
     ipcRenderer.on("preference-changed", (_e, key, value) => cb(key, value));
   },
@@ -1077,7 +1052,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; effort?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; effort?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
     ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
   glyphhPickAttachments: (mode?: "files" | "folder") =>
     ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
@@ -1100,13 +1075,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   threadsDelete: (id: string) =>
     ipcRenderer.invoke("glyphh-threads-delete", id) as Promise<void>,
   // Another window (ghost overlay ↔ main app) saved the shared session store.
-  onGlyphhSessionsUpdated: (callback: () => void) => {
-    ipcRenderer.on("glyphh-sessions-updated", () => callback());
-  },
-  // A CLI's OWN store changed on disk — the user typed a turn in Claude/Codex
-  // outside this app (cli-session-watch.ts). Debounced in main.
-  onCliSessionsChanged: (callback: () => void) => {
-    ipcRenderer.on("cli-sessions-changed", () => callback());
+  onGlyphhSessionsUpdated: (callback: (info: { deleted: string[] }) => void) => {
+    ipcRenderer.on("glyphh-sessions-updated", (_e, info?: { deleted?: string[] }) =>
+      callback({ deleted: Array.isArray(info?.deleted) ? info.deleted : [] }));
   },
   glyphhRemember: (fact: string) => ipcRenderer.invoke("glyphh-agent-remember", fact) as Promise<boolean>,
   glyphhCompact: (chatId: string, focus: string) =>
@@ -1125,14 +1096,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   // AGENTS (local-agents.ts) — the standing workforce. Distinct from the
   // tasks* lane above, which groups schedules by the LOOP that runs them.
   /** THE licensing read (SDK client.plans) — one place, every surface. */
-  /** LOOPS — the effective set and the org's support list. */
-  /** The models THIS loop can run — asked of the endpoint the turn will hit
-   *  (gateway or the loop's own vendor key). Empty on a CLI-login loop. */
-  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }>; laneMode?: "off" | "choice" | "required"; error?: string }>,
-  loopsAvailable: () => ipcRenderer.invoke("loops-available") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgLoopsList: () => ipcRenderer.invoke("org-loops-list") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgLoopSet: (cli: string, enabled: boolean) => ipcRenderer.invoke("org-loop-set", cli, enabled) as Promise<{ ok: boolean; error?: string }>,
-  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; cliAllowed?: boolean; autoOnly?: boolean; defaultModel?: string }>,
+  /** THE MODELS the agent can run — the org's own list, asked of the server
+   *  (the loop id is vestigial: there is one loop). */
+  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>,
+  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; defaultModel?: string }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
@@ -1222,8 +1189,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
-  glyphhBindCliSession: (chatId: string, cliSessionId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId, cli }) as Promise<boolean>,
-  glyphhCliSessionOf: (chatId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId, cli }) as Promise<string | null>,
   /** Every chat with a turn running ANYWHERE in this app (agent-live.ts) —
    *  cold read, then pushed on every change. The rail pulses by it. */
   glyphhLiveList: () =>
@@ -1248,6 +1213,14 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
   /** A solo panel asks the shell to open a workbench tool beside it. */
   agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  /** A file a panel opens goes to the shell's workbench, never inside the panel. */
+  agentPanelOpenFile: (p: { path: string; mode?: "open" | "browse" | "edit" }) => ipcRenderer.invoke("agent-panel-open-file", p) as Promise<boolean>,
+  agentPanelOpenSettings: (sub: string) => ipcRenderer.invoke("agent-panel-open-settings", { sub }) as Promise<boolean>,
+  /** Plan + the budget nearest its line, for the banner above the composer (main/spend-state.ts). */
+  spendState: () => ipcRenderer.invoke("spend-state") as Promise<{ ok: boolean; hasPlan: boolean; plan: string; canManage: boolean; tightest: { scope: "org" | "team" | "key"; label: string; limitUsd: number; spentUsd: number; pct: number } | null }>,
+  onAgentPanelOpenFile: (callback: (p: { path: string; mode?: "open" | "browse" | "edit" }) => void) => {
+    ipcRenderer.on("agent-panel:open-file", (_event, p) => callback(p ?? { path: "" }));
+  },
   onAgentPanelOpenTool: (callback: (p: { view: string; cwd?: string }) => void) => {
     ipcRenderer.on("agent-panel:open-tool", (_event, p) => callback(p ?? { view: "" }));
   },
@@ -1256,7 +1229,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   onAgentPanelCommand: (callback: (cmd: unknown) => void) => {
     ipcRenderer.on("agent-panel:command", (_event, cmd) => callback(cmd));
   },
-  glyphhCliTranscript: (sessionId: string) => ipcRenderer.invoke("glyphh-agent-transcript", { sessionId }) as Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>,
   /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
    *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */
   glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") =>
@@ -1285,8 +1257,24 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGlyphhAgentProgress: (callback: (d: { runId: string; inTokens: number; outTokens: number }) => void) => {
     ipcRenderer.on("glyphh-agent:progress", (_event, d) => callback(d));
   },
-  onGlyphhAgentTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => {
+  onGlyphhAgentTool: (callback: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string; agent?: SubAgentRef }) => void) => {
     ipcRenderer.on("glyphh-agent:tool", (_event, d) => callback(d));
+  },
+  /** A SUB-AGENT started or finished (his order, 2026-09-29: sub-agent swarms).
+   *  Every other frame of a child's work — its deltas, its tool steps — arrives
+   *  on the channel it always did, tagged with the same `agent` ref. */
+  onGlyphhSubAgent: (callback: (d: { runId: string; phase: "start" | "done"; agent: SubAgentRef; task?: string; failed?: boolean; summary?: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:agent", (_event, d) => callback(d));
+  },
+  /** Write an agent's brief with AI, on the member's default model (agent-brief.ts). */
+  agentBriefGenerate: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
+    ipcRenderer.invoke("agent-brief-generate", input) as Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>,
+  /** THE AGENTS PANEL's source: main's ledger of the sub-agents working under a live turn. */
+  subAgentsList: () => ipcRenderer.invoke("subagents-list") as Promise<unknown[]>,
+  onSubAgentsUpdate: (callback: (runs: unknown[]) => void) => {
+    const handler = (_e: unknown, runs: unknown): void => callback(Array.isArray(runs) ? runs : []);
+    ipcRenderer.on("subagents:update", handler);
+    return () => { ipcRenderer.removeListener("subagents:update", handler); };
   },
   glyphhApprovalRespond: (id: string, allow: boolean) =>
     ipcRenderer.invoke("glyphh-agent-approval-respond", { id, allow }) as Promise<boolean>,

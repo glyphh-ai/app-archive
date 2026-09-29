@@ -4,7 +4,6 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
-import { loadModelsAdmin } from "./models-admin.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
@@ -13,8 +12,8 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings } from "./settings-skills.js";
+import { loadAgentsSettings } from "./settings-agents.js";
 import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections } from "./settings-connections.js";
@@ -24,7 +23,6 @@ import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
 import { loadMemorySettings } from "./settings-memory.js";
-import { loadBridgeSettings } from "./settings-bridge.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
@@ -438,12 +436,15 @@ export function openSettingsModal(sub?: string): void {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
+      // A header with nothing under it is not drawn (his report, 2026-09-29):
+      // Billing is its only item and is org_admin's alone.
+      orgGroup.classList.toggle("hidden", !!document.getElementById("nav-billing")?.classList.contains("hidden"));
       // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
       const buildGroup = nav.querySelector("#nav-group-build");
       if (buildGroup) {
         anchor.after(buildGroup);
         anchor = buildGroup;
-        for (const sub of ["skills", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
+        for (const sub of ["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -652,8 +653,13 @@ function wireAppUserChip(nav: HTMLElement): void {
       face.textContent = (name || "?").charAt(0).toUpperCase();
     }
     (chip.querySelector(".asu-name") as HTMLElement).textContent = name || "—";
-    const tier = (info.tier || "free");
-    (chip.querySelector(".asu-plan") as HTMLElement).textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+    const tier = (info.tier || "none");
+    // A member sees their organization here, not its plan (his order, 2026-09-29).
+    const role = (info as { role?: string }).role;
+    const admin = !!role && ["org_admin", "super_admin"].includes(role);
+    (chip.querySelector(".asu-plan") as HTMLElement).textContent = !admin
+      ? String((info as { orgName?: string }).orgName || "")
+      : tier === "none" || tier === "free" ? "No plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
   };
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then(paintChip).catch(() => { /* signed out — the dash stays */ });
   // RE-PAINT on every account refresh (his report, 2026-09-01: a first paint
@@ -677,17 +683,13 @@ function gateAdminSubs(): void {
     // The server enforces the role on every route regardless.
     document.querySelectorAll<HTMLElement>(".settings-nav > .nav-admin")
       .forEach((el) => el.classList.toggle("hidden", !admin));
-    // MEMBERS' Build → Loops is the SAME page as App → Settings → Loops (his
-    // ruling, 2026-09-12) — their loops, their configs, no org toggles. The
-    // button retargets; admins keep the org support list.
-    const buildLoops = document.querySelector<HTMLElement>('.settings-nav-item[data-sub="org-loops"], .settings-nav-item[data-sub="loops"].platform-only');
-    if (buildLoops && !admin) buildLoops.dataset.sub = "loops";
     // BILLING IS THE MONEY DOOR and it is org_admin's alone, on every surface
     // (his order, 2026-09-17: a member of an org should not see it in the app
     // either). Someone who signed up alone is org_admin of their own org, so
     // they keep it; an invited member does not. The server 403s the reads
     // regardless — this hides the door.
     document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
+    document.getElementById("app-nav-group-org")?.classList.toggle("hidden", !orgAdmin);
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
     // enforces the role on every route regardless — this only hides the nav.
@@ -825,7 +827,7 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
  *  absorbed them — a rail item or `homeLastSection` naming "models" must not
  *  open a section that no longer exists. */
 const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
-  models: { section: "settings", sub: "models" },
+  models: { section: "settings", sub: "general" },
 };
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
@@ -854,12 +856,10 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
   else if (sub === "workspaces") void loadWorkspacesPanel();
-  else if (sub === "models") loadModelsAdmin();
-  else if (sub === "loops") void loadSettingsLoops();
-  else if (sub === "org-loops") void loadOrgLoops();
   else if (sub === "org-library") loadOrgLibrary();
   else if (sub === "connections-cfg") void loadSettingsConnections();
   else if (sub === "skills") void loadSkillsSettings();
+  else if (sub === "agents") void loadAgentsSettings();
   else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "tasks") void loadTasksSettings();
@@ -881,7 +881,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
-  else if (sub === "bridge") void loadBridgeSettings();
   // The installer is a terminal panel, not a settings page: open it and step aside.
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }

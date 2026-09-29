@@ -15,3 +15,33 @@ export function broadcast(channel: string, ...args: unknown[]): void {
     try { wc.send(channel, ...args); } catch { /* renderer mid-teardown */ }
   }
 }
+
+const urlOf = (wc: Electron.WebContents): string => {
+  try { return wc.isDestroyed() ? "" : wc.getURL(); } catch { return ""; }
+};
+
+/**
+ * THE WORKBENCH THAT OWNS THE WINDOW — the home.html BrowserView, and never an
+ * agent panel (his report, 2026-09-29: the agent opened Gmail twice, "one
+ * inside the glyphh agent panel and one in the right place").
+ *
+ * An agent panel is ALSO a home.html document (`?solo=tool:coding&instance=…`)
+ * running the same workbench code, so "send it to every home.html" meant every
+ * panel opened the app inside itself as well. A command that steers the UI —
+ * open an app, go to a section, front the command center, start a session —
+ * belongs to the one workbench the user is looking at.
+ */
+export function homeShellWebContents(): Electron.WebContents[] {
+  return webContents.getAllWebContents().filter((wc) => {
+    const url = urlOf(wc);
+    return /home\.html/.test(url) && !/[?&]solo=/.test(url);
+  });
+}
+
+/** Steer the workbench: the shell's home panel, else the shell itself. */
+export function sendToHomeShell(channel: string, ...args: unknown[]): void {
+  const homes = homeShellWebContents();
+  for (const wc of homes) {
+    try { wc.send(channel, ...args); } catch { /* renderer mid-teardown */ }
+  }
+}

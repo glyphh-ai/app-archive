@@ -17,14 +17,19 @@ import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal } from "./navigation.js";
+import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
+import { memberLine, turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
-import { formatMarkdown } from "../format-markdown.js";
+import { formatMarkdown, streamStableCut } from "../format-markdown.js";
+import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
+import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 // The chat ⇄ CLI-session binding rules — pure, shared, and under test.
-import { sessionCliOf, cliSidFor, applyCliBinding, chatForCliSession, forgetCliSession, sessionDisplayTitle, type CliBound } from "./cli-session-binding.js";
+import { sessionDisplayTitle } from "./session-title.js";
+import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
@@ -40,7 +45,7 @@ import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect"; attachments?: AttachRef[]; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -50,11 +55,14 @@ interface CodeChat {
   pinned?: boolean;
   /** LEGACY flag (pre-mode) — kept for back-compat with old stored sessions. */
   chat?: boolean;
-  /** The spaces concept (Chat/Work/Code) is gone — every session is ONE type,
-   *  the most-capable Code toolset. The field is kept ONLY for back-compat with
-   *  sessions the server/thread-store persisted before the collapse and with the
-   *  pod's `mode` contract; it is always written as "code" now (see modeOf). */
-  mode?: "chat" | "cowork" | "code";
+  /** THIS SESSION'S TYPE (his order, 2026-09-29: "bring the two types back…
+   *  Each chat should carry a type"). Two of them now — Chat and Code — and the
+   *  type decides the toolbelt the turn carries, which is the whole point: a
+   *  simple question should not haul fifty tool definitions into the prompt.
+   *  "cowork" is the retired third space; it reads as Code (it was the
+   *  tool-using one). Written at birth from the rail's active tab, never
+   *  flipped on an existing thread. */
+  mode?: "work" | "code" | /** legacy stamps, read as Work */ "chat" | "cowork";
   /** The workspace SOURCE: where this session RUNS + what it works on —
    *  cloud-new (empty cloud project), cloud-repo (a GitHub clone), or local
    *  (a folder on the machine). Stamped from the source chip when the session
@@ -89,13 +97,56 @@ interface CodeChat {
   loop?: string;
 }
 
-/** The spaces concept is collapsed: every session runs the most-capable Code
- *  toolset. `modeOf` is the single choke point — it ignores any legacy
- *  chat/cowork stamp and always reports "code", so tool selection, run routing
- *  and the composer are uniform. (Kept as a function so the many call sites and
- *  the pod's `mode` contract stay untouched.) */
-function modeOf(_c: CodeChat): "code" {
-  return "code";
+/** THE TWO TYPES. `modeOf` is the single choke point every call site reads:
+ *  a thread's own stamp, folded to the two that exist (the retired `cowork`
+ *  space was the tool-using one, so it reads as Code) and defaulting to Code
+ *  for anything written before the types came back. */
+export type SessionType = "work" | "code";
+function modeOf(c: CodeChat): SessionType {
+  // The legacy stamps both mean the non-dev space: `chat` (zero tools) and
+  // `cowork` (connectors and apps) fold into Work.
+  return c.mode === "work" || c.mode === "chat" || c.mode === "cowork" ? "work" : "code";
+}
+/** THE ACTIVE TAB (his order, 2026-09-29): what the rail lists, what + New
+ *  creates, and — through modeOf on the new thread — how big a toolbelt its
+ *  turns carry. Persisted per device. */
+const TYPE_TAB_PREF = "railTypeTab";
+let typeTab: SessionType = "code";
+const TYPE_GLYPH: Record<SessionType, string> = {
+  work: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M2.5 12h19"/></svg>`,
+  code: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 4 12 9 18"/><polyline points="15 6 20 12 15 18"/></svg>`,
+};
+const TYPE_LABEL: Record<SessionType, string> = { work: "Work", code: "Code" };
+/** Switch the active type: both lists follow, + New's face follows, and the
+ *  choice is remembered. ONE writer, so the rail and the panel's dropdown can
+ *  never disagree about which type is showing. */
+function setTypeTab(t: SessionType): void {
+  if (typeTab === t) return;
+  typeTab = t;
+  // The write is announced to every other document by main (preference-changed),
+  // so the rail, each open agent panel and its recents dropdown all move
+  // together — one choice, not one per window (his report, 2026-09-29).
+  void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
+  applyTypeTab();
+}
+/** Repaint everything the active type governs, in THIS document. */
+function applyTypeTab(): void {
+  paintTypeTabs();
+  renderHistory();
+  renderRailSessions();
+  syncSpaceAttrs();
+  // The composer's prompt names the type, and the gate is what writes it.
+  paintComposerGate();
+}
+/** Paint the rail's tab pair + the New button from the active type. */
+function paintTypeTabs(): void {
+  document.querySelectorAll<HTMLElement>("#rail-type-tabs .rail-type-tab").forEach((b) => {
+    const on = b.dataset.type === typeTab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  const btn = el("code-new-chat");
+  if (btn) btn.title = `New ${TYPE_LABEL[typeTab]} session`;
 }
 
 const STORE_KEY = "codeChats";
@@ -130,133 +181,11 @@ const EFFORTS = [
   { id: "xhigh", label: "Extra high" },
   { id: "max", label: "Ultra" },
 ] as const;
-const EFFORT_CLIS = new Set(["claude", "codex"]);
-const EFFORT_HELP = "Higher effort means more thorough responses, but takes longer and uses your limits faster.";
-let loopEffort: Record<string, string> = {};
-let loopEffortLoaded = false;
-async function loadLoopEffort(): Promise<void> {
-  if (loopEffortLoaded) return;
-  loopEffortLoaded = true;
-  try {
-    const v = await window.glyphh.getPreference?.("loopEffort", {});
-    if (v && typeof v === "object") loopEffort = v as Record<string, string>;
-  } catch { /* defaults */ }
-}
-function effortCliOf(loopId: string): string { return loops.find((l) => l.id === loopId)?.cli || (loopId === "default" ? "claude" : ""); }
-/** The effort the NEXT turn sends, or "" for a loop without a dial. */
-function currentEffort(): string {
-  if (!EFFORT_CLIS.has(effortCliOf(glyphhLoop))) return "";
-  const v = loopEffort[glyphhLoop] || "medium";
-  return EFFORTS.some((e) => e.id === v) ? v : "medium";
-}
-function paintLevelChip(): void {
-  const wrap = el("code-level-wrap");
-  const chip = el("code-level-chip");
-  if (!wrap || !chip) return;
-  const lvl = currentEffort();
-  wrap.classList.toggle("hidden", !lvl);
-  if (!lvl) return;
-  const e = EFFORTS.find((x) => x.id === lvl);
-  chip.textContent = e?.label ?? lvl;
-  chip.classList.toggle("ultra", lvl === "max");
-}
-function renderLevelPop(): void {
-  const pop = el("code-level-pop");
-  if (!pop) return;
-  pop.textContent = "";
-  const idx = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
-  const head = document.createElement("div");
-  head.className = "code-drop-head level-head";
-  const headLabel = document.createElement("span");
-  headLabel.innerHTML = `Effort <b class="level-name"></b>`;
-  const info = document.createElement("button");
-  info.className = "drop-info-btn";
-  info.type = "button";
-  info.title = "About effort";
-  info.textContent = "i";
-  head.append(headLabel, info);
-  pop.appendChild(head);
-  const help = document.createElement("div");
-  help.className = "drop-detail-body level-help hidden";
-  help.textContent = EFFORT_HELP;
-  pop.appendChild(help);
-  info.addEventListener("click", (ev) => { ev.stopPropagation(); help.classList.toggle("hidden"); });
-  const scale = document.createElement("div");
-  scale.className = "level-scale";
-  scale.innerHTML = `<span>Faster</span><span>Smarter</span>`;
-  pop.appendChild(scale);
-  const track = document.createElement("div");
-  track.className = "level-track";
-  track.tabIndex = 0;
-  track.setAttribute("role", "slider");
-  track.setAttribute("aria-valuemin", "0");
-  track.setAttribute("aria-valuemax", String(EFFORTS.length - 1));
-  const fill = document.createElement("span"); fill.className = "level-fill"; track.appendChild(fill);
-  EFFORTS.forEach((e, i) => {
-    const dot = document.createElement("span");
-    dot.className = "level-dot";
-    dot.style.left = `${(i / (EFFORTS.length - 1)) * 100}%`;
-    dot.title = e.label;
-    track.appendChild(dot);
-  });
-  const thumb = document.createElement("span"); thumb.className = "level-thumb"; track.appendChild(thumb);
-  pop.appendChild(track);
-  const paint = (i: number): void => {
-    const e = EFFORTS[i];
-    (head.querySelector(".level-name") as HTMLElement).textContent = e.label;
-    head.classList.toggle("ultra", e.id === "max");
-    track.classList.toggle("ultra", e.id === "max");
-    track.setAttribute("aria-valuenow", String(i));
-    const pct = (i / (EFFORTS.length - 1)) * 100;
-    thumb.style.left = `${pct}%`;
-    fill.style.width = `${pct}%`;
-    track.querySelectorAll<HTMLElement>(".level-dot").forEach((d, j) => d.classList.toggle("on", j <= i));
-  };
-  const choose = (i: number): void => {
-    const e = EFFORTS[Math.max(0, Math.min(EFFORTS.length - 1, i))];
-    loopEffort = { ...loopEffort, [glyphhLoop]: e.id };
-    void window.glyphh.setPreference?.("loopEffort", loopEffort);
-    paint(EFFORTS.indexOf(e));
-    paintLevelChip();
-  };
-  const stepAt = (clientX: number): number => {
-    const r = track.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width)));
-    return Math.round(x * (EFFORTS.length - 1));
-  };
-  let dragging = false;
-  track.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); dragging = true; track.setPointerCapture(ev.pointerId); choose(stepAt(ev.clientX)); });
-  track.addEventListener("pointermove", (ev) => { if (dragging) choose(stepAt(ev.clientX)); });
-  const stop = (): void => { dragging = false; };
-  track.addEventListener("pointerup", stop);
-  track.addEventListener("pointercancel", stop);
-  track.addEventListener("keydown", (ev) => {
-    const cur = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
-    if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); choose(cur + 1); }
-    else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); choose(cur - 1); }
-  });
-  pop.addEventListener("mousedown", (ev) => ev.stopPropagation());
-  paint(idx);
-}
-
-// Loop: which agent loop runs the session. This chip replaced the old effort
-// dial; the dial's turn/token tiers are gone with it — an attended session is
-// governed by its human, budgets by the resolved model's own limits.
-let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean; cli?: string; modes?: string[] | null }> = [
-  { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
-];
-let loopsCanBuild = false;
-/** The org has enabled no loop this app can run. Not the same as offline. */
-let noLoopAllowed = false;
-let glyphhLoop = "default";
-/** A loop a LAYOUT asked for while no session existed — applied to the session
- *  the next send creates (the pendingWorkdir contract). */
-let pendingLoop = "";
-/** The loop THIS session runs — its own binding first, then the layout's
- *  pending ask, then the ambient pick. Every run/render seam reads this. */
-function activeLoop(): string {
-  return current()?.loop || pendingLoop || glyphhLoop;
-}
+// THE ONE LOOP (his order, 2026-09-28: "no cli switching etc"). A session used
+// to carry the id of the CLI pre-config that ran it, and the composer had a
+// chip to change it. There is one loop now — ours — so the id is a constant and
+// the chip is gone; a stored `loop` on an old chat is simply ignored.
+const GLYPHH_LOOP = "glyphh";
 // The DEVICE default mode — the last mode the user picked, seeded onto a NEW
 // session so a fresh chat opens in the mode they habitually use. Persisted as the
 // `glyphhMode` preference (kept for back-compat with older builds). The EFFECTIVE
@@ -305,28 +234,10 @@ function paintChips(): void {
     // Mirror the on-screen mode to the current session before painting, so the
     // chip always reflects the session in view (not the last one touched).
     glyphhMode = currentMode();
-    // A mode this loop cannot honor is not a mode: fall back to asking, which
-    // every CLI does by default, rather than showing a gate that is not there.
-    // The session is moved with it — a chip that says one thing while the turn
-    // sends another is the bug this page keeps having.
-    if (!modesForLoop().some((m) => m.id === glyphhMode)) {
-      glyphhMode = "ask";
-      const c = current();
-      if (c && c.permission !== "ask") { c.permission = "ask"; void saveStore(); }
-    }
     const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
-  }
-  const ec = el("code-effort-chip");
-  if (ec) {
-    const lp = loops.find((x) => x.id === activeLoop()) ?? loops[0];
-    ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
-    void loadLoopEffort().then(paintLevelChip);
-    ec.title = lp?.description ?? "Which agent loop runs this session";
-    ec.className = "code-chip";
-    ec.setAttribute("aria-disabled", "false");
   }
 }
 
@@ -380,64 +291,21 @@ function adoptSessionMode(chatId: string, mode: string): void {
   if (chatId === currentId) { glyphhMode = c.permission; paintChips(); renderModeMenu(); }
 }
 
-/** A session is bound to its CLI PROCESS, not its model (his ruling,
- *  2026-09-15): the CLI keeps its context across a model switch, but its
- *  session id never moves to another CLI. So a different loop on a session
- *  that already has turns is not a switch — it is a NEW session, opened in
- *  place with the new loop, the old one left in recents. */
-function loopSwitchStartsNewSession(id: string): boolean {
-  const c = current();
-  return !!c && c.messages.length > 0 && !!c.loop && c.loop !== id;
-}
-
-function setLoop(id: string): void {
-  glyphhLoop = id;
-  void window.glyphh.setPreference?.("glyphhLoop", id);
-  if (loopSwitchStartsNewSession(id)) {
-    // The new session is born on the first send and adopts pendingLoop.
-    pendingLoop = id;
-    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-    paintChips();
-    void refreshModelList();
-    return;
-  }
-  // The pick binds to THIS session (ambient default for new ones stays too).
-  const c = current();
-  if (c) { c.loop = id; void saveStore(); } else pendingLoop = id;
-  paintChips();
-  // A different loop declares different slots — the model chip and the meter
-  // both go stale the moment the loop changes.
-  void refreshModelList();
-}
-
 // ── Model selector (drop-up) ──
 // The picker's shape comes from the LOOP: it declares model slots, and each one
 // renders a dropdown. Resolution and rendering live in model-picker.ts; this file
 // only owns the chip and when to refresh.
 
-// ── Model selector — WHATEVER THE ENDPOINT SAYS (his ruling, 2026-09-15):
+// ── Model selector — WHATEVER THE GATEWAY SERVES (his ruling, 2026-09-15):
 // the list is asked of the base URL the turn will hit, with the key in hand.
-//   own key   → the vendor's endpoint, the user's key (ungoverned by design)
-//   gateway   → the org's gateway, the member's key — the org's team allow-list
-//   login     → the CLI's own login: nothing to ask; the CLI decides
-// No seeded catalog, no plan gate here: the server decided when it minted the key.
-interface AvailModel { id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }
+// One lane since the CLI era ended (2026-09-28): the org's gateway, the
+// member's key, the org's allow-list. No seeded catalog, no plan gate here —
+// the server decided when it minted the key.
+interface AvailModel { id: string; name: string; providerSlug: string }
 let availModels: AvailModel[] = [];
-let modelSource: "gateway" | "byok" | "login" | "none" = "none";
-/** THE LANE LAW (his order, 2026-09-21): off = the CLI's own login; choice =
- *  the picker has two groups and the pick carries the lane; required = gateway only. */
-let laneMode: "off" | "choice" | "required" = "off";
-/** A pick's lane is in its id: the "Own login" group prefixes `direct::`. */
-const DIRECT_PREFIX = "direct::";
-const laneOf = (id: string | null | undefined): "gateway" | "direct" => (String(id ?? "").startsWith(DIRECT_PREFIX) ? "direct" : "gateway");
-
+let modelSource: "gateway" | "none" = "none";
 function modelsForLoop(): AvailModel[] {
   return availModels;
-}
-
-/** The active loop's display name ("Codex", "Claude"), for the picker's group and the chip. */
-function activeLoopName(): string {
-  return loops.find((l) => l.id === activeLoop())?.name || "Loop";
 }
 
 /** THE CATALOG'S ID IS NOT THE MODEL'S NAME (his report, 2026-09-18: the chip
@@ -463,23 +331,20 @@ const bareModelId = (id: string | null | undefined): string | null => {
  *  decides" is not a choice anyone has, and offering it sends a turn with no
  *  model at all. The server marks the row; the renderer never guesses. */
 const autoModel = (): AvailModel | null => availModels.find((m) => m.providerSlug === "auto") ?? null;
-/** AUTO ONLY governs the GATEWAY group alone: the org's router is the one gateway
- *  row, while the own-login group (hybrid mode) stays the member's to pick. */
-const autoOnly = (): boolean => availModels.filter((m) => m.lane !== "direct").length === 1 && !!autoModel();
-/** Under Auto only, a pick still counts when it names the own-login lane. */
-const autoPins = (raw: string | null | undefined): boolean => autoOnly() && laneOf(raw) !== "direct";
+/** AUTO ONLY: the org's router is the only row on offer, so every turn takes it. */
+const autoOnly = (): boolean => availModels.length === 1 && !!autoModel();
+const autoPins = (raw: string | null | undefined): boolean => { void raw; return autoOnly(); };
 
-/** The stored pick, as stored (a lane prefix included). */
+/** The stored pick, as stored. */
 function pickedRawId(): string | null {
   const raw = current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref;
   return raw ? String(raw) : null;
 }
-/** The row a pick names: the same bare name AND, when the picker has two
- *  groups, the same lane — the gateway's claude-sonnet-5 and the login's are two picks. */
+/** The row a pick names, by its bare name. */
 function rowForPick(raw: string | null): AvailModel | null {
   const bare = bareModelId(raw);
   if (!bare) return null;
-  return availModels.find((m) => bareModelId(m.id) === bare && (laneMode !== "choice" || laneOf(m.id) === laneOf(raw))) ?? null;
+  return availModels.find((m) => bareModelId(m.id) === bare) ?? null;
 }
 function effectiveModelId(): string | null {
   const raw0 = pickedRawId();
@@ -487,9 +352,14 @@ function effectiveModelId(): string | null {
   const raw = raw0;
   const picked = bareModelId(raw);
   if (!picked) return null;
-  // A default the ACTIVE loop cannot run is not this loop's model. Saying so
-  // (null = the loop's own default) beats naming a model the turn won't use.
-  return availModels.length && !rowForPick(raw) ? null : picked;
+  // ONLY A MODEL ON THE LIST IS A MODEL (his order, 2026-09-29: "the picker
+  // should not show another model name that isn't in the list above — where is
+  // that coming from?"). It came from an old stored pick: a name from a lane
+  // that no longer exists, kept on the thread and named on the chip because
+  // the rule used to be "a stale pick still runs, so say it". It does not run,
+  // and a name nobody can find in the list reads as a bug. Unresolvable = the
+  // org's default.
+  return rowForPick(raw) ? picked : null;
 }
 function selectedModel(): AvailModel | null {
   const raw = pickedRawId();
@@ -497,28 +367,32 @@ function selectedModel(): AvailModel | null {
   return rowForPick(raw);
 }
 
+/** What "Default" runs on: the org's answer (desktop.pick_default on the
+ *  server) while the team still carries it, else the team's router, else its
+ *  first chat model by name — never nothing while the list has a model. */
+function resolvedDefaultModel(): string {
+  if (orgDefaultModel && availModels.some((m) => m.id === orgDefaultModel || m.name === orgDefaultModel)) return orgDefaultModel;
+  const router = availModels.find((m) => m.providerSlug === "auto");
+  if (router) return router.id;
+  return [...availModels].map((m) => m.id).sort()[0] ?? "";
+}
+
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
   const sel = selectedModel();
-  const id = effectiveModelId();
-  // A model the catalog no longer carries still RUNS, so name it rather than
-  // calling it the default: a stale pick is a thing to notice, not to hide.
   // NO MODELS IS ITS OWN ANSWER (his order, 2026-09-18): an org that allows
   // none leaves nothing to run, and naming some leftover pick would invite a
   // turn that can only be refused.
   const none = modelSource === "gateway" && availModels.length === 0;
   // With the gateway on, "Default" is the ORG'S default (his order, 2026-09-20),
-  // so the chip names it: the turn runs on that, never on the CLI's own pick.
-  const orgDef = modelSource === "gateway" && !sel && !id ? orgDefaultModel : "";
-  // With two lanes on offer the chip says which one this turn takes.
-  const lane = laneMode === "choice" ? (sel?.lane === "direct" ? ` · ${activeLoopName()} loop` : " · gateway") : "";
-  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : orgDef ? `Default · ${orgDef}` : "Default")}${none ? "" : lane}`;
+  // so the chip names it: the turn runs on that, never on some older pick.
+  const orgDef = modelSource === "gateway" && !sel ? resolvedDefaultModel() : "";
+  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (orgDef ? `Default · ${orgDef}` : "Default")}`;
   mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
-    : sel ? `${sel.name} — ${sel.providerSlug}${sel.lane === "direct" ? ` · runs on the ${activeLoopName()} loop's own login` : laneMode === "choice" ? " · runs through your organization's gateway" : ""}`
-    : id ? `${id} — not in your model list; the loop may refuse it`
-    : orgDef ? `Your organization's default model` : "The loop's own default model";
-  mc.className = "code-chip" + (none || (!sel && id) ? " warn" : "");
+    : sel ? `${sel.name} — ${sel.providerSlug}`
+    : "Your organization's default model";
+  mc.className = "code-chip" + (none ? " warn" : "");
   paintComposerGate();
 }
 
@@ -534,13 +408,9 @@ window.addEventListener("focus", () => {
 });
 
 async function refreshModelList(force?: boolean): Promise<void> {
-  const loop = activeLoop();
   try {
-    const r = await window.glyphh.loopModels?.(loop, force);
-    // A stale answer for another loop must never paint: the loop can change
-    // while the request is in flight.
-    if (loop !== activeLoop()) return;
-    if (r?.ok) { availModels = r.models; modelSource = r.source; laneMode = r.laneMode ?? "off"; }
+    const r = await window.glyphh.loopModels?.(GLYPHH_LOOP, force);
+    if (r?.ok) { availModels = r.models; modelSource = r.source === "gateway" ? "gateway" : "none"; }
   } catch { /* offline — the last list stands */ }
   paintModelChip();
 }
@@ -589,10 +459,20 @@ function renderModelMenu(): void {
     const q = search.value.trim().toLowerCase();
     const rows = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
     if (!autoOnly()) {
+      // THE CURRENT CHOICE CARRIES THE CHECK (his report, 2026-09-29: "there is
+      // no check mark by the current selected model"), and Default names the
+      // model it resolves to, the same words as the chip.
       const def = document.createElement("button");
       def.type = "button";
       def.className = "code-drop-item" + (selectedModel() ? "" : " selected");
-      def.textContent = "Default — the loop decides";
+      const defMain = document.createElement("div");
+      defMain.className = "drop-main";
+      const defName = document.createElement("span");
+      const resolved = resolvedDefaultModel();
+      defName.textContent = resolved ? `Default · ${resolved}` : "Default";
+      defMain.appendChild(defName);
+      if (!selectedModel()) defMain.insertAdjacentHTML("beforeend", check);
+      def.appendChild(defMain);
       def.addEventListener("click", () => { void choose(null); });
       list.appendChild(def);
     }
@@ -600,22 +480,11 @@ function renderModelMenu(): void {
       const empty = document.createElement("div");
       empty.className = "drop-empty";
       empty.textContent = q ? `No models matching "${q}"`
-        : modelSource === "login" ? "This loop runs on the CLI's own login — it picks its model."
-        : "No models reachable — check the loop's key or the org's gateway.";
+        : "No models reachable — check your organization's gateway.";
       list.appendChild(empty);
       return;
     }
-    // TWO GROUPS when the org enabled the gateway without requiring it (his
-    // order, 2026-09-21): the metered gateway list, then the CLI's own login.
-    // Required: the gateway list alone. Off: the loop's own list alone.
-    // Two groups, named plainly (his wording, 2026-09-21): "Gateway", and the
-    // loop itself — "Codex Loop", "Claude Loop" — for the CLI's own login.
-    const groups: Array<{ label: string | null; rows: AvailModel[] }> = laneMode === "choice"
-      ? [
-        { label: "Gateway", rows: rows.filter((m) => m.lane !== "direct") },
-        { label: `${activeLoopName()} Loop`, rows: rows.filter((m) => m.lane === "direct") },
-      ]
-      : [{ label: null, rows }];
+    const groups: Array<{ label: string | null; rows: AvailModel[] }> = [{ label: null, rows }];
     for (const g of groups) {
       if (!g.rows.length) continue;
       if (g.label) {
@@ -649,11 +518,8 @@ function renderModelMenu(): void {
 }
 
 // ── Mode drop-up ──
-/** The modes the active loop can actually run. */
-function modesForLoop(): typeof MODES[number][] {
-  const set = loops.find((l) => l.id === activeLoop())?.modes ?? null;
-  return set ? MODES.filter((m) => set.includes(m.id)) : [...MODES];
-}
+/** The modes the loop can run — all of them (a CLI used to declare its own). */
+function modesForLoop(): typeof MODES[number][] { return [...MODES]; }
 
 function renderModeMenu(): void {
   const menu = el("code-mode-menu");
@@ -733,181 +599,6 @@ function showModeInfoModal(): void {
   document.body.appendChild(overlay);
 }
 
-// ── Loop drop-up — pick which CLI loop runs the session ──
-// Loops are LOCAL: the Loops page's CLI pre-configs (~/.glyphh/loops), the
-// same roster the wall's tiles and the workspace cells ride. Nothing here
-// comes from the server any more — the CLI is the loop.
-/** The loop a fresh session opens on: the member's Settings → General
- *  choice, else whichever loop the role flags as its default. Both are
- *  policy-bound — neither can name a loop the member may not use. */
-async function defaultLoopId(): Promise<string> {
-  const g = window.glyphh as unknown as {
-    getPreference?: (k: string, d: unknown) => Promise<unknown>;
-    loopsAvailable?: () => Promise<{ ok: boolean; data?: Array<{ cli: string; isDefault: boolean }> }>;
-  };
-  try {
-    const pref = String((await g.getPreference?.("defaultLoop", "")) ?? "");
-    if (pref && loops.some((l) => l.id === pref)) return pref;
-    const r = await g.loopsAvailable?.();
-    const role = r?.ok ? (r.data ?? []).find((l) => l.isDefault)?.cli : "";
-    return role && loops.some((l) => l.id === role) ? role : "";
-  } catch {
-    return "";
-  }
-}
-
-async function refreshLoops(): Promise<void> {
-  // LOOPS are the configured CLI loops (his ruling, 2026-09-11: the CLI is
-  // the loop) — the same roster the wall's agent tiles ride. description
-  // carries the cli name; the model chip filters by it.
-  try {
-    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean; modes?: string[] }> }> }).cliAgentsList?.();
-    const rows = r?.ok ? r.agents.filter((a) => a.enabled !== false) : [];
-    // NO LOOP IS AN ANSWER (his report, 2026-09-18: the picker offered
-    // "Default" while the org had enabled nothing the gateway can govern).
-    // An ok answer with no rows means the org allows none; a FAILED call means
-    // offline, and the built-in default rightly stands there.
-    noLoopAllowed = !!r?.ok && rows.length === 0;
-    if (noLoopAllowed) loops = [];
-    if (rows.length) {
-      // ownKey (a personal BYOK key on the loop) keeps its picker on the
-      // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
-      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey, cli: a.cli ?? "claude", modes: a.modes ?? null }));
-      loopsCanBuild = false;
-    }
-    // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
-    // loop decides what a session with no loop of its own opens on; empty
-    // means "my role's default", which /api/loops/available flags. Only
-    // then does first-in-the-list apply.
-    if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = await defaultLoopId() || loops[0]?.id || "default";
-    paintChips();
-    paintComposerGate();
-  } catch { /* offline — the built-in default stands */ }
-}
-
-function renderLoopMenu(): void {
-  const pop = el("code-effort-pop");
-  if (!pop) return;
-  pop.textContent = "";
-  const head = document.createElement("div");
-  head.className = "code-drop-head";
-  const headLabel = document.createElement("span");
-  headLabel.textContent = "Loop";
-  head.appendChild(headLabel);
-  pop.appendChild(head);
-
-  // Search — filters as you type; the list below repaints in place.
-  const search = document.createElement("input");
-  search.type = "text";
-  search.className = "loop-drop-search";
-  search.placeholder = "Search loops…";
-  search.spellcheck = false;
-  search.autocomplete = "off";
-  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-
-  const pane = document.createElement("div");
-  pane.className = "drop-pane";
-  pop.appendChild(pane);
-  pane.appendChild(search);
-  const list = document.createElement("div");
-  list.className = "loop-drop-list";
-  pane.appendChild(list);
-
-  const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const closeTips = (): void => { pop.querySelector(".drop-detail")?.remove(); pane.classList.remove("hidden"); };
-  /** The row shows ONE sentence — the rest lives behind the ⓘ. */
-  const firstSentence = (text: string): string => {
-    const t = text.trim();
-    const m = /^[\s\S]*?[.!?](?=\s|$)/.exec(t);
-    return (m ? m[0] : t).trim();
-  };
-
-  const paint = (): void => {
-    list.textContent = "";
-    const q = search.value.trim().toLowerCase();
-    const shown = q
-      ? loops.filter((l) => `${l.name} ${l.description ?? ""}`.toLowerCase().includes(q))
-      : loops;
-    if (!shown.length) {
-      const empty = document.createElement("div");
-      empty.className = "drop-empty";
-      empty.textContent = q ? `No loops matching "${q}"`
-        : noLoop() ? "Your organization hasn't enabled a loop this app can run. An org admin turns one on in the console."
-        : "No loops configured.";
-      list.appendChild(empty);
-      return;
-    }
-    for (const l of shown) {
-      const item = document.createElement("button");
-      item.className = "code-drop-item drop-item-2line loop-drop-item" + (l.id === activeLoop() ? " selected" : "");
-      item.type = "button";
-      const main = document.createElement("div");
-      main.className = "drop-main";
-      // The loop's CLI mark, the same one the rail shows (his order, 2026-09-16).
-      const mark = railCliMarks[l.cli || "claude"];
-      if (mark) { const im = document.createElement("img"); im.className = `loop-mark cli-mark-${l.cli || "claude"}`; im.src = mark; im.alt = ""; main.appendChild(im); }
-      const span = document.createElement("span");
-      span.textContent = l.name;
-      main.appendChild(span);
-      if (l.id === activeLoop()) main.insertAdjacentHTML("beforeend", check);
-
-      // ⓘ — the whole description opens IN THIS POPUP, behind a back arrow.
-      if (l.description) {
-        const infoBtn = document.createElement("button");
-        infoBtn.className = "model-info-btn";
-        infoBtn.type = "button";
-        infoBtn.title = "About this loop";
-        infoBtn.textContent = "i";
-        infoBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          showDropDetail(pop, pane, { title: l.name, body: l.description ?? "" });
-        });
-        main.appendChild(infoBtn);
-      }
-      item.appendChild(main);
-      // Another loop on a session with turns = a new session (the CLI's
-      // context cannot move). Say so on the row instead of surprising anyone.
-      const boundary = loopSwitchStartsNewSession(l.id);
-      if (boundary) {
-        item.classList.add("loop-drop-boundary");
-        item.title = "Starts a new session — this one stays in Recents";
-        const sub = document.createElement("span");
-        sub.className = "drop-sub loop-drop-sub";
-        sub.textContent = "Starts a new session";
-        item.appendChild(sub);
-      } else if (l.description) {
-        // NAME + ONE SENTENCE, clamped to a single line — two lines, never more.
-        const sub = document.createElement("span");
-        sub.className = "drop-sub loop-drop-sub";
-        sub.textContent = firstSentence(l.description);
-        item.appendChild(sub);
-      }
-      item.addEventListener("click", () => {
-        closeTips();
-        setLoop(l.id);
-        renderLoopMenu();
-        pop.classList.add("hidden");
-      });
-      list.appendChild(item);
-    }
-  };
-
-  search.addEventListener("input", paint);
-  paint();
-  // The pop just opened from a chip click — put the cursor in the search.
-  requestAnimationFrame(() => search.focus());
-}
-
-
-// ── Context panel (meter click) — one shared history, one row per model
-//    lane that might serve it. Local is the binding lane (compaction keys
-//    off it — declined escalations fall back to local, so the history must
-//    always stay local-servable); remote lanes show how far the SAME history
-//    sits from their windows. Extensible: renders whatever lanes main sends.
-
-let meterTimer: ReturnType<typeof setTimeout> | null = null;
-
-
 /** A chip's drop-up opens UP AND TO THE LEFT: its right edge stays on the
  *  chip, so a menu wider than its chip grows into the page instead of past
  *  the composer's right edge (which used to widen the row and shove the
@@ -954,9 +645,8 @@ function openChipDropUp(menu: HTMLElement): void {
 
 function initComposerControls(): void {
   const modeWrap = el("code-mode-wrap");
-  const effortWrap = el("code-effort-wrap");
   const modelWrap = el("code-model-wrap");
-  if (!modeWrap || !effortWrap) return;
+  if (!modeWrap) return;
   if (modelWrap) {
     const mmenu = document.createElement("div");
     mmenu.id = "code-model-menu";
@@ -970,7 +660,6 @@ function initComposerControls(): void {
     mmenu.addEventListener("click", (e) => e.stopPropagation());
     el("code-model-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      el("code-effort-pop")?.classList.add("hidden");
       el("code-mode-menu")?.classList.add("hidden");
       el("code-ctx-pop")?.classList.add("hidden");
       renderModelMenu();
@@ -994,49 +683,13 @@ function initComposerControls(): void {
   menu.id = "code-mode-menu";
   menu.className = "code-drop-up hidden";
   modeWrap.appendChild(menu);
-  // The loop drop-up (repurposed effort slot) — rows render on open.
-  const pop = document.createElement("div");
-  pop.id = "code-effort-pop";
-  pop.className = "code-drop-up hidden";
-  effortWrap.appendChild(pop);
-  // The effort dial, to the right of the loop chip.
-  const levelWrap = el("code-level-wrap");
-  if (levelWrap) {
-    const lpop = document.createElement("div");
-    lpop.id = "code-level-pop";
-    lpop.className = "code-drop-up code-level-pop hidden";
-    levelWrap.appendChild(lpop);
-    el("code-level-chip")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      el("code-mode-menu")?.classList.add("hidden");
-      el("code-effort-pop")?.classList.add("hidden");
-      el("code-ctx-pop")?.classList.add("hidden");
-      const opening = lpop.classList.contains("hidden");
-      if (opening) { renderLevelPop(); lpop.classList.remove("hidden"); openChipDropUp(lpop); }
-      else lpop.classList.add("hidden");
-    });
-    void loadLoopEffort().then(paintLevelChip);
-  }
   el("code-mode-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    el("code-effort-pop")?.classList.add("hidden");
-    el("code-level-pop")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
     renderModeMenu();
     const mm = el("code-mode-menu");
     mm?.classList.toggle("hidden");
     if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
-  });
-  el("code-effort-chip")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    el("code-mode-menu")?.classList.add("hidden");
-    el("code-level-pop")?.classList.add("hidden");
-    el("code-ctx-pop")?.classList.add("hidden");
-    void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) openChipDropUp(p2); });
-    renderLoopMenu();
-    const lp = el("code-effort-pop");
-    lp?.classList.toggle("hidden");
-    if (lp && !lp.classList.contains("hidden")) openChipDropUp(lp);
   });
   const ctxWrap = el("code-ctx-wrap");
   if (ctxWrap) {
@@ -1058,7 +711,6 @@ function initComposerControls(): void {
       el("code-mic-caret")?.addEventListener("click", (e) => {
         e.stopPropagation();
         el("code-mode-menu")?.classList.add("hidden");
-        el("code-effort-pop")?.classList.add("hidden");
         el("code-model-menu")?.classList.add("hidden");
         el("code-ctx-pop")?.classList.add("hidden");
         const opening = mpop.classList.contains("hidden");
@@ -1074,8 +726,6 @@ function initComposerControls(): void {
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
-    if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
-    { const lw = el("code-level-wrap"); if (lw && !lw.contains(t)) el("code-level-pop")?.classList.add("hidden"); }
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
@@ -1163,6 +813,10 @@ interface LiveRun {
   usd: number;                 // running Pipedream spend for the turn, in dollars
   steps: string[];             // timeline breadcrumbs for the Plan rail
   setupMeta: string;           // first-run model-download status
+  /** Open steps by tool key → their indexes in `steps`, oldest first. Tools
+   *  run IN PARALLEL now (his order, 2026-09-29), so "the last step" is no
+   *  longer the one that just finished. */
+  openSteps?: Map<string, number[]>;
 }
 const liveRuns = new Map<string, LiveRun>();
 let runTicker: ReturnType<typeof setInterval> | null = null;
@@ -1209,21 +863,49 @@ function toolDoneLabel(d: { name: string; title?: string; bad: boolean; reason?:
 // the frame stream). Keyed `${chatId}:${name}`; cleared when the run finishes
 // so a lost done can never strand a stale row reference.
 const pendingToolRows = new Map<string, CodeMsg[]>();
-function pushToolRow(chat: CodeChat, name: string, label: string): void {
+/** A TOOL ROW'S IDENTITY is its name and its input's title: the engine runs a
+ *  turn's tool calls together now, so two reads can be open at once and finish
+ *  in either order. Keyed by name alone, the first read's row took the second
+ *  one's result. Two calls with the SAME title are the same call twice, and
+ *  either order is right for them. */
+const toolKey = (chatId: string, name: string, title?: string): string => `${chatId}:${name}:${title ?? ""}`;
+/** ONE CARD PER FILE PER TURN: a file written and then edited three times in a
+ *  turn is one thing the agent made, not four. Within the turn (back to the
+ *  person's last message) the card is updated in place; a file the turn
+ *  CREATED stays "Created" however often it was edited after. */
+function noteArtifact(chat: CodeChat, art: ArtifactRef): void {
+  for (let i = chat.messages.length - 1; i >= 0; i--) {
+    const m = chat.messages[i]!;
+    if (m.role === "user") break;
+    if (m.kind === "artifact" && m.artifact?.path === art.path) {
+      m.artifact = { path: art.path, verb: m.artifact.verb === "Created" ? "Created" : art.verb };
+      m.at = Date.now();
+      return;
+    }
+  }
+  chat.messages.push({ role: "assistant", kind: "artifact", text: "", artifact: art, at: Date.now() });
+}
+
+/** A frame a SUB-AGENT sent: it carries the child's ref (see subagent-ledger.ts). */
+const isChildFrame = (d: unknown): boolean => !!(d as { agent?: unknown } | null)?.agent;
+function pushToolRow(chat: CodeChat, name: string, label: string, title?: string): CodeMsg {
   const msg: CodeMsg = { role: "assistant", kind: "tool", text: label, at: Date.now() };
   chat.messages.push(msg);
-  const k = `${chat.id}:${name}`;
+  const k = toolKey(chat.id, name, title);
   const q = pendingToolRows.get(k);
   if (q) q.push(msg);
   else pendingToolRows.set(k, [msg]);
+  return msg;
 }
-function settleToolRow(chat: CodeChat, name: string, label: string): void {
-  const k = `${chat.id}:${name}`;
+function settleToolRow(chat: CodeChat, name: string, label: string, title?: string): CodeMsg {
+  const k = toolKey(chat.id, name, title);
   const q = pendingToolRows.get(k);
   const msg = q?.shift();
   if (q && !q.length) pendingToolRows.delete(k);
-  if (msg) msg.text = label;                    // rewrite the ⚙ row in place
-  else chat.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
+  if (msg) { msg.text = label; return msg; }   // rewrite the ⚙ row in place
+  const orphan: CodeMsg = { role: "assistant", kind: "tool", text: label, at: Date.now() };
+  chat.messages.push(orphan);
+  return orphan;
 }
 function clearToolRows(chatId: string): void {
   for (const k of [...pendingToolRows.keys()]) if (k.startsWith(`${chatId}:`)) pendingToolRows.delete(k);
@@ -1367,12 +1049,45 @@ function observeIfRunning(chat: CodeChat): void {
 // take shape as they arrive. Module-scoped so BOTH run paths share it: the local
 // glyphhRun deltas (onGlyphhAgentDelta) and the web remote turn (remote-run.ts).
 let streamPaintQueued = false;
+/**
+ * STREAMING THAT DOES NOT FLICKER (his order, 2026-09-29: "world class"). The
+ * live reply used to be re-rendered WHOLE every frame, so every image in it
+ * was rebuilt (a visible flash), every code block re-highlighted from the top,
+ * and any text the person had selected was taken away.
+ *
+ * Now a reply is two parts: everything up to its last finished block — a blank
+ * line outside a code fence — is rendered ONCE and kept, and only the block
+ * still being written is re-rendered. The finished message is rendered whole
+ * when the turn lands, so a construct that spans a blank line (a loose list)
+ * is exact in the transcript even if it streams in two pieces.
+ */
+const streamParts = new WeakMap<HTMLElement, { frozenLen: number; frozen: HTMLElement; tail: HTMLElement }>();
+function paintBubble(bubble: HTMLElement, text: string): void {
+  let st = streamParts.get(bubble);
+  if (!st || text.length < st.frozenLen) {
+    bubble.textContent = "";
+    const frozen = document.createElement("div");
+    frozen.className = "stream-frozen";
+    const tail = document.createElement("div");
+    tail.className = "stream-tail";
+    bubble.append(frozen, tail);
+    st = { frozenLen: 0, frozen, tail };
+    streamParts.set(bubble, st);
+  }
+  const cut = streamStableCut(text);
+  if (cut > st.frozenLen) {
+    st.frozen.insertAdjacentHTML("beforeend", formatMarkdown(text.slice(st.frozenLen, cut)));
+    st.frozenLen = cut;
+  }
+  st.tail.innerHTML = formatMarkdown(text.slice(st.frozenLen));
+}
+
 function paintStream(): void {
   streamPaintQueued = false;
   const run = currentRun();
   const thread = el<HTMLDivElement>("code-thread");
   if (run?.bubble && run.bubble.isConnected) {
-    run.bubble.innerHTML = formatMarkdown(run.text);
+    paintBubble(run.bubble, run.text);
     if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
   } else {
     renderThread(); // first token — adds the live block under the spinner
@@ -1502,6 +1217,10 @@ const input = () => el<HTMLTextAreaElement>("code-input");
 // ── Session store ────────────────────────────────────────────────────────
 let storeLoaded = false;
 let storeLoading: Promise<void> | null = null;
+/** THIS DOCUMENT IS AN AGENT PANEL (home.html?solo=tool:coding) — an instance
+ *  the shell opened, not the shell itself. */
+const IS_AGENT_PANEL = typeof window !== "undefined"
+  && (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
 /** Sessions live on the SERVER THREADS SURFACE (thread-store.ts), with the
  *  surface's local persistence as the offline cache — hydrate reconciles the
  *  two by LWW at boot (the cache's pre-cutover history migrates up once).
@@ -1514,7 +1233,16 @@ async function loadStore(): Promise<void> {
     try {
       const s = await threadStore.hydrate();
       chats = s.chats as CodeChat[];
-      currentId = s.currentId;
+      // A PANEL ALWAYS OPENS ON A NEW SESSION (his order, 2026-09-29: "it
+      // should ALWAYS load a new agent with a new session no matter what 100%
+      // of the time. However… it is loading a previous state and the ui gets
+      // stuck this way"). `currentId` is ONE pointer shared by every surface,
+      // so a panel that adopted it came up on whatever thread was last
+      // touched — and with several panels open they would all claim the same
+      // one. A panel is TOLD which thread to show (the rail's open-session
+      // command); told nothing, it starts clean. The shell keeps the pointer,
+      // so the main window still reopens where the user left off.
+      currentId = IS_AGENT_PANEL ? "" : s.currentId;
     } catch { chats = []; currentId = ""; }
     if (!chats.length) {
       try {
@@ -1586,7 +1314,7 @@ function ensureCodeSection(): void {
   /** Resolves once the persisted sessions are in memory (boot races the
    *  workspace reopen; a "last" resume must not read an empty list). */
   ready: (): Promise<void> => loadStore(),
-  list: (): Array<{ id: string; title: string; createdAt: number; mode: "chat" | "cowork" | "code" }> =>
+  list: (): Array<{ id: string; title: string; createdAt: number; mode: SessionType }> =>
     chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, mode: modeOf(c) })),
   currentId: (): string | null => currentId,
   currentTitle: (): string => current()?.title ?? "New session",
@@ -1602,8 +1330,7 @@ function ensureCodeSection(): void {
     // The switched-to session's OWN source drives the chip/locus/run.
     repaintSourceUi();
     applySessionFolder(target);   // the workbench follows the thread's folder
-    paintChips();        // the loop chip follows THIS session's binding
-    renderLoopMenu();
+    paintChips();
     void refreshModelList();
     broadcastTimeline(!!currentRun());
     // SURFACE THE AGENT: called from the + New Session screen's session column,
@@ -1645,19 +1372,11 @@ function ensureCodeSection(): void {
     // WEAK (a workspace's folder): only fills a blank — an existing thread's
     // own folder ALWAYS wins (his rule, 2026-08-30).
     if (weak && c.workdir) return;
-    c.workdir = dir;
-    void saveStore();
+    setThreadFolder(dir);
   },
-  /** A LAYOUT's loop binds to the session it opens with — this session only. */
-  stampLoop: (loop: string): void => {
-    if (!loop) return;
-    const c = current();
-    if (!c) { pendingLoop = loop; }
-    else { c.loop = loop; void saveStore(); }
-    paintChips();
-    renderLoopMenu();
-    void refreshModelList();
-  },
+  /** A LAYOUT used to bind its own loop here; there is one loop now, so the
+   *  stamp is accepted and ignored (the contract stays — layouts still call it). */
+  stampLoop: (_loop: string): void => { /* one loop, nothing to bind */ },
   /** A LAYOUT's model slots bind to the session it opens with — this session
    *  only; other sessions keep running their own casts untouched. */
   stampModels: (models: Record<string, string>): void => {
@@ -1707,6 +1426,42 @@ function localFileUrl(p: string): string {
   return "file://" + s.split("/").map(encodeURIComponent).join("/");
 }
 
+/**
+ * A THREAD'S FOLDER — ONE TRUTH (his rule, 2026-09-29: "no matter where it
+ * starts its context is set initially by where the thread started but if it is
+ * changed the folder is stored as what it was updated to… The ui lets the user
+ * pick the new folder but it doesn't keep that folder"; and "The agent should
+ * work from the selected folder period… it is sandboxed to that folder").
+ *
+ * The chip used to read the SOURCE's path while the run sent `workdir`, two
+ * fields that drifted apart, so the chip could name the folder you picked while
+ * the turn ran in the one the thread was born with. Now `threadFolder()` is what
+ * the chip shows AND what the run sends, and `setThreadFolder()` is the only
+ * way a thread's folder changes — both fields together.
+ */
+function threadFolder(c: CodeChat | null | undefined = current()): string {
+  if (c) return c.workdir || (c.source?.kind === "local" ? c.source.path || "" : "");
+  return pendingWorkdir || (pendingSource.kind === "local" ? pendingSource.path || "" : "");
+}
+function setThreadFolder(dir: string): void {
+  if (!dir) return;
+  const c = current();
+  if (c) {
+    c.workdir = dir;
+    if (c.source?.kind === "local") c.source = { ...c.source, path: dir };
+    void saveStore();
+  } else {
+    pendingWorkdir = dir;
+    if (pendingSource.kind === "local") {
+      pendingSource = { ...pendingSource, path: dir };
+      void window.glyphh.setPreference?.(SOURCE_PREF, pendingSource);
+    }
+  }
+  console.warn("[folder] thread folder set", JSON.stringify({ chatId: c?.id ?? null, dir }));
+  sourceChip?.setSource(activeSource());
+  paintSourceDependents();
+}
+
 function applySessionFolder(c: CodeChat | null | undefined): void {
   const dir = c?.workdir || (c?.source?.kind === "local" ? c.source.path || "" : "");
   if (!dir) return;
@@ -1723,11 +1478,12 @@ let pendingModels: Record<string, string> | null = null;
  *  mounts, so the + New Session screen came up unstyled until the user clicked
  *  a tab (which called paintCw and "fixed" it). */
 function syncSpaceAttrs(): void {
-  // Spaces are gone — every surface is the Code agent. Keep the dataset stamped
-  // to "code" so any consumer that still reads it (workbench/dashboard) sees a
-  // valid, stable value.
-  document.body.dataset.sessionSpace = "code";
-  document.body.dataset.railSpace = "code";
+  // TWO TYPES AGAIN (his order, 2026-09-29): the open thread's own type styles
+  // the surface, and the rail's tab styles the lists. A Chat thread hides the
+  // dev chrome the CSS keys off this attribute.
+  const c = current();
+  document.body.dataset.sessionSpace = c ? modeOf(c) : typeTab;
+  document.body.dataset.railSpace = typeTab;
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
 }
@@ -1747,93 +1503,11 @@ function syncSpaceAttrs(): void {
   const dir = c?.workdir || (c?.source?.kind === "local" ? c.source.path || "" : "");
   return dir || null;
 };
-// The session's ACTIVE LOOP — what the workbench's >_ terminal switcher
-// follows (his report, 2026-09-14: it always switched to claude because it
-// read the agent bound at card-open, not the loop the session rides now).
-(window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop = () => activeLoop();
-// The chat's PERSISTED CLI session FOR ONE CLI — the >_ hop's fallback when
-// the bridge's in-memory map hasn't been primed yet (fresh boot). Bindings
-// are per-CLI (his ruling, 2026-09-14): a claude sid must never feed a
-// codex resume.
-/** THE CHAT'S CLI — the loop's own `cli` field, never its description (his
- *  report, 2026-09-25: a session on the built-in `default` loop resolved its
- *  key to "The standard Glyphh agent loop." and silently resumed on claude).
- *  The rules live in shared/cli-session-binding.ts, under test. */
-function sessionCli(c: CodeChat | undefined): string {
-  return sessionCliOf(c?.loop, loops);
-}
-/** The chat holding a CLI session — the per-CLI map is the truth, the legacy
- *  single slot only a claude-lane fallback. Scanning the map is what makes a
- *  codex/gemini re-adopt find its own chat instead of forking a new one. */
-function findChatForCliSession(sid: string): CodeChat | undefined {
-  return chatForCliSession(chats as unknown as CliBound[], sid) as CodeChat | undefined;
-}
-/** ONE WRITER for a chat's CLI binding (renderer map + legacy slot + the
- *  bridge's in-memory resume map), so no surface can hold a half-written
- *  binding. Returns true when anything actually changed. */
-function bindCliSession(c: CodeChat, cli: string, sid: string): boolean {
-  const changed = applyCliBinding(c as unknown as CliBound, cli, sid);
-  if (sid) void window.glyphh.glyphhBindCliSession?.(c.id, sid, cli || "claude");
-  return changed;
-}
-function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
-  if (!c) return null;
-  return cliSidFor(c as unknown as CliBound, cli || sessionCli(c));
-}
-(window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId =
-  (cli?: string) => sessionCliSid(current() ?? undefined, cli);
-// The chat card names its LOOP on open — the run must ride THAT CLI
-// (his report, 2026-09-11: a codex loop opened claude's session).
-(window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop = (id) => {
-  glyphhLoop = id;
-  const c = current();
-  if (c) { c.loop = id; void saveStore(); }
-  else pendingLoop = id;
-  paintChips();
-  void refreshModelList();
-};
+/** THE CHAT IS THE SESSION (2026-09-28): the loop keeps no transcript of its
+ *  own, so a thread's id is the only session id there is — the >_ hop into
+ *  `glyphh --resume <id>` and the run ledger both key off it. */
 (window as unknown as { __glyphhHasSession?: (id: string) => boolean }).__glyphhHasSession = (id) => chats.some((c) => c.id === id);
 (window as unknown as { __glyphhOpenLocalSession?: (id: string) => void }).__glyphhOpenLocalSession = (id) => openLocalSession(id);
-(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string; chatId?: string }) => void })
-  .__glyphhAdoptCliSession = (a) => {
-    void (async () => {
-      const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId);
-      if (!t?.ok) { console.warn("[agent] adopt: transcript unavailable", { sessionId: a.sessionId, error: t?.error }); return; }
-      // The chat the hop came from takes the session (his report, 2026-09-20);
-      // otherwise the chat already bound to it ON ANY CLI; otherwise a new one.
-      let c = (a.chatId ? chats.find((x) => x.id === a.chatId) : undefined)
-        ?? findChatForCliSession(a.sessionId);
-      const fresh = !c;
-      if (!c) {
-        c = { id: `c${Date.now().toString(36)}`, title: t.title || a.agentName, createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
-        if (t.cwd) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
-        chats.unshift(c);
-      }
-      // THE TRANSCRIPT IS THE TRUTH, EVERY TIME (his report, 2026-09-25: "when
-      // the user is in the cli and switches to the glyphh session the state is
-      // not in synch"). Adoption used to repaint the messages ONLY for a chat
-      // the hop named or a chat it had just created — a rail click onto an
-      // already-adopted session skipped both branches and showed the snapshot
-      // taken whenever it was first opened. The one exception is a turn
-      // streaming right now: that run owns the thread until it lands.
-      if (!liveRuns.has(c.id)) {
-        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
-        if (fresh || c.title === "New session") c.title = t.title || c.title || a.agentName;
-        if (t.cwd && !c.workdir) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
-      }
-      // The adopted session RUNS ON ITS OWN CLI — without the loop stamp the
-      // run payload names no loop and main falls back to claude (his report,
-      // 2026-09-14: a codex session ran on claude).
-      if (a.agentId) c.loop = a.agentId;
-      bindCliSession(c, a.cli || "claude", a.sessionId);
-      currentId = c.id;
-      lastSession = c.id;
-      void saveStore();
-      renderHistory();
-      renderThread();
-      adoptRunIfElsewhere(c);   // a thread running in another panel streams here now
-    })();
-  };
   // Space labels: the source chip's "Your spaces" list names a workspace by
   // the session that made it, when that session still exists here.
   (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor = (id: string) =>
@@ -1842,10 +1516,11 @@ function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
 function newChat(): void {
   // Every session is a Code session (the most-capable toolset). The mode field
   // is retained only for the pod/thread-store contract and is always "code".
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
+  // BORN IN THE ACTIVE TYPE (his order, 2026-09-29) — a birth property, never
+  // flipped afterwards: a thread's transcript was written with its toolbelt.
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: typeTab, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
-  if (pendingLoop) { c.loop = pendingLoop; pendingLoop = ""; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
   c.source = pendingSource;
@@ -1871,6 +1546,9 @@ function newChat(): void {
   renderHistory();
   renderThread();
   input()?.focus();  void checkWorkdirGate();
+  // A NEW SESSION SEES TODAY'S LIST (his report, 2026-09-29): the models and
+  // the defaults are re-read from the server, never the last cached answer.
+  void Promise.all([loadOrgDefaultModel(), loadDefaultModelPref()]).then(() => refreshModelList(true));
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
@@ -1940,17 +1618,28 @@ async function deleteChat(chat: CodeChat): Promise<void> {
     confirmLabel: "Delete session",
     danger: true,
   }))) return;
-  chats = chats.filter((x) => x.id !== chat.id);
+  dropSessions([chat.id], true);
+}
+
+/** Take sessions out of this document. `tombstone`: THIS document deleted them
+ *  (server + shared file); without it another document already did, and this
+ *  one only follows. Deleting the session on screen lands on a new session in
+ *  place, never a surprise jump into some other session (his report,
+ *  2026-09-29: a panel kept showing a session the rail had deleted). */
+function dropSessions(ids: readonly string[], tombstone: boolean): void {
+  const gone = new Set(ids);
+  if (!tombstone && !chats.some((c) => gone.has(c.id))) return;
+  chats = chats.filter((x) => !gone.has(x.id));
   // A deleted session can never be the resume target again.
-  if (lastSession === chat.id) forgetCurrentSession();
-  const wasCurrent = currentId === chat.id;
+  if (gone.has(lastSession)) forgetCurrentSession();
+  const wasCurrent = gone.has(currentId);
   if (wasCurrent) currentId = "";
-  threadStore.remove(chat.id); // server tombstone (offline-safe)
-  void saveStore();
+  if (tombstone) {
+    for (const id of ids) threadStore.remove(id); // server tombstone (offline-safe)
+    void saveStore();
+  }
   renderHistory();
   renderThread();
-  // Deleting the session you were IN lands on a fresh + New Session screen —
-  // never a surprise jump into some other session.
   if (wasCurrent) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
 }
 
@@ -2030,24 +1719,26 @@ function openChatMenu(anchor: HTMLElement, chat: CodeChat): void {
 // RIGHT carries a ⋮ kebab (Rename / Pin / Delete). The head is sticky and
 // fades in as the thread scrolls (data-scrolled on the head). Rename edits the
 // LOCAL title; Pin toggles chat.pinned; Delete runs the app's confirm+delete.
-const HEAD_LOCUS_REMOTE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19Z"/></svg>`;
-const HEAD_LOCUS_LOCAL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
-
-/** Paint the head's locus icon from the current session's source (remote =
- *  cloud, local = machine). Hidden when there's no open session. */
+/** THE HEAD SAYS WHAT THIS THREAD IS (his order, 2026-09-29: "remove the arrow
+ *  and link from the left top of the agent, also this should be the new icon
+ *  aligned to the work above"). The ‹ arrow used to hop into the loop's own
+ *  CLI, which no longer exists, and the locus icon (a monitor / a cloud) said
+ *  where the turn ran — true of every thread, so it distinguished nothing. The
+ *  glyph is the thread's TYPE, the same one the rail rows and + New wear.
+ *  Hidden when there is no open session. */
 function paintSessionHeadLocus(): void {
   const locus = el("code-session-locus");
   const back = el("code-session-back");
   if (!locus || !back) return;
   const c = current();
-  // No open session (a landing) → the head is a plain title, no back/locus,
+  // No open session (a landing) → the head is a plain title, no type glyph,
   // and no kebab (the platform renders SessionHeader only for an open session).
   back.classList.toggle("headless", !c);
   back.closest(".code-agent-head")?.classList.toggle("head-landing", !c);
   if (!c) { locus.innerHTML = ""; return; }
-  const remote = !!c.source && c.source.kind !== "local";
-  locus.innerHTML = remote ? HEAD_LOCUS_REMOTE : HEAD_LOCUS_LOCAL;
-  locus.title = remote ? "Runs in the cloud (Fly)" : "Runs on your machine";
+  const t = modeOf(c);
+  locus.innerHTML = TYPE_GLYPH[t];
+  locus.title = `${TYPE_LABEL[t]} session`;
 }
 
 /** Rename the current session inline in the head (Enter commits, Esc cancels). */
@@ -2126,7 +1817,7 @@ function openHeadKebab(anchor: HTMLElement): void {
   m.append(
     mk(IC_RENAME, "Rename", false, renameCurrentInline),
     mk(IC_PIN, c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
-    mk(IC_RENAME, "New agent panel", false, () => { (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance?.(activeLoop() || undefined); }),
+    mk(IC_RENAME, "New agent panel", false, () => { (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance?.(GLYPHH_LOOP); }),
     mk(IC_TRASH, "Delete", true, () => { void deleteChat(c); }),
   );
   const r = anchor.getBoundingClientRect();
@@ -2150,9 +1841,10 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const q = recentsQuery.trim().toLowerCase();
-  const loopIds = new Set(loopFilter);
+  // THE TAB IS THE FILTER (his order, 2026-09-29: "switching the tabs shows
+  // the two respective lists").
   const visible = chats
-    .filter((c) => !loopIds.size || (c.loop ? loopIds.has(c.loop) : false))
+    .filter((c) => modeOf(c) === typeTab)
     .filter((c) => !q || c.title.toLowerCase().includes(q));
   // All sessions, not just rows surviving the filter — a search that matches
   // nothing must keep its own box on screen to be cleared.
@@ -2253,23 +1945,13 @@ function historyRow(c: CodeChat): HTMLDivElement {
   // Rename is a menu action (⋯ → Rename), not a click on the title — a
   // selection-gated title click fought the row's own select handler and
   // never reliably fired. The label is now just a label.
-  // Leading slot: the RUNNING pulse while live, else the session's LOCUS icon
-  // (cloud vs machine) — one session type now, so the old `<>` code glyph was
-  // dead weight; the icon reads from this session's own source (locusKey), so it
-  // stays correct once the per-session source is restored. Either way it
-  // TOGGLES THE PIN on click.
-  const working = liveRuns.has(c.id);
-  const local = locusKey(c).startsWith("local:");
-  const dot = document.createElement("span");
-  if (working) {
-    dot.className = "code-chat-dot working";
-  } else {
-    dot.className = "code-sess-ic";
-    dot.innerHTML = local ? HEAD_LOCUS_LOCAL : HEAD_LOCUS_REMOTE;
-  }
+  // Leading slot: the STATE dot (his order, 2026-09-29) — green working,
+  // yellow waiting on you, red the last turn failed, grey idle. It used to be
+  // a locus glyph (a monitor or a cloud), which was the same on every row.
+  // It still TOGGLES THE PIN on click.
+  const dot = sessDot(c.id);
   dot.classList.toggle("pinned", !!c.pinned);
-  const typeName = working ? "Working" : local ? "Local" : "Cloud";
-  dot.title = `${typeName} — click to ${c.pinned ? "unpin" : "pin"}`;
+  dot.title = `${dot.title} — click to ${c.pinned ? "unpin" : "pin"}`;
   dot.addEventListener("click", (e) => {
     e.stopPropagation();   // pinning must not also open the session
     togglePin(c);
@@ -2293,6 +1975,14 @@ function selectChat(c: CodeChat): void {
   threadPinned = true;
   void saveStore();
   ensureCodeSection();
+  // THE THREAD'S OWN TYPE DRESSES THE PANEL (his report, 2026-09-29: "selecting
+  // a recent work is not respecting the type in terms of hiding features on the
+  // agent panel — it loads the full agent regardless"). Opening a thread is the
+  // one moment the type on screen changes without a tab click, and nothing here
+  // was writing it: the attribute the CSS keys off kept the previous session's
+  // type, and the composer kept its dev chrome.
+  syncSpaceAttrs();
+  paintComposerGate();
   renderHistory();
   renderThread();
   adoptRunIfElsewhere(c);
@@ -2403,7 +2093,7 @@ function declineCardEl(d: { kind: string; url: string; cli?: string; command?: s
       // Budget → the in-app Add-funds dialog (embedded Stripe checkout +
       // auto-reload). Everything else → the in-app account browser.
       if (d.kind === "signin") void (window.glyphh as unknown as { cliLogin?: (c: string) => Promise<unknown> }).cliLogin?.(d.cli || "claude");
-      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openAddFundsModal());
+      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openOutOfBudget(""));
       else openUrlInWorkbench("Account", d.url);
     });
   }
@@ -2580,9 +2270,26 @@ function renderThread(): void {
       } else if (b.msg.kind === "connect" && b.msg.connect) {
         el.className = "code-connect-wrap";
         el.appendChild(connectCardEl(c, b.msg.connect));
+      } else if (b.msg.kind === "artifact" && b.msg.artifact) {
+        // WHAT THE TURN MADE (his order, 2026-09-29): a card with a look at it.
+        el.className = "code-artifact-wrap";
+        el.appendChild(artifactCardEl(b.msg.artifact, openImageLightbox));
+      } else if (b.msg.role === "assistant" && turnError(b.msg.text)) {
+        // A REFUSAL IS A CARD, NOT A SENTENCE (his reports, 2026-09-29: "still
+        // no fucking card i asked for"): no plan, out of budget, no model, a
+        // model its provider will not answer for — each with the door that
+        // fixes it, and the raw words folded away.
+        inner.appendChild(turnErrorCardEl(b.msg.text));
+        return;
       } else {
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
+        inner.appendChild(el);
+        // COPY THE WHOLE REPLY (his order, 2026-09-29: "inline copy… theme
+        // aligned"): the markdown as written, so pasting it anywhere keeps the
+        // code fences and lists intact.
+        if (b.msg.text.trim()) inner.appendChild(msgActionsEl(b.msg.text));
+        return;
       }
       inner.appendChild(el);
       return;
@@ -2602,7 +2309,7 @@ function renderThread(): void {
     if (liveRun.text) {
       liveRun.bubble = document.createElement("div");
       liveRun.bubble.className = "code-agent-text";
-      liveRun.bubble.innerHTML = formatMarkdown(liveRun.text);
+      paintBubble(liveRun.bubble, liveRun.text);
       inner.appendChild(liveRun.bubble);
     }
     spinner = createGlyphhSpinner();
@@ -2613,6 +2320,172 @@ function renderThread(): void {
     inner.appendChild(row);
   }
   if (threadPinned) thread.scrollTop = thread.scrollHeight;
+}
+
+/** Settings → Billing, in the shell (a panel routes up through main). */
+function openBilling(): void {
+  const open = (window as unknown as { glyphh?: { agentPanelOpenSettings?: (sub: string) => Promise<boolean> } }).glyphh?.agentPanelOpenSettings;
+  if (open) void open("billing");
+  else openSettingsModal("billing");
+}
+
+/** A card with a title, a line, and the door (or, for a member, who to ask). */
+function moneyCardEl(kind: "plan" | "out" | "warn", title: string, body: string, canManage: boolean | null, action: string, ask: string): HTMLElement {
+  const card = document.createElement("div");
+  card.className = `code-money-card ${kind}`;
+  card.setAttribute("role", kind === "warn" ? "status" : "alert");
+  const text = document.createElement("div");
+  text.className = "code-money-text";
+  const t = document.createElement("div");
+  t.className = "code-money-title";
+  t.textContent = title;
+  const d = document.createElement("div");
+  d.className = "code-money-body";
+  d.textContent = body;
+  text.append(t, d);
+  card.appendChild(text);
+  const door = (): void => {
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "action-btn primary";
+    go.textContent = action;
+    go.addEventListener("click", openBilling);
+    card.appendChild(go);
+  };
+  if (canManage === false) {
+    d.textContent = memberLine(body, ask);
+  } else if (canManage === true) {
+    door();
+  } else {
+    // Not known yet: Billing is org_admin's door (navigation.ts gateAdminSubs).
+    door();
+    void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+      if (info?.role && !["org_admin", "super_admin"].includes(info.role)) {
+        card.querySelector("button")?.remove();
+        d.textContent = memberLine(body, ask);
+      }
+    }).catch(() => { /* offline: the door stays */ });
+  }
+  return card;
+}
+
+/** The model picker, opened from a card. */
+function openModelPicker(): void {
+  const chip = el("code-model-chip");
+  const menu = el("code-model-menu");
+  if (chip && menu?.classList.contains("hidden")) chip.click();
+}
+
+/** A failed turn as a card (help/turn-errors.ts reads which kind). */
+function turnErrorCardEl(text: string): HTMLElement {
+  const e = turnError(text)!;
+  if (e.kind === "plan") return planCardEl(spend?.canManage ?? null);
+  const kind = e.kind === "budget" ? "out" : "warn";
+  const card = e.action === "billing"
+    ? moneyCardEl(kind, e.title, e.body, spend?.canManage ?? null, "Open Billing", "Contact your organization admin.")
+    : moneyCardEl(kind, e.title, e.body, true, e.action === "models" ? "Pick a model" : "", "");
+  if (e.action === "models") {
+    const btn = card.querySelector("button");
+    if (btn) {
+      const fresh = btn.cloneNode(true) as HTMLButtonElement;
+      fresh.addEventListener("click", openModelPicker);
+      btn.replaceWith(fresh);
+    }
+  } else if (!e.action) {
+    card.querySelector("button")?.remove();
+  }
+  if (e.raw && e.kind !== "no-model") {
+    const more = document.createElement("details");
+    more.className = "code-money-details";
+    const sum = document.createElement("summary");
+    sum.textContent = "Details";
+    const pre = document.createElement("pre");
+    pre.textContent = e.raw;
+    more.append(sum, pre);
+    card.querySelector(".code-money-text")?.appendChild(more);
+  }
+  return card;
+}
+
+function planCardEl(canManage: boolean | null = null): HTMLElement {
+  return moneyCardEl("plan", "Choose a plan to start using models",
+    "Everything else works without one. Every plan runs every model; Solo is $20 a month.",
+    canManage, "Choose a plan", "Contact your organization admin to choose one.");
+}
+
+// ── THE MONEY BANNER, above the composer (his order, 2026-09-29: "anytime the
+// user is out of money or as they approach their team or org limit there
+// should be a message that shows above the input that suggests they are within
+// 75% of their limit"). main/spend-state.ts asks the server; this draws it.
+let spend: SpendState | null = null;
+let lastSpendRead = 0;
+/** The banner the person closed, this run of the app (never stored). */
+let dismissedBanner: string | null = null;
+/** The budget a request was just refused on (scope and limit): it reads as out
+ *  until the limit changes, the month turns, or the scope does. */
+let budgetRefusedKey: string | null = null;
+const spendKey = (s: SpendState | null): string | null => (s?.tightest ? `${s.tightest.scope}:${s.tightest.limitUsd}` : null);
+
+function paintSpendBanner(): void {
+  const host = el("code-spend-banner");
+  if (!host) return;
+  host.textContent = "";
+  if (budgetRefusedKey === "*" && spendKey(spend)) budgetRefusedKey = spendKey(spend);
+  else if (budgetRefusedKey && budgetRefusedKey !== "*" && budgetRefusedKey !== spendKey(spend)) budgetRefusedKey = null;
+  const b = spendBanner(spend, budgetRefusedKey !== null);
+  const key = b ? bannerKey(b.kind, spend) : null;
+  host.hidden = !b || key === dismissedBanner;
+  if (!b || !spend || host.hidden) return;
+  const orgScope = !spend.tightest || spend.tightest.scope === "org";
+  const card = b.kind === "plan"
+    ? planCardEl(spend.canManage)
+    : moneyCardEl(b.kind, b.title, b.body, orgScope ? spend.canManage : false, "Open Billing",
+        "Contact your organization admin.");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "code-money-close";
+  close.setAttribute("aria-label", "Dismiss");
+  close.title = "Dismiss";
+  close.textContent = "×";
+  close.addEventListener("click", () => { dismissedBanner = key; paintSpendBanner(); });
+  card.appendChild(close);
+  host.appendChild(card);
+}
+
+async function refreshSpend(force = false): Promise<void> {
+  if (!force && Date.now() - lastSpendRead < 15_000) return;
+  lastSpendRead = Date.now();
+  const read = (window.glyphh as unknown as { spendState?: () => Promise<SpendState> }).spendState;
+  if (!read) return;
+  spend = await read().catch(() => null);
+  paintSpendBanner();
+}
+window.addEventListener("focus", () => void refreshSpend());
+
+const MSG_COPY_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
+const MSG_CHECK_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+/** The row under an agent reply: copy, for now. It shows on hover and on
+ *  keyboard focus, so it never competes with the reading. */
+function msgActionsEl(text: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "code-msg-actions";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "code-msg-action";
+  copy.title = "Copy";
+  copy.setAttribute("aria-label", "Copy reply");
+  copy.innerHTML = MSG_COPY_SVG;
+  copy.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(text).then(() => {
+      copy.innerHTML = MSG_CHECK_SVG;
+      copy.classList.add("copied");
+      copy.title = "Copied";
+      setTimeout(() => { copy.innerHTML = MSG_COPY_SVG; copy.classList.remove("copied"); copy.title = "Copy"; }, 1500);
+    }).catch(() => { /* clipboard refused: the reply is still selectable */ });
+  });
+  row.appendChild(copy);
+  return row;
 }
 
 const FILE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
@@ -2678,7 +2551,47 @@ function toolLineEl(text: string): HTMLElement {
 // Expanded tool groups (keyed chatId:firstMsgTimestamp) — transient UI state.
 const expandedToolGroups = new Set<string>();
 
+/** A person's own open/closed choice, per group and per step — it outranks
+ *  the defaults (a live group shows its steps, a failed step shows its output). */
+const toolGroupOpen = new Map<string, boolean>();
+const toolStepOpen = new Map<string, boolean>();
+
+/** THE STEPS OF A TURN, drawn (help/tool-view.ts): one foldable group, every
+ *  step foldable inside it — a diff, a command and its output, a tool's I/O. */
+function richToolGroupEl(chatId: string, msgs: CodeMsg[], live: boolean): HTMLElement {
+  const key = `${chatId}:${msgs[0]?.at ?? 0}`;
+  const open = toolGroupOpen.get(key) ?? live;
+  const recs = msgs.map((m) => m.tool).filter((r): r is ToolRec => !!r);
+  const wrap = document.createElement("div");
+  wrap.className = `tv-group${live ? " live" : ""}${open ? " open" : ""}`;
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "tv-group-head";
+  head.setAttribute("aria-expanded", open ? "true" : "false");
+  const label = document.createElement("span");
+  label.className = "tv-group-label";
+  label.innerHTML = (live ? `<span class="tv-spin" aria-hidden="true"></span>` : "") + summaryOf(recs, live).html;
+  head.appendChild(label);
+  head.insertAdjacentHTML("beforeend", `<svg class="tv-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>`);
+  head.addEventListener("click", () => { toolGroupOpen.set(key, !open); renderThread(); });
+  wrap.appendChild(head);
+  if (!open) return wrap;
+  const list = document.createElement("div");
+  list.className = "tv-steps";
+  msgs.forEach((m, i) => {
+    if (!m.tool) { list.appendChild(toolLineEl(m.text)); return; }
+    const stepKey = `${key}:${i}`;
+    const stepOpen = toolStepOpen.get(stepKey) ?? m.tool.state === "failed";
+    list.appendChild(stepEl(m.tool, stepOpen, () => { toolStepOpen.set(stepKey, !stepOpen); renderThread(); }));
+  });
+  wrap.appendChild(list);
+  return wrap;
+}
+
 function toolGroupEl(chatId: string, msgs: CodeMsg[], live = false): HTMLElement {
+  // A turn recorded with step records draws them; an older transcript keeps
+  // its one-line rows.
+  if (msgs.some((m) => m.tool)) return richToolGroupEl(chatId, msgs, live);
   const key = `${chatId}:${msgs[0]?.at ?? 0}`;
   const open = expandedToolGroups.has(key);
   const wrap = document.createElement("div");
@@ -2889,7 +2802,10 @@ function mountSourceChip(): void { /* nothing mounts — no remote exists */ }
 
 /** The composer's resting prompt. */
 function readyPlaceholder(): string {
-  return "Describe what to build or fix…";
+  // The prompt names what the type is FOR (his choice, 2026-09-29): Work drives
+  // apps and accounts, Code builds and fixes.
+  const c = current();
+  return (c ? modeOf(c) : typeTab) === "work" ? "Describe what to do…" : "Describe what to build or fix…";
 }
 
 /** Nothing to run with: the org allows no model on the gateway lane. Kept
@@ -2899,23 +2815,16 @@ function noModelAllowed(): boolean {
   return modelSource === "gateway" && availModels.length === 0;
 }
 
-/** Nothing to run WITH: the org has enabled no loop this app can drive. */
-function noLoop(): boolean {
-  return noLoopAllowed;
-}
-
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
-  const open = workdirReady && !noModelAllowed() && !noLoop();
+  const open = workdirReady && !noModelAllowed();
   ta.disabled = !open;
   ta.placeholder = open
     ? readyPlaceholder()
-    : noLoop()
-      ? "Your organization hasn't enabled a loop this app can run"
-      : noModelAllowed()
-        ? "Your organization hasn't allowed any model yet"
-        : "Pick a working folder to start — click here to choose";
+    : noModelAllowed()
+      ? "Your organization hasn't allowed any model yet"
+      : "Pick a working folder to start — click here to choose";
   el("code-send")?.toggleAttribute("disabled", !open);
   const wrap = document.querySelector(".code-input-wrap");
   wrap?.classList.toggle("gated", !open);
@@ -3208,14 +3117,17 @@ function paintSourceDependents(): void {
         document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
       }
     }
-    if (src.kind === "local" && src.path) {
-      const leaf = src.path.replace(/\/+$/, "").split("/").filter(Boolean).pop() || src.path;
+    // THE CHIP IS THE RUN'S FOLDER (his report, 2026-09-29): what it names is
+    // exactly what the next turn works in — threadFolder(), never a second field.
+    const folder = src.kind === "local" ? threadFolder() : "";
+    if (src.kind === "local" && folder) {
+      const leaf = folder.replace(/\/+$/, "").split("/").filter(Boolean).pop() || folder;
       for (const id of ["dash-wd-name", "code-workdir-name"]) {
         const nameEl = document.getElementById(id);
         if (nameEl) nameEl.textContent = leaf;
       }
       for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-        document.getElementById(id)?.setAttribute("title", `working directory: ${src.path}`);
+        document.getElementById(id)?.setAttribute("title", `This session works in ${folder} — and only there`);
       }
     }
   }
@@ -3338,6 +3250,11 @@ function attachPreviewEl(a: AttachRef): HTMLElement {
  *  dark backdrop with an × top-right; the wheel, the +/− buttons and a
  *  double-click zoom, dragging pans while zoomed, Esc / the backdrop / the ×
  *  close it. One element, made on first use. */
+// The doors format-markdown's image and file-link handlers knock on: a
+// picture in any reply opens the lightbox, a file link opens the preview modal.
+(window as unknown as { __glyphhLightbox?: (src: string, alt: string) => void }).__glyphhLightbox = (src, alt) => openImageLightbox(src, alt);
+(window as unknown as { __glyphhOpenArtifact?: (path: string) => void }).__glyphhOpenArtifact = (path) => openArtifactModal(path, openImageLightbox);
+
 function openImageLightbox(src: string, name: string): void {
   document.getElementById("code-lightbox")?.remove();
   const box = document.createElement("div");
@@ -3577,8 +3494,19 @@ function flushPendingNotes(tries = 0): void {
 }
 
 function queueAttachments(refs: AttachRef[]): void {
+  // WORK TAKES FILES AND PHOTOS TOO (his push-back, 2026-09-29) — what changes
+  // is HOW they reach the turn: an image as a vision block, a file's text
+  // inlined into the message (main's attachmentInlineText), because a Work belt
+  // has no read tools to open a path with. A FOLDER is the one thing it cannot
+  // take: there is nothing to inline and nothing to walk it with.
+  const c = current();
+  const work = (c ? modeOf(c) : typeTab) === "work";
+  const taken = work ? refs.filter((r) => r.kind !== "folder") : refs;
+  if (work && taken.length < refs.length) {
+    toastOk("A Work session can't take a folder — attach the files, or start a Code session.");
+  }
   // Same path twice = once (re-dropping a folder shouldn't stack chips).
-  for (const r of refs) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
+  for (const r of taken) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
   paintAttachChips();
 }
 
@@ -3626,13 +3554,18 @@ function wireComposerAttachments(): void {
       b.addEventListener("click", () => { menu.classList.add("hidden"); pick(); });
       return b;
     };
+    // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea:
+    // Work has no tool to walk one with, so it wears the folder-only class and
+    // the CSS drops it there (his push-back, 2026-09-29: the + itself stays).
+    const addFolder = mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
+      void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
+    });
+    addFolder.classList.add("plus-folder-only");
     menu.append(
       mkItem("Attach files…", "Images and documents ride the next message", () => {
         void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
-      mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
-        void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
-      }),
+      addFolder,
     );
     // WORK and CODE run inside a working folder — the + is where you set it,
     // right from the landing or the thread (Chat has no folder concept; CSS
@@ -3774,9 +3707,6 @@ function syncThinking(): void {
 function sessionModel(c: CodeChat | null | undefined): string | null {
   const raw = c?.models?.["default"] ?? defaultModelPref;
   if (autoPins(raw)) return autoModel()!.id;
-  // An "Own login" pick keeps its lane prefix on the wire — main reads the
-  // lane from it and strips it for the CLI's flag (bareModel).
-  if (raw && laneOf(raw) === "direct") return String(raw);
   return bareModelId(raw);
 }
 
@@ -3793,6 +3723,20 @@ async function loadOrgDefaultModel(): Promise<void> {
 }
 void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* not mounted yet */ } });
 window.addEventListener("glyphh:plan-gates-changed", () => void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* */ } }));
+/** THE SERVER MOVED THE LIST (main's model-watch.ts, his report 2026-09-29:
+ *  "server side changes to the model list are not automatically updating").
+ *  Every open panel repaints its chip, and an open picker its rows. */
+(window.glyphh as unknown as { onModelsChanged?: (cb: (c: { models: { ok: boolean; source: string; models: AvailModel[] }; defaultModel: string; gatewayOn: boolean }) => void) => void })
+  .onModelsChanged?.((c) => {
+    if (c.models?.ok) { availModels = c.models.models; modelSource = c.models.source === "gateway" ? "gateway" : "none"; }
+    orgDefaultModel = c.gatewayOn ? String(c.defaultModel || "") : "";
+    void refreshSpend(true);   // a plan bought, funds added, a limit moved
+    try {
+      paintModelChip();
+      const menu = el("code-model-menu");
+      if (menu && !menu.classList.contains("hidden")) renderModelMenu();
+    } catch { /* not mounted yet */ }
+  });
 async function loadDefaultModelPref(): Promise<void> {
   try {
     const v = String((await (window.glyphh as unknown as { getPreference?: (k: string, d: unknown) => Promise<unknown> })
@@ -4072,11 +4016,9 @@ function send(): void {
     paintAttachChips();
     ta.value = "";
     autoGrow(ta);
-    const lp = activeLoop();
-    const loop = lp && lp !== "default" ? lp : undefined;
     const folder = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() ?? null;
-    (window as unknown as { __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "prompt"; text: string; attach?: AttachRef[]; cwd?: string; loop?: string; send?: boolean }) => void })
-      .__wbOpenAgentInstanceWith?.(loop, { type: "prompt", text, attach, ...(folder ? { cwd: folder } : {}), ...(loop ? { loop } : {}), send: true });
+    (window as unknown as { __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "prompt"; text: string; attach?: AttachRef[]; cwd?: string; send?: boolean }) => void })
+      .__wbOpenAgentInstanceWith?.(GLYPHH_LOOP, { type: "prompt", text, attach, ...(folder ? { cwd: folder } : {}), send: true });
     return;
   }
   if (!current()) newChat();
@@ -4135,21 +4077,37 @@ function send(): void {
   const steer = briefSteer();
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
-  const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}), ...(currentEffort() ? { effort: currentEffort() } : {}), ...(sessionCliSid(c) ? { cliSessionId: sessionCliSid(c)! } : {}) })
+  // THE TURN RUNS IN THE THREAD'S FOLDER, and says so every time (his rule,
+  // 2026-09-29: "sandboxed to that folder"). A thread born before its folder
+  // resolved asks main for this panel's folder once and keeps it.
+  const withFolder = async (): Promise<string> => {
+    const have = threadFolder(c);
+    if (have) { if (!c.workdir) { c.workdir = have; void saveStore(); } return have; }
+    const live = await (window as unknown as { wb?: { getCwd?: () => Promise<string | null> } }).wb?.getCwd?.().catch(() => null);
+    if (live && current()?.id === c.id) setThreadFolder(live);
+    else if (live) { c.workdir = live; void saveStore(); }
+    return live || "";
+  };
+  const launch = async (retried: boolean): Promise<void> => {
+    const folder = await withFolder();
+    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("NO_WORKDIR") && !retried) {
-          await (window as unknown as { wb?: { pickCwd?: () => Promise<string | null> } }).wb?.pickCwd?.();
+          // The pick IS the thread's folder — stamped here, not left to an
+          // event that could land after the retry.
+          const picked = await (window as unknown as { wb?: { pickCwd?: (o?: { nullOnCancel?: boolean }) => Promise<string | null> } }).wb?.pickCwd?.({ nullOnCancel: true });
+          if (picked) { if (current()?.id === c.id) setThreadFolder(picked); else { c.workdir = picked; void saveStore(); } }
           return launch(true);
         }
         if (msg.includes("NO_WORKDIR")) {
-          finishRun(c.id, "⚠ Pick a working folder to start — Glyphh works inside the folder you choose (folder button at the top of this pane).");
+          finishRun(c.id, "⚠ Pick a working folder to start — Glyphh works inside the folder you choose, and only there (folder button at the top of this pane).");
           return;
         }
         finishRun(c.id, `⚠ ${msg}`);
       });
+  };
   void saveStore().then(() => launch(false));
 }
 
@@ -4269,7 +4227,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     // The permission mode is the SESSION's mode (per-session), so the pod's
     // own default (`auto`) never overrides a session left in Ask; a mid-run
     // flip is pushed separately via setRemotePermission.
-    { rotor: c.loop || activeLoop(), ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
+    { rotor: GLYPHH_LOOP, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the
@@ -4354,11 +4312,15 @@ const STOP_LINES = [
 function maybeBudgetPrompt(chatId: string, text: string): void {
   if (chatId !== currentId || !text) return;
   if (/\b402\b/.test(text) && /budget|add funds|upgrade your plan/i.test(text)) {
-    void import("./settings-billing.js").then((m) => m.openAddFundsModal()).catch(() => { /* billing module unavailable */ });
+    // The banner reads the budget as out from here on, not "94% used".
+    budgetRefusedKey = spendKey(spend) ?? "*";   // "*": adopt the next read's budget
+    void refreshSpend(true);
+    void import("./settings-billing.js").then((m) => m.openOutOfBudget(text)).catch(() => { /* billing module unavailable */ });
   }
 }
 
 function finishRun(chatId: string, text: string, stopped = false): void {
+  void refreshSpend(true);   // a turn spent money: the banner re-reads where it stands
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
@@ -4693,14 +4655,6 @@ function paintAskDock(): void {
  *  accumulate when another session is in view). */
 function initGlyphhAgentEvents(): void {
   window.glyphh.onGlyphhAgentSetup?.((d) => {
-    // The CLI's session id PERSISTS on the chat row, PER CLI — the bridge's
-    // memory-only map forgets on restart; this is what the re-prime and the
-    // >_ hop read back (his reports, 2026-09-14).
-    const sid = (d as { cliSessionId?: string }).cliSessionId;
-    if (sid) {
-      const c = current();
-      if (c && bindCliSession(c, sessionCli(c), sid)) void saveStore();
-    }
     if (d.phase === "downloading") {
       for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
@@ -4757,7 +4711,12 @@ function initGlyphhAgentEvents(): void {
     return live.length === 1 ? live[0].id : currentId;
   };
   window.glyphh.onGlyphhAgentApproval?.((a) => {
-    askQueue.push({ type: "approval", ...a, chatId: dockChatFor((a as { runId?: string }).runId), deadline: Date.now() + APPROVAL_TIMEOUT_MS });
+    // A SUB-AGENT'S ASK STILL COMES HERE — the person is the only one who can
+    // answer it — but it says who is asking, or "run npm test" reads as the
+    // main agent's step.
+    const who = (a as { agent?: { name?: string } }).agent?.name;
+    const titled = who ? { ...a, title: `${who}: ${a.title}` } : a;
+    askQueue.push({ type: "approval", ...titled, chatId: dockChatFor((a as { runId?: string }).runId), deadline: Date.now() + APPROVAL_TIMEOUT_MS });
     paintAskDock();
   });
   window.glyphh.onGlyphhAgentAsk?.((d) => {
@@ -4767,18 +4726,25 @@ function initGlyphhAgentEvents(): void {
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).
   window.glyphh.onGlyphhAgentTool?.((d) => {
+    // A SUB-AGENT'S STEP is its own (his order, 2026-09-29): it belongs to the
+    // Agents panel, which reads main's ledger. In this transcript the main
+    // agent's own spawn_agent row already says who took the work.
+    if (isChildFrame(d)) return;
     const e = runEntry(d.runId);
     if (!e) return;
     const [runChatId, run] = e;
     const chat = chats.find((ch) => ch.id === runChatId);
     if (!chat) return;
     const name = d.name ?? "tool";
+    const key = toolKey(runChatId, name, d.title);
     if (d.phase === "start") {
       // The start label SHOWS THE WORK: the frame's title carries the tool's
       // key input (`⚙ Run: <cmd>`, `⚙ Write /path`); thought (the gate's card
       // title) is the fallback, the bare name the last resort.
       const label = toolStartLabel({ name, ...(d.title ? { title: d.title } : {}), ...(d.thought ? { thought: d.thought } : {}) });
       run.steps.push(label);
+      const open = (run.openSteps ??= new Map());
+      open.set(key, [...(open.get(key) ?? []), run.steps.length - 1]);
       if (runChatId === currentId) broadcastTimeline(true);
       // COMMIT the text streamed so far before appending the tool row, and
       // start a fresh live block after it. Without this the live bubble stays
@@ -4790,7 +4756,8 @@ function initGlyphhAgentEvents(): void {
         run.text = "";
         run.bubble = null;
       }
-      pushToolRow(chat, name, label);
+      const row = pushToolRow(chat, name, label, d.title);
+      row.tool = { name, title: d.title || name, state: "running", startedAt: Date.now() };
     } else if (d.phase === "done") {
       const bad = Boolean(d.denied || d.failed);
       // Failures surface the tool's own first line — the model can gloss,
@@ -4804,9 +4771,28 @@ function initGlyphhAgentEvents(): void {
         ...(reason ? { reason } : {}),
         ...(diff ? { diff } : {}),
       });
-      if (run.steps.length) run.steps[run.steps.length - 1] = text;
+      const idx = run.openSteps?.get(key)?.shift();
+      if (idx !== undefined) run.steps[idx] = text;
+      else if (run.steps.length) run.steps[run.steps.length - 1] = text;
       if (runChatId === currentId) broadcastTimeline(true);
-      settleToolRow(chat, name, text);
+      const row = settleToolRow(chat, name, text, d.title);
+      // THE STEP'S OWN RECORD (his order, 2026-09-29: "way more robust viewing of
+      // the tool calls"): the engine's diff, command output or tool I/O, kept on
+      // the row — bounded, because the transcript is saved on every event.
+      const extra = d as { detail?: ToolDetail; input?: string; output?: string };
+      row.tool = trimForStore({
+        name, title: d.title || name, state: bad ? "failed" : "done",
+        startedAt: row.tool?.startedAt ?? Date.now(), endedAt: Date.now(),
+        ...(extra.detail ? { detail: extra.detail } : {}),
+        ...(extra.input ? { input: extra.input } : {}),
+        ...(extra.output ? { output: extra.output } : {}),
+        ...(d.preview ? { preview: String(d.preview) } : {}),
+      });
+      // A relative path resolves where the loop resolved it: the thread's own
+      // folder, else the workspace folder the turn ran in.
+      const folder = chat.workdir || (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() || undefined;
+      const art = artifactFromTool(name, d.title, folder, bad);
+      if (art) noteArtifact(chat, art);
     }
     void saveStore();
     if (currentId === runChatId) scheduleRenderThread();
@@ -4835,6 +4821,9 @@ function initGlyphhAgentEvents(): void {
     }
   });
   window.glyphh.onGlyphhAgentDelta?.((d) => {
+    // A sub-agent's words ride the parent's run tagged with the child. Spliced
+    // into this bubble they would read as the main agent's answer.
+    if (isChildFrame(d)) return;
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].text += d.delta;
@@ -4987,19 +4976,12 @@ interface RailApp {
 interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
-// CLI agents (the build, 2026-09-10) — their own foldable tray, painted with
-// the exact grammar Workspaces uses (tiles, search, 15-page pager).
+// THE AGENT TRAY (the build, 2026-09-10) — painted with the exact grammar
+// Workspaces uses (tiles, search, pager). It listed the user's CLI
+// pre-configs; since the cut (2026-09-28) there is one agent, ours.
 interface RailCliAgent { id: string; name: string; cli?: string; icon?: string; cwd?: string }
-let railAgents: RailCliAgent[] = [];
-const RAIL_CLI_MARK_URLS: Record<string, string> = {
-  claude: "https://claude.ai/favicon.ico",
-  codex: "https://openai.com/favicon.ico",
-  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
-  copilot: "https://github.com/favicon.ico",
-  cursor: "https://cursor.com/favicon.ico",
-};
-// cli → data URL, cached. The Glyphh loop wears the brand mascot (the mark
-// every other surface wears) from day one — nothing to fetch (his order, 2026-09-21).
+const railAgents: RailCliAgent[] = [{ id: GLYPHH_LOOP, name: "Glyphh", cli: GLYPHH_LOOP }];
+/** The loop wears the brand mascot every other surface wears. */
 const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
@@ -5023,7 +5005,7 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    UX is the MAIN-era recents wholesale: Pinned first, then one group per
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
-interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number }
+interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType }
 let railSessions: RailSession[] = [];
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
@@ -5031,14 +5013,35 @@ let railSessions: RailSession[] = [];
 //    The rail's rows pulse by it (his report, 2026-09-26: the blinking icon
 //    on a running thread died with the CLI approach), and a click on a
 //    running row fronts the panel that hosts it. ──
-interface LiveAgentRun { chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }
+interface LiveAgentRun { chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number; status?: "working" | "waiting" | "error" }
 let liveElsewhere: LiveAgentRun[] = [];
 /** The ledger's entry for a rail row: the Glyphh loop's sessions ARE chats
  *  (chatId); a CLI's rows carry the CLI's own session id. */
 function sessLiveEntry(sess: RailSession): LiveAgentRun | null {
   return liveElsewhere.find((r) => r.chatId === sess.id || (!!r.cliSessionId && r.cliSessionId === sess.id)) ?? null;
 }
-function sessIsLive(sess: RailSession): boolean { return liveRuns.has(sess.id) || !!sessLiveEntry(sess); }
+/** WHAT A ROW'S DOT SAYS (his order, 2026-09-29): green working, yellow
+ *  waiting on the person, red the last turn failed, grey idle. A run in THIS
+ *  document is working by definition; everything else comes off the ledger,
+ *  which is the only thing that knows about the other panels' threads. */
+type DotState = "working" | "waiting" | "failed" | "idle";
+function sessDotState(id: string): DotState {
+  if (liveRuns.has(id)) return "working";
+  const e = liveElsewhere.find((r) => r.chatId === id || (!!r.cliSessionId && r.cliSessionId === id));
+  return e?.status === "waiting" ? "waiting" : e?.status === "error" ? "failed" : e?.status === "working" ? "working" : "idle";
+}
+const DOT_TITLE: Record<DotState, string> = {
+  working: "Working", waiting: "Waiting for you", failed: "Last turn failed", idle: "Idle",
+};
+/** One dot, four states — the same element in the rail, the panel's own list
+ *  and the recents dropdown, so the three can never tell different stories. */
+function sessDot(id: string): HTMLSpanElement {
+  const state = sessDotState(id);
+  const dot = document.createElement("span");
+  dot.className = `code-chat-dot${state === "idle" ? "" : ` ${state}`}`;
+  dot.title = DOT_TITLE[state];
+  return dot;
+}
 
 /** OPENING A RUNNING THREAD RE-CONNECTS TO ITS STREAM (his report, 2026-09-27).
  *  A run's frames go to the panel that started it; when THIS panel opens a
@@ -5047,8 +5050,7 @@ function sessIsLive(sess: RailSession): boolean { return liveRuns.has(sess.id) |
  *  a local turn, so the spinner, the rail pulse and the stream paint at once. */
 function adoptRunIfElsewhere(c: CodeChat): void {
   if (liveRuns.has(c.id)) return;
-  const sid = sessionCliSid(c);
-  const r = liveElsewhere.find((x) => x.chatId === c.id || (!!sid && x.cliSessionId === sid));
+  const r = liveElsewhere.find((x) => x.chatId === c.id || x.cliSessionId === c.id);
   if (!r) return;
   const adopt = (window.glyphh as unknown as { glyphhRunAdopt?: (chatId: string) => Promise<{ ok: false } | { ok: true; runId: string; startedAt: number; text: string }> }).glyphhRunAdopt;
   if (!adopt) return;
@@ -5087,61 +5089,21 @@ function whenPanelReady(fn: () => void, tries = 0): void {
   if ((storeLoaded && railAgents.length > 0) || tries >= 80) { fn(); return; }
   window.setTimeout(() => whenPanelReady(fn, tries + 1), 100);
 }
-/** Recents filter by loop (his order, 2026-09-16): loop ids; empty = every loop. Persisted. */
-let loopFilter: string[] = [];
-const LOOP_FILTER_PREF = "recentsLoopFilter";
-/** The CLIs the chosen loops run on; null = no filter. */
-function loopFilterClis(): Set<string> | null {
-  const ids = new Set(loopFilter.filter((id) => railAgents.some((a) => a.id === id)));
-  if (!ids.size) return null;
-  return new Set(railAgents.filter((a) => ids.has(a.id)).map((a) => a.cli || "claude"));
-}
-function setLoopFilter(ids: string[]): void {
-  loopFilter = ids;
-  void window.glyphh.setPreference?.(LOOP_FILTER_PREF, ids);
-  el("recent-sessions-filter")?.classList.toggle("active", ids.length > 0);
-  renderRailSessions();
-  renderHistory();
-  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
-}
-const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
-let loopFilterMenu: HTMLDivElement | null = null;
-function openLoopFilterMenu(anchor: HTMLElement): void {
-  loopFilterMenu?.remove();
-  const m = document.createElement("div");
-  m.className = "code-menu";
-  m.classList.add("loop-filter-menu");
-  const row = (label: string, on: boolean, mark: string, onClick: () => void, cli = ""): void => {
-    const b = document.createElement("button");
-    b.className = "code-menu-item" + (on ? " on" : "");
-    b.innerHTML = `${mark ? `<img class="loop-mark cli-mark-${cli}" src="${mark}" alt="" />` : ""}<span></span>${on ? `<svg class="menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>` : ""}`;
-    (b.querySelector("span") as HTMLElement).textContent = label;
-    b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openLoopFilterMenu(anchor); });
-    m.appendChild(b);
-  };
-  row("All loops", loopFilter.length === 0, "", () => setLoopFilter([]));
-  for (const a of railAgents) {
-    const on = loopFilter.includes(a.id);
-    row(a.name, on, railCliMarks[a.cli || "claude"] || "", () => setLoopFilter(on ? loopFilter.filter((x) => x !== a.id) : [...loopFilter, a.id]), a.cli || "claude");
-  }
-  const r = anchor.getBoundingClientRect();
-  m.style.position = "fixed";
-  m.style.left = `${r.left}px`;
-  m.style.top = `${r.bottom + 4}px`;
-  document.body.appendChild(m);
-  loopFilterMenu = m;
-  const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
-  document.addEventListener("mousedown", close, true);
-}
 let railSessionPins: string[] = [];
 const SESS_PINS_PREF = "railSessionPins";
 
 /** ONE TITLE GRAMMAR for a rail row, whatever store it came from (his report,
  *  2026-09-25: "the left rail session names are way too long"). The rule is
- *  shared/cli-session-binding.ts; the full text stays on the row's tooltip. */
+ *  help/session-title.ts; the full text stays on the row's tooltip. */
 const sessDisplayTitle = sessionDisplayTitle;
 
-const SESS_LOCAL_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+/** WHAT A ROW IS (his order, 2026-09-29: "the icons on the left rail need to be
+ *  updated to make sense for what each is now… we need a way to know the types
+ *  — aka code, chat, work"). The rows used to wear the vendor CLI's favicon;
+ *  with one loop that mark said nothing, and the Glyphh mascot it fell back to
+ *  is a data-URL image that renders as a broken tile outside the panel (his
+ *  screenshot). A session's own SPACE is the useful fact, so it rides as a
+ *  glyph drawn in currentColor — nothing to load, nothing to break. */
 const SESS_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
 const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
 
@@ -5155,19 +5117,33 @@ function scheduleRailSessionsRefresh(): void {
 }
 
 async function loadRailSessions(): Promise<void> {
-  const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: RailSession[] }> };
-  const [r, pins] = await Promise.all([
-    api.cliSessionsList?.().catch(() => null),
-    window.glyphh.getPreference?.(SESS_PINS_PREF, []).catch(() => []),
+  const [snap, pins] = await Promise.all([
+    (window.glyphh.glyphhSessionsLoad?.().catch(() => null) ?? Promise.resolve(null)),
+    (window.glyphh.getPreference?.(SESS_PINS_PREF, []).catch(() => []) ?? Promise.resolve([])),
   ]);
-  // The Glyphh loop keeps NO transcript on disk (zero local storage) — its
-  // sessions ARE the thread store's chats, so they join the disk list here or
-  // they are on no surface (his report, 2026-09-21).
-  const glyphhLoopIds = new Set(railAgents.filter((a) => a.cli === "glyphh").map((a) => a.id));
-  const ours: RailSession[] = chats
-    .filter((c) => !!c.loop && glyphhLoopIds.has(c.loop) && c.messages.length > 0)
-    .map((c) => ({ id: c.id, cli: "glyphh", title: c.title, cwd: c.workdir || "", mtime: touchedAtOf(c) }));
-  railSessions = [...(r?.ok ? r.sessions : []), ...ours].sort((a, b) => b.mtime - a.mtime);
+  // THE THREAD STORE IS THE ONLY STORE (his order, 2026-09-28): the vendor
+  // CLIs kept their own transcripts on disk and the rail merged them in. The
+  // loop keeps none — its sessions ARE our chats.
+  //
+  // THE SHARED FILE, NOT THIS DOCUMENT'S COPY (his report, 2026-09-29: the
+  // left rail said "No recent sessions yet" beside a dropdown listing eight).
+  // The rail is hosted in the SHELL document, which never hydrates the thread
+  // store — only the agent panel does — so reading the local `chats` array
+  // painted nothing there while the panel's own copy was full. main's store is
+  // what every surface writes through, so it is what the rail reads; the
+  // hydrated array wins when this document has one, because a turn lands in it
+  // a moment before the write-through resolves.
+  const rows: CodeChat[] = storeLoaded && chats.length ? chats : ((snap?.chats as CodeChat[]) ?? []);
+  railSessions = rows
+    .filter((c) => (c.messages?.length ?? 0) > 0)
+    .map((c) => ({
+      id: c.id, cli: GLYPHH_LOOP, title: c.title, cwd: c.workdir || "", mtime: touchedAtOf(c),
+      // A thread's own space. Every NEW session is born in Code (modeOf); the
+      // older Chat and Work threads keep theirs, which is what makes the glyph
+      // worth reading.
+      mode: modeOf(c),
+    }))
+    .sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // one line per refresh pins what this surface actually painted.
@@ -5193,19 +5169,10 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
   if (!sure) return false;
   // A Glyphh-loop session lives in the thread store, not on disk.
   if (sess.cli === "glyphh") {
-    const chat = chats.find((x) => x.id === sess.id);
-    if (!chat) return false;
-    chats = chats.filter((x) => x.id !== chat.id);
-    if (lastSession === chat.id) forgetCurrentSession();
-    const wasCurrent = currentId === chat.id;
-    if (wasCurrent) currentId = "";
-    threadStore.remove(chat.id);
-    void saveStore();
-    renderHistory();
-    renderThread();
+    if (!chats.some((x) => x.id === sess.id)) return false;
     railSessions = railSessions.filter((x) => x.id !== sess.id);
     renderRailSessions();
-    if (wasCurrent) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    dropSessions([sess.id], true);
     return true;
   }
   const api = window.glyphh as unknown as { cliSessionDelete?: (id: string) => Promise<{ ok: boolean }> };
@@ -5213,19 +5180,9 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
   if (r?.ok) {
     railSessions = railSessions.filter((x) => x.id !== sess.id);
     renderRailSessions();
-    // A DELETED SESSION CANNOT BE RESUMED (his report, 2026-09-20: the agent
-    // kept the deleted thread as its active one and the next turn failed on
-    // the resume). Every chat bound to it lets go; the active one starts over.
-    let touched = false;
-    let activeHit = false;
-    const cur = current();
-    for (const c of chats) {
-      if (!forgetCliSession(c as unknown as CliBound, sess.id)) continue;
-      touched = true;
-      if (c === cur) activeHit = true;
-    }
-    if (touched) void saveStore();
-    if (activeHit) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    // A DELETED SESSION CANNOT BE RESUMED (his report, 2026-09-20): if it was
+    // the one on screen, the panel starts over.
+    if (current()?.id === sess.id) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
   }
   return !!r?.ok;
 }
@@ -5268,16 +5225,47 @@ function sessSectionHead(label: string, title: string): HTMLDivElement {
   return head;
 }
 
-/** The loop a rail row resumes on: a Glyphh-loop chat's own loop, else the
- *  agent on the row's CLI (its folder's first), else the roster's first. */
-function agentForSess(sess: RailSession): RailCliAgent | undefined {
-  if (sess.cli === "glyphh") {
-    const chat = chats.find((x) => x.id === sess.id);
-    return railAgents.find((a) => !!chat && a.id === chat.loop) ?? railAgents.find((a) => a.cli === "glyphh");
+/** The agent a rail row resumes on — there is one. */
+function agentForSess(_sess: RailSession): RailCliAgent | undefined { return railAgents[0]; }
+
+/**
+ * OPEN THE THREAD, WHATEVER STORE THE ROW CAME FROM (his report, 2026-09-29:
+ * "clicking on a recent now, left rail or recents in top right, doesn't load it
+ * into the selected glyphh agent. The agent highlights but no history").
+ *
+ * The lists and the open path were reading DIFFERENT stores. A row is painted
+ * from main's shared snapshot when this document's own array is thin (the rail
+ * lives in the shell, which is not the document that hydrates the thread
+ * store), while opening looked the thread up in the local array only — and
+ * returned silently when it was not there. So a row could be listed and
+ * un-openable at the same time.
+ *
+ * The store is awaited first, then the shared file is the fallback: a thread
+ * another surface wrote is adopted into this document before it is selected.
+ * It never fails quietly — that silence is what made this look like a dead
+ * click.
+ */
+async function openGlyphhSession(id: string): Promise<void> {
+  await loadStore().catch(() => { /* the cache still answers below */ });
+  let chat = chats.find((x) => x.id === id);
+  if (!chat) {
+    const snap = await (window.glyphh.glyphhSessionsLoad?.().catch(() => null) ?? Promise.resolve(null));
+    const row = ((snap?.chats as CodeChat[]) ?? []).find((c) => c.id === id);
+    if (row) { chats.push(row); chat = row; }
   }
-  return railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
-    ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
-    ?? railAgents[0];
+  if (!chat) {
+    console.warn("[sess] open failed — no such thread in the store or the shared file", JSON.stringify({ id, chats: chats.length }));
+    toastOk("That session could not be opened.");
+    return;
+  }
+  console.warn("[sess] open", JSON.stringify({ id, mode: modeOf(chat), turns: chat.messages?.length ?? 0 }));
+  selectChat(chat);
+  // A thread adopted as metadata carries no turns until fetched; renderThread
+  // asks too, but asking here means the history lands even if the thread is
+  // painted by something else first.
+  hydrateMessagesIfNeeded(chat.id);
+  const loop = agentForSess({ id, cli: GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat), mode: modeOf(chat) });
+  if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
 }
 
 function sessOpen(sess: RailSession): void {
@@ -5304,14 +5292,7 @@ function sessOpen(sess: RailSession): void {
   }
   // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
   // (select first — seating a different loop stamps the CURRENT chat).
-  if (sess.cli === "glyphh") {
-    const chat = chats.find((x) => x.id === sess.id);
-    if (!chat) return;
-    selectChat(chat);
-    const loop = agentForSess(sess);
-    if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
-    return;
-  }
+  if (sess.cli === "glyphh") { void openGlyphhSession(sess.id); return; }
   // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
   // recent opens in the agent CHAT panel, adopted with its transcript and
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
@@ -5361,20 +5342,21 @@ function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
   if (!host) return;
   const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
-  const clis = loopFilterClis();
+  // THE TAB IS THE FILTER HERE TOO (his report, 2026-09-29: "changing the tabs
+  // doesn't change the left rail's recents list in any way"). The panel's own
+  // list and the dropdown were filtered; this one, the one he was looking at,
+  // was not.
   const items = railSessions
-    .filter((x) => !clis || clis.has(x.cli))
+    .filter((x) => x.mode === typeTab)
     .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
   console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
   host.textContent = "";
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "wb-session-empty";
-    // A FILTER THAT HIDES EVERYTHING SAYS SO (his log, 2026-09-21: 40 sessions
-    // refreshed, 0 painted, and "No recent sessions yet" on screen).
-    empty.textContent = q ? "No sessions match."
-      : clis && railSessions.length ? "No sessions for the selected loop — clear the filter to see all."
-      : "No recent sessions yet.";
+    // Name the type: an empty tab must read as "none of these yet", never as a
+    // list that failed to load.
+    empty.textContent = q ? "No sessions match." : `No ${TYPE_LABEL[typeTab]} sessions yet.`;
     host.appendChild(empty);
     return;
   }
@@ -5386,22 +5368,14 @@ function renderRailSessions(): void {
       // Leading slot: the RUNNING pulse while the session has a live turn —
       // here, in another agent panel, or in the CLI — else the locus icon.
       // Either way it toggles the pin.
-      const live = sessIsLive(sess);
-      const dot = document.createElement("span");
-      if (live) {
-        dot.className = "code-chat-dot working";
-      } else {
-        dot.className = "code-sess-ic";
-        dot.innerHTML = SESS_LOCAL_SVG;
-      }
+      const dot = sessDot(sess.id);
       dot.classList.toggle("pinned", sessPinned(sess.id));
-      dot.title = `${live ? "Working" : "Local"} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
+      dot.title = `${dot.title} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
       dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
-      const mark = railCliMarks[sess.cli];
-      const markEl = document.createElement("span");
-      markEl.className = "code-sess-mark";
-      if (mark) markEl.innerHTML = `<img class="cli-mark-${sess.cli}" src="${mark}" alt="" />`;
-      markEl.title = sess.cli;
+      // NO TYPE GLYPH ON A ROW (his order, 2026-09-29: "remove the icons from
+      // the left rail recents and the recents in the top of the agent panel").
+      // The tab above the list already says which type these are; the only
+      // mark a row carries is its state dot.
       const label = document.createElement("span");
       label.className = "code-history-title";
       label.textContent = sessDisplayTitle(sess.title);
@@ -5411,7 +5385,7 @@ function renderRailSessions(): void {
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
       menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      row.append(dot, markEl, label, menuBtn);
+      row.append(dot, label, menuBtn);
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
     }
@@ -5435,41 +5409,47 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
-  // The same loop filter the rail has, to the right of the search (his order, 2026-09-16).
-  const filterBtn = document.createElement("button");
-  filterBtn.type = "button";
-  filterBtn.className = "rail-filter-btn" + (loopFilter.length ? " active" : "");
-  filterBtn.title = "Filter by loop";
-  filterBtn.innerHTML = FILTER_SVG;
-  filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn); });
-  searchWrap.appendChild(filterBtn);
+  // THIS DROPDOWN'S OWN TOGGLE (his order, 2026-09-29: "the agent recents
+  // toggle should not toggle the entire app's list, only its recents list").
+  // It OPENS on the active type, then lives and dies with the menu: looking
+  // through the other type's sessions here is a look, not a change of what the
+  // rail lists or what + New would create.
+  let menuTab: SessionType = typeTab;
+  const tabs = document.createElement("div");
+  tabs.className = "rail-type-tabs wb-session-tabs";
+  const mkTab = (t: SessionType): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "rail-type-tab" + (menuTab === t ? " active" : "");
+    b.innerHTML = `${TYPE_GLYPH[t]}<span>${TYPE_LABEL[t]}</span>`;
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menuTab = t;
+      tabs.querySelectorAll<HTMLElement>(".rail-type-tab").forEach((el2) => el2.classList.toggle("active", el2.dataset.type === t));
+      paint();
+    });
+    b.dataset.type = t;
+    return b;
+  };
+  tabs.append(mkTab("work"), mkTab("code"));
   menu.appendChild(searchWrap);
+  menu.appendChild(tabs);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
   search.addEventListener("input", () => { menuQuery = search.value; paint(); });
-  const onFilter = (): void => { if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; } filterBtn.classList.toggle("active", loopFilter.length > 0); paint(); };
-  document.addEventListener("glyphh:loop-filter-changed", onFilter);
-  // ONE COMBINED LIST here too (his order, 2026-09-14) — the caller's
-  // cli/cwd describe its LANE for routing a pick, never a filter.
   const pool = railSessions;
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    const clis = loopFilterClis();
     const visible = pool
-      .filter((x) => !clis || clis.has(x.cli))
+      .filter((x) => x.mode === menuTab)
       .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row";
-      if (sessIsLive(sess)) {
-        const live = document.createElement("span");
-        live.className = "code-chat-dot working";
-        live.title = "Working";
-        row.appendChild(live);
-      }
+      row.appendChild(sessDot(sess.id));
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
@@ -5515,8 +5495,9 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
 (window as unknown as { __glyphhSessionsMenu?: typeof openSessionsDropdown }).__glyphhSessionsMenu = openSessionsDropdown;
 /** The agent card's recents pick for a Glyphh-loop session — routed here, never into a CLI resume. */
 (window as unknown as { __glyphhOpenLoopSession?: (id: string) => void }).__glyphhOpenLoopSession = (id) => {
-  const sess = railSessions.find((x) => x.id === id && x.cli === "glyphh");
-  if (sess) sessOpen(sess);
+  // The id is enough: openGlyphhSession finds the thread in this document's
+  // array or in main's shared file, and says so when it can find neither.
+  void openGlyphhSession(id);
 };
 
 function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
@@ -5557,26 +5538,17 @@ function railPager(page: number, totalPages: number, onPage: (p: number) => void
 
 async function loadRecentApps(): Promise<void> {
   try {
-    const yoAgents = (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: RailCliAgent[] }> });
-    const [apps, layouts, recents, agentsRes, houseDefaults, hiddenDefaults] = await Promise.all([
+    const [apps, layouts, recents, houseDefaults, hiddenDefaults] = await Promise.all([
       window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
       window.glyphh.layoutsList?.() ?? Promise.resolve([]),
       window.glyphh.recentsList?.() ?? Promise.resolve([]),
-      yoAgents.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
       // The wall's other two inputs — the rail was skipping both, which is
       // half of why the lists disagreed.
       (window.glyphh as unknown as { appsDefaults?: () => Promise<HouseDefault[]> })
         .appsDefaults?.().catch(() => [] as HouseDefault[]) ?? Promise.resolve([] as HouseDefault[]),
       window.glyphh.getPreference?.("ccHiddenDefaults", []) ?? Promise.resolve([]),
     ]);
-    railAgents = agentsRes?.ok ? agentsRes.agents : [];
     void loadRailSessions();
-    for (const cli of new Set(railAgents.map((a) => a.cli || "claude"))) {
-      const url = RAIL_CLI_MARK_URLS[cli];
-      if (!url || railCliMarks[cli]) continue;
-      void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
-        .webIconFetch?.(url).then((d) => { if (d) { railCliMarks[cli] = d; renderRecentApps(); } }).catch(() => {});
-    }
     // THE SAME LIST the echo wall builds (help/app-list.ts) — his rule,
     // 2026-09-11. The rail used to keep url-less native rows and skip the
     // house defaults, so the two surfaces showed different apps.
@@ -5826,17 +5798,6 @@ function paintAgentsGrid(host: RailGridHost): void {
   if (!agents.length) railEmpty(list, q, "Agent", "agents");
 }
 
-// The Agents section announces saves/deletes — the tray follows live.
-window.addEventListener("glyphh:cli-agents-changed", () => { void loadRecentApps(); });
-// THE SERVER'S ROSTER CHANGED (his order, 2026-09-20): a loop the org admin
-// turned off leaves the tray, the recents and the picker; a seated loop that
-// is no longer allowed hands the agent to the first one that is.
-(window.glyphh as unknown as { onCliAgentsChanged?: (cb: (r: { enabled: string[] }) => void) => void }).onCliAgentsChanged?.((r) => {
-  window.dispatchEvent(new CustomEvent("glyphh:cli-agents-changed"));
-  scheduleRailSessionsRefresh();
-  const cur = activeLoop();
-  if (cur && !r.enabled.includes(cur) && r.enabled[0]) (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(r.enabled[0]);
-});
 
 // (The recents splitter died with the rail tray sections — recents fills
 // the stack; see syncRailLayout.)
@@ -6131,7 +6092,28 @@ export function initCode(): void {
     renderHistory();   // the search box follows the disclosure
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
-  el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(e.currentTarget as HTMLElement); });
+  // THE TYPE TABS (his order, 2026-09-29): the tab is the type — it filters
+  // Recents, it is what + New creates, and it decides the toolbelt.
+  for (const b of Array.from(document.querySelectorAll<HTMLElement>("#rail-type-tabs .rail-type-tab"))) {
+    b.addEventListener("click", () => { const t = b.dataset.type; if (t === "work" || t === "code") setTypeTab(t); });
+  }
+  void window.glyphh.getPreference?.(TYPE_TAB_PREF, "code").then((v) => {
+    typeTab = v === "work" ? "work" : "code";
+    applyTypeTab();
+    void loadRailSessions();
+  }).catch(() => paintTypeTabs());
+  // ANOTHER DOCUMENT MOVED THE TAB (the shell's rail, or a panel's own recents
+  // dropdown): follow it here rather than waiting for a reload.
+  (window.glyphh as unknown as { onPreferenceChanged?: (cb: (key: string, value: unknown) => void) => void })
+    .onPreferenceChanged?.((key, value) => {
+      // Settings → General's default model moved: the next session starts on it.
+      if (key === "defaultModel") { defaultModelPref = String(value || "") || null; try { paintModelChip(); } catch { /* */ } return; }
+      if (key !== TYPE_TAB_PREF) return;
+      const t: SessionType = value === "work" ? "work" : "code";
+      if (t === typeTab) return;
+      typeTab = t;
+      applyTypeTab();
+    });
   // The sidebar's own header: collapse (persisted) and the Echo launcher.
   const setRailCollapsed = (on: boolean, persist: boolean): void => {
     document.body.classList.toggle("rail-collapsed", on);
@@ -6249,7 +6231,6 @@ export function initCode(): void {
   // The sidebar's Echo button leaves with the sidebar; the collapsed strip
   // carries its own (his report, 2026-09-19).
   el("rail-echo-btn-strip")?.addEventListener("click", openEcho);
-  void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => { if (Array.isArray(v)) { loopFilter = v.map(String); el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0); renderRailSessions(); renderHistory(); } }).catch(() => {});
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
    *  selection and shows the space's landing. Both entry points use this:
@@ -6290,27 +6271,23 @@ export function initCode(): void {
   el("code-new-chat")?.addEventListener("click", () => {
     const w = window as unknown as {
       __initCodeWorkbench?: () => void;
-      __wbHasAgentPanel?: () => boolean;
       __wbOpenGlyphhAgent?: () => void;
       __wbAgentInstanced?: () => boolean;
-      __wbOpenAgentInstance?: (loop?: string) => void;
+      __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "new-session" }) => void;
     };
     w.__initCodeWorkbench?.();
     // The workbench boots async — a press before its doors exist waits for
     // them (a bounded poll, the same pattern every other early door uses).
     const go = (tries = 0): void => {
       if (!w.__wbAgentInstanced && !w.__wbOpenGlyphhAgent) { if (tries < 40) requestAnimationFrame(() => go(tries + 1)); return; }
-      // ANOTHER AGENT PANEL (his ruling, 2026-09-26): New is a door, and every
-      // door opens its own panel. The + inside a panel is the in-place new.
-      if (w.__wbAgentInstanced?.()) {
-        const lp = activeLoop();
-        w.__wbOpenAgentInstance?.(lp && lp !== "default" ? lp : undefined);
-        return;
-      }
-      // With no agent card, New is the first-agent door. Once one is open, it
-      // keeps its established meaning: a fresh chat in that panel.
-      if (!w.__wbHasAgentPanel?.()) { w.__wbOpenGlyphhAgent?.(); return; }
-      newSessionInPlace();
+      // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
+      // ALWAYS load a new agent with a new session no matter what"). It used
+      // to fall through to newSessionInPlace once a panel was open, which
+      // reset the thread of the panel that happened to be showing instead of
+      // opening one — and, with the store's pointer still naming the last
+      // thread, a freshly opened panel came up on it.
+      if (w.__wbAgentInstanced?.()) { w.__wbOpenAgentInstanceWith?.(GLYPHH_LOOP, { type: "new-session" }); return; }
+      w.__wbOpenGlyphhAgent?.();
     };
     go();
   });
@@ -6323,7 +6300,6 @@ export function initCode(): void {
     if (cmd.type === "prompt") {
       whenPanelReady(() => {
         newSessionInPlace();
-        if (cmd.loop) setLoop(cmd.loop);
         if (cmd.cwd) { pendingWorkdir = cmd.cwd; applySessionFolder({ workdir: cmd.cwd } as CodeChat); }
         const put = (tries = 0): void => {
           const ta = input();
@@ -6345,7 +6321,6 @@ export function initCode(): void {
   // creates; the prompt waits in the composer for the user to send.
   (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void }).__glyphhOpenSessionWith = (o) => {
     newSessionInPlace();
-    if (o.loop) setLoop(o.loop);
     if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
     const put = (tries = 0): void => {
       const ta = input();
@@ -6785,7 +6760,6 @@ export function initCode(): void {
   // LIST, which is reachable from the rail's recents.)
   // ‹ = the terminal hop, nothing else (his order, 2026-09-11: it closed
   // the whole agent). Same handler the >_ icon rides.
-  el("code-session-back")?.addEventListener("click", () => { document.getElementById("code-term-toggle")?.click(); });
   // DELEGATED, capture-phase (his report, 2026-09-14: the ⋮ did nothing in
   // a workspace) — the direct listener could miss the button or lose the
   // click to an overlay handler; capture on document always sees it.
@@ -6817,6 +6791,9 @@ export function initCode(): void {
       { view: "preview",  label: "Browser",  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
       { view: "diff",     label: "Diff",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
       { view: "plan",     label: "Plan",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+      // THE SWARM (his order, 2026-09-29): every sub-agent this loop hands work
+      // to, each with its own live feed — the same work panel the rail opens.
+      { view: "agents",   label: "Agents",   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>` },
     ];
     const wrap = el("code-tools-wrap");
     const moreBtn = el("code-tools-more");
@@ -6898,33 +6875,16 @@ export function initCode(): void {
     // The stored preference is the DEVICE DEFAULT (seeds new sessions); the chip
     // then reflects whichever session is on screen (currentMode via paintChips).
     if (MODES.some((x) => x.id === m)) { defaultMode = m as typeof glyphhMode; glyphhMode = defaultMode; }
-    const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
-    glyphhLoop = lp;
     void loadDefaultModelPref();
-    void refreshLoops();
     paintChips();
-    // The model chip renders from the STORED loop's slots — the early refresh
-    // at menu creation ran before this preference loaded, so without this the
-    // chip shows the fallback until the menu is first opened.
+    // The model chip renders from the stored pick — the early refresh at menu
+    // creation ran before that preference loaded, so without this the chip
+    // shows the fallback until the menu is first opened.
     await refreshModelList();
     // Cold start can race auth: an empty catalog gets one quiet retry.
     if (!availModels.length) setTimeout(() => void refreshModelList(), 2500);
+    void refreshSpend(true);
   })();
-  // Opening a layout can switch the active loop (+ its slot models) out from
-  // under the composer. Re-sync the chip from the stored preference so it shows
-  // the loop that will actually run. (The turn itself already resolves the loop
-  // live main-side, so this is display-consistency, not correctness.)
-  document.addEventListener("glyphh:loop-applied", () => {
-    void (async () => {
-      const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
-      if (lp === glyphhLoop) { await refreshModelList(true); return; }
-      glyphhLoop = lp;
-      await refreshLoops();
-      paintChips();
-      renderLoopMenu();
-      await refreshModelList(true);
-    })();
-  });
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -6992,14 +6952,10 @@ export function initCode(): void {
     // stamping it here is what let a workspace's folder overwrite every
     // thread's own folder.
     if (Date.now() < cwdStampSuppressedUntil) return;
-    if (c) { c.workdir = dir; void saveStore(); return; }
-    pendingWorkdir = dir;
-    if (pendingSource.kind === "local") {
-      pendingSource = { ...pendingSource, path: dir };
-      void window.glyphh.setPreference?.(SOURCE_PREF, pendingSource);
-      sourceChip?.setSource(activeSource());
-      paintSourceDependents();
-    }
+    // A PICK IS KEPT: it is the thread's folder from now on (setThreadFolder
+    // writes both fields the chip and the run read).
+    if (c && threadFolder(c) === dir) return;
+    setThreadFolder(dir);
   });
   // Another window (the ghost overlay) saved the shared store — adopt its
   // list so a ghost-created session appears in the history dropdown immediately. The
@@ -7028,14 +6984,15 @@ export function initCode(): void {
       } catch { /* stale repaint only — next save syncs */ }
   };
   (window as unknown as { __glyphhReloadSessions?: () => Promise<void> }).__glyphhReloadSessions = reloadSessionsFromDisk;
-  (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => { void reloadSessionsFromDisk(); });
-  // A CLI'S OWN STORE MOVED (his report, 2026-09-25) — the user typed in
-  // Claude or Codex outside this app. The rail re-reads the disk, and the chat
-  // ON SCREEN re-pulls its transcript so the two surfaces never disagree.
-  // Every OTHER chat reconciles the moment it is opened (adoption does it).
-  (window.glyphh as unknown as { onCliSessionsChanged?: (cb: () => void) => void }).onCliSessionsChanged?.(() => {
+  (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: (info: { deleted: string[] }) => void) => void }).onGlyphhSessionsUpdated?.((info) => {
+    // Deleted in another document first: the disk reload keeps the session on
+    // screen by design (it may be mid-stream), so a delete has to be said.
+    if (info.deleted.length) dropSessions(info.deleted, false);
+    void reloadSessionsFromDisk();
+    // The RAIL follows the same announcement (his report, 2026-09-29): the
+    // shell's recents and the panel's dropdown are one list, so a write in
+    // either document repaints both.
     void loadRailSessions();
-    void refreshOpenChatFromCli();
   });
   // THE LIVE LEDGER (main's agent-live.ts): which sessions are running
   // anywhere in the app — the rail's rows pulse by it.
@@ -7043,28 +7000,6 @@ export function initCode(): void {
   const takeLive = (runs: LiveAgentRun[]): void => { liveElsewhere = Array.isArray(runs) ? runs : []; renderRailSessions(); };
   void liveApi.glyphhLiveList?.().then(takeLive).catch(() => {});
   liveApi.onGlyphhLive?.(takeLive);
-}
-
-/** Re-pull the OPEN chat's CLI transcript and take it as the history. Skipped
- *  while a run streams here (that run owns the thread) and when the chat has
- *  no binding for its own CLI. */
-async function refreshOpenChatFromCli(): Promise<void> {
-  const c = current();
-  if (!c || liveRuns.has(c.id)) return;
-  const sid = sessionCliSid(c);
-  if (!sid) return;
-  try {
-    const t = await window.glyphh.glyphhCliTranscript?.(sid);
-    if (!t?.ok) return;
-    const turns = (t.turns ?? []);
-    // Nothing new — never repaint a thread the user is reading for no reason.
-    if (turns.length === c.messages.length) return;
-    if (current()?.id !== c.id || liveRuns.has(c.id)) return;   // moved on while we fetched
-    c.messages = turns.map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
-    void saveStore();
-    renderHistory();
-    renderThread();
-  } catch { /* the next change announces again */ }
 }
 
 /**

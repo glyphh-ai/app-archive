@@ -56,7 +56,6 @@ export interface AgentRow {
   prompt: string;
   /** Which CLI loop runs it (a cli-agents.ts id). Null when the agent is a
    *  PROVIDER agent instead — an agent is one or the other, never both. */
-  loopId: string | null;
   /** The provider slug when this agent is a provider+model agent (no CLI):
    *  the model on its own, for work that is just thinking and writing. */
   provider: string;
@@ -88,7 +87,7 @@ export interface AgentTaskRow {
   lastError: string | null;
 }
 
-const slugify = (name: string): string =>
+export const slugify = (name: string): string =>
   name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 
 const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
@@ -129,7 +128,7 @@ export function getAgent(ref: string): AgentRow {
 
 interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
-  loopId?: string | null; provider?: string; model?: string; skills?: string[]; apps?: string[];
+  provider?: string; model?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 
@@ -153,6 +152,18 @@ function cleanGuardrails(g: GuardrailsPolicy | null | undefined): GuardrailsPoli
   return Object.values(out).some((v) => v !== null) ? out : null;
 }
 
+/** WHO NEEDS TO KNOW THE ROSTER MOVED: the Glyphh loop rebuilds its spawn
+ *  tool from it, so an agent made from Settings, from a chat (`agent_save`)
+ *  or deleted anywhere reaches the next turn of every open conversation. */
+const changed = new Set<() => void>();
+export function onAgentsChanged(cb: () => void): () => void {
+  changed.add(cb);
+  return () => changed.delete(cb);
+}
+function announceAgents(): void {
+  for (const cb of changed) { try { cb(); } catch { /* a listener's failure is its own */ } }
+}
+
 export function saveAgent(input: AgentInput): AgentRow {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
@@ -165,7 +176,6 @@ export function saveAgent(input: AgentInput): AgentRow {
     name,
     description: String(input.description ?? existing?.description ?? ""),
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
-    loopId: input.loopId === undefined ? existing?.loopId ?? null : (input.loopId || null),
     provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
     model: String(input.model ?? existing?.model ?? ""),
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
@@ -178,6 +188,7 @@ export function saveAgent(input: AgentInput): AgentRow {
   writeAgent(row);
   // Live flips park or arm every one of its tasks at once.
   if (!existing || existing.live !== row.live) rearmTasksOf(row.slug);
+  announceAgents();
   return row;
 }
 
@@ -190,6 +201,7 @@ export function deleteAgent(ref: string): void {
   db.prepare("DELETE FROM loop_runs WHERE schedule_id IN (SELECT id FROM loop_schedules WHERE owner_agent_id = ?)").run(slug);
   db.prepare("DELETE FROM loop_schedules WHERE owner_agent_id = ?").run(slug);
   fs.rmSync(path.join(AGENTS_DIR(), `${slug}.json`), { force: true });
+  announceAgents();
 }
 
 // ── Tasks (schedule rows owned by an agent) ──────────────────────────────────
@@ -262,9 +274,9 @@ export function addAgentTask(agentSlug: string, input: TaskInput): AgentTaskRow 
   const id = rid();
   const row: ScheduleRow = {
     id,
-    // agent_id on this table is the CLI LOOP (pre-rename name). The agent's
-    // own loop is the one that runs its work.
-    agent_id: agent.loopId ?? "",
+    // agent_id on this table named the CLI LOOP once (pre-rename). With one
+    // loop left it names the AGENT, which is what the views wanted anyway.
+    agent_id: agent.slug,
     name,
     loop_slug: target,
     cron: schedule,
@@ -337,21 +349,13 @@ export function agentTaskRunning(taskId: string): boolean {
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
-/** What this agent brings to a run (see local-library's ScheduleContext):
- *  the loop that does the work, the standing prompt, the model override. */
+/** What this agent brings to a run (see local-library's ScheduleContext): its
+ *  standing prompt and its model. The loop is no longer a choice — every
+ *  agent runs on the Glyphh loop (his order, 2026-09-28). */
 function agentContext(agentId: string): ScheduleContext | null {
   const agent = readAgent(agentId);
   if (!agent) return null;
-  // A PROVIDER agent has no CLI to spawn — its turn goes through the gateway
-  // (router.glyphh.ai + a minted member key), which is not wired yet. Return
-  // nothing rather than quietly borrowing some other loop's CLI; the run
-  // records a readable failure instead of doing the wrong work silently.
-  if (!agent.loopId) return null;
-  return {
-    loopId: agent.loopId,
-    prompt: agent.prompt,
-    ...(agent.model ? { model: agent.model } : {}),
-  };
+  return { prompt: agent.prompt, ...(agent.model ? { model: agent.model } : {}) };
 }
 
 /** The roster a TASK SLOT picks from. Paused agents still appear — a slot
@@ -360,7 +364,6 @@ function agentRoster(): SlotAgent[] {
   return listAgents().map((a) => ({
     id: a.id,
     name: a.provider ? `${a.name} — ${a.provider}` : a.name,
-    loopId: a.loopId,
   }));
 }
 

@@ -7,7 +7,7 @@
  * user's own toggle). Main reads the same preferences and the same gates, so
  * what this page shows is what the bridge does.
  */
-import { loadEmbeddingsSettings } from "./settings-loops.js";
+import { loadEmbeddingsSettings } from "./settings-agent.js";
 import { planGates, invalidatePlanGates } from "./plan-gate.js";
 import { confirmAction } from "./shared.js";
 import { toastOk } from "./toast.js";

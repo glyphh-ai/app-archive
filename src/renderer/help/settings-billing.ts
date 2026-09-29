@@ -13,7 +13,8 @@
  * upgrade/downgrade semantics are code, ported from the platform's
  * lib/billing/hooks.js changePlan(): no subscription → hosted checkout;
  * live subscription → confirm, then an in-app change-plan (Stripe prorates),
- * except cancel-to-free which lives in the Stripe portal. Every call goes
+ * except cancelling, which lives in the Stripe portal and leaves the org with
+ * no plan (there is no free plan, his order 2026-09-29). Every call goes
  * through settings-api.ts — SDK on web, main-process SDK over IPC on desktop.
  *
  * Everything Stripe does is asynchronous on its side: funding and card
@@ -223,8 +224,10 @@ function paintSeats(): void {
  * the plan picker folded right below (paintPlans).
  */
 function paintPlan(): void {
-  const current = plans.find((p) => p.tier === (sub?.tier || "free"));
-  setText("billing-plan-name", current?.displayName || sub?.tier || "—");
+  const current = plans.find((p) => p.tier === (sub?.tier || "none"));
+  // NO FREE PLAN (his order, 2026-09-29): an org with none can do anything but
+  // call a model, and this is where it chooses one.
+  setText("billing-plan-name", current?.displayName || (!sub?.tier || sub.tier === "none" ? "No plan — choose one below to use models" : sub.tier));
   const bits: string[] = [];
   // The plan's budget — its price, dollar for dollar.
   if (current) bits.push(`${fmtUsd(current.poolUsdPerMonth || 0)} / month Budget`);
@@ -243,9 +246,9 @@ function paintPlan(): void {
 // tiers are server data; only the change semantics below are code.
 
 /** Tier order — decides whether a move reads as an upgrade or a downgrade. */
-const RANK: Record<string, number> = { free: 0, basic: 1, pro: 2, enterprise: 3 };
+const RANK: Record<string, number> = { none: 0, solo: 1, basic: 2, pro: 3, enterprise: 4 };
 /** Self-serve paid tiers. Enterprise is sales-led — never self-serve. */
-const PAID = new Set(["basic", "pro"]);
+const PAID = new Set(["solo", "basic", "pro"]);
 const SALES_EMAIL = "sales@glyphh.ai";
 
 /** The plans section's own error line — a failed change must say so HERE,
@@ -263,7 +266,6 @@ function planFail(msg: string): void {
 function planPrice(p: BillingPlan): { amount: string; period: string } {
   if (p.tier === "enterprise" && !p.bespoke) return { amount: "Custom", period: "contact sales" };
   const usd = Math.round(((p.activeUsdCents ?? p.monthlyUsdCents) || 0) / 100);
-  if (p.tier === "free") return { amount: "$0", period: "forever" };
   return { amount: `$${usd}`, period: p.bespoke ? "invoiced monthly" : "per seat / month" };
 }
 
@@ -306,7 +308,7 @@ function planActionButton(
 
   if (ctx.subscribed) {
     const up = (RANK[p.tier] ?? 0) > (RANK[ctx.currentTier] ?? 0);
-    const label = p.tier === "free" ? "Downgrade to Free" : up ? "Upgrade" : "Downgrade";
+    const label = up ? "Upgrade" : "Downgrade";
     const b = mk(label, up, gated, gateTitle);
     b.addEventListener("click", () => { void doChangePlan(p, b); });
     return b;
@@ -316,7 +318,7 @@ function planActionButton(
     b.addEventListener("click", () => { void doSubscribe(p, b); });
     return b;
   }
-  return null; // the free card while unsubscribed IS the current plan
+  return null; // a comped or bespoke plan changes with us, not here
 }
 
 /** The grid of plan cards — rebuilt on every load so the buttons always match
@@ -326,7 +328,7 @@ function paintPlans(): void {
   if (!grid) return;
   $("billing-plans-note")?.classList.toggle("hidden", isAdmin !== false);
   grid.innerHTML = "";
-  const currentTier = sub?.tier || "free";
+  const currentTier = sub?.tier || "none";
   const subscribed = sub?.billingStatus === "active";
   const currentIsBespoke = !!plans.find((x) => x.tier === currentTier)?.bespoke;
 
@@ -338,7 +340,7 @@ function paintPlans(): void {
     // own provisioned deal) earns a card here.
     if (generic && !isCurrent) continue;
     const { amount, period } = planPrice(p);
-    const seatsLine = p.tier === "free" ? "1 seat"
+    const seatsLine = p.maxSeats === 1 ? "1 seat"
       : generic ? `${fmtInt(p.maxSeats || 1)}+ seats`
       : `Up to ${fmtInt(p.maxSeats || 1)} seats`;
     const card = document.createElement("div");
@@ -626,6 +628,47 @@ async function tryEmbeddedTopup(
 }
 
 /**
+ * OUT OF BUDGET, AS THE PERSON CAN ACT ON IT (his report, 2026-09-29: "when an
+ * org user runs out of credits this dialog is about contacting the org admin
+ * not about money"). The org admin whose ORG is out of money gets the top-up
+ * dialog. A member gets "contact your organization admin", with nothing about
+ * money in it. An admin whose TEAM budget ran out gets no dialog: org funds do
+ * not raise a team's budget, and the turn's card says where it is raised.
+ */
+export async function openOutOfBudget(refusal: string): Promise<void> {
+  const info = await Promise.resolve(window.glyphh.getAccountInfo?.()).catch(() => null);
+  const role = (info as { role?: string } | null)?.role;
+  const manages = !!role && ["org_admin", "super_admin"].includes(role);
+  const team = /\byour team\b|Team=/i.test(refusal);
+  if (manages) {
+    if (!team) await openAddFundsModal();
+    return;
+  }
+  openContactAdminModal(team);
+}
+
+function openContactAdminModal(team: boolean): void {
+  if (document.querySelector(".add-funds-overlay")) return;   // never stack two
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay add-funds-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-box add-funds-box">
+      <div class="confirm-head"><h3></h3></div>
+      <div class="confirm-body"><p class="bc-balance"></p></div>
+      <div class="confirm-foot"><button class="action-btn primary" id="bc-close" type="button">Close</button></div>
+    </div>`;
+  (overlay.querySelector("h3") as HTMLElement).textContent = team ? "Your team's budget is used up" : "Your organization's budget is used up";
+  (overlay.querySelector(".bc-balance") as HTMLElement).textContent =
+    `Model calls stop until it is raised or the month turns. Contact your organization admin${team ? " to raise your team's budget" : ""}.`;
+  const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("#bc-close")?.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+}
+
+/**
  * The COMPACT "Budget used up" dialog — the 402 hand-off. Add funds
  * without leaving the agent: Stripe's Embedded Checkout mounts INSIDE this
  * modal (card details go to Stripe's iframe, never our DOM) and completion is
@@ -809,31 +852,17 @@ async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void
  */
 async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<void> {
   if (busy) return;
-  const currentTier = sub?.tier || "free";
+  const currentTier = sub?.tier || "none";
   const current = plans.find((x) => x.tier === currentTier);
   const up = (RANK[p.tier] ?? 0) > (RANK[currentTier] ?? 0);
   const { amount, period } = planPrice(p);
   const seatsInUse = sub?.seats ?? 0;
 
-  if (!up && p.tier !== "free" && seatsInUse > (p.maxSeats || 1)) {
+  if (!up && seatsInUse > (p.maxSeats || 1)) {
     planFail(`You're using ${fmtInt(seatsInUse)} seats but ${p.displayName} allows ${fmtInt(p.maxSeats || 1)} — remove members in Manage → Members first.`);
     return;
   }
   planFail("");
-
-  if (p.tier === "free") {
-    // Cancel-to-free is scheduled at period end (so seats stay valid until
-    // then) and is executed in the Stripe portal — the platform's exact path.
-    const freePool = plans.find((x) => x.tier === "free")?.poolUsdPerMonth || 0;
-    const ok = await confirmAction({
-      title: "Cancel your subscription?",
-      body: `You keep ${current?.displayName || "your plan"} until the period ends, then drop to Free — a ${fmtUsd(freePool)} / month Budget, single seat. Cancelling happens in the Stripe portal that opens next.`,
-      confirmLabel: "Open Stripe portal",
-      danger: true,
-    });
-    if (ok) await openPortal();   // openPortal starts the post-Stripe poll itself
-    return;
-  }
 
   const details = `${amount} ${period} · ${fmtUsd(p.poolUsdPerMonth || 0)} / month Budget · up to ${fmtInt(p.maxSeats || 1)} seats`;
   const ok = await confirmAction(up

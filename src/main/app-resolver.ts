@@ -11,7 +11,8 @@
  */
 
 import { spawn } from "child_process";
-import { ipcMain, webContents } from "electron";
+import { ipcMain } from "electron";
+import { homeShellWebContents, sendToHomeShell } from "./broadcast.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
 import { getPreference } from "./stores/preferences-db.js";
@@ -78,11 +79,11 @@ function sendWbCmd(cmd: WbCmd): void {
   win.focus();
   // The workbench UI runs in the home.html PANEL (a BrowserView), NOT the
   // index.html shell that owns mainWindow.webContents — so wb:app-cmd must go
-  // to the home panel(s), or onWbAppCommand never fires. Fall back to the
-  // shell only if no home panel is up yet.
-  const homeWcs = webContents.getAllWebContents().filter((wc) => {
-    try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
-  });
+  // to the home panel, or onWbAppCommand never fires. Fall back to the shell
+  // only if no home panel is up yet. NEVER to an agent panel: it is a home.html
+  // document too, and it opened the app a second time inside itself (his
+  // report, 2026-09-29).
+  const homeWcs = homeShellWebContents();
   const targets = homeWcs.length ? homeWcs : [win.webContents];
   for (const wc of targets) wc.send("wb:app-cmd", cmd);
 }
@@ -101,12 +102,9 @@ function navTargetOf(app: ServerApp): string | null {
   return typeof nav === "string" && nav ? nav : null;
 }
 
-/** Steer the home panel(s) to a section — same channel home-ipc exposes. */
+/** Steer the workbench to a section — same channel home-ipc exposes. */
 function sendHomeGoto(section: string): void {
-  const homes = webContents.getAllWebContents().filter((wc) => {
-    try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
-  });
-  for (const wc of homes) wc.send("home:goto-section", section);
+  sendToHomeShell("home:goto-section", section);
 }
 
 /** Restore + front the Glyphh window (nav + self opens land here). */
@@ -126,7 +124,9 @@ const TOOL_BUILTINS: Record<string, string> = {
   image: "gimage", images: "gimage", gimage: "gimage", video: "gvideo", gvideo: "gvideo", sound: "gsound", sounds: "gsound", audio: "gsound", gsound: "gsound",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
-  if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
+  // No URL: the Browser opens, or comes forward, as it is. Passing the start
+  // page here added a start-page TAB on every call (his screenshot, 2026-09-29).
+  if (key === "browser") return { slug: "browser", name: "Browser", url: "" };
   if (key === "terminal" || key === "term") return "terminal";
   if (TOOL_BUILTINS[key]) return { tool: TOOL_BUILTINS[key] };
   return null;
@@ -177,7 +177,9 @@ export function findLibraryApp(apps: ServerApp[], ref: string): ServerApp | unde
 }
 
 /** Open a saved app (or built-in) as a workbench panel beside the agent. */
-export async function openAppByRef(ref: string): Promise<{ slug: string; name: string }> {
+/** `panel`: it opens as a web panel the agent can drive, so the caller can wait
+ *  for it to exist rather than report an open that never happened. */
+export async function openAppByRef(ref: string): Promise<{ slug: string; name: string; panel?: boolean }> {
   const key = ref.trim().toLowerCase();
   if (!key) throw new Error("app is required");
 
@@ -192,7 +194,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   }
   if (builtin) {
     sendWbCmd({ action: "open", app: builtin });
-    return { slug: builtin.slug, name: builtin.name };
+    return { slug: builtin.slug, name: builtin.name, panel: true };
   }
 
   const apps = await fetchOrgApps();
@@ -224,7 +226,7 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   // meant Glyphh then wanted to find, adopt and place that window — the OS
   // window management this app no longer does.
   sendWbCmd({ action: "open", app: toWbRef(app) });
-  return { slug: app.slug, name: app.name };
+  return { slug: app.slug, name: app.name, panel: true };
 }
 
 /** Open SETTINGS at one of its pages (skills, connections, plugins, tasks,
@@ -311,7 +313,8 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     const builtin = builtinRef(cellKey);
     if (builtin === "terminal") continue;   // terminal opens as its own slot kind
     if (builtin && "tool" in builtin) continue;   // tool cells render via the layoutName path
-    if (builtin) { refs.push(builtin); opened.push(builtin.name); continue; }
+    // A layout's Browser cell opens on the start page, as it always has.
+    if (builtin) { refs.push(builtin.slug === "browser" && !builtin.url ? { ...builtin, url: resolveBrowserHomeUrl() } : builtin); opened.push(builtin.name); continue; }
     const app = findLibraryApp(apps, cell.panelId);
     if (!app || isGlyphhSelfRow(app)) continue;
     try {

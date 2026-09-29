@@ -29,12 +29,10 @@ import fs from "fs";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
-import { spawn } from "child_process";
 import { ipcMain } from "electron";
 import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
-import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
-import { cliFix } from "./cli-auth.js";
+import { runGlyphhHeadless } from "./glyphh-loop.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
@@ -160,9 +158,9 @@ export interface ScheduleRow {
  *
  *  Injected rather than imported: local-agents.ts depends on this module, so
  *  reaching back for agent rows directly would close an import cycle. */
-export interface ScheduleContext { loopId: string; prompt: string; model?: string }
+export interface ScheduleContext { prompt: string; model?: string }
 /** An agent as a slot CHOICE — id, display name, and the loop behind it. */
-export interface SlotAgent { id: string; name: string; loopId: string | null }
+export interface SlotAgent { id: string; name: string }
 
 let agentContext: ((agentId: string) => ScheduleContext | null) | null = null;
 let agentChoices: (() => SlotAgent[]) | null = null;
@@ -225,16 +223,14 @@ export interface ScheduleView {
 export function listSchedulesView(): ScheduleView[] {
   const db = getLocalDb();
   const roster = agentChoices?.() ?? [];
-  const loops = listCliAgents();
   return loadSchedules().map((s) => {
     const last = db.prepare("SELECT started_at, status, error FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 1")
       .get(s.id) as { started_at: string; status: string; error: string | null } | undefined;
     const agent = roster.find((a) => a.id === s.agent_id);
-    const loop = loops.find((l) => l.id === s.agent_id);
     return {
       id: s.id, name: s.name, kind: s.kind === "skill" ? "skill" : "task", target: s.target || s.loop_slug,
       cron: s.cron, enabled: s.enabled === 1, agentId: s.agent_id || null,
-      agentName: agent?.name ?? (loop ? `${loop.name} (loop)` : s.agent_id || null),
+      agentName: agent?.name ?? (s.agent_id || null),
       args: s.args || "{}", createdAt: s.created_at,
       lastRunAt: last?.started_at ?? null, lastStatus: last?.status ?? null, lastError: last?.error ?? null,
     };
@@ -341,8 +337,6 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   }
   const who = sched.owner_agent_id || sched.agent_id;
   const ctx = who ? agentContext?.(who) ?? null : null;
-  const loopId = ctx?.loopId || sched.agent_id;
-  const loop = listCliAgents().find((a) => a.id === loopId) as CliAgentListed | undefined;
   const runId = rid();
   const startedAt = new Date().toISOString();
   db.prepare("INSERT INTO loop_runs (id, schedule_id, started_at, status) VALUES (?, ?, ?, 'running')")
@@ -352,38 +346,20 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     db.prepare("UPDATE loop_runs SET duration_ms = ?, status = ?, error = ?, output = ? WHERE id = ?")
       .run(Date.now() - t0, status, error, output ? output.slice(0, 20_000) : null, runId);
   };
-  let line: string;
+  let prompt: string;
+  let model: string | undefined;
   try {
-    if (!loop) throw new Error(`loop "${loopId}" not found`);
     const { text, slotModel } = promptForSchedule(sched);
     // The agent's standing prompt frames the task's own program.
-    const prompt = ctx?.prompt ? `${ctx.prompt}\n\n${text}` : text;
-    line = composeHeadless(loop, prompt, ctx?.model ?? slotModel);
+    prompt = ctx?.prompt ? `${ctx.prompt}\n\n${text}` : text;
+    model = ctx?.model ?? slotModel;
   } catch (err) {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
   }
-  const r = await execHeadless(line);
-  // A known CLI refusal is reported in the user's words (cliFix), the CLI's
-  // own line kept underneath; anything else keeps the CLI's text.
-  const fix = r.code === 0 ? null : cliFix(`${r.error || ""}\n${r.output.slice(-2000)}`, loop.cli || "claude");
-  finish(r.code === 0 ? "ok" : "failed", r.code === 0 ? null : fix ? fix.message : r.error ?? `exit ${r.code}`, r.output || null);
-}
-
-export function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("/bin/sh", ["-lc", line], { env: process.env });
-    // The CLI reads nothing from us; an open stdin pipe held codex exec in its
-    // prompt resolution for as long as the pipe lived (2026-09-20).
-    try { child.stdin.end(); } catch { /* already closed */ }
-    let out = "";
-    const cap = (b: Buffer): void => { if (out.length < 40_000) out += b.toString(); };
-    child.stdout.on("data", cap);
-    child.stderr.on("data", cap);
-    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* raced exit */ } }, 10 * 60 * 1000);
-    child.on("close", (codeNum) => { clearTimeout(timer); resolve({ code: codeNum ?? 1, output: out.trim() }); });
-    child.on("error", (err) => { clearTimeout(timer); resolve({ code: 1, output: out.trim(), error: err.message }); });
-  });
+  // On the clock, unattended, on the Glyphh loop — the vendor-CLI lane is gone.
+  const r = await runGlyphhHeadless(prompt, { ...(model ? { model } : {}) });
+  finish(r.ok ? "ok" : "failed", r.ok ? null : r.error ?? "the run failed", r.text || null);
 }
 
 // ── IPC — the exact lanes the main-era UX rides ──────────────────────────────
@@ -505,12 +481,9 @@ export function registerLocalLibraryIpc(): void {
   ipcMain.handle("tasks-agents-list", () => env(() => {
     const withTasks = [...new Set(loadSchedules().map((s) => s.agent_id).filter(Boolean))];
     const roster = agentChoices?.() ?? [];
-    const loops = listCliAgents();
     return withTasks.map((id) => {
       const agent = roster.find((a) => a.id === id);
-      if (agent) return { id, slug: id, name: agent.name };
-      const loop = loops.find((l) => l.id === id);
-      return { id, slug: id, name: loop ? `${loop.name} (loop)` : id };
+      return { id, slug: id, name: agent?.name ?? id };
     });
   }));
   ipcMain.handle("tasks-for-agent", (_e, ref: string) => env(() => {

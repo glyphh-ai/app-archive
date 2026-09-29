@@ -104,6 +104,48 @@ export function attachmentPromptBlock(atts: AttachRef[]): string {
   ].join("\n");
 }
 
+/** A WORK turn has no read tools, so an attached file has to arrive as CONTENT
+ *  (his push-back, 2026-09-29: "shouldn't it still have the + button to add
+ *  files and photos etc"). The text is inlined into the message, fenced and
+ *  named, with the same caps a prompt can carry: a folder cannot be inlined and
+ *  a binary would be noise, so both are named and skipped. Code sessions keep
+ *  the path manifest instead — their read tools open the file themselves, which
+ *  beats pouring a megabyte into every turn of the conversation. */
+const MAX_INLINE_CHARS = 20_000;      // per file
+const MAX_INLINE_TOTAL = 60_000;      // per turn
+/** Extensions we will inline. A deliberate list: anything else is either
+ *  binary or better left to a Code session's tools. */
+const TEXT_EXT = new Set([
+  ".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini",
+  ".env", ".xml", ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".py", ".rb", ".go", ".rs",
+  ".java", ".kt", ".swift", ".c", ".h", ".cpp", ".hpp", ".cs", ".php", ".sh", ".bash", ".zsh", ".sql", ".graphql",
+  ".vue", ".svelte", ".astro", ".diff", ".patch", ".conf", ".properties",
+]);
+
+export function attachmentInlineText(atts: AttachRef[]): string {
+  const parts: string[] = [];
+  const skipped: string[] = [];
+  let budget = MAX_INLINE_TOTAL;
+  for (const a of atts) {
+    if (a.kind === "image") continue;               // rides as a vision block
+    if (a.kind === "folder") { skipped.push(`${a.name} (a folder)`); continue; }
+    if (!TEXT_EXT.has(extname(a.path).toLowerCase())) { skipped.push(`${a.name} (not a text file)`); continue; }
+    if (budget <= 0) { skipped.push(`${a.name} (the turn was already full)`); continue; }
+    try {
+      const raw = readFileSync(a.path, "utf-8");
+      const clipped = raw.length > MAX_INLINE_CHARS ? `${raw.slice(0, MAX_INLINE_CHARS)}\n… (truncated, ${raw.length} chars)` : raw;
+      const take = clipped.slice(0, budget);
+      budget -= take.length;
+      parts.push(`<file name="${a.name}" path="${a.path}">\n${take}\n</file>`);
+    } catch { skipped.push(`${a.name} (unreadable)`); }
+  }
+  if (!parts.length && !skipped.length) return "";
+  const note = skipped.length
+    ? `\n(Not included: ${skipped.join(", ")}. Start a Code session to work on files and folders directly.)`
+    : "";
+  return `${parts.length ? `<attachments>\n${parts.join("\n")}\n</attachments>` : "<attachments/>"}${note}`;
+}
+
 /** An attached image, decoded for the wire: the harness run body's `images`
  *  shape (`{mediaType, data}`, base64, no `data:` prefix). */
 export interface ImageAttachment { mediaType: string; data: string }

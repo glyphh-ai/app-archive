@@ -28,7 +28,7 @@
 
 import { confirmAction, paginate, renderPaginationBar, escapeHtml } from "./shared.js";
 import { gateSurface } from "./plan-gate.js";
-import { openProviderDropdown, MDL_SVG, icoBtn } from "./models-admin.js";
+import { openProviderDropdown, MDL_SVG, icoBtn } from "./model-controls.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 import { formModal } from "./settings-list-page.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
@@ -42,8 +42,6 @@ interface Workspace {
   allowedModels: string[];
   /** LOOPS: which CLIs this role may drive, each with its default model, at
    *  most one flagged the role's default, and whether it routes semantically. */
-  limitLoops?: boolean;
-  loopGrants?: LoopGrant[];
   limitConnections: boolean;
   allowedConnections: string[];
   allowedConnectionTools: Record<string, string[]>;
@@ -127,8 +125,6 @@ const $ = <T extends HTMLElement>(id: string): T | null => document.getElementBy
 // reports a bare "<method> failed".
 
 interface SdkWorkspaces {
-  /** The ORG's loop support list — the catalog a role narrows from. */
-  orgLoops?: { list?: () => Promise<OrgLoopRow[]> };
   /** The org's members — who can hold this role. */
   members?: { list?: () => Promise<OrgMember[]> };
   workspaces?: {
@@ -459,7 +455,6 @@ async function openEditor(w: Workspace): Promise<void> {
 }
 
 /** One loop's grant on a role. */
-interface LoopGrant { cli: string; model: string; isDefault?: boolean; forceAuto?: boolean }
 
 function setTab(tab: string): void {
   for (const b of Array.from(document.querySelectorAll<HTMLElement>("#ws-tabs .app-detail-tab"))) {
@@ -471,7 +466,6 @@ function setTab(tab: string): void {
   // Paint on ENTRY, not on role load — these two fetch, and a role editor
   // that pulled the org's members and loop catalog every time you opened
   // General would pay for tabs nobody clicked.
-  if (tab === "loops") void paintLoopsTab();
   if (tab === "members") void paintMembersTab();
 }
 
@@ -1247,13 +1241,6 @@ export function initWorkspaces(): void {
     e.stopPropagation();
     openModelsFilter(e.currentTarget as HTMLElement);
   });
-  // LOOPS tab — the limit switch. On with no grants yet means "allowed: none",
-  // which is a real (if strict) answer; the table is how you widen it.
-  $("ws-limit-loops")?.addEventListener("change", (e) => {
-    const on = (e.currentTarget as HTMLInputElement).checked;
-    void patch({ limitLoops: on },
-      on ? "Limited to selected loops" : "Every org loop allowed").then(paintLoopsTab);
-  });
   // MEMBERS tab — search filters in place; + Add opens the org's roster.
   $<HTMLInputElement>("ws-members-search")?.addEventListener("input", () => {
     wsMembersPage = 0;
@@ -1361,129 +1348,6 @@ export async function loadWorkspacesPanel(): Promise<void> {
   for (const c of orgConnectors) connMeta.set(c.id, { name: c.name, icon: c.icon });
   orgToolCap = cap || {};
   if (editing) { paintModels(); paintProviderKeys(); paintConnections(); }
-}
-
-// ── Loops tab ────────────────────────────────────────────────────────────
-//
-// Which CLIs this role may drive. Each row carries the model it opens with,
-// whether it is the role's default, and whether it routes semantically —
-// per-loop, so a coding loop keeps its model while a summarising one is
-// auto-routed (his ruling, 2026-09-12). Models come from the role's OWN
-// allowed set: a role can never default to a model it may not use.
-
-interface OrgLoopRow { cli: string; name: string; provider: string; enabled: boolean }
-let orgLoopCatalog: OrgLoopRow[] = [];
-
-const grantsOf = (w: Workspace | null): LoopGrant[] =>
-  Array.isArray(w?.loopGrants) ? w!.loopGrants! : [];
-
-/** Commit the whole grant list — the server normalises it (known CLIs, one
- *  row each, at most one default), so the UI never has to police that. */
-async function commitLoops(grants: LoopGrant[], msg: string): Promise<void> {
-  await patch({ loopGrants: grants }, msg);
-}
-
-async function paintLoopsTab(): Promise<void> {
-  const grid = $("ws-loops-grid");
-  const toggle = $<HTMLInputElement>("ws-limit-loops");
-  const hint = $("ws-loops-hint");
-  if (!grid || !editing) return;
-
-  if (!orgLoopCatalog.length) {
-    const r = await via<OrgLoopRow[]>((c) => c.orgLoops?.list?.(), "orgLoopsList");
-    orgLoopCatalog = (r ?? []).filter((l) => l.enabled);
-  }
-  const limited = editing.limitLoops === true;
-  if (toggle) toggle.checked = limited;
-  if (hint) {
-    hint.textContent = limited
-      ? "Only the loops ticked below, each opening on the model you choose."
-      : "Off — this role can use every loop the org runs.";
-  }
-  const grants = new Map(grantsOf(editing).map((g) => [g.cli, g]));
-  // The role's OWN models, so a default can never name one it may not use.
-  const allowed = modelsOf(editing);
-  const usable = allowed === null ? catalog : catalog.filter((m) => allowed.includes(m.key));
-
-  grid.innerHTML = "";
-  if (!orgLoopCatalog.length) {
-    grid.innerHTML = `<div class="crud-empty">Your organization hasn't enabled any loops yet — Organization &rarr; Loops.</div>`;
-    return;
-  }
-  const table = document.createElement("table");
-  table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Loop</th><th>Default model</th>`
-    + `<th class="ws-model-toggle-cell">Force auto</th>`
-    + `<th class="ws-model-toggle-cell">Default</th>`
-    + `<th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
-  const body = document.createElement("tbody");
-
-  for (const loop of orgLoopCatalog) {
-    const g = grants.get(loop.cli);
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="lib-table-name"></td><td></td>`
-      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="checkbox" class="wl-force" /><span class="toggle-switch"></span></label></td>`
-      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="radio" name="wl-default" class="wl-default" /><span class="toggle-switch"></span></label></td>`
-      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="checkbox" class="wl-on" /><span class="toggle-switch"></span></label></td>`;
-    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = loop.name;
-
-    // Default model — this loop's vendor, within the role's allowed set.
-    const sel = document.createElement("select");
-    sel.className = "settings-input ws-loop-model";
-    const pool = usable.filter((m) => !loop.provider || m.provider === loop.provider);
-    const list = pool.length ? pool : usable;
-    const auto = document.createElement("option");
-    auto.value = "";
-    auto.textContent = "The CLI's own default";
-    sel.appendChild(auto);
-    for (const m of list) {
-      const o = document.createElement("option");
-      o.value = m.key;
-      o.textContent = m.displayName || m.key;
-      sel.appendChild(o);
-    }
-    sel.value = g?.model ?? "";
-    (tr.children[1] as HTMLElement).appendChild(sel);
-
-    const on = tr.querySelector<HTMLInputElement>(".wl-on")!;
-    const force = tr.querySelector<HTMLInputElement>(".wl-force")!;
-    const dflt = tr.querySelector<HTMLInputElement>(".wl-default")!;
-    on.checked = !!g;
-    force.checked = g?.forceAuto === true;
-    dflt.checked = g?.isDefault === true;
-    // A loop this role doesn't grant can't carry a model or a flag.
-    sel.disabled = force.disabled = dflt.disabled = !g;
-    // Forcing auto makes the default model moot — the gateway chooses.
-    if (force.checked) sel.disabled = true;
-
-    /** Rebuild the whole list from the table, so one write is one truth. */
-    const commit = (msg: string): void => {
-      const next: LoopGrant[] = [];
-      for (const row of Array.from(body.querySelectorAll<HTMLElement>("tr"))) {
-        const cli = row.dataset.cli!;
-        if (!row.querySelector<HTMLInputElement>(".wl-on")!.checked) continue;
-        const f = row.querySelector<HTMLInputElement>(".wl-force")!.checked;
-        const d = row.querySelector<HTMLInputElement>(".wl-default")!.checked;
-        next.push({
-          cli,
-          model: row.querySelector<HTMLSelectElement>(".ws-loop-model")!.value,
-          ...(d ? { isDefault: true } : {}),
-          ...(f ? { forceAuto: true } : {}),
-        });
-      }
-      void commitLoops(next, msg).then(paintLoopsTab);
-    };
-    on.addEventListener("change", () => commit(on.checked ? `${loop.name} allowed` : `${loop.name} removed`));
-    force.addEventListener("change", () => commit(force.checked ? `${loop.name} routes automatically` : `${loop.name} picks its model`));
-    // Radio, so the browser clears the others — only one default can exist.
-    dflt.addEventListener("change", () => commit(`${loop.name} is the default loop`));
-    sel.addEventListener("change", () => commit("Default model set"));
-
-    tr.dataset.cli = loop.cli;
-    body.appendChild(tr);
-  }
-  table.appendChild(body);
-  grid.appendChild(table);
 }
 
 // ── Members tab ──────────────────────────────────────────────────────────

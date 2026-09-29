@@ -253,7 +253,7 @@ declare global {
       glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
       appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; limitUsd: number | null; limitSource: "member" | "team" | "organization" | null; mySpentUsd: number; poolUsd: number; poolSpentUsd: number; poolRemainingUsd: number; poolSource: "team" | "org"; planUsd: number; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
+      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; limitUsd: number | null; limitSource: "member" | "team" | "organization" | null; mySpentUsd: number; poolUsd: number; poolSpentUsd: number; poolRemainingUsd: number; poolSource: "member" | "team" | "org"; planUsd: number; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
       // `userId` narrows to one member (org_admin only); "" = the caller's scope.
       usageSeries: (days: number, groupBy: string, userId?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
@@ -405,7 +405,7 @@ declare global {
       // Support
       submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
       // Recents (rich)
-      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; source?: unknown }) => Promise<{ runId: string }>;
+      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; source?: unknown }) => Promise<{ runId: string }>;
       onGlyphhAgentConnect?: (cb: (p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => void) => () => void;
       glyphhAgentConnectRespond?: (p: { id: string; connected: boolean; reason?: string }) => Promise<boolean>;
       glyphhPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
@@ -473,10 +473,7 @@ declare global {
       platformPanelUrl: (next?: string) => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
-      loopsAvailable: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }>; laneMode?: "off" | "choice" | "required"; error?: string }>;
-      orgLoopsList: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgLoopSet: (cli: string, enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
+      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>;
       planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;
       libraryAgentsList: () => Promise<LibEnvelope>;
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
@@ -506,7 +503,6 @@ declare global {
       workspacesOrgToolCap: () => Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>;
       workspacesConnTools: (slug: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesAppSearch: (search: string, limit?: number) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspaceProviderKeys: (id: string) => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       workspaceProviderKeySet: (id: string, slug: string, key: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
@@ -514,20 +510,6 @@ declare global {
       gatewayKeysList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       gatewayKeysCreate: (input: { name: string; workspaceId: string; days?: number }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       gatewayKeysRevoke: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      glyphhBindCliSession?: (chatId: string, cliSessionId: string, cli?: string) => Promise<boolean>;
-      glyphhCliSessionOf?: (chatId: string) => Promise<string | null>;
-      glyphhCliTranscript?: (sessionId: string) => Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>;
-      orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
-      orgCustomModelsSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgCustomModelsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      orgCustomProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
-      orgCustomProvidersSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgCustomProvidersDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      orgProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
-      orgProviderEnable: (slug: string, key?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      orgProviderDisable: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      orgProviderClearKey: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       // @-mention summon (ghost overlay): alias lookup + summon.
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
       loopSetRoleDefault: (loopId: string, role: string, modelId: string | null, model?: string | null) => Promise<{ ok: boolean; error?: string }>;

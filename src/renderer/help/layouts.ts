@@ -116,21 +116,12 @@ async function ensureAppNames(): Promise<void> {
 function resolveApp(panelId: string): LayoutApp | undefined {
   return appById[panelId] || appById[panelId.replace(/-\d+$/, "")];
 }
-/** CLI agents cache — cells store `agent:<id>`; names/icons resolve here.
- *  Loaded with the page and refreshed when the Agents section announces. */
-let cliAgentRows: Array<{ id: string; name: string; icon: string }> = [];
+/** Cells saved in the CLI era carry `agent:<id>`; they all resolve to the one
+ *  agent now (2026-09-28). */
 const CLI_AGENT_CELL_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6"/><rect x="4" y="6" width="16" height="12.5" rx="3.5"/><circle cx="9" cy="11.4" r="1.2"/><circle cx="15" cy="11.4" r="1.2"/><path d="M8.6 15.8h6.8"/></svg>`;
-function refreshCliAgents(): void {
-  void (window as unknown as { glyphh?: { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string }> }> } })
-    .glyphh?.cliAgentsList?.().then((r) => { if (r?.ok) cliAgentRows = r.agents; }).catch(() => {});
-}
-window.addEventListener("glyphh:cli-agents-changed", refreshCliAgents);
 
 function panelLabel(panelId: string): string {
-  if (panelId.startsWith("agent:")) {
-    const id = panelId.slice(6);
-    return cliAgentRows.find((a) => a.id === id)?.name || id;
-  }
+  if (panelId.startsWith("agent:")) return "Glyphh";
   return resolveApp(panelId)?.name || panelId;
 }
 /** Built-in workbench tool panels selectable in a layout cell. id = `tool:<ViewKind>`:
@@ -259,68 +250,45 @@ layoutFolderClearBtn?.addEventListener("click", () => {
 // ── Loop + model + session (restored from bc47a1d3^ — his order,
 // 2026-09-14: "the Loop -> Model picker to set the loop on the workspaces…
 // should come from the git history"). Shown ONLY when the grid carries the
-// Glyphh agent panel (tool:coding). The loop roster is the composer's own
-// (the CLI loops); the model list follows the LANE rule — a keyless loop
-// rides the gateway and offers the whole enabled set, a BYOK loop stays on
-// its home provider. The open path already stamps loop + models + session
-// onto the session the workspace creates (code-workbench's SESSION
-// contract), history riding along on "last".
+// agent panel (tool:coding). The LOOP half went with the CLI lane
+// (2026-09-28) — there is one loop — so what a workspace binds is the MODEL
+// and the session mode, stamped onto the session the workspace creates
+// (code-workbench's SESSION contract), history riding along on "last".
 const layoutAgentRows = document.getElementById("layout-agent-rows");
-const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
-const layoutViewSelect = document.getElementById("layout-view-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 const layoutLoopModels = document.getElementById("layout-loop-models");
-/** The layout's loop ("" = leave the active loop as-is) + its model picks. */
-let builderLoop = "";
-/** The workspace's own face for its agents: "" leaves the app default in force. */
-let builderView = "";
+/** The layout's model picks. */
 let builderModelSelections: Record<string, string> = {};
-let builderLoopRows: Array<{ id: string; name: string; cli: string; ownKey: boolean }> = [];
 /** The Loop/Session rows exist only for a workspace hosting the agent. */
 function updateAgentRows(): void {
   const hasAgent = builderCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
   layoutAgentRows?.classList.toggle("hidden", !hasAgent);
 }
 
-/** Fill the loop dropdown — "Leave as-is" plus every loop the caller has.
- *  REFETCHED EVERY TIME THE EDITOR OPENS (his report, 2026-08-29: a new
- *  loop never appeared here without restarting). */
-async function ensureLoopOptions(): Promise<void> {
-  if (!layoutLoopSelect) return;
-  try {
-    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null }> }> }).cliAgentsList?.();
-    builderLoopRows = (r?.ok ? r.agents : []).map((a) => ({ id: a.id, name: a.name, cli: a.cli ?? "claude", ownKey: !!a.apiKey }));
-    layoutLoopSelect.innerHTML = [`<option value="">Leave as-is</option>`]
-      .concat(builderLoopRows.map((l) => `<option value="${escLayout(l.id)}">${escLayout(l.name)}</option>`))
-      .join("");
-  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
-}
-
-/** The same list the agent's own Model picker shows for a loop (main's
- *  loop-models: the gateway's list when the lane is on, else the org catalog
- *  by the CLI's vendor), as <option>s. Grouped by provider when it spans more than one. */
-async function loopModelOptionsHtml(loopId: string, picked: string, blank: string): Promise<string> {
-  const r = await window.glyphh.loopModels(loopId).catch(() => null);
+/** The same list the agent's own Model picker shows (main's loop-models: the
+ *  models the org serves on the gateway), as <option>s. Grouped by provider
+ *  when it spans more than one. */
+async function loopModelOptionsHtml(picked: string, blank: string): Promise<string> {
+  const r = await window.glyphh.loopModels("glyphh").catch(() => null);
   const models = r?.ok ? r.models : [];
   const opt = (m: { id: string; name: string }) => `<option value="${escLayout(m.id)}"${m.id === picked ? " selected" : ""}>${escLayout(m.name || m.id)}</option>`;
   const providers = [...new Set(models.map((m) => m.providerSlug))];
   const body = providers.length > 1
     ? providers.map((p) => `<optgroup label="${escLayout(p)}">${models.filter((m) => m.providerSlug === p).map(opt).join("")}</optgroup>`).join("")
     : models.map(opt).join("");
-  const stray = picked && !models.some((m) => m.id === picked) ? `<option value="${escLayout(picked)}" selected>${escLayout(picked)} (not on this loop's list)</option>` : "";
+  const stray = picked && !models.some((m) => m.id === picked) ? `<option value="${escLayout(picked)}" selected>${escLayout(picked)} (not on your organization's list)</option>` : "";
   return `<option value="">${escLayout(blank)}</option>${stray}${body}`;
 }
 
-/** The picked loop's MODEL dropdown — "" = Default (the loop's own). */
+/** The workspace's MODEL dropdown — "" = the org's default. */
 async function renderLoopModels(): Promise<void> {
   if (!layoutLoopModels) return;
-  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
   try {
     const picked = builderModelSelections["default"] ?? "";
     layoutLoopModels.innerHTML = `<label class="layout-loop-model">
       <span class="layout-loop-model-label">Model</span>
-      <select class="settings-input" data-role="default">${await loopModelOptionsHtml(builderLoop, picked, "Default")}</select>
+      <select class="settings-input" data-role="default">${await loopModelOptionsHtml(picked, "Default")}</select>
     </label>`;
     layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
       sel.addEventListener("change", () => {
@@ -329,7 +297,7 @@ async function renderLoopModels(): Promise<void> {
         else delete builderModelSelections[role];
       });
     });
-  } catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; }
+  } catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load your organization's models.</div>`; }
 }
 
 /** Recompute whether this layout is folder-bound. No-op now the control is
@@ -658,21 +626,12 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   row.appendChild(label);
   const fields = document.createElement("div");
   fields.className = "layout-cell-fields";
-  fields.appendChild(selectRow("View", [["", "Workspace default"], ["glyphh", "Glyphh"], ["cli", "CLI"]], cfg.view ?? "", (v) => setCellValue(i, "view", v)));
   const model = document.createElement("label");
   model.className = "layout-cell-field";
   model.innerHTML = `<span class="layout-cell-field-label">Model</span><select class="settings-input"><option value="">Workspace default</option></select>`;
   const msel = model.querySelector("select") as HTMLSelectElement;
   msel.addEventListener("change", () => setCellValue(i, "model", msel.value));
-  // The cell's loop, else the workspace's: the model list follows whichever is in force.
-  const paintModels = async (loopId: string): Promise<void> => {
-    msel.innerHTML = await loopModelOptionsHtml(loopId, cfg.model ?? "", "Workspace default");
-    if (!loopId) msel.innerHTML = `<option value="">Workspace default</option>${cfg.model ? `<option value="${escLayout(cfg.model)}" selected>${escLayout(cfg.model)}</option>` : ""}`;
-  };
-  if (c.panelId === "tool:coding") {
-    fields.appendChild(selectRow("Loop", [["", "Workspace default"], ...builderLoopRows.map((l): [string, string] => [l.id, l.name])], cfg.loop ?? "", (v) => { setCellValue(i, "loop", v); void paintModels(v || builderLoop); }));
-  }
-  void paintModels(cfg.loop || builderLoop);
+  void (async () => { msel.innerHTML = await loopModelOptionsHtml(cfg.model ?? "", "Workspace default"); })();
   const folder = document.createElement("label");
   folder.className = "layout-cell-field";
   folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon pick" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon clear" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
@@ -980,8 +939,6 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
-    cliAgentRows.length ? `<div class="cell-panel-group-label">Loops</div>` : "",
-    ...cliAgentRows.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.icon ? `${a.icon} ` : ""}${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Tabs</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
@@ -1044,7 +1001,6 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
 }
 
 async function loadLayouts() {
-  refreshCliAgents();
   // OPENING THE PAGE ALWAYS LANDS ON THE LIST (his report, 2026-08-28:
   // edit a workspace, close the page from the editor, and the section came
   // back blank with no way into a workspace). The section markup is a
@@ -1163,24 +1119,11 @@ async function editLayout(name: string) {
   gridRowsSelect.value = String(builderRows);
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
-  // Loop + model + session this layout activates on open.
-  builderLoop = (layout as { loop?: string })?.loop ?? "";
-  builderView = (layout as { view?: string })?.view ?? "";
+  // Model + session this layout activates on open.
   builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
   if (layoutSessionSelect) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
     layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
-  }
-  await ensureLoopOptions();
-  if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
-  if (layoutViewSelect) {
-    // A closed terminal door settles this for every workspace (his order,
-    // 2026-09-18): the control reads Glyphh and takes no other answer.
-    const open = (await planGates().catch(() => null))?.cliAllowed !== false;
-    layoutViewSelect.value = open ? builderView : "glyphh";
-    layoutViewSelect.disabled = !open;
-    layoutViewSelect.title = open ? "" : "Your organization has closed the terminal; agents open as Glyphh's chat.";
-    if (!open) builderView = "glyphh";
   }
   void renderLoopModels();
   layoutNameInput.value = name;
@@ -1207,11 +1150,9 @@ async function newLayout() {
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
   if (layoutFolderInput) layoutFolderInput.value = "";
-  builderLoop = "";
-  builderView = "";
   builderModelSelections = {};
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
-  void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
+  void renderLoopModels();
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
   document.getElementById("layout-open-btn")?.classList.add("hidden");
@@ -1304,12 +1245,9 @@ async function saveLayout() {
     // Rewrite the key in the persisted order prefs so placement survives.
     await remapLayoutTileKey(`layout:${oldName}`, `layout:${editedName}`);
   }
-  // The Loop/Session rows only bind when the grid hosts the agent panel —
-  // and only model picks for the chosen loop ride along (a stale pick from
-  // a loop the user switched away from must not).
+  // The Model/Session rows only bind when the grid hosts the agent panel.
   const hasAgentSeat = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
-  const savedLoop = hasAgentSeat ? builderLoop : "";
-  const selections = savedLoop ? builderModelSelections : {};
+  const selections = hasAgentSeat ? builderModelSelections : {};
   await window.glyphh.layoutsSaveGrid({
     name,
     cols: builderCols,
@@ -1318,8 +1256,6 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
-    ...(savedLoop ? { loop: savedLoop } : {}),
-    ...(hasAgentSeat && builderView ? { view: builderView as "glyphh" | "cli" } : {}),
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
     sessionMode: (hasAgentSeat && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
@@ -1381,15 +1317,6 @@ export function initLayoutsEvents() {
     void openLayoutInWorkbench(editingLayoutName);
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
-
-  // Loop picker: switching loops clears the old loop's model picks (they
-  // don't apply to the new program) and re-renders the model dropdown.
-  layoutViewSelect?.addEventListener("change", () => { builderView = layoutViewSelect.value; });
-  layoutLoopSelect?.addEventListener("change", () => {
-    builderLoop = layoutLoopSelect.value;
-    builderModelSelections = {};
-    void renderLoopModels();
-  });
 
   // Grid builder dimension controls
   gridColsSelect.addEventListener("change", () => {

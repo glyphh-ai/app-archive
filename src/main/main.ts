@@ -7,6 +7,7 @@
  */
 
 import "dotenv/config";
+import { sendToHomeShell } from "./broadcast.js";
 import { ConnectorManager } from "./connectors";
 
 // Fix process.cwd() in packaged Electron apps — .asar is a file, not a directory,
@@ -80,9 +81,8 @@ import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolv
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
-import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { registerAgentIpc } from "./agent-ipc";
 import { registerAgentLiveIpc } from "./agent-live";
-import { bridgeBackground, bridgeForced, installBridgeTurnHandler, registerBridgeModeIpc } from "./bridge-mode";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -100,8 +100,10 @@ import { getClient, SERVER_URL } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
-import { registerCliAgentsIpc } from "./cli-agents";
 import { registerLoopModelsIpc } from "./loop-models";
+import { registerSpendStateIpc } from "./spend-state";
+import { registerSubAgentIpc } from "./subagent-ledger";
+import { registerAgentBriefIpc } from "./agent-brief";
 import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
@@ -184,12 +186,6 @@ async function createWindow() {
   mainSes.setPermissionCheckHandler((_wc, permission) => permission === "media");
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
-  // Bridge Mode surface (2026-09-21): launched with --bridge, or forced by the
-  // org, the workbench opens the bridge TUI over everything once it has loaded.
-  mainWindow.webContents.on("did-finish-load", () => {
-    if (process.argv.includes("--bridge") || bridgeForced()) mainWindow?.webContents.send("bridge-open-tui");
-  });
-
   // A link clicked in the renderer must NEVER navigate the app window itself —
   // that replaces the whole app with the page and TRAPS the user (no chrome, no
   // way out). Only the app's own file:// bundle may load in-window; any external
@@ -225,15 +221,6 @@ async function createWindow() {
 
   mainWindow.setMaxListeners(30);
 
-  // BRIDGE MODE runs in the background (his order, 2026-09-21): with the bridge
-  // wanted and background on, or the org forcing it, closing the window hides
-  // it and the listener keeps serving Claude Desktop. A real Quit still quits.
-  mainWindow.on("close", (e) => {
-    if (quitting || !bridgeBackground() || !mainWindow) return;
-    e.preventDefault();
-    mainWindow.hide();
-    ensureTray();
-  });
   // Otherwise closing the window quits.
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -416,13 +403,19 @@ async function boot() {
   installAttachHandlers();
   // agent.run/frames/answer/stop/permission: a turn from the web or a phone runs here.
   installAttachRunHandlers();
-  // bridge.turn: a Claude Desktop turn the server routed to this member's own login.
-  installBridgeTurnHandler();
   // Every handler is registered: tell the server the whole table, in case the
   // socket opened before this point.
   void import("./attach-host").then((m) => m.attachRefreshHello()).catch(() => undefined);
-  ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
-  ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
+  // ONLY THE WORKBENCH THE USER SEES registers what the agent drives (his
+  // report, 2026-09-29: rpa_goto "preview" said ✓ while the Browser on screen
+  // never moved). An agent panel is a home.html document running the same
+  // workbench code, and a webview it hosted could take the "preview" name, so
+  // the agent navigated a page nobody could see.
+  const fromAgentPanel = (e: Electron.IpcMainEvent): boolean => {
+    try { return /[?&]solo=/.test(e.sender.getURL()); } catch { return true; }
+  };
+  ipcMain.on("wb:rpa-register", (e, slug: string, wcId: number) => { if (!fromAgentPanel(e)) registerRpaTarget(String(slug), Number(wcId)); });
+  ipcMain.on("wb:rpa-unregister", (e, slug: string) => { if (!fromAgentPanel(e)) unregisterRpaTarget(String(slug)); });
 
   layoutManager = new LayoutManager();
   commandParser = new CommandParser();
@@ -463,10 +456,8 @@ async function boot() {
     registerAgentStubs();
     // The Glyphh Agent panel's engine — a bridge over the claude CLI
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
-    registerGlyphhCliBridge();
+    registerAgentIpc();
     registerAgentLiveIpc();
-    // Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude.
-    registerBridgeModeIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -501,10 +492,7 @@ async function boot() {
         mainWindow.show();
         mainWindow.focus();
       }
-      const homes = webContents.getAllWebContents().filter((wc) => {
-        try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
-      });
-      for (const wc of homes) wc.send("home:open-cc");
+      sendToHomeShell("home:open-cc");
     } catch { /* window mid-teardown */ }
   });
 
@@ -901,7 +889,7 @@ async function boot() {
             accelerator: "CmdOrCtrl+Shift+.",
             click: () => {
               for (const wc of webContents.getAllWebContents()) {
-                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL())) wc.send("home:open-cc"); } catch { /* mid-teardown */ }
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:open-cc"); } catch { /* mid-teardown */ }
               }
             },
           },
@@ -910,7 +898,7 @@ async function boot() {
             accelerator: "CmdOrCtrl+Shift+N",
             click: () => {
               for (const wc of webContents.getAllWebContents()) {
-                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL())) wc.send("home:new-session"); } catch { /* mid-teardown */ }
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:new-session"); } catch { /* mid-teardown */ }
               }
             },
           },
@@ -1084,8 +1072,10 @@ async function boot() {
   // Glyphh Office · Docs — the Docs panel's org library transport.
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
-  registerCliAgentsIpc();
   registerLoopModelsIpc();
+  registerSpendStateIpc();
+  registerSubAgentIpc();
+  registerAgentBriefIpc();
   registerSkillsIpc();
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
@@ -1347,31 +1337,7 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
 let quitting = false;
 app.on("before-quit", () => { quitting = true; });
 
-let tray: Tray | null = null;
-/** The one way back to a hidden bridge window on every platform. */
-function ensureTray(): void {
-  if (tray) return;
-  try {
-    const candidates = [path.join(process.resourcesPath || "", "icon.png"), path.join(app.getAppPath(), "build", "icon.png"), path.join(__dirname, "..", "..", "build", "icon.png")];
-    const file = candidates.find((f) => { try { return require("fs").existsSync(f); } catch { return false; } });
-    const image = file ? nativeImage.createFromPath(file).resize({ width: 18, height: 18 }) : nativeImage.createEmpty();
-    tray = new Tray(image);
-    tray.setToolTip("Glyphh bridge");
-    const open = () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } else void createWindow(); };
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: "Open Glyphh", click: open },
-      { type: "separator" },
-      { label: "Quit Glyphh", click: () => { quitting = true; cleanupAll(); app.quit(); } },
-    ]));
-    tray.on("click", open);
-  } catch (err) {
-    console.warn("[bridge] no tray:", err instanceof Error ? err.message : err);
-  }
-}
-
 app.on("window-all-closed", () => {
-  // Bridge Mode in the background keeps the process alive with its window gone.
-  if (!quitting && bridgeBackground()) { ensureTray(); return; }
   cleanupAll(updateReadyForQuit ? 30_000 : 4000);
   app.quit();
 });
@@ -1390,7 +1356,6 @@ process.on("uncaughtException", (err) => {
 });
 
 app.on("will-quit", () => {
-  shutdownGlyphhCliBridge();
   cleanupAll(updateReadyForQuit ? 30_000 : 4000);
 });
 

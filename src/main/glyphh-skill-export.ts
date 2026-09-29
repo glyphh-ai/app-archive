@@ -49,6 +49,13 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 - \`app_call_tool { app, tool, args }\` — run one headlessly (send a message, query a graph, search a vector store, create an event). \`args\` must match the tool's \`inputSchema\`.
 - \`app_install { path }\` — install/update a \`.glyphh\` bundle already on the user's machine (absolute path — preferred). Also accepts \`{ url }\` to download, or \`{ bundleBase64 }\` for tiny bundles only.
 
+**The user's agents** (sub-agents Glyphh hands work to — each with its own brief and model)
+- \`agents_list\` — the user's agents: \`[{ agent, name, description, model, hasBrief }]\`. \`description\` says when to use each one.
+- \`agent_get { agent }\` — one agent in full, its brief included.
+- \`agent_save { agent?, name?, description?, brief?, model? }\` — MAKE an agent (omit \`agent\`) or UPDATE one (pass it; omitted fields are kept). Write \`description\` as *when to use it* — the Glyphh agent reads it to decide what to hand over. **Omit \`brief\` and Glyphh writes one** on the user's default model from the name and description; pass your own when the user was specific about how the agent should work. \`model\` must be one of the user's models (\`models_available\`) — a cheap fast one for fan-out work, a strong one for the hard part; omit it to run on the main agent's. A name already in use is refused: update that agent instead.
+- \`agent_delete { agent }\` — only when the user asked for it.
+- Good agents are narrow: one job, one standard, a clear report. "Researcher: finds and cites primary sources" beats "Helper". A new agent can be handed work from the Glyphh agent's next turn.
+
 **Connected accounts** (the 3,500-app catalog, via Pipedream)
 - \`connector_list_tools\` — every tool the user's connected apps expose (Slack, GitHub, Notion, Gmail, Salesforce, …), with schemas.
 - \`connector_call_tool { slug, name, args }\` — call one of them.
@@ -227,7 +234,7 @@ server never sees the key.
 function frontmatterClaude(): string {
   return `---
 name: glyphh
-description: Drive the user's Glyphh workspace over MCP — open their apps and saved layouts as native windows, run the tools their installed apps expose, call their 3,500+ connected accounts, and build + deploy new Glyphh apps (SQLite, on-device vector search, a Kuzu knowledge graph, cron, connectors, and BYOK models), then publish them to a public URL. Use when the user asks to open/arrange apps, act through a Glyphh app or connected account, automate something on their machine, or build/publish an app.
+description: Drive the user's Glyphh workspace over MCP — open their apps and saved layouts as native windows, run the tools their installed apps expose, call their 3,500+ connected accounts, make and manage the agents Glyphh hands work to, and build + deploy new Glyphh apps (SQLite, on-device vector search, a Kuzu knowledge graph, cron, connectors, and BYOK models), then publish them to a public URL. Use when the user asks to open/arrange apps, act through a Glyphh app or connected account, make or change an agent, automate something on their machine, or build/publish an app.
 ---
 
 # Glyphh

@@ -19,7 +19,7 @@
 import { escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 import { gateSurface } from "./plan-gate.js";
-import { openProviderDropdown } from "./models-admin.js";
+import { openProviderDropdown } from "./model-controls.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 
 type Kind = "task" | "agent" | "skill";

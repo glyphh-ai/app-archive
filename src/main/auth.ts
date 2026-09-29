@@ -11,8 +11,8 @@
 
 import fs from "fs";
 import { clearGatewayCreds } from "./gateway-token.js";
-import { bridgeSignedOut, syncBridgeMode } from "./bridge-mode.js";
-import { primeAllLoopEnv, refreshGatewayMode } from "./cli-agents.js";
+import { refreshOrgModels } from "./org-models.js";
+import { refreshModelState, resetModelWatch, startModelWatch, stopModelWatch } from "./model-watch.js";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
@@ -107,7 +107,6 @@ setSignedOutHandler(() => {
   cachedToken = null;
   cachedAccount = null;
   cachedHeartbeat = null;
-  bridgeSignedOut();
   setActiveUser(null);
   clearPreferences(); // the next user must never read this map
   attachStop();
@@ -216,12 +215,9 @@ export async function initAuth(): Promise<void> {
       attachStart();
       // Prefs are the SERVER map now (zero-local law); warm it with the session.
       void loadPreferences();
-      // Every loop's env gets the router URL + this member's key NOW, so the
-      // first launch — whichever path composes it — is already proxied.
-      void primeAllLoopEnv();
-      // Bridge Mode (2026-09-21): the org's gates say whether it is forced;
-      // the member's preference says whether they chose it. Either starts it.
-      void getClient().plans.gates().then((g) => syncBridgeMode(g as unknown as { forceBridge?: unknown; bridgeAllowed?: unknown })).catch(() => syncBridgeMode());
+      // The org's lane and default model, so the first turn already knows
+      // what it runs on.
+      void refreshOrgModels();
     }
   }
   if (accountTimer) clearInterval(accountTimer);
@@ -232,6 +228,8 @@ export async function initAuth(): Promise<void> {
   orgTimer = setInterval(() => {
     if (isAuthenticated()) void pollOrgConfig();
   }, ORG_POLL_INTERVAL);
+  // The model list and the defaults, on their own quicker clock (model-watch.ts).
+  startModelWatch();
 }
 
 /**
@@ -254,23 +252,17 @@ async function pollOrgConfig(): Promise<void> {
     const gates = (await getClient().plans.gates()) as unknown as Record<string, unknown>;
     const signature = JSON.stringify([
       gates.gatewayAllowed, gates.tier, gates.plan, gates.governance,
-      gates.autoOnly, gates.cliAllowed,
       // The org's default model (2026-09-20): a change must reach the loops
       // and the chip without a restart, like every other org switch.
       gates.defaultModel,
-      // Force Bridge Mode (2026-09-21): the org flipping it, or the plan losing
-      // Bridge Mode, reaches the desktop the same way.
-      gates.forceBridge, gates.bridgeAllowed,
     ]);
     if (lastOrgSignature === null) { lastOrgSignature = signature; return; }
     if (signature === lastOrgSignature) return;
     lastOrgSignature = signature;
-    void syncBridgeMode(gates as { forceBridge?: unknown; bridgeAllowed?: unknown });
     clearGatewayCreds();
-    // The org's default model and lane travel with the gates: re-resolve the
-    // required model before the loop env is rewritten (2026-09-20).
-    await refreshGatewayMode().catch(() => undefined);
-    await primeAllLoopEnv().catch(() => undefined);
+    // The org's default model and lane travel with the gates (2026-09-20);
+    // model-watch re-reads them with the list and tells every surface.
+    await refreshModelState().catch(() => undefined);
     await refreshAccountState().catch(() => null);
     orgChangeObserver?.();
   } catch {
@@ -289,6 +281,7 @@ export function setOrgChangeObserver(cb: (() => void) | null): void {
 export function cleanupAuthTimers(): void {
   if (accountTimer) { clearInterval(accountTimer); accountTimer = null; }
   if (orgTimer) { clearInterval(orgTimer); orgTimer = null; }
+  stopModelWatch();
 }
 
 /** Log out — LOCAL-FIRST, then a best-effort server revoke.
@@ -308,6 +301,7 @@ export function logout(): void {
   cachedToken = null;
   cachedAccount = null;
   cachedHeartbeat = null;
+  resetModelWatch();
   clearIdentitySidecar();
   setActiveUser(null);
   // THE CROSS-USER LEAK (his report, 2026-08-28: after sign-out/sign-in the
@@ -316,13 +310,10 @@ export function logout(): void {
   // `loaded=true`, so the next user's loadPreferences() no-opped and they
   // booted from the prior user's wall state, icon order, and UI state.
   clearPreferences();
-  // THE GATEWAY CREDENTIAL is the same class of leak, and worse: a minted
-  // router key sits in every loop's env file, which is what the CLI actually
-  // reads. Left behind, the next person at this machine keeps authenticating
-  // as the last one and billing their org. Memo + files, both.
+  // THE GATEWAY CREDENTIAL is the same class of leak: left behind, the next
+  // person at this machine keeps authenticating as the last one and billing
+  // their org. Memo + files, both.
   clearGatewayCreds();
-  // Claude Desktop's bridge tokens are this member's too: gone with the sign-out.
-  bridgeSignedOut();
   attachStop();
   // The Glyphh loop's conversations are the member's: nothing stays for the next one.
   void import("./glyphh-loop.js").then((m) => m.forgetGlyphhLoops()).catch(() => undefined);

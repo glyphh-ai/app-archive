@@ -70,7 +70,7 @@ interface HarnessPod {
   start(opts: {
     prompt: string;
     threadId?: string;
-    mode?: "chat" | "cowork" | "code";
+    mode?: "work" | "code";
     model?: string;
     permission?: RemotePermission;
     signal?: AbortSignal;
@@ -94,7 +94,7 @@ export interface RemoteChat {
   id: string;
   source?: Source;
   /** The session's SPACE + toolbelt (code.ts modeOf) — rides every run. */
-  mode?: "chat" | "cowork" | "code";
+  mode?: "work" | "code";
   /** LEGACY pre-mode flag (code.ts) — folded in by modeFor, never written. */
   chat?: boolean;
   /** Bound after a successful provision — reused for every later turn. */
@@ -219,10 +219,12 @@ export async function ensureRuntime(
   return unavailable("open", new Error("this build cannot run turns (SDK harnessViaApi missing)"));
 }
 
-/** The session's effective mode for the pod (mirror of code.ts modeOf: the
- *  legacy chat flag folds in; default code). */
-function modeFor(chat: RemoteChat): "chat" | "cowork" | "code" {
-  return chat.mode ?? (chat.chat ? "chat" : "code");
+/** The session's effective TYPE for the pod — the mirror of code.ts's modeOf:
+ *  Work or Code, with the legacy chat flag and the retired `cowork`/`chat`
+ *  stamps reading as Work (his order, 2026-09-29). */
+function modeFor(chat: RemoteChat): "work" | "code" {
+  const m = chat.mode ?? (chat.chat ? "work" : "code");
+  return m === "code" ? "code" : "work";
 }
 
 /** The stream callbacks — mirror code.ts's CURRENT (glyphhRun) run event model so

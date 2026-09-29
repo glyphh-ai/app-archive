@@ -25,7 +25,7 @@
 
 import { escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
-import { icoBtn, MDL_SVG } from "./models-admin.js";
+import { icoBtn, MDL_SVG } from "./model-controls.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
@@ -1439,7 +1439,7 @@ function paintOrgs(): void {
 
 // ── Org detail (full management view) ─────────────────────────────────────
 let detailOrg: AdminOrgDetail | null = null;
-const ORG_TIERS = ["free", "basic", "pro", "enterprise"];
+const ORG_TIERS = ["none", "solo", "basic", "pro", "enterprise"];
 
 /** Show exactly one of the org sub-views. */
 function showOrgView(view: "list" | "detail" | "create"): void {
@@ -1449,14 +1449,14 @@ function showOrgView(view: "list" | "detail" | "create"): void {
 }
 
 /** + New Org (his order, 2026-09-02) — the roles-page create grammar: open the
- *  inline form, create a standalone org (base workspace + the free plan's
- *  pool seeded server-side), land back on the refreshed list. */
+ *  inline form, create a standalone org (base workspace, no plan until one is
+ *  chosen or comped), land back on the refreshed list. */
 function openOrgCreate(): void {
   setErr("pa-org-create-error", "");
   const name = $<HTMLInputElement>("pa-org-create-name");
   if (name) name.value = "";
   const tier = $<HTMLSelectElement>("pa-org-create-tier");
-  if (tier) tier.innerHTML = ORG_TIERS.map((t) => `<option value="${t}"${t === "free" ? " selected" : ""}>${t}</option>`).join("");
+  if (tier) tier.innerHTML = ORG_TIERS.map((t) => `<option value="${t}"${t === "none" ? " selected" : ""}>${t}</option>`).join("");
   showOrgView("create");
   name?.focus();
 }
@@ -1464,7 +1464,7 @@ function openOrgCreate(): void {
 async function createOrgFromForm(): Promise<void> {
   const name = inputVal("pa-org-create-name").trim();
   if (!name) { setErr("pa-org-create-error", "The organization needs a name."); return; }
-  const tier = inputVal("pa-org-create-tier") || "free";
+  const tier = inputVal("pa-org-create-tier") || "none";
   const btn = $<HTMLButtonElement>("pa-org-create-save");
   if (btn) btn.disabled = true;
   const res = await write<AdminOrgRow>(

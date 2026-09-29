@@ -11,7 +11,7 @@ import { ipcMain } from "electron";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { getClient } from "./glyphh-client.js";
 import { mcpCreds } from "./gateway-token.js";
-import { registerMemoryIpc } from "./memory-bridge.js";
+import { registerMemoryIpc } from "./memory.js";
 
 export interface EmbedModel { id: string; name: string; providerSlug: string }
 

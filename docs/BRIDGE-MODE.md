@@ -1,5 +1,12 @@
 # Bridge Mode — Claude Desktop → Glyphh bridge → gateway
 
+> **RETIRED 2026-09-28.** His order: "All the bridge code goes period… Everything
+> centers back to a single agent loop in glyphh that can have multiple instances,
+> no cli switching etc." Every part of what follows is gone from the codebase —
+> the local bridge listener, the org routing table, the account lane, the plan
+> flag, the console pages. It is kept as the record of what was built and why,
+> so nobody re-derives it from scratch. Nothing here describes today's app.
+
 > Claude Desktop points its gateway setting at a Glyphh bridge running on the
 > user's machine. The bridge is what Claude Desktop signs in to; Glyphh is what
 > the bridge signs the user in to. Behind the bridge every turn takes one of two

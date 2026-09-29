@@ -157,7 +157,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   ipcMain.handle("get-auth-status", () => getAuthStatus());
   ipcMain.handle("refresh-auth", async () => {
     const hb = await refreshHeartbeat();
-    return { tier: hb?.tier || "free", status: hb?.status || "unknown" };
+    return { tier: hb?.tier || "none", status: hb?.status || "unknown" };
   });
   ipcMain.handle("copy-to-clipboard", (_e, text: string) => {
     clipboard.writeText(text);

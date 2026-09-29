@@ -1,6 +1,8 @@
 /** Lightweight markdown -> HTML renderer for LLM output.
  *  Handles: code fences, headers, bold, italic, inline code, links,
  *  unordered/ordered lists, blockquotes, horizontal rules, paragraphs. */
+import { highlight } from "./highlight.js";
+
 /** Blocks the agent means as commands: they get a run action beside copy. */
 const SHELL_LANGS: ReadonlySet<string> = new Set(["bash", "sh", "zsh", "shell", "console", "terminal", "cmd", "powershell", "ps1", "fish"]);
 const COPY_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
@@ -44,36 +46,157 @@ function installCodeBlockActions(): void {
 }
 installCodeBlockActions();
 
+/** `path/with/a.ext` or `/abs/path.ext`, with an optional `:line[:col]`. */
+const FILE_REF = /^((?:\.{1,2})?\/?(?:[\w@.+-]+\/)+[\w@.+-]+\.[A-Za-z0-9]{1,8})(?::\d+(?::\d+)?)?$/;
+
+/** An image source the renderer may show: the web, an inline raster, or a file
+ *  on this machine. Anything else (javascript:, relative paths we cannot
+ *  resolve) is not an image. SVG is allowed because an <img> never runs it. */
+function safeImageSrc(raw: string): string | null {
+  const u = raw.trim().replace(/&amp;/g, "&");
+  if (/^https?:\/\//i.test(u)) return u;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|avif|svg\+xml);base64,[a-z0-9+/=\s]+$/i.test(u)) return u;
+  if (/^file:\/\//i.test(u)) return u;
+  const local = localPathOf(u);
+  return local ? fileUrlOf(local) : null;
+}
+
+/** An absolute path on this machine, from a bare path or a file:// URL. */
+function localPathOf(raw: string): string | null {
+  const u = raw.trim().replace(/&amp;/g, "&");
+  if (/^file:\/\//i.test(u)) {
+    try { return decodeURIComponent(u.replace(/^file:\/\//i, "")) || null; } catch { return null; }
+  }
+  if (u.startsWith("/") && !u.startsWith("//")) return u;
+  if (/^[a-z]:[\\/]/i.test(u)) return u;
+  return null;
+}
+
+function fileUrlOf(p: string): string {
+  const s = p.replace(/\\/g, "/");
+  return "file://" + (s.startsWith("/") ? s : `/${s}`).split("/").map(encodeURIComponent).join("/");
+}
+
+/** ONE delegated handler for images and file links, installed once, like the
+ *  code-block actions: a picture opens the lightbox, a file opens the preview
+ *  (or, where no preview host exists, the file itself beside the panel). A
+ *  picture that will not load says so rather than leaving a broken frame. */
+function installMediaActions(): void {
+  if (typeof document === "undefined") return;
+  const w = window as unknown as {
+    __yoMdMedia?: boolean;
+    __glyphhLightbox?: (src: string, alt: string) => void;
+    __glyphhOpenArtifact?: (path: string) => void;
+    __wbOpenFile?: (path: string) => void;
+  };
+  if (w.__yoMdMedia) return;
+  w.__yoMdMedia = true;
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement | null;
+    const img = t?.closest<HTMLImageElement>("img.yo-md-img");
+    if (img) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (w.__glyphhLightbox) w.__glyphhLightbox(img.currentSrc || img.src, img.alt);
+      else window.open(img.currentSrc || img.src, "_blank", "noopener");
+      return;
+    }
+    const file = t?.closest<HTMLElement>("a.yo-md-file, code.yo-md-path");
+    if (file?.dataset.path) {
+      e.preventDefault();
+      e.stopPropagation();
+      // A relative reference is relative to the folder the agent works in.
+      const raw = file.dataset.path;
+      const folder = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() || "";
+      const abs = raw.startsWith("/") || /^[a-z]:[\\/]/i.test(raw) || !folder ? raw : `${folder.replace(/\/$/, "")}/${raw.replace(/^\.\//, "")}`;
+      if (w.__glyphhOpenArtifact) w.__glyphhOpenArtifact(abs);
+      else w.__wbOpenFile?.(abs);
+    }
+  }, true);
+  document.addEventListener("error", (e) => {
+    const img = e.target as HTMLElement | null;
+    if (img instanceof HTMLImageElement && img.classList.contains("yo-md-img")) img.closest(".yo-md-figure")?.classList.add("broken");
+  }, true);
+}
+installMediaActions();
+
+/** WHERE A STREAMING REPLY MAY BE CUT: the end of its last blank line that is
+ *  not inside a code fence. Everything before it is finished markdown that will
+ *  not change, so it is rendered once (help/code.ts paintBubble). */
+export function streamStableCut(text: string): number {
+  let inFence = false;
+  let cut = 0;
+  let pos = 0;
+  for (const line of text.split("\n")) {
+    const end = pos + line.length + 1;
+    if (/^```/.test(line)) inFence = !inFence;
+    else if (!inFence && line.trim() === "" && end <= text.length) cut = end;
+    pos = end;
+  }
+  return cut;
+}
+
 export function formatMarkdown(text: string): string {
   if (!text) return "";
 
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const inline = (s: string) =>
-    s
+  /** An attribute value: `esc` leaves quotes alone, and a quote in a URL used
+   *  to END the attribute — `[x](https://a" onmouseover="…)` put a handler on
+   *  the link, script inside the app's renderer (found 2026-09-29). */
+  const attr = (v: string): string => v.replace(/"/g, "&quot;");
+  const emph = (s: string): string =>
+    s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/~~(.+?)~~/g, "<del>$1</del>");
+
+  const inline = (s: string): string => {
+    // HELD SPANS: code, images and links are finished HTML the later passes
+    // must not touch — a code span showing `[text](url)` is literal, and a URL
+    // inside a link's text must not become a second link inside the first.
+    const held: string[] = [];
+    const hold = (html: string): string => `\u0000${held.push(html) - 1}\u0000`;
+    const out = s
       .replace(/`([^`]+)`/g, (_m: string, code: string) => {
         if (/^\.(dip|yo|sup|drip)\s/.test(code)) {
-          return `<code class="yo-md-inline yo-md-cmd" data-cmd="${code}" title="Click to copy">${code}</code>`;
+          return hold(`<code class="yo-md-inline yo-md-cmd" data-cmd="${attr(code)}" title="Click to copy">${code}</code>`);
         }
-        return `<code class="yo-md-inline">${code}</code>`;
+        // A FILE REFERENCE (`src/main/loop.ts:348`) opens the file: a path with
+        // a folder and an extension, optionally a line. Anything looser stays
+        // plain code — a false link is worse than no link.
+        const ref = FILE_REF.exec(code);
+        if (ref) return hold(`<code class="yo-md-inline yo-md-path" data-path="${attr(ref[1]!)}" title="Open ${attr(ref[1]!)}">${code}</code>`);
+        return hold(`<code class="yo-md-inline">${code}</code>`);
       })
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      // IMAGES (his order, 2026-09-29: "artifacts, images, links, modals
+      // inline"): `![alt](src)` is a link with a bang, so it goes first. A
+      // source we cannot vouch for stays as the text it was written as.
+      .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (m: string, alt: string, src: string) => {
+        const safe = safeImageSrc(src);
+        return safe
+          ? hold(`<span class="yo-md-figure"><img class="yo-md-img" src="${attr(safe)}" alt="${attr(alt)}" loading="lazy" draggable="false">${alt ? `<span class="yo-md-caption">${alt}</span>` : ""}</span>`)
+          : m;
+      })
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match: string, text: string, url: string) => {
-        const trimmed = url.trim().toLowerCase();
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:")) {
+        const u = url.trim();
+        const lower = u.toLowerCase();
+        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("mailto:")) {
           // target=_blank is LOAD-BEARING: a plain href top-level-navigates the
           // home view (the whole app UI) away to the site — unrecoverable. As a
           // window-open it routes into a workspace browser panel instead (the
           // home view's handler denies the OS window). Guarded main-side too.
-          return `<a class="yo-md-link" href="${url}" target="_blank" rel="noreferrer" title="${url}">${text}</a>`;
+          return hold(`<a class="yo-md-link" href="${attr(u)}" target="_blank" rel="noreferrer" title="${attr(u)}">${emph(text)}</a>`);
         }
-        return `<span class="yo-md-link" title="[blocked: unsafe URL]">${text}</span>`;
+        // A FILE ON THIS MACHINE opens where it belongs (the preview modal, or
+        // the editor/browser beside the panel) — never as a navigation.
+        const local = localPathOf(u);
+        if (local) return hold(`<a class="yo-md-link yo-md-file" href="#" data-path="${attr(local)}" title="${attr(local)}">${emph(text)}</a>`);
+        return hold(`<span class="yo-md-link" title="[blocked: unsafe URL]">${emph(text)}</span>`);
       })
-      .replace(/(^|[^"=])(https?:\/\/[^\s<>&]+)/g, (_match: string, prefix: string, url: string) =>
-        `${prefix}<a class="yo-md-link" href="${url}" target="_blank" rel="noreferrer" title="${url}">${url}</a>`
+      .replace(/(^|[^"=\u0000\d])(https?:\/\/[^\s<>&\u0000]+)/g, (_match: string, prefix: string, url: string) =>
+        `${prefix}${hold(`<a class="yo-md-link" href="${attr(url)}" target="_blank" rel="noreferrer" title="${attr(url)}">${url}</a>`)}`,
       );
+    return emph(out).replace(/\u0000(\d+)\u0000/g, (_m: string, i: string) => held[Number(i)] ?? "");
+  };
 
   // Some models emit a whole pipe table on ONE LINE (rows joined with spaces:
   // "…| Use Case | | :--- | :--- | | Pinecone |…"). Re-split rows on the
@@ -117,13 +240,15 @@ export function formatMarkdown(text: string): string {
     }
 
     // Fenced code block
-    const fenceMatch = line.match(/^```(\w*)/);
+    const fenceMatch = line.match(/^```([\w+#.-]*)/);
     if (fenceMatch) {
       const lang = fenceMatch[1] || "";
+      // RAW lines: the highlighter escapes as it colours (his order,
+      // 2026-09-29: "code highlighting… theme aligned per selected theme").
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(esc(lines[i]));
+        codeLines.push(lines[i]);
         i++;
       }
       if (i < lines.length) i++;
@@ -141,7 +266,7 @@ export function formatMarkdown(text: string): string {
               runBtn +
             `</span>` +
           `</div>` +
-          `<pre class="yo-md-pre"><code>${codeLines.join("\n")}</code></pre>` +
+          `<pre class="yo-md-pre"><code class="tk">${highlight(codeLines.join("\n"), lang)}</code></pre>` +
         `</div>`
       );
       continue;
@@ -199,22 +324,36 @@ export function formatMarkdown(text: string): string {
     // Unordered list
     if (/^[-*+]\s+/.test(line)) {
       const items: string[] = [];
+      let tasks = false;
       while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
-        items.push(inline(esc(lines[i].replace(/^[-*+]\s+/, ""))));
+        const body = lines[i].replace(/^[-*+]\s+/, "");
+        // A TASK LIST (`- [ ] todo`, `- [x] done`): a plan an agent keeps as
+        // it works reads as one, with the done ones visibly done.
+        const task = /^\[([ xX])\]\s+/.exec(body);
+        if (task) {
+          tasks = true;
+          const done = task[1] !== " ";
+          items.push(`<span class="yo-md-check${done ? " on" : ""}" aria-hidden="true"></span><span class="${done ? "yo-md-task-done" : ""}">${inline(esc(body.slice(task[0].length)))}</span>`);
+        } else {
+          items.push(inline(esc(body)));
+        }
         i++;
       }
-      out.push(`<ul class="yo-md-ul">${items.map((li) => `<li>${li}</li>`).join("")}</ul>`);
+      out.push(`<ul class="yo-md-ul${tasks ? " yo-md-tasks" : ""}">${items.map((li) => `<li>${li}</li>`).join("")}</ul>`);
       continue;
     }
 
     // Ordered list
     if (/^\d+\.\s+/.test(line)) {
+      // A list KEEPS ITS NUMBERS: "3." after a paragraph (a loose list, or a
+      // reply still streaming in two parts) is item three, not a second item one.
+      const start = Number(/^(\d+)\./.exec(line)?.[1] ?? "1");
       const items: string[] = [];
       while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
         items.push(inline(esc(lines[i].replace(/^\d+\.\s+/, ""))));
         i++;
       }
-      out.push(`<ol class="yo-md-ol">${items.map((li) => `<li>${li}</li>`).join("")}</ol>`);
+      out.push(`<ol class="yo-md-ol"${start > 1 ? ` start="${start}"` : ""}>${items.map((li) => `<li>${li}</li>`).join("")}</ol>`);
       continue;
     }
 

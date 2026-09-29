@@ -30,7 +30,6 @@ import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSki
 import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, scheduleForTask } from "./local-library.js";
 import { openSettingsPage } from "./app-resolver.js";
 import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
-import { listCliAgents } from "./cli-agents.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 
@@ -160,7 +159,9 @@ function buildMcpServer(): McpServer {
       const result = await dispatchRelayMethod(method, params);
       return { content: [{ type: "text" as const, text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }] };
     } catch (err) {
-      return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
+      // Flagged as an error (his report, 2026-09-29): as plain text a failed
+      // open drew a ✓ and read to the model as a success.
+      return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
     }
   };
 
@@ -277,11 +278,39 @@ function buildMcpServer(): McpServer {
     return describeBundle(id);
   }
 
+  // ── AGENTS — the user's own sub-agents (his order, 2026-09-29: "extend the
+  //    mcp tools for the app to include generating agents"). The same records
+  //    Settings → Build → Agents edits; the Glyphh loop hands work to them with
+  //    spawn_agent, and a new one is spawnable from the next turn on. ─────────
   mcp.tool(
     "agents_list",
-    "The user's CLI-agent roster — the ONLY valid values for a task slot's agent binding and for task_run's agent override. Returns [{ id, name, cli, model, cwd }].",
+    "The user's AGENTS — each a name, a line saying when to use it, a standing brief, and a model slot. These are what the Glyphh agent hands work to (spawn_agent), and the ONLY valid values for a task slot's agent binding and task_run's agent override. Returns [{ agent, name, description, model, hasBrief }]; `agent` is the id every other agent tool takes.",
     {},
-    async () => text(listCliAgents().map((a) => ({ id: a.id, name: a.name, cli: a.cli, model: a.model ?? null, cwd: a.cwd ?? null }))),
+    async () => via("agents.list", {}),
+  );
+  mcp.tool(
+    "agent_get",
+    "One of the user's agents in full, its brief included. Returns { agent, name, description, model, hasBrief, brief }.",
+    { agent: z.string().describe("The agent's id, from agents_list") },
+    async ({ agent }) => via("agents.get", { agent }),
+  );
+  mcp.tool(
+    "agent_save",
+    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, created, generatedBrief, brief }.",
+    {
+      agent: z.string().optional().describe("The agent to update (its id from agents_list); omit to make a new one"),
+      name: z.string().optional().describe("Its name, e.g. \"Researcher\" — required for a new agent"),
+      description: z.string().optional().describe("When to use it: what it is for, in a sentence"),
+      brief: z.string().optional().describe("Its standing instruction, second person. Omit to have Glyphh write it"),
+      model: z.string().optional().describe("Its model slot — one of the user's models; omit for the main agent's"),
+    },
+    async ({ agent, name, description, brief, model }) => via("agents.save", { agent, name, description, brief, model }),
+  );
+  mcp.tool(
+    "agent_delete",
+    "DELETE one of the user's agents (and its scheduled tasks). Only when the user asked for it.",
+    { agent: z.string().describe("The agent's id, from agents_list") },
+    async ({ agent }) => via("agents.delete", { agent }),
   );
   mcp.tool(
     "tasks_list",
@@ -545,7 +574,7 @@ function buildMcpServer(): McpServer {
 
   mcp.tool(
     "relay_ping",
-    "Smoke-test the local server: pings Glyphh and returns whatever it echoes. Use this to confirm the connection is alive before relying on panel tools.",
+    "Diagnostics only: echoes a message back. Never needed before the panel tools, which report their own errors.",
     { message: z.string().optional().describe("Optional message to echo back") },
     async ({ message }) => via("relay.ping", { message: message ?? "ping" }),
   );
@@ -577,9 +606,12 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "panels_open",
-    "Open an app as a panel. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Re-opening an already-open app focuses it. Installed Glyphh apps MUST open this way (by slug) — a file:// URL in the browser panel gets no glyphh bridge and the app won't work.",
-    { app: z.string().describe("App to open: a saved-app slug from panels_available, or 'browser' / 'terminal'") },
-    async ({ app }) => via("panels.open", { app }),
+    "Open an app as a panel and wait until it is actually showing; an error means nothing opened. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Pass `url` to open the browser (or a web panel) at an http(s) address in the same call, e.g. a dev server at http://localhost:5173. Re-opening an already-open app focuses it. Installed Glyphh apps MUST open this way (by slug) — a file:// URL in the browser panel gets no glyphh bridge and the app won't work.",
+    {
+      app: z.string().describe("App to open: a saved-app slug from panels_available, or 'browser' / 'terminal'"),
+      url: z.string().optional().describe("Optional http(s) address to show in it once it is open"),
+    },
+    async ({ app, url }) => via("panels.open", { app, ...(url ? { url } : {}) }),
   );
   mcp.tool(
     "panels_add",
@@ -717,7 +749,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "rpa_goto",
-    "Navigate an open app panel to an http(s) URL.",
+    "Navigate an open app panel to an http(s) URL. To show a page in the Browser, use panels_open { app: \"browser\", url } instead: it opens the page as a tab in the Browser the user sees, in one step.",
     { app: z.string(), url: z.string() },
     async (a) => via("rpa.goto", a),
   );
@@ -729,25 +761,25 @@ function buildMcpServer(): McpServer {
     "memory_turns",
     "The user's remembered turns on this machine (what they said and what the loop answered), newest first, with the folder and workspace each ran in. Read these to compile memory pages.",
     { limit: z.number().int().min(1).max(500).optional().describe("How many turns (default 100)"), days: z.number().int().min(1).max(365).optional().describe("Only turns from the last N days") },
-    async ({ limit, days }) => { const { memoryTurns } = await import("./memory-bridge.js"); return memText(memoryTurns({ limit, days })); },
+    async ({ limit, days }) => { const { memoryTurns } = await import("./memory.js"); return memText(memoryTurns({ limit, days })); },
   );
   mcp.tool(
     "memory_pages",
     "The memory pages that exist today: the Profile (section you), topics and areas, each with title, summary and details. Update a page by writing it again with the same title.",
     {},
-    async () => { const { memoryPages } = await import("./memory-bridge.js"); return memText(memoryPages()); },
+    async () => { const { memoryPages } = await import("./memory.js"); return memText(memoryPages()); },
   );
   mcp.tool(
     "memory_page_write",
     "Write (or rewrite) one memory page. section: you = the Profile, topic = a recurring subject, area = a project or domain. Keep details to short factual bullets the user actually said; never invent.",
     { section: z.enum(["you", "topic", "area"]), title: z.string().min(1).max(90), summary: z.string().max(140).describe("One line under the title"), details: z.array(z.string()).min(1).max(40) },
-    async (input) => { const { writeMemoryPage } = await import("./memory-bridge.js"); try { return memText(await writeMemoryPage(input)); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
+    async (input) => { const { writeMemoryPage } = await import("./memory.js"); try { return memText(await writeMemoryPage(input)); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
   );
   mcp.tool(
     "memory_page_delete",
     "Delete a memory page by its id (from memory_pages).",
     { id: z.string().min(1) },
-    async ({ id }) => { const { deleteMemoryPage } = await import("./memory-bridge.js"); return memText(deleteMemoryPage(id)); },
+    async ({ id }) => { const { deleteMemoryPage } = await import("./memory.js"); return memText(deleteMemoryPage(id)); },
   );
   mcp.tool(
     "scrape_page",

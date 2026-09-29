@@ -9,7 +9,7 @@ describe("agent live registry", () => {
     const reg = createAgentLiveRegistry(announce, () => 100);
     reg.start(run("a"));
     expect(reg.isRunning("a")).toBe(true);
-    expect(reg.list()).toEqual([{ ...run("a"), startedAt: 100 }]);
+    expect(reg.list()).toEqual([{ ...run("a"), startedAt: 100, status: "working" }]);
     expect(announce).toHaveBeenCalledTimes(1);
     reg.done("a");
     expect(reg.list()).toEqual([]);
@@ -58,5 +58,27 @@ describe("agent live registry", () => {
     reg.start(run("a", "a:1"));
     reg.start(run("a", "a:2"));
     expect(reg.list()[0]).toMatchObject({ runId: "a:2", startedAt: 20 });
+  });
+
+  // HIS ORDER, 2026-09-29: green working, yellow waiting on the person, red
+  // the last turn failed, and nothing on the ledger for an idle thread.
+  it("carries the state, and a FAILED turn stays on the ledger while an ok one leaves", () => {
+    const announce = vi.fn();
+    const reg = createAgentLiveRegistry(announce, () => 5);
+    reg.start(run("a"));
+    expect(reg.list()[0]!.status).toBe("working");
+    reg.update("a", { status: "waiting" });
+    expect(reg.list()[0]!.status).toBe("waiting");
+    expect(announce).toHaveBeenCalledTimes(2);
+    reg.update("a", { status: "waiting" });
+    expect(announce).toHaveBeenCalledTimes(2);   // nothing changed, nothing said
+    reg.update("a", { status: "error" });
+    reg.done("a", "a:1");
+    expect(reg.list()[0]!.status).toBe("error");
+    expect(reg.isRunning("a")).toBe(false);      // red, but not working
+    reg.start(run("a", "a:2"));                  // the next turn clears the verdict
+    expect(reg.list()[0]).toMatchObject({ status: "working", runId: "a:2" });
+    reg.done("a", "a:2");
+    expect(reg.list()).toEqual([]);
   });
 });

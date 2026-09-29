@@ -41,10 +41,32 @@ function num(params: unknown, key: string): number | undefined {
 function target(params: unknown): WebContents {
   const slug = str(params, "app") || str(params, "slug") || str(params, "panelId");
   if (!slug) throw new Error("rpa needs { app } — the panel slug (from panels.list)");
+  const wc = liveTarget(slug) ?? (BROWSER_NAMES.has(slug) ? [...BROWSER_NAMES].map(liveTarget).find(Boolean) : undefined);
+  if (!wc) throw new Error(`panel not open: ${slug} — open it with panels.open first`);
+  return wc;
+}
+
+/** The browser answers to both names (his report, 2026-09-29): panels_open
+ *  hands back "browser", while the tabbed Browser panel registers as
+ *  "preview", so every rpa_goto on "browser" said it was not open. */
+const BROWSER_NAMES = new Set(["browser", "preview"]);
+function liveTarget(slug: string): WebContents | undefined {
   const id = targets.get(slug);
   const wc = id !== undefined ? webContents.fromId(id) : undefined;
-  if (!wc || wc.isDestroyed()) throw new Error(`panel not open: ${slug} — open it with panels.open first`);
-  return wc;
+  return wc && !wc.isDestroyed() ? wc : undefined;
+}
+
+/** Whether a panel is up and drivable, by the name the agent uses. */
+export function panelIsLive(slug: string): boolean {
+  return !!liveTarget(slug) || (BROWSER_NAMES.has(slug) && [...BROWSER_NAMES].some((n) => !!liveTarget(n)));
+}
+
+/** Navigate a live panel. */
+export async function panelGoto(slug: string, url: string): Promise<string> {
+  if (!/^https?:\/\//i.test(url)) throw new Error("a panel opens http(s) addresses only");
+  const wc = target({ app: slug });
+  await wc.loadURL(url);
+  return wc.getURL();
 }
 
 /** JSON-safe string literal for injection into executeJavaScript. */
@@ -141,11 +163,9 @@ export function installRpaHandlers(): void {
 
   // Navigate the panel to a URL.
   registerRelayHandler("rpa.goto", async (params) => {
-    const wc = target(params);
     const url = str(params, "url");
     if (!/^https?:\/\//i.test(url)) throw new Error("rpa.goto needs an http(s) { url }");
-    await wc.loadURL(url);
-    return { url: wc.getURL() };
+    return { url: await panelGoto(str(params, "app") || str(params, "slug") || str(params, "panelId"), url) };
   });
 
   // Evaluate arbitrary JS in the panel and return the (JSON-serializable)

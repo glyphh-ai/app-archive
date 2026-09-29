@@ -9,7 +9,7 @@
  * Two callers must agree or the boot frame disagrees with the open Settings
  * panel: help/settings.ts (drag + persist) and help/code.ts (seed at boot).
  * The clamps live here so there is ONE definition of each range, and so they
- * can be tested without a `window` — the reason cli-session-binding.ts moved
+ * can be tested without a `window` — the reason session-title.ts moved
  * out of code.ts too.
  */
 

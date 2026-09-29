@@ -97,9 +97,15 @@ function applyFolderFrom(sender: WebContents, dir: string | null): string {
   const value = dir ? normalizeDir(dir) : "";
   if (value && isDir(value)) panelFolders.set(sender.id, value); else panelFolders.delete(sender.id);
   if (activePanel === null) activePanel = sender.id;
-  if (activePanel !== sender.id) return value || getWorkingDirectory();
-  setWorkingDirectory(dir);
-  return getWorkingDirectory();
+  const result = activePanel !== sender.id ? (value || getWorkingDirectory()) : (setWorkingDirectory(dir), getWorkingDirectory());
+  // THE PANEL THAT PICKED IS TOLD (his report, 2026-09-29: "the agent didn't
+  // use the folder that i had set… It reverted to another folder that was
+  // previously set"). The change was announced to the main window and the
+  // workbench only — an agent panel is neither — so the panel's own thread
+  // never learned its folder had changed and its next turn ran in the old one.
+  // Only the panel that picked: another panel's thread keeps its own folder.
+  try { if (!sender.isDestroyed()) sender.send("working-dir-changed", result); } catch { /* panel closing */ }
+  return result;
 }
 
 function folderFor(sender: WebContents): string {

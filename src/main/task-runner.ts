@@ -24,9 +24,8 @@ import path from "path";
 import { app, utilityProcess, type UtilityProcess, ipcMain } from "electron";
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
-import { listCliAgents, composeHeadless, ensureLoopEnv, agentRowFor, type CliAgentListed } from "./cli-agents.js";
-import { cliFix } from "./cli-auth.js";
-import { execHeadless, slotAgentContext, slotAgentRoster, setTaskRunner, ensureTaskSchedule } from "./local-library.js";
+import { runGlyphhHeadless } from "./glyphh-loop.js";
+import { slotAgentContext, slotAgentRoster, setTaskRunner, ensureTaskSchedule } from "./local-library.js";
 import { callConnectionTool, listConnRows } from "./mcp-connections.js";
 import { normalizeConnDeps, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { dbExec } from "./glyphh-app-services.js";
@@ -270,17 +269,16 @@ const summarize = (v: unknown, max = 4000): unknown => {
   return s && s.length > max ? `${s.slice(0, max)}… (${s.length} chars)` : v;
 };
 
-function resolveSlotAgent(spec: TaskSpec, slot: string): { loop: CliAgentListed; prompt: string; model?: string; agentName: string } {
+function resolveSlotAgent(spec: TaskSpec, slot: string): { prompt: string; model?: string; agentName: string } {
   const s = spec.slots.find((x) => x.name === slot);
   if (!s) throw new Error(`no slot "${slot}" on task "${spec.slug}"`);
   const roster = slotAgentRoster();
   const who = (s.agent ? roster.find((a) => a.id === s.agent) : undefined) ?? roster[0];
-  const ctx = who ? slotAgentContext(who.id) : null;
-  // A slot filled before agents existed holds a loop id; read it that way.
-  const loopId = ctx?.loopId || s.agent || "";
-  const loop = listCliAgents().find((a) => a.id === loopId) as CliAgentListed | undefined;
-  if (!loop) throw new Error(who ? `agent "${who.name}" has no loop to run on` : `slot "${slot}" has no agent and none exist`);
-  return { loop, prompt: ctx?.prompt || "", model: ctx?.model ?? s.model, agentName: who?.name || loop.name };
+  if (!who) throw new Error(`slot "${slot}" has no agent and none exist`);
+  const ctx = slotAgentContext(who.id);
+  // Every slot runs on the Glyphh loop now (the vendor-CLI lane is gone): what
+  // the agent brings is its standing prompt and its model.
+  return { prompt: ctx?.prompt || "", model: ctx?.model ?? s.model, agentName: who.name };
 }
 
 function firstJson(text: string): unknown {
@@ -295,16 +293,11 @@ function firstJson(text: string): unknown {
 }
 
 async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { schema?: unknown; model?: string }): Promise<{ text: string; json?: unknown; agent: string }> {
-  const { loop, prompt: standing, model, agentName } = resolveSlotAgent(spec, slot);
+  const { prompt: standing, model, agentName } = resolveSlotAgent(spec, slot);
   const ask = opts.schema ? `${prompt}\n\nReply with only JSON matching this shape, no prose:\n${JSON.stringify(opts.schema)}` : prompt;
-  { const row = agentRowFor(loop.id); if (row) await ensureLoopEnv(row).catch(() => undefined); }
-  const line = composeHeadless(loop, standing ? `${standing}\n\n${ask}` : ask, opts.model ?? model);
-  const r = await execHeadless(line);
-  if (r.code !== 0) {
-    const fix = cliFix(`${r.error || ""}\n${r.output.slice(-2000)}`, loop.cli || "claude");
-    throw new Error(fix ? fix.message : r.error || `${agentName} exited ${r.code}: ${r.output.slice(-800)}`);
-  }
-  return { text: r.output, ...(opts.schema ? { json: firstJson(r.output) } : {}), agent: agentName };
+  const r = await runGlyphhHeadless(standing ? `${standing}\n\n${ask}` : ask, { ...(opts.model ?? model ? { model: String(opts.model ?? model) } : {}) });
+  if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
+  return { text: r.text, ...(opts.schema ? { json: firstJson(r.text) } : {}), agent: agentName };
 }
 
 

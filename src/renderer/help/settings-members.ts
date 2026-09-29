@@ -84,8 +84,8 @@ function paintSeats(): void {
   const invite2 = $<HTMLButtonElement>("members-invite-btn2");
   if (invite2) invite2.disabled = full;
   if (!full) return;
-  note.textContent = (org?.tier || "free") === "free"
-    ? "The Free plan is single-seat — change your plan under Billing to invite your team."
+  note.textContent = (org?.maxSeats ?? 1) <= 1
+    ? "Your plan is single-seat — change it under Billing to invite your team."
     : `All ${org?.maxSeats} seats are in use — change your plan under Billing to add more.`;
 }
 

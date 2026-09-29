@@ -20,7 +20,6 @@
                    CLI support list), Apps, Connections, and the restored library:
                    Tasks (the former loop library), Agents, Skills. -->
               <div class="settings-nav-group platform-only">Build</div>
-              <button class="settings-nav-item platform-only hidden" data-sub="org-loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
               <button class="settings-nav-item platform-only" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <button id="nav-org-library" class="settings-nav-item platform-only hidden" data-sub="org-library"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Library</span></button>
               <div class="settings-nav-group platform-only nav-admin hidden">Security</div>
@@ -30,7 +29,6 @@
               <!-- Gateway (his order, 2026-09-11): the LiteLLM router surfaces —
                    the org's model catalog + the telemetry page. -->
               <div class="settings-nav-group platform-only nav-admin hidden">Gateway</div>
-              <button id="nav-models" class="settings-nav-item platform-only nav-admin hidden" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
               <button class="settings-nav-item platform-only nav-admin hidden" data-sub="gateway-keys"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-3 3l1.9-1.9L12 14l2-2 1.4 1.4L17.7 11l-2.3-2.3z"/><circle cx="7.5" cy="15.5" r="1.5"/></svg><span>API Keys</span></button>
               <button class="settings-nav-item platform-only nav-admin hidden" data-sub="gateway"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg><span>Metrics</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
@@ -45,6 +43,9 @@
                    Connections, Skills (the Agent Skills standard), Plugins. -->
               <div class="settings-nav-group not-on-platform" id="nav-group-build">Build</div>
               <button class="settings-nav-item not-on-platform" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Skills</span></button>
+              <!-- AGENTS (his order, 2026-09-29): the definitions the Glyphh loop can
+                   hand work to — a name, when to use it, a brief, a model slot. -->
+              <button class="settings-nav-item not-on-platform" data-sub="agents"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg><span>Agents</span></button>
               <!-- Apps moved onto Skills (his order, 2026-09-17): every bundle is a skill
                    and the type says which kind. The tab is hidden, not gone. -->
               <button class="settings-nav-item not-on-platform hidden" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>Apps</span></button>
@@ -65,12 +66,10 @@
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item" data-sub="memory"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg><span>Memory</span></button>
               <button class="settings-nav-item" data-sub="privacy"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 20 6v6c0 5-3.4 8.2-8 9.4C7.4 20.2 4 17 4 12V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacy</span></button>
-              <button class="settings-nav-item not-on-platform hidden" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="bridge"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h6M14 12h6"/><rect x="2" y="8" width="8" height="8" rx="2"/><rect x="14" y="8" width="8" height="8" rx="2"/></svg><span>Bridge</span></button>
               <div class="settings-nav-group">Help</div>
               <button class="settings-nav-item" data-sub="support"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Support</span></button>
               <button class="settings-nav-item hidden" data-sub="about"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg><span>About</span></button>
@@ -81,42 +80,19 @@
                 <h2>General</h2>
                 <p class="section-desc">App-wide preferences.</p>
 
-                <!-- THE DEFAULTS a new session opens with (his ruling,
-                     2026-09-12). Both lists come from the org → role policy:
-                     the loops are what the role allows, the models are that
-                     loop's allowed models. Nothing here is free text — you
-                     cannot default to something you may not use. -->
-                <h3 class="settings-subheading" style="margin-top:0;">Agent loop</h3>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Default loop</div>
-                    <div class="set-pref-desc">What a new workspace and a fresh agent panel start with — only the loops your role allows.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <select id="set-default-loop" class="settings-input"></select>
-                  </div>
-                </div>
+                <!-- THE DEFAULT MODEL a new session opens with (his ruling,
+                     2026-09-12; the loop and view pickers went with the CLI
+                     lane on 2026-09-28 — there is one loop). The list is the
+                     org's own: nothing here is free text, so you cannot
+                     default to a model you may not use. -->
+                <h3 class="settings-subheading" style="margin-top:0;">Agent</h3>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Default model</div>
-                    <div class="set-pref-desc" id="set-default-hint">The loop's allowed models, from your organization's catalog.</div>
+                    <div class="set-pref-desc" id="set-default-hint">What a new session runs on, from the models your organization allows.</div>
                   </div>
                   <div class="set-pref-value">
                     <select id="set-default-model" class="settings-input"></select>
-                  </div>
-                </div>
-
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Default view</div>
-                    <div class="set-pref-desc">How a loop opens: Glyphh's chat (the agent panel) or the CLI itself in a terminal. Each workspace can choose per agent.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <select id="set-default-loop-view" class="settings-input">
-                      <option value="glyphh">Glyphh</option>
-                      <option value="cli">CLI</option>
-                    <option value="last">Last used (a workspace cell may set its own)</option>
-                    </select>
                   </div>
                 </div>
 
@@ -146,16 +122,6 @@
                   </div>
                   <div class="set-pref-value">
                     <select id="settings-default-workspace" class="settings-input"></select>
-                  </div>
-                </div>
-
-                <div class="set-pref-row hidden">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Default agent</div>
-                    <div class="set-pref-desc">The agent that answers &ldquo;+ New&rdquo; on Loops and Skills (and anything else that needs an agent without asking).</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <select id="settings-default-agent" class="settings-input"></select>
                   </div>
                 </div>
 
@@ -229,41 +195,6 @@
                    user accepts before it remembers anything, and the org's overrides. -->
               <!-- BRIDGE MODE (his order, 2026-09-21): Claude Desktop → this app → the gateway
                    or a headless claude on the member's own login (app/docs/BRIDGE-MODE.md). -->
-              <div class="settings-panel" data-sub="bridge">
-                <h3 class="settings-panel-title">Bridge</h3>
-                <div class="settings-callout" id="bridge-forced-note" style="display:none;margin:20px 0 18px">Your organization requires Bridge Mode. It is on, and the app keeps running in the background.</div>
-                <label class="settings-toggle set-pref-row" id="bridge-enabled-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Bridge Mode</div>
-                    <div class="set-pref-desc" id="bridge-enabled-desc">Off. Turn it on to run the bridge whenever you are signed in.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-bridge-enabled" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <label class="settings-toggle set-pref-row" id="bridge-background-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Run in background</div>
-                    <div class="set-pref-desc">Closing the window keeps the bridge serving Claude Desktop. Quit from the tray or the menu.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-bridge-background" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Claude Desktop settings</div>
-                    <div class="set-pref-desc">Gateway base URL and Issuer URL: <code id="bridge-url">http://127.0.0.1:4747</code>. Client ID <code>claude-desktop</code>, credential kind interactive sign-in, bearer token access token, scopes <code>openid profile email offline_access glyphh-gateway</code>.</div>
-                  </div>
-                  <button type="button" class="action-btn" id="bridge-copy-url">Copy URL</button>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Status</div>
-                    <div class="set-pref-desc" id="bridge-status">Not running.</div>
-                  </div>
-                  <button type="button" class="action-btn" id="bridge-open-tui">Open bridge TUI</button>
-                </div>
-                <pre class="settings-log" id="bridge-activity" style="max-height:220px;overflow:auto;font-size:11px;white-space:pre-wrap"></pre>
-              </div>
 
               <div class="settings-panel" data-sub="memory">
                 <h2>Memory</h2>
@@ -820,7 +751,7 @@
                       <div class="ua-sub" id="ua-pool-sub">Your budget for connector and model calls through Glyphh</div>
                     </div>
                   </div>
-                  <div class="ua-row ua-budget-row">
+                  <div class="ua-row ua-budget-row" id="ua-cap-row">
                     <div class="ua-label bil-label-wide">
                       <div class="ua-name" id="ua-cap">Unlimited</div>
                       <div class="ua-sub">Monthly spend limit</div>
@@ -1042,16 +973,66 @@
                    toggle on the far right; expanding shows that loop's
                    config. Nothing is created or deleted here; a loop the
                    org -> role policy doesn't allow simply isn't listed. -->
-              <div class="settings-panel" data-sub="loops">
-                <h2>Loops</h2>
-                <p class="section-desc">The CLIs Glyphh can drive. Turn on the ones you use and configure each once — the agent panel and every workspace open with them.</p>
-                <div id="loops-error" class="crud-form-error hidden"></div>
-                <div id="loops-accordion"></div>
-              </div>
 
               <!-- ORGANIZATION -> LOOPS: the same accordion, but the toggle is
                    the ORG's support list (org_loops). A loop off here is off
                    for every member, whatever their role says. -->
+              <!-- BUILD -> AGENTS: the Connections page's grammar (his order,
+                   2026-09-29) — head with search and + New, the list as a table,
+                   a row opens the agent's own page (help/settings-agents.ts). -->
+              <div class="settings-panel skills-panel" data-sub="agents">
+                <div id="agents2-list-view">
+                  <div class="skills-head">
+                    <h2>Agents</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="agents2-search" type="text" placeholder="Search agents" spellcheck="false" autocomplete="off" /></div>
+                    <button id="agents2-add" class="action-btn primary" type="button">+ New</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" type="button">Your agents</button>
+                    <div style="flex:1;"></div>
+                    <span id="agents2-count" class="skills-count"></span>
+                  </div>
+                  <div id="agents2-body"></div>
+                </div>
+                <!-- NEW / EDIT: the Drips form (his order, 2026-09-29: "look at the
+                     drips new / edit form") — an inline form that takes the page,
+                     the edit head, stacked labels, Delete · Cancel · Save. -->
+                <div id="agents2-editor" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <button class="skills-back" id="agents2-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Agents</button>
+                    <div class="crud-spacer"></div>
+                  </div>
+                  <div id="agents2-form-error" class="crud-form-error hidden"></div>
+                  <div id="agents2-detail-head" class="edit-head"></div>
+                  <label class="settings-label" for="agents2-name">Name</label>
+                  <input type="text" id="agents2-name" class="settings-input" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
+
+                  <label class="settings-label" for="agents2-desc">When to use it</label>
+                  <input type="text" id="agents2-desc" class="settings-input" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
+
+                  <label class="settings-label" for="agents2-model">Model</label>
+                  <div class="settings-inline">
+                    <select id="agents2-model" class="settings-input" style="width:auto;"></select>
+                  </div>
+
+                  <!-- The brief's head carries the WAND (his order, 2026-09-29): it
+                       writes the brief on the member's default model from what
+                       the form already says. -->
+                  <div class="agents2-brief-head">
+                    <label class="settings-label" for="agents2-brief">Brief</label>
+                    <button id="agents2-generate" class="agents2-wand" type="button" title="Write the brief with AI" aria-label="Write the brief with AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M12.2 6.2 11 5"/><path d="m15 9-12 12"/></svg></button>
+                  </div>
+                  <div id="agents2-brief-error" class="agents2-brief-error hidden" role="alert"></div>
+                  <textarea id="agents2-brief" class="settings-input agents2-brief" rows="9" placeholder="What this agent always knows and how it works. You research one question at a time: search, read the primary sources, and report what you found with the links…"></textarea>
+
+                  <div class="settings-actions" style="margin-top:28px;">
+                    <button id="agents2-delete-btn" class="action-btn danger" type="button">Delete</button>
+                    <div style="flex:1;"></div>
+                    <button id="agents2-cancel-btn" class="action-btn" type="button">Cancel</button>
+                    <button id="agents2-save-btn" class="action-btn primary" type="button">Save</button>
+                  </div>
+                </div>
+              </div>
               <div class="settings-panel skills-panel" data-sub="connections-cfg">
                 <div id="conn2-list-view">
                   <div class="skills-head">
@@ -1094,27 +1075,6 @@
                   <div id="orglib-queue" class="hidden"></div>
                   <div id="orglib-list"></div>
                 </div>
-              </div>
-              <div class="settings-panel" data-sub="org-loops">
-                <h2>Loops</h2>
-                <p class="section-desc">Which CLIs your organization runs. Turning one off removes it from every member, whatever their role allows.</p>
-                <div id="org-loops-error" class="crud-form-error hidden"></div>
-                <div id="org-loops-accordion"></div>
-              </div>
-
-              <div class="settings-panel" data-sub="models">
-                <h2>Models</h2>
-                <p class="section-desc">Your organization's providers and the models inside each.</p>
-                <div id="models-admin-error" class="crud-form-error hidden"></div>
-                <div id="models-plan-note" class="settings-callout hidden" role="status">Your plan limits which models are available. Upgrade to a paid plan to utilize all available models.</div>
-
-                <div class="crud-toolbar">
-                  <input id="models-search" type="text" class="crud-search" placeholder="Search providers and models…" spellcheck="false" autocomplete="off" />
-                  <button id="models-provider-filter" class="action-btn ws-filter-btn" type="button" title="Filter by provider" aria-label="Filter by provider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="models-provider-filter-label" class="hidden"></span></button>
-                  <button id="provider-new-btn" class="action-btn primary" type="button">+ New provider</button>
-                </div>
-                <div id="models-provider-list"></div>
-                <div id="models-pager"></div>
               </div>
 
               <!-- Organization › General — the org record (name, image,
@@ -1248,7 +1208,6 @@
                     <div class="app-detail-tabs" id="ws-tabs">
                       <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
                       <button class="app-detail-tab" data-wstab="models" type="button">Models</button>
-                      <button class="app-detail-tab" data-wstab="loops" type="button">Loops</button>
                       <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
                       <button class="app-detail-tab" data-wstab="members" type="button">Members</button>
                       <button class="app-detail-tab" data-wstab="keys" type="button">Keys</button>
@@ -1334,20 +1293,6 @@
                       </div>
                       <div id="ws-models-grid"></div>
                       <div id="ws-models-pager"></div>
-                    </div>
-
-                    <div class="ws-tab" data-wstab="loops">
-                      <label class="settings-toggle" style="margin-top:12px;">
-                        <input type="checkbox" id="ws-limit-loops" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title">Limit this role to specific loops</span>
-                          <span class="toggle-desc" id="ws-loops-hint">Off — it can use every loop the org runs.</span>
-                        </div>
-                      </label>
-                      <h3 class="settings-subheading" style="margin-top:16px;">Loops</h3>
-                      <p class="section-desc">Each loop this role may drive, the model it opens with, and which one is the default. Models come from this role's Models tab — a role can never default to a model it may not use.</p>
-                      <div id="ws-loops-grid"></div>
                     </div>
 
                     <!-- MEMBERS — who holds this role. The models page's

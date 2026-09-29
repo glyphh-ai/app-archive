@@ -17,8 +17,10 @@
  */
 
 import { registerRelayHandler } from "./relay-client.js";
-import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
+import { installAgentRelayHandlers } from "./agent-tools.js";
+import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { fetchOrgApps } from "./org-apps.js";
+import { panelGoto, panelIsLive } from "./rpa.js";
 import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
 import { getClient } from "./glyphh-client.js";
 import { gatewayCreds } from "./gateway-token.js";
@@ -30,12 +32,25 @@ import os from "os";
 interface Deps {
 }
 
+const PANEL_OPEN_WAIT_MS = 10_000;
+
+async function waitFor(ready: () => boolean, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (!ready()) {
+    if (Date.now() >= until) return false;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return true;
+}
+
 function appParam(params: unknown): string {
   const p = params as { app?: string; panelId?: string; id?: string } | null;
   return String(p?.app || p?.panelId || p?.id || "");
 }
 
 export function installRelayHandlers(deps: Deps): void {
+  // The member's agents (make, read, update, delete) — agent-tools.ts.
+  installAgentRelayHandlers();
 
   // Smoke-test handler — the loopback local-MCP relay_ping tool routes here.
   // (Formerly registered by relay-client's now-deleted initRelayClient.)
@@ -59,9 +74,23 @@ export function installRelayHandlers(deps: Deps): void {
       .map((a) => ({ app: a.slug, name: a.name, ...(a.url ? { url: a.url } : {}), kind: a.appArchetype || (a.url ? "web" : "native") }));
   });
 
+  // AN OPEN IS REPORTED ONLY ONCE IT HAPPENED (his report, 2026-09-29: the
+  // agent was told "opened" three times while nothing appeared). The command
+  // to the workbench is fire-and-forget, so a web panel is waited for until it
+  // is live and drivable; one that never shows up is an error, not a success.
+  // A `url` opens it there in the same call, so "open the page" is one step.
   registerRelayHandler("panels.open", async (params) => {
-    const r = await openAppByRef(appParam(params));
-    return { app: r.slug, name: r.name, opened: true };
+    const url = String((params as { url?: unknown } | null)?.url ?? "").trim();
+    if (url && !/^https?:\/\//i.test(url)) throw new Error("panels.open url must be http(s)");
+    // The Browser at a URL takes the user's own path: a TAB at that address in
+    // the Browser on screen, exactly as a click opens one.
+    const browser = /^(browser|preview)$/i.test(appParam(params).trim());
+    const r: { slug: string; name: string; panel?: boolean } = browser && url ? { ...openBrowserAt(url), panel: true } : await openAppByRef(appParam(params));
+    if (!r.panel) return { app: r.slug, name: r.name, opened: true };
+    if (!(await waitFor(() => panelIsLive(r.slug), PANEL_OPEN_WAIT_MS))) {
+      throw new Error(`${r.name} did not open: no panel appeared within ${PANEL_OPEN_WAIT_MS / 1000}s. Nothing is showing, so do not tell the user it opened.`);
+    }
+    return { app: r.slug, name: r.name, opened: true, ...(url && !browser ? { url: await panelGoto(r.slug, url) } : url ? { url } : {}) };
   });
 
   registerRelayHandler("panels.switch", async (params) => {

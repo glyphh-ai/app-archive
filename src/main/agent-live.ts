@@ -12,9 +12,10 @@
  */
 
 import { ipcMain, type WebContents } from "electron";
-import { broadcast } from "./broadcast.js";
+import { broadcast, sendToHomeShell } from "./broadcast.js";
 import { createAgentLiveRegistry, type LiveAgentRun } from "./agent-live-registry.js";
 import { activateAgentPanel } from "./working-directory.js";
+import { openSettingsPage } from "./app-resolver.js";
 
 export type { LiveAgentRun } from "./agent-live-registry.js";
 
@@ -38,7 +39,7 @@ export function noteRunDelta(chatId: string, delta: string): void {
 
 export const agentLive = {
   ...registry,
-  start(run: Omit<LiveAgentRun, "startedAt">): void { turnText.delete(run.chatId); registry.start(run); },
+  start(run: Omit<LiveAgentRun, "startedAt" | "status">): void { turnText.delete(run.chatId); registry.start(run); },
   done(chatId: string, runId?: string): void { registry.done(chatId, runId); if (!registry.isRunning(chatId)) turnText.delete(chatId); },
 };
 
@@ -74,6 +75,28 @@ export function registerAgentLiveIpc(): void {
     // tool comes up rooted in ITS folder (the folder change lands before the open).
     activateAgentPanel(e.sender.id);
     broadcast("agent-panel:open-tool", { view: String(p?.view ?? ""), cwd: String(p?.cwd ?? "") });
+    return true;
+  });
+  // A FILE a panel opens (an artifact card, a file link) lands in the SHELL's
+  // workbench too — the editor, the browser or the Plan view beside the panel,
+  // never inside it. The same rule as the tools above, and the same bug class
+  // as Gmail opening twice (his report, 2026-09-29), so it goes to the one
+  // workbench and nowhere else.
+  ipcMain.handle("agent-panel-open-file", (e, p: { path?: string; mode?: string } | undefined) => {
+    const file = String(p?.path ?? "");
+    if (!file) return false;
+    // open (the smart default) · browse (rendered) · edit (the editor).
+    const mode = p?.mode === "browse" || p?.mode === "edit" ? p.mode : "open";
+    activateAgentPanel(e.sender.id);
+    sendToHomeShell("agent-panel:open-file", { path: file, mode });
+    return true;
+  });
+  // A SETTINGS PAGE a panel asks for (the "Choose a plan" door under a no-plan
+  // refusal) opens in the shell's Settings, the one the dock opens.
+  ipcMain.handle("agent-panel-open-settings", (_e, p: { sub?: string } | undefined) => {
+    const sub = String(p?.sub ?? "").trim();
+    if (!/^[a-z0-9-]{1,40}$/.test(sub)) return false;
+    openSettingsPage(sub);
     return true;
   });
   // A panel became the one being worked in — a click or focus inside it (the

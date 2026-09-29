@@ -7,7 +7,7 @@ import {
   applyRailTabsPerRow, applyTilesPerRow, applyWallWidth,
   clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
 } from "./wall-prefs.js";
-import { loadAgentDefaults } from "./settings-loops.js";
+import { loadAgentDefaults } from "./settings-agent.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
 import { accountApi, fmtUsd } from "./settings-api.js";
@@ -122,8 +122,8 @@ function initSettings() {
   }
 
 
-  // Agent defaults — the loop + model a new session opens with, both drawn
-  // from the org → role policy (help/settings-loops.ts).
+  // Agent defaults — the model a new session opens with, from the org's own
+  // allowed list (help/settings-agent.ts).
   void loadAgentDefaults();
   // Embeddings upgrade — ONNX default, Together AI BYOK (desktop-only).
   // Embeddings + memory live on Settings → Memory now (his order, 2026-09-19).
@@ -158,35 +158,6 @@ function initSettings() {
       defWs.value = opts.some((n) => n.toLowerCase() === current.toLowerCase()) ? opts.find((n) => n.toLowerCase() === current.toLowerCase())! : "";
       defWs.addEventListener("change", () => {
         void window.glyphh.setPreference?.("defaultWorkspace", defWs.value);
-      });
-    })();
-  }
-
-  // Default agent — who answers "+ New" on Loops/Skills (pref defaultAgent).
-  const defAg = document.getElementById("settings-default-agent") as HTMLSelectElement | null;
-  if (defAg) {
-    void (async () => {
-      const yo = window.glyphh as unknown as {
-        cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
-        getPreference?: (k: string, d: unknown) => Promise<unknown>;
-        setPreference?: (k: string, v: unknown) => void;
-      };
-      const current = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
-      const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
-      defAg.innerHTML = "";
-      const none = document.createElement("option");
-      none.value = "";
-      none.textContent = agents.length ? "None" : "None — create an agent first";
-      defAg.appendChild(none);
-      for (const a of agents) {
-        const o = document.createElement("option");
-        o.value = a.id;
-        o.textContent = a.name;
-        defAg.appendChild(o);
-      }
-      defAg.value = agents.some((a) => a.id === current) ? current : "";
-      defAg.addEventListener("change", () => {
-        void yo.setPreference?.("defaultAgent", defAg.value);
       });
     })();
   }
@@ -622,13 +593,20 @@ function initSettings() {
 
 }
 
-/** The plan chip — highlighted only when the plan is a paid one. */
-function paintPlanChip(tier?: string | null): void {
+/** The plan chip — highlighted only when the plan is a paid one. The plan is
+ *  the org admin's business (his order, 2026-09-29: "org users should not see
+ *  the plan they are on"), so a member does not get the chip at all. */
+function paintPlanChip(tier?: string | null, role?: string | null): void {
   const el = document.getElementById("account-tier");
   const chip = el?.closest(".acct-chip-plan");
   if (!el) return;
+  if (role !== undefined) chip?.classList.toggle("hidden", !seesPlan(role));
   el.textContent = tier || "—";
-  chip?.classList.toggle("paid", !!tier && tier !== "free");
+  chip?.classList.toggle("paid", !!tier && tier !== "none" && tier !== "free");
+}
+
+export function seesPlan(role?: string | null): boolean {
+  return !!role && ["org_admin", "super_admin"].includes(role);
 }
 
 
@@ -647,7 +625,7 @@ async function loadSettings() {
   const accountInfo = await window.glyphh.getAccountInfo();
   const orgEl = document.getElementById("account-org")!;
   orgEl.textContent = accountInfo?.orgName || "—";
-  paintPlanChip(accountInfo?.tier);
+  paintPlanChip(accountInfo?.tier, accountInfo?.role ?? null);
 
   // Load toggle states
   toggleAutoUpdate.checked = await window.glyphh.getPreference("autoUpdate", true) as boolean;
@@ -828,13 +806,15 @@ export async function loadUsageAppView(): Promise<void> {
     const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
     document.querySelector(".ua-budget-toggle")?.classList.toggle("hidden", !admin);
     el("ua-balance-row")?.classList.toggle("hidden", !admin);
+    // The spend limit is the org admin's; a member's line is their team's budget above.
+    el("ua-cap-row")?.classList.toggle("hidden", !admin);
   }).catch(() => { /* signed out — the page renders read-only anyway */ });
   try {
     // dashboardData is the SPEND-LOG truth on both surfaces (desktop home-ipc /
     // the web contract): the budget off billing.balance, the plan's
     // name + monthly pool off the catalog. Dollars end to end.
     const [data, topup] = await Promise.all([
-      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null; limitUsd?: number | null; limitSource?: string | null; mySpentUsd?: number; poolUsd?: number; poolSpentUsd?: number; poolRemainingUsd?: number; poolSource?: "team" | "org"; planUsd?: number } | undefined>,
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null; limitUsd?: number | null; limitSource?: string | null; mySpentUsd?: number; poolUsd?: number; poolSpentUsd?: number; poolRemainingUsd?: number; poolSource?: "member" | "team" | "org"; planUsd?: number } | undefined>,
       api.autotopup().catch(() => null),
     ]);
     const planEl = el("ua-plan");
@@ -868,10 +848,14 @@ export async function loadUsageAppView(): Promise<void> {
     // shows on the remaining line below, once.
     const planUsd = Math.max(0, data?.planUsd ?? 0);
     const poolEl = el("ua-pool");
-    if (poolEl) poolEl.textContent = `${fmtUsd(data?.poolSource === "team" ? total : planUsd)} / month`;
+    // ONE line (his order, 2026-09-29): the member's own limit, else their team's, else the org's plan.
+    const own = data?.poolSource === "member" || data?.poolSource === "team";
+    if (poolEl) poolEl.textContent = `${fmtUsd(own ? total : planUsd)} / month`;
     const poolSub = el("ua-pool-sub");
     if (poolSub) {
-      poolSub.textContent = data?.poolSource === "team"
+      poolSub.textContent = data?.poolSource === "member"
+        ? "Your monthly limit, set by your organization admin, for connector and model calls through Glyphh"
+        : data?.poolSource === "team"
         ? "Your team's share of the Glyphh budget, for connector and model calls through Glyphh"
         : "From your plan, for connector and model calls through Glyphh";
     }

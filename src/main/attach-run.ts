@@ -4,11 +4,11 @@
  * (RELAY-RESEARCH.md §4). The web/mobile client cannot drive the machine
  * directly, so it dispatches `agent.run` here.
  *
- * The engine is the CLI bridge (glyphh-cli-bridge.ts), the same `claude`
- * subprocess the Agent panel runs, fed a SINK (a fake WebContents) that
- * translates its `glyphh-agent:*` events into wire frames and pushes them on
- * the run's channel (`run:<runId>`). The caller's threadId is the chat, so a
- * relayed conversation continues across turns through the CLI's own session.
+ * The engine is the Glyphh loop, the same one the Agent panel runs (agent-ipc.ts
+ * → glyphh-loop.ts), fed a SINK (a fake WebContents) that translates its
+ * `glyphh-agent:*` events into wire frames and pushes them on the run's channel
+ * (`run:<runId>`). The caller's threadId is the chat, so a relayed conversation
+ * continues across turns on the same thread.
  *
  * Answers to parked approvals arrive as `agent.answer {id, allow}`;
  * `agent.stop {runId}` interrupts; `agent.permission {runId, permission}`
@@ -18,7 +18,7 @@
 import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-host.js";
-import { runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./glyphh-cli-bridge.js";
+import { runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
 import { toWireFrame, turnText, relayPermission } from "./attach-run-frames.js";
 
 interface RunRecord { frames: Array<Record<string, unknown> & { seq: number }>; status: "running" | "done" | "error"; chatId: string }
@@ -60,21 +60,20 @@ export function installAttachRunHandlers(): void {
   registerRelayHandler("agent.run", async (params) => {
     const p = (params ?? {}) as Record<string, unknown>;
     const runId = str(p, "runId") || `rl-${Date.now().toString(36)}`;
-    // The STABLE transcript thread (the caller's chat id) is the chat: the CLI
-    // session binds to it, so a relayed conversation remembers across turns.
+    // The STABLE transcript thread (the caller's chat id) IS the chat, so a
+    // relayed conversation remembers across turns.
     const chatId = str(p, "threadId") || runId;
     const prompt = str(p, "prompt");
     if (!prompt && !Array.isArray(p.messages)) throw new Error("agent.run requires { prompt } or { messages }");
     const text = turnText(p, prompt);
     const sink = makeSink(runId, chatId);
     sink.send("glyphh-agent:prompt", { text });
-    // The RELAYING client's permission, loop and model win over this machine's
-    // own: the run is theirs. Absent, the bridge falls back to its defaults.
+    // The RELAYING client's permission and model win over this machine's own:
+    // the run is theirs. Absent, the loop falls back to the org's defaults.
     void runAgentTurn(sink, {
       chatId, prompt: text,
       ...(relayPermission(p.permission) ? { permission: relayPermission(p.permission) } : {}),
       ...(str(p, "model") ? { model: str(p, "model") } : {}),
-      ...(str(p, "loop") ? { loop: str(p, "loop") } : {}),
       ...(str(p, "workdir") ? { workdir: str(p, "workdir") } : {}),
     }).catch((err) => { try { sink.send("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) }); sink.send("glyphh-agent:done", { stopped: true }); } catch { /* gone */ } });
     return { runId, started: true };
