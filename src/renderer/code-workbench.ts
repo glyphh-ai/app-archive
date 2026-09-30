@@ -22,7 +22,6 @@ import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type Error
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
-import { mascotSvg, GLYPHH_LOOP_MASCOT } from "./help/mascots.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
@@ -2445,7 +2444,7 @@ async function init(): Promise<void> {
         : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
         : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
         : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
-        : { glyphSvg: mascotSvg(GLYPHH_LOOP_MASCOT) }),   // the Glyphh CLI wears Sage, not the brand mark the New tile wears
+        : { glyphSvg: `<img src="brand/glyphh-cli-mark.svg" alt="" draggable="false"/>` }),   // the Glyphh CLI's own icon, not the brand mark the New tile wears
       kind: "tool",
       toolView: "terminal",
       cliAgent: { id: a.id, command: a.command },

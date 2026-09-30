@@ -31,7 +31,7 @@ import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "
 import { sessionDisplayTitle } from "./session-title.js";
 import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
-import { glyphhLoopMarkUrl, mascotSvg, GLYPHH_LOOP_MASCOT } from "./mascots.js";
+import { glyphhLoopMarkUrl } from "./mascots.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -5005,6 +5005,7 @@ const RAIL_CLI_MARK_URLS: Record<string, string> = {
   cursor: "https://cursor.com/favicon.ico",
 };
 const vendorMarks: Record<string, string> = {};
+const GLYPHH_CLI_MARK_SRC = "brand/glyphh-cli-mark.svg";
 function primeVendorMarks(): void {
   for (const [cli, url] of Object.entries(RAIL_CLI_MARK_URLS)) {
     if (vendorMarks[cli] !== undefined) continue;
@@ -5095,8 +5096,15 @@ void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => {
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
   const mark = document.createElement("span");
   mark.className = "code-sess-mark";
-  if (sess.origin === "cli" && sess.cli === GLYPHH_LOOP) mark.innerHTML = mascotSvg(GLYPHH_LOOP_MASCOT);
-  else if (sess.origin === "cli" && vendorMarks[sess.cli]) {
+  if (sess.origin === "cli" && sess.cli === GLYPHH_LOOP) {
+    // The Glyphh CLI's own icon (his order, 2026-09-30: "make a proper icon out
+    // of the little glyphh cli cat") — Sage on a tile, sized like every other mark.
+    const img = document.createElement("img");
+    img.className = "cli-mark-glyphh-cli";
+    img.src = GLYPHH_CLI_MARK_SRC;
+    img.alt = "";
+    mark.appendChild(img);
+  } else if (sess.origin === "cli" && vendorMarks[sess.cli]) {
     const img = document.createElement("img");
     img.className = `cli-mark-${sess.cli}`;
     img.src = vendorMarks[sess.cli];
