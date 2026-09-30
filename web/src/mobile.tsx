@@ -3669,7 +3669,13 @@ function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMac
     setLoading(true); setErr('');
     glyphh().attach.fsList(path, machine ? { machineId: machine.id } : {})
       .then((r: FsListing) => { setListing(r); setLoading(false); })
-      .catch(() => { setErr('Could not read this machine’s folders — grant a folder to remote control on it, or update the app.'); setLoading(false); });
+      // The machine's own words when it gave any (his report, 2026-09-30: a prod
+      // failure hid behind this generic line and cost a round of log digging).
+      .catch((e: unknown) => {
+        const why = e instanceof Error && e.message ? e.message : '';
+        setErr(`Could not read this machine’s folders${why ? `: ${why}` : ''}. Grant a folder to remote control on it, or update the app.`);
+        setLoading(false);
+      });
   };
   useEffect(() => { if (machine) { setListing(null); setCreating(false); setNewName(''); load(); } }, [machine]);
   const cur = listing?.path;
