@@ -325,6 +325,8 @@ export interface PanelAppInput {
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
+/** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
+interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string }
 /** The library kinds a bundle can be: every one of them is a skill, the
  *  kind says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
@@ -507,6 +509,16 @@ contextBridge.exposeInMainWorld("glyphh", {
   getPreference: (key: string, defaultVal?: unknown) => ipcRenderer.invoke("get-preference", key, defaultVal),
   getBackgroundMode: () => ipcRenderer.invoke("get-background-mode") as Promise<boolean>,
   setBackgroundMode: (enabled: boolean) => ipcRenderer.invoke("set-background-mode", enabled) as Promise<boolean>,
+  // Settings → Remote control (main/remote-control.ts): this device's switch and granted folders.
+  remoteControlGet: () => ipcRenderer.invoke("remote-control:get") as Promise<RemoteControlView>,
+  remoteControlSetEnabled: (enabled: boolean) => ipcRenderer.invoke("remote-control:set-enabled", enabled) as Promise<RemoteControlView>,
+  remoteControlAddFolder: () => ipcRenderer.invoke("remote-control:add-folder") as Promise<RemoteControlView>,
+  remoteControlRemoveFolder: (folder: string) => ipcRenderer.invoke("remote-control:remove-folder", folder) as Promise<RemoteControlView>,
+  onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
+    const h = (_e: unknown, v: RemoteControlView) => cb(v);
+    ipcRenderer.on("remote-control:changed", h);
+    return () => { ipcRenderer.removeListener("remote-control:changed", h); };
+  },
   // Fires in every panel when a preference is changed anywhere — lets forms
   // (e.g. Settings → Agent Defaults) reflect a change made elsewhere live.
   /** The server's model list or the org's defaults moved (main/model-watch.ts). */

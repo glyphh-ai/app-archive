@@ -58,6 +58,10 @@ const remoteChats = new Map<string, RemoteChat>();
 /** Watching a run another surface started needs the server's run-stream broker
  *  (/api/threads/:id/active-run) — not on the fork yet. */
 const RUN_STREAM = false;
+/** A desktop app page streamed to the phone (the Apps tray, /ws/panel) — off:
+ *  it browsed as the member with the desktop's cookies (security review,
+ *  2026-09-30). The tray's code stays for a hardened return. */
+const STREAMED_PANELS = false;
 /** A session's LOCUS is an IMMUTABLE fact, persisted by session id: it is
  *  FOREVER a specific desktop (+ working folder). An old `cloud` entry on this
  *  device reads as no locus (v1 has no cloud workers). It NEVER flips. Only the
@@ -323,7 +327,7 @@ const AGENT_ROLES: RoleItem[] = [{ name: 'agent', label: 'Agent', modelId: null,
    session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
    `mode` field is still written as "code" for server compatibility, but nothing
    here branches on it. ────── */
-interface ThreadMeta { id: string; title: string; mode?: string; source?: { kind?: string; path?: string; machineId?: string } | null; createdAt: number; updatedAt: number; messageCount: number; }
+interface ThreadMeta { id: string; title: string; mode?: string; source?: { kind?: string; path?: string; machineId?: string; machineName?: string } | null; createdAt: number; updatedAt: number; messageCount: number; }
 interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
 
 /** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
@@ -412,11 +416,8 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
           <Icon name="link" />
           <span>Connections</span>
         </button>
-        {/* Apps — stream one of your installed apps FROM your attached desktop. */}
-        <button className="m-nav-item" onClick={onApps}>
-          <Icon name="grid" />
-          <span>Apps</span>
-        </button>
+        {/* Apps (a desktop app page streamed to the phone) is hidden: streamed
+            panels are off the remote surface (2026-09-30, security review). */}
       </nav>
 
       <div className="m-recents">
@@ -639,7 +640,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
         <div className="m-code-label">Desktops</div>
         <div className="m-desktops">
           {desktops.length === 0
-            ? <div className="m-list-note">No desktops connected</div>
+            ? <div className="m-list-note">{desktopSessions.orgOff() ? 'Remote control is off for your organization.' : 'No computer has remote control on'}</div>
             : desktops.map((d) => (
               <button key={d.id || d.name || d.app} className="m-desktop" data-status="connected" onClick={() => onOpenDesktop(d)}>
                 <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
@@ -3272,7 +3273,7 @@ function SelectorSheet({ open, section, onClose, roles, roleSel, setRoleSel, mod
                 <>
                   {/* A folder on a connected desktop — the existing picker tray. */}
                   {desktops.length === 0 && (
-                    <div className="m-list-note">No desktop is connected. Open the Glyphh desktop app and sign in — sessions run there.</div>
+                    <div className="m-list-note">{desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : "Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control."}</div>
                   )}
                   {desktops.length > 0 && (
                     <div className="m-sel-group">
@@ -3631,16 +3632,16 @@ function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMac
   const [newName, setNewName] = useState('');
   const load = (path?: string) => {
     setLoading(true); setErr('');
-    glyphh().attach.fsList(path)
+    glyphh().attach.fsList(path, machine ? { machineId: machine.id } : {})
       .then((r: FsListing) => { setListing(r); setLoading(false); })
-      .catch(() => { setErr('Could not read this machine’s folders — the desktop may need an update.'); setLoading(false); });
+      .catch(() => { setErr('Could not read this machine’s folders — grant a folder to remote control on it, or update the app.'); setLoading(false); });
   };
   useEffect(() => { if (machine) { setListing(null); setCreating(false); setNewName(''); load(); } }, [machine]);
   const cur = listing?.path;
   const dirs = (listing?.entries ?? []).filter((e) => e.dir);
   const createFolder = async () => {
     const name = newName.trim(); if (!name || !cur) return;
-    try { await glyphh().attach.dispatch('fs.mkdir', { path: cur, name }); setCreating(false); setNewName(''); load(cur); }
+    try { await glyphh().attach.dispatch('fs.mkdir', { path: cur, name }, machine ? { machineId: machine.id } : {}); setCreating(false); setNewName(''); load(cur); }
     catch { setErr('Could not create that folder.'); }
   };
   return createPortal(
@@ -3939,7 +3940,7 @@ function App() {
       // instead of re-deriving from the first message — otherwise a rename gets clobbered.
       const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
       const src = chatFor(id).source;
-      await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}) });
+      await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}), ...(src?.kind === 'local' && src.machineId ? { machineId: src.machineId } : {}) });
       const t = await desktopSessions.threads();
       setThreads(Array.isArray(t) ? t : []);
     } catch { /* offline / not-ready — the transcript stays local for now */ }
@@ -3995,7 +3996,7 @@ function App() {
       onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
         haptic();
         if (url) { window.open(url, '_blank', 'noopener'); return; }
-        if (!ref) return;
+        if (!ref || !STREAMED_PANELS) return;
         void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
           const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
           const u = a ? (a.prodUrl || a.config?.url || '') : '';
@@ -4090,7 +4091,7 @@ function App() {
     if (!session || chatFor(session.id).source?.kind !== 'local') {
       haptic();
       if (desktops[0]) { setFolderPick(desktops[0]); return; }
-      convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: 'Sessions run on your computer. Open the Glyphh desktop app and sign in, then pick a folder to work in.' }];
+      convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
       renderConvo();
       return;
     }
@@ -4186,6 +4187,13 @@ function App() {
     const r0 = roleList[0];
     const model = r0 ? (roleSel[r0.name] ?? r0.modelId ?? '') : '';
     const chat = chatFor(sess.id);   // full Code toolset (spaces are gone)
+    // The session's machine by NAME — its per-connection id changes on every
+    // reconnect, so the id is looked up fresh for each turn.
+    if (chat.source?.kind === 'local') {
+      const name = locusOf(sess.id)?.machineName || (threads ?? []).find((t) => t.id === sess!.id)?.source?.machineName || '';
+      const live = name ? desktops.find((d) => (d.name || d.app) === name) : undefined;
+      if (live) chat.source = { ...chat.source, machineId: live.id };
+    }
     const outcome = await runRemoteTurn(
       chat, prompt, () => {},
       {
@@ -4197,7 +4205,7 @@ function App() {
         onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
           haptic();
           if (url) { window.open(url, '_blank', 'noopener'); return; }
-          if (!ref) return;
+          if (!ref || !STREAMED_PANELS) return;
           void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
             const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
             const u = a ? (a.prodUrl || a.config?.url || '') : '';
@@ -4486,6 +4494,8 @@ function App() {
    *  open_browser carries the URL in its title/preview; open_app carries a slug we
    *  resolve against the user's apps. Deduped per run so it fires once. */
   const maybePushPanel = (runId: string, tool: { name: string; title?: string; url?: string }): void => {
+    // Streamed panels are off the remote surface (2026-09-30, security review).
+    if (!STREAMED_PANELS) return;
     if (trayApp) return;                                     // already showing something
     const key = `${runId}:${tool.name}`;
     if (pushedRunRef.current === key) return;

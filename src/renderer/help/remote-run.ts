@@ -468,6 +468,8 @@ export async function runRemoteTurn(
   try {
     run = client.run({
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
+      // The machine the session is bound to (remote control, 2026-09-30) — absent, the newest.
+      ...(isLocal && chat.source?.kind === "local" && chat.source.machineId ? { machineId: chat.source.machineId } : {}),
       prompt,
       threadId, // stable id → transcript + memory + WORKSPACE scope
       ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
