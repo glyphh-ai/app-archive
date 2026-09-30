@@ -4298,13 +4298,35 @@ function App() {
     const viewing = viewRef.current.screen === 'session' && viewRef.current.sid === sess.id && !document.hidden;
     let enabled = false; try { enabled = localStorage.getItem('yoNotifyInput') === '1'; } catch { /* */ }
     if (viewing || !enabled) return;
-    try {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const n = new Notification('Glyphh needs your input', { body: `${sess.title} — ${body}`.slice(0, 140), tag: `glyphh-input-${sess.id}` });
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const title = 'Glyphh needs your input';
+    const opts = { body: `${sess.title} — ${body}`.slice(0, 140), tag: `glyphh-input-${sess.id}`, data: { sessionId: sess.id } };
+    // Through the service worker when there is one: an installed Android PWA
+    // refuses `new Notification()`. Its click comes back as a message (below).
+    void (async () => {
+      try {
+        const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+        if (reg) { await reg.showNotification(title, opts); return; }
+        const n = new Notification(title, opts);
         n.onclick = () => { try { window.focus(); } catch { /* */ } openSession(sess); n.close(); };
-      }
-    } catch { /* */ }
+      } catch { /* */ }
+    })();
   };
+  // A notification tapped while the app was in the background: the service
+  // worker focuses this window and names the session to open.
+  const threadsRef = useRef(threads); threadsRef.current = threads;
+  const openSessionRef = useRef<(s: Recent) => void>(() => {});
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; sessionId?: string } | null;
+      if (d?.type !== 'glyphh-open-session' || !d.sessionId) return;
+      const t = (threadsRef.current ?? []).find((x) => x.id === d.sessionId);
+      if (t) openSessionRef.current(threadToRecent(t));
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, []);
 
   const comp: CompProps = {
     onPlus: () => { haptic(); setAttach(true); },
@@ -4343,6 +4365,12 @@ function App() {
     }
     return undefined;
   })();
+
+  // The PWA's service worker (web/pwa/sw.js): network-first with an offline
+  // shell — what makes the app installable. Restored 2026-09-30.
+  useEffect(() => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+  }, []);
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
   // Also tint Safari's chrome to the live theme (kills the grey bottom-bar band).
@@ -4445,6 +4473,7 @@ function App() {
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
   const openSession = (s: Recent) => { haptic(); setSession(s); setScreen('session'); setDrawer(false); loadSession(s); };
+  openSessionRef.current = openSession;
   const openRecent = (r: Recent) => openSession(r);
   const allSessionsList = () => { haptic(); setScreen('list'); setDrawer(false); };
   const openConnections = () => { haptic(); setSettingsSub('connections'); setSettings(true); };
