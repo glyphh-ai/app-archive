@@ -451,7 +451,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, modelSummary, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -510,10 +510,11 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" {...NOFILL} />
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
-          {/* Every session is a Code session now: the permission pill + the
-              loop/model chip beside it (the most-capable composer). */}
+          {/* The permission pill. The model is picked at the top of the screen —
+              the new-chat header, or ⋮ → Change model — never twice (his report,
+              2026-09-30: "the model selection is already at the top of the
+              screen why here also?"). */}
           <button className={'m-tool-pill m-pill-cfg' + (permId === 'auto' ? ' m-pill-auto' : '')} onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
-          <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{modelSummary || 'Model'}</span></button>
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening || srvLive ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           <button className="m-tool-mic m-tool-mic-caret" aria-label="Voice options" onClick={() => { haptic(); setMicMenu((v) => !v); }}><Icon name="chevron" /></button>
