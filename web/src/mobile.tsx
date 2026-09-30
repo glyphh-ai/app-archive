@@ -3355,7 +3355,16 @@ function PermissionSheet({ open, onClose, perm, setPerm }: {
   onClose: () => void;
   perm: string; setPerm: (v: string) => void;
 }) {
+  // AUTO IS CONFIRMED, never just picked (his order, 2026-09-30): from the
+  // phone it runs on the member's computer with no one there to approve.
+  const [confirmAuto, setConfirmAuto] = useState(false);
+  const pick = (id: string) => {
+    haptic();
+    if (id === 'auto' && perm !== 'auto') { setConfirmAuto(true); return; }
+    setPerm(id); onClose();
+  };
   return (
+    <>
     <div className="m-sel-overlay" data-open={open ? 'true' : 'false'}>
       <div className="m-sel-scrim" onClick={onClose} />
       <div className="m-sel m-sel-fit" role="dialog" aria-modal="true">
@@ -3366,10 +3375,34 @@ function PermissionSheet({ open, onClose, perm, setPerm }: {
         </div>
         <div className="m-sel-body">
           <div className="m-sel-note">How much can Glyphh do on its own before it checks with you?</div>
-          <OptionList items={PERMS} selected={perm} onPick={(id) => { haptic(); setPerm(id); onClose(); }} />
+          <OptionList items={PERMS} selected={perm} onPick={pick} />
         </div>
       </div>
     </div>
+    {confirmAuto && createPortal(
+      <div className="m-prompt-overlay" role="alertdialog" aria-modal="true" aria-labelledby="m-auto-title">
+        <div className="m-prompt-scrim" onClick={() => setConfirmAuto(false)} />
+        <div className="m-prompt">
+          <div className="m-prompt-grip" />
+          <div className="m-prompt-kind" data-kind="dangerous">Auto mode</div>
+          <div className="m-prompt-title" id="m-auto-title">Run everything without asking?</div>
+          <div className="m-prompt-detail">
+            In Auto, Glyphh works on your computer with no approvals: it can create, edit and delete files and run commands in this session&rsquo;s folder, and use your connected accounts, without checking with you first.{'\n\n'}
+            Nobody is at the computer to stop it. Only turn Auto on for work you would let run unattended, and switch back when it&rsquo;s done.
+          </div>
+          <div className="m-prompt-actions">
+            <button className="m-prompt-btn" onClick={() => { haptic(); setConfirmAuto(false); }}>Cancel</button>
+            <button className="m-prompt-btn m-prompt-primary" onClick={() => {
+              haptic(); setConfirmAuto(false);
+              try { localStorage.setItem('yoPermAutoAck', '1'); } catch { /* private mode — the choice still stands for now */ }
+              setPerm('auto'); onClose();
+            }}>Turn on Auto</button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }
 
@@ -3883,7 +3916,15 @@ function App() {
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
   // Permission mode persists — a refresh must NOT silently revert the user's
   // choice (e.g. Auto) back to the default and start prompting again.
-  const [perm, setPermState] = useState(() => { try { const v = localStorage.getItem('yoPerm') || 'acceptEdits'; return v === 'bypass' ? 'auto' : v; } catch { return 'acceptEdits'; } });
+  // A saved Auto only stands if it was confirmed through the warning (Auto
+  // chosen before the warning existed comes back as Accept edits).
+  const [perm, setPermState] = useState(() => {
+    try {
+      const raw = localStorage.getItem('yoPerm') || 'acceptEdits';
+      const v = raw === 'bypass' ? 'auto' : raw;
+      return v === 'auto' && localStorage.getItem('yoPermAutoAck') !== '1' ? 'acceptEdits' : v;
+    } catch { return 'acceptEdits'; }
+  });
   const setPerm = (v: string) => { setPermState(v); try { localStorage.setItem('yoPerm', v); } catch { /* */ } };
   const [search, setSearch] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
