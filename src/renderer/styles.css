@@ -21289,6 +21289,7 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #echo-dock-layer { left: var(--rail-w); }
 #drag-overlay, #grid-handles { left: var(--rail-w); }
 .wb-session-search { display: flex; align-items: center; gap: 6px; }
+.wb-session-search .repo-drop-search { flex: 1; min-width: 0; width: auto; }
 .wb-session-search input { flex: 1; min-width: 0; }
 
 
@@ -21395,7 +21396,12 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 /* The recents loop filter: wide enough for a name, a mark and a check on one line. */
 .code-menu.loop-filter-menu { min-width: 220px; }
 .code-menu.loop-filter-menu .code-menu-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.code-menu.loop-filter-menu .code-menu-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.code-menu.loop-filter-menu .code-menu-item .loop-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.code-menu.loop-filter-menu .code-menu-item { justify-content: flex-start; text-align: left; }
+.code-menu.loop-filter-menu .code-sess-mark { flex: none; width: 16px; height: 16px; margin: 0 4px 0 0; }
+.code-menu.loop-filter-menu .code-sess-mark img { width: 16px; height: 16px; }
+.code-sess-mark img.cli-mark-glyphh-cli { border-radius: 0; }
+.code-menu.loop-filter-menu .menu-check { flex: none; display: inline-flex; }
 .code-menu.loop-filter-menu .menu-check { flex: none; }
 
 /* THE MEMORY BROWSER (2026-09-20): a knowledge base's rows. */

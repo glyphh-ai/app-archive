@@ -5053,6 +5053,7 @@ function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_
     b.className = "code-menu-item" + (on ? " on" : "");
     if (mark) b.appendChild(mark);
     const span = document.createElement("span");
+    span.className = "loop-label";
     span.textContent = label;
     b.appendChild(span);
     if (on) {
@@ -5576,24 +5577,24 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
   // The same loop filter the rail has, to the right of the search (his order,
-  // 2026-09-16, restored 2026-09-30) — in the CLI window, over its CLI loops.
+  // 2026-09-16, restored 2026-09-30) — in every agent window's recents. The CLI
+  // window offers its CLI loops; the Glyphh agent's offers them all.
   const CLI_LOOP_KEYS = new Set(LOOP_OPTIONS.map((o) => o.key).filter((k) => k !== "glyphh"));
+  const menuKeys: ReadonlySet<string> = opts.pool ? CLI_LOOP_KEYS : new Set(LOOP_OPTIONS.map((o) => o.key));
   const filterBtn = document.createElement("button");
-  if (opts.pool) {
-    filterBtn.type = "button";
-    filterBtn.className = "rail-filter-btn" + (loopFilter.some((k) => CLI_LOOP_KEYS.has(k)) ? " active" : "");
-    filterBtn.title = "Filter by loop";
-    filterBtn.innerHTML = FILTER_SVG;
-    filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn, [...CLI_LOOP_KEYS]); });
-    searchWrap.appendChild(filterBtn);
-    const onFilter = (): void => {
-      if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
-      filterBtn.classList.toggle("active", loopFilter.some((k) => CLI_LOOP_KEYS.has(k)));
-      paint();
-    };
-    document.addEventListener("glyphh:loop-filter-changed", onFilter);
-  }
+  filterBtn.type = "button";
+  filterBtn.className = "rail-filter-btn" + (loopFilter.some((k) => menuKeys.has(k)) ? " active" : "");
+  filterBtn.title = "Filter by loop";
+  filterBtn.innerHTML = FILTER_SVG;
+  filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn, [...menuKeys]); });
+  searchWrap.appendChild(filterBtn);
+  const onFilter = (): void => {
+    if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
+    filterBtn.classList.toggle("active", loopFilter.some((k) => menuKeys.has(k)));
+    paint();
+  };
+  document.addEventListener("glyphh:loop-filter-changed", onFilter);
   // THIS DROPDOWN'S OWN TOGGLE (his order, 2026-09-29: "the agent recents
   // toggle should not toggle the entire app's list, only its recents list").
   // It OPENS on the active type, then lives and dies with the menu: looking
@@ -5631,7 +5632,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
     const q = menuQuery.trim().toLowerCase();
     const visible = pool
       .filter((x) => !!opts.pool || x.mode === menuTab)
-      .filter((x) => !opts.pool || loopFilterKeeps(x, CLI_LOOP_KEYS))
+      .filter((x) => loopFilterKeeps(x, menuKeys))
       .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
