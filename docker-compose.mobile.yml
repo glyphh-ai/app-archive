@@ -1,0 +1,32 @@
+# mobile.glyphh.ai, LOCALLY — the same image the Fly app runs (Dockerfile), wired
+# to the local server stack (server/glyphh docker compose, the child on :4000)
+# instead of api.glyphh.ai.
+#
+#   scripts/mobile-local.sh        vendors ../sdk, then builds and starts this
+#   http://localhost:3002          the mobile app (a phone on the LAN: http://<this-mac>:3002)
+#
+# Same origin on purpose: serve.mjs forwards /api/* to the child (LOCAL_RUNTIME_PROXY),
+# so the page, a phone on the LAN and a tunnel all reach the one server the desktop
+# attaches to. The desktop must attach to that same server — launch it with
+# GLYPHH_SERVER_URL=http://localhost:4000 — or the phone finds no machine.
+name: glyphh-mobile
+
+services:
+  mobile:
+    build: .
+    image: glyphh-mobile:local
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: "3002"
+      GLYPHH_MOBILE_ONLY: "1"
+      LOCAL_RUNTIME_PROXY: "1"
+      API_TARGET: "http://host.docker.internal:4000"
+      # The SDK's API base: the page's own origin, so every call rides the proxy.
+      GLYPHH_SERVER_URL: "${MOBILE_PUBLIC_URL:-http://localhost:3002}"
+      GLYPHH_WEB_URL: "${MOBILE_PUBLIC_URL:-http://localhost:3002}"
+      # Public (it ships in fly.toml); the child's GOOGLE_CLIENT_IDS accepts it.
+      GLYPHH_GOOGLE_CLIENT_ID: "247280496034-equmvbu3j8qpd5karj7e22f71v6flm1s.apps.googleusercontent.com"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
