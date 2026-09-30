@@ -743,9 +743,20 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "rpa_screenshot",
-    "Capture the current frame of an open app panel as a PNG data URL.",
+    "See an open app panel: returns a screenshot of its current frame as an image.",
     { app: z.string() },
-    async (a) => via("rpa.screenshot", a),
+    // An IMAGE, not a data URL in text (his audit, 2026-09-29: the base64 text
+    // of one screenshot was a 96,667-token call that showed the model nothing).
+    async (a) => {
+      try {
+        const { dataUrl } = await dispatchRelayMethod("rpa.screenshot", a) as { dataUrl: string };
+        const m = /^data:(image\/[a-z]+);base64,(.+)$/.exec(dataUrl);
+        if (!m) return { content: [{ type: "text" as const, text: "Error: the panel returned no image" }], isError: true };
+        return { content: [{ type: "text" as const, text: `Screenshot of ${a.app}` }, { type: "image" as const, data: m[2], mimeType: m[1] }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+      }
+    },
   );
   mcp.tool(
     "rpa_goto",
