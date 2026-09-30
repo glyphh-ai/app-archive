@@ -5013,6 +5013,84 @@ function primeVendorMarks(): void {
       .webIconFetch?.(url).then((d) => { if (d) { vendorMarks[cli] = d; renderRailSessions(); } }).catch(() => {});
   }
 }
+/** THE LOOP FILTER IS BACK (his order, 2026-09-30: "the left rail to the right
+ *  of the search box needs the filter back for the loops re: Glyphh, Glyphh
+ *  CLI, Codex, Claude, etc. The same for the recents in the agent window").
+ *  One persisted choice; empty = every loop. "glyphh" is the desktop agent,
+ *  "glyphh-cli" the Glyphh CLI. */
+const LOOP_FILTER_PREF = "recentsLoopFilter";
+const LOOP_OPTIONS: Array<{ key: string; name: string }> = [
+  { key: "glyphh", name: "Glyphh" }, { key: "glyphh-cli", name: "Glyphh CLI" },
+  { key: "claude", name: "Claude" }, { key: "codex", name: "Codex" }, { key: "gemini", name: "Gemini" },
+  { key: "copilot", name: "Copilot" }, { key: "cursor", name: "Cursor" },
+];
+let loopFilter: string[] = [];
+function sessLoopKey(sess: RailSession): string {
+  return sess.origin !== "cli" ? "glyphh" : sess.cli === GLYPHH_LOOP ? "glyphh-cli" : sess.cli;
+}
+/** Does the filter keep this row? `among` is the loops the list can hold: a
+ *  filter naming none of them is no filter there. */
+function loopFilterKeeps(sess: RailSession, among?: ReadonlySet<string>): boolean {
+  const on = among ? loopFilter.filter((k) => among.has(k)) : loopFilter;
+  return !on.length || on.includes(sessLoopKey(sess));
+}
+function setLoopFilter(keys: string[]): void {
+  loopFilter = keys;
+  void window.glyphh.setPreference?.(LOOP_FILTER_PREF, keys);
+  el("recent-sessions-filter")?.classList.toggle("active", keys.length > 0);
+  renderRailSessions();
+  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
+}
+const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
+let loopFilterMenu: HTMLDivElement | null = null;
+function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_OPTIONS.map((o) => o.key)): void {
+  loopFilterMenu?.remove();
+  const m = document.createElement("div");
+  m.className = "code-menu loop-filter-menu";
+  const row = (label: string, on: boolean, mark: HTMLElement | null, onClick: () => void): void => {
+    const b = document.createElement("button");
+    b.className = "code-menu-item" + (on ? " on" : "");
+    if (mark) b.appendChild(mark);
+    const span = document.createElement("span");
+    span.textContent = label;
+    b.appendChild(span);
+    if (on) {
+      const check = document.createElement("span");
+      check.className = "menu-check";
+      check.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+      b.appendChild(check);
+    }
+    b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openLoopFilterMenu(anchor, keys); });
+    m.appendChild(b);
+  };
+  const shown = LOOP_OPTIONS.filter((o) => keys.includes(o.key));
+  const active = loopFilter.filter((k) => keys.includes(k));
+  row("All loops", active.length === 0, null, () => setLoopFilter(loopFilter.filter((k) => !keys.includes(k))));
+  for (const o of shown) {
+    const on = loopFilter.includes(o.key);
+    const probe: RailSession = o.key === "glyphh"
+      ? { id: "", cli: GLYPHH_LOOP, title: "", cwd: "", mtime: 0, mode: "code" }
+      : { id: "", cli: o.key === "glyphh-cli" ? GLYPHH_LOOP : o.key, title: "", cwd: "", mtime: 0, mode: "code", origin: "cli" };
+    const mark = sessMarkEl(probe);
+    mark.classList.add("loop-mark");
+    row(o.name, on, mark, () => setLoopFilter(on ? loopFilter.filter((x) => x !== o.key) : [...loopFilter, o.key]));
+  }
+  const r = anchor.getBoundingClientRect();
+  m.style.position = "fixed";
+  m.style.left = `${r.left}px`;
+  m.style.top = `${r.bottom + 4}px`;
+  document.body.appendChild(m);
+  loopFilterMenu = m;
+  const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
+  document.addEventListener("mousedown", close, true);
+}
+void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => {
+  if (!Array.isArray(v)) return;
+  loopFilter = v.map(String);
+  el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0);
+  renderRailSessions();
+}).catch(() => {});
+
 /** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
   const mark = document.createElement("span");
@@ -5422,6 +5500,7 @@ function renderRailSessions(): void {
   // was not.
   const items = [...railSessions, ...railCliSessions]
     .filter((x) => x.mode === typeTab)
+    .filter((x) => loopFilterKeeps(x))
     .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
   console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
   host.textContent = "";
@@ -5488,6 +5567,25 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
+  // The same loop filter the rail has, to the right of the search (his order,
+  // 2026-09-16, restored 2026-09-30) — in the CLI window, over its CLI loops.
+  const CLI_LOOP_KEYS = new Set(LOOP_OPTIONS.map((o) => o.key).filter((k) => k !== "glyphh"));
+  const filterBtn = document.createElement("button");
+  if (opts.pool) {
+    filterBtn.type = "button";
+    filterBtn.className = "rail-filter-btn" + (loopFilter.some((k) => CLI_LOOP_KEYS.has(k)) ? " active" : "");
+    filterBtn.title = "Filter by loop";
+    filterBtn.innerHTML = FILTER_SVG;
+    filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn, [...CLI_LOOP_KEYS]); });
+    searchWrap.appendChild(filterBtn);
+    const onFilter = (): void => {
+      if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
+      filterBtn.classList.toggle("active", loopFilter.some((k) => CLI_LOOP_KEYS.has(k)));
+      paint();
+    };
+    document.addEventListener("glyphh:loop-filter-changed", onFilter);
+  }
   // THIS DROPDOWN'S OWN TOGGLE (his order, 2026-09-29: "the agent recents
   // toggle should not toggle the entire app's list, only its recents list").
   // It OPENS on the active type, then lives and dies with the menu: looking
@@ -5525,6 +5623,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
     const q = menuQuery.trim().toLowerCase();
     const visible = pool
       .filter((x) => !!opts.pool || x.mode === menuTab)
+      .filter((x) => !opts.pool || loopFilterKeeps(x, CLI_LOOP_KEYS))
       .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
@@ -5900,6 +5999,8 @@ function initRailApps(): void {
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
+  el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(e.currentTarget as HTMLElement); });
+  el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0);
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initRecentsVsplit();
