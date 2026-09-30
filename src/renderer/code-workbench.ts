@@ -6649,6 +6649,18 @@ async function init(): Promise<void> {
         }
       });
     };
+    /** A CLI window re-targeted to another CLI (its recents, his order
+     *  2026-09-30): the card's identity follows, so its title, its parking key
+     *  and a saved wall all name the CLI it now runs. */
+    (window as unknown as { __wbRetargetAgentCard?: (slot: TermSlot, id: string, name: string) => void }).__wbRetargetAgentCard = (slot, id, name) => {
+      const mine = openList.find((x) => x.toolSlot === slot);
+      if (!mine) return;
+      mine.tile.slug = `agent:${id}`;
+      mine.tile.name = name;
+      const head = mine.card?.querySelector(".echo-card-head span");
+      if (head) head.textContent = name;
+      scheduleWallSave();
+    };
     /** NEW SESSION IN *THIS* SLOT (his report, 2026-09-23): the open takes this
      *  card's cell and the old pty dies — a new session is not a parked one. */
     (window as unknown as { __wbAgentCliFreshInSlot?: (slot: TermSlot, id: string) => void }).__wbAgentCliFreshInSlot = (slot, id) => {
@@ -9228,11 +9240,20 @@ async function init(): Promise<void> {
   /** Swap the session running in THIS card: main composes the CLI's resume
    *  line, then the slot's active terminal respawns with it — the card, its
    *  geometry and its place in the layout all stay put. */
-  async function resumeHere(hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string): Promise<void> {
-    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: { name: string; install: string; login: string; note?: string } }> } })
-      .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light: appIsLight(), ...(slot.cwd ? { cwd: slot.cwd } : {}) });
+  async function resumeHere(hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string, sessionCwd?: string): Promise<void> {
+    const cwd = sessionCwd || slot.cwd;
+    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; error?: string; missing?: { name: string; install: string; login: string; note?: string } }> } })
+      .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light: appIsLight(), ...(cwd ? { cwd } : {}) });
     const cmd = r?.ok ? r.command : undefined;
     if (!cmd) { console.warn("[agents] resume:", r?.error ?? "no command composed"); return; }
+    // ANOTHER CLI'S SESSION RE-TARGETS THIS WINDOW (his order, 2026-09-30:
+    // "recents in the cli agent panel should not open a new panel, it should
+    // re-target the current window"): the card becomes that CLI's, in place.
+    if (slot.agent && slot.agent.id !== agentId) {
+      slot.agent = { id: agentId, name: r?.name || agentId };
+      (window as unknown as { __wbRetargetAgentCard?: (slot: TermSlot, id: string, name: string) => void }).__wbRetargetAgentCard?.(slot, agentId, slot.agent.name);
+    }
+    if (r?.cwd) slot.cwd = r.cwd;
     const old = slot.terminals[slot.activeIdx];
     if (old) { try { killTerminal(old); } catch { /* already gone */ } }
     slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };
@@ -9273,21 +9294,17 @@ async function init(): Promise<void> {
       (ev) => {
         // THE recents menu — help/code.ts's openSessionsDropdown — over EVERY
         // CLI's sessions (his order, 2026-09-30: the CLI window's recents "has
-        // all the cli types in it"). A pick resumes here when it is this CLI's,
-        // else opens in that CLI's own window.
+        // all the cli types in it"). Any pick resumes IN THIS WINDOW, which
+        // becomes that session's CLI when it is another one.
         const anchor = ev.currentTarget as HTMLElement;
         const w = window as unknown as {
           __glyphhCliSessions?: () => Promise<Array<{ id: string; cli: string; title: string; cwd: string; mtime: number; mode: "work" | "code"; origin?: "cli" }>>;
           __glyphhSessionsMenu?: (a: HTMLElement, o: { pool?: unknown[]; onPick: (s: { id: string; cli?: string; cwd?: string }) => void }) => void;
-          __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void;
         };
         void (w.__glyphhCliSessions?.() ?? Promise.resolve([])).then((pool) => {
           w.__glyphhSessionsMenu?.(anchor, {
             pool,
-            onPick: (sess) => {
-              if (!sess.cli || sess.cli === agent.id) { void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id); return; }
-              w.__wbOpenAgentCli?.(sess.cli, undefined, { resumeId: sess.id, ...(sess.cwd ? { cwd: sess.cwd } : {}) });
-            },
+            onPick: (sess) => { void resumeHere(hostEl, slot, tabsEl, sess.cli || agent.id, sess.id, sess.cwd); },
           });
         });
       });
