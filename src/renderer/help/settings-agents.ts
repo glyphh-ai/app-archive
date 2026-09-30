@@ -169,7 +169,7 @@ function fillModels(model: HTMLSelectElement, keep: string): void {
     return o;
   };
   model.appendChild(opt(SAME_AS_MAIN, "Same as the main agent"));
-  for (const m of models) model.appendChild(opt(m.id, `${m.name}${m.providerSlug && m.providerSlug !== "auto" ? ` — ${m.providerSlug}` : ""}`));
+  for (const m of models) model.appendChild(opt(m.id, m.name));
   model.value = models.some((m) => m.id === keep) ? keep : SAME_AS_MAIN;
 }
 

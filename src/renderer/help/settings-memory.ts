@@ -221,7 +221,7 @@ async function wireMemoryModelChip(chip: HTMLButtonElement): Promise<void> {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "code-menu-item" + (m.id === current ? " active" : "");
-      b.textContent = m.providerSlug ? `${m.name} — ${m.providerSlug}` : m.name;
+      b.textContent = m.name;
       b.addEventListener("click", async () => {
         close();
         const res = await g.embeddingsConfigSet?.({ model: m.id });

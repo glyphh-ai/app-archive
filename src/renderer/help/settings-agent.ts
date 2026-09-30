@@ -72,7 +72,7 @@ export async function loadAgentDefaults(): Promise<void> {
   }
   modelSel.disabled = false;
   modelSel.innerHTML = [`<option value="">${seededName ? `My team's default — ${seededName}` : "My team's default"}</option>`]
-    .concat(models.map((m) => `<option value="${m.id}">${m.name}${m.providerSlug && m.providerSlug !== "auto" ? ` — ${m.providerSlug}` : ""}</option>`))
+    .concat(models.map((m) => `<option value="${m.id}">${m.name}</option>`))
     .join("");
   const want = String(saved ?? "");
   modelSel.value = models.some((m) => m.id === want) ? want : "";
@@ -109,7 +109,7 @@ export async function loadEmbeddingsSettings(): Promise<void> {
   }
   modelSel.disabled = false;
   modelSel.innerHTML = [`<option value="">Off</option>`]
-    .concat(models.map((m) => `<option value="${m.id}"${m.id === cfg.model ? " selected" : ""}>${m.name}${m.providerSlug ? ` — ${m.providerSlug}` : ""}</option>`))
+    .concat(models.map((m) => `<option value="${m.id}"${m.id === cfg.model ? " selected" : ""}>${m.name}</option>`))
     .join("");
   if (desc) desc.textContent = "Powers memory, search and app data. Embedding runs on the Glyphh gateway with your own key.";
   modelSel.onchange = () => { void g.embeddingsConfigSet?.({ model: modelSel.value }); };
