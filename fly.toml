@@ -1,19 +1,23 @@
-# app-web on Fly — the SDK-direct web target (future app.glyphh.ai).
+# mobile.glyphh.ai on Fly — the mobile web app (web/src/mobile.tsx), SDK-direct.
 #
 # Deploys go through GitHub Actions (.github/workflows/deploy-web.yml) — never a
-# local `fly deploy`. Naming convention: Fly apps are <org-slug>-<folder> —
-# glyphh-ai-app, mirroring the GitHub repo (glyphh-ai/app).
+# local `fly deploy`. Naming convention: Fly apps are <org-slug>-<surface>.
 #
-# [env] is RUNTIME config: serve.mjs reads process.env (over web/.env, which is
-# not in the image) and injects these as window.__GLYPHH_* before the bridge —
-# the SDK talks DIRECTLY to the control-plane API, no proxy here.
+# [env] is RUNTIME config: serve.mjs reads process.env and injects these as
+# window.__GLYPHH_* before the app boots — the SDK talks DIRECTLY to the API
+# (the same server the desktop attaches to), no proxy here. GLYPHH_MOBILE_ONLY
+# makes every page the mobile app (its own sign-in included).
+#
+# Turns run on the member's DESKTOP over the attach relay (v1, 2026-09-30); there
+# are no cloud workers yet.
 
-app = "glyphh-ai-platform"
+app = "glyphh-ai-mobile"
 primary_region = "iad"
 
 [env]
   PORT = "3002"
-  GLYPHH_SERVER_URL = "https://glyphh-ai-server.fly.dev"
+  GLYPHH_MOBILE_ONLY = "1"
+  GLYPHH_SERVER_URL = "https://api.glyphh.ai"
   GLYPHH_GOOGLE_CLIENT_ID = "247280496034-equmvbu3j8qpd5karj7e22f71v6flm1s.apps.googleusercontent.com"
   GLYPHH_WEB_URL = "https://glyphh.ai"
 
@@ -22,7 +26,7 @@ primary_region = "iad"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  # App front door: keep one machine warm — no cold starts at login.
+  # Front door: keep one machine warm — no cold starts at sign-in.
   min_machines_running = 1
 
 [[vm]]
@@ -33,7 +37,7 @@ primary_region = "iad"
   [checks.http]
     type = "http"
     port = 3002
-    # "/" serves the login shell (index.html) with a 200.
+    # "/" serves the mobile shell with a 200.
     path = "/"
     interval = "30s"
     timeout = "5s"

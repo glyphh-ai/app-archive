@@ -1,4 +1,4 @@
-# app-web on Fly — the WEB TARGET ONLY (glyphh-ai-app / future app.glyphh.ai).
+# mobile.glyphh.ai on Fly — the MOBILE WEB APP ONLY (glyphh-ai-mobile).
 #
 # Deploys go through GitHub Actions (.github/workflows/deploy-web.yml) — never a
 # local `fly deploy`. The workflow vendors the `file:../sdk` dependency into
@@ -6,7 +6,7 @@
 # sibling ../sdk checkout doesn't exist inside the Docker build context. A local
 # `docker build` without that vendor step fails on the COPY below — expected.
 #
-# Runtime is a static server: `node web/serve.mjs` serves prebuilt dist/renderer,
+# Runtime is a static server: `node web/serve.mjs` serves the prebuilt mobile shell,
 # injecting window.__GLYPHH_* config (from env — fly.toml [env]) + the SDK bridge
 # into HTML. No web/.env in the image; process.env wins in serve.mjs.
 
@@ -26,7 +26,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
-RUN npm run build:web
+# The mobile bundle only (plus the brand art and fonts it references) — the
+# desktop renderer's web shell is not part of this target.
+RUN npm run build:mobile
 
 # ── run ───────────────────────────────────────────────────────────────────────
 # Lean: only serve.mjs + the built renderer. serve.mjs resolves ../dist/renderer

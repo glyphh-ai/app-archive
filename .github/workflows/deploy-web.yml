@@ -1,7 +1,7 @@
-name: Deploy app-web
+name: Deploy mobile
 
-# Deploys the WEB TARGET ONLY (web/serve.mjs + dist/renderer) to Fly as
-# glyphh-ai-platform (app-web IS the platform). The check (test:web + build:web) runs HERE before any deploy,
+# Deploys the MOBILE WEB APP (web/serve.mjs + the mobile bundle) to Fly as
+# glyphh-ai-mobile → mobile.glyphh.ai. The check (test:web + build:mobile) runs HERE before any deploy,
 # so a broken build fails with readable logs instead of inside a remote build.
 #
 # The `@glyphh/sdk: file:../sdk` dependency is a sibling checkout that exists
@@ -63,7 +63,7 @@ jobs:
       # target needs no native desktop modules.
       - run: npm ci --ignore-scripts
       - run: npm run test:web
-      - run: npm run build:web
+      - run: npm run build:mobile
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 

@@ -23,7 +23,7 @@ import {
 // import). It reads the SDK off window.glyphhSdk (desktop shape) and drives the
 // exact provision → poll-ready → harness.start streaming path. The renderer-only
 // LOCAL path lives in code.ts, not here, so nothing desktop-specific is pulled in.
-import { runRemoteTurn, ensureRuntime, answerPending, attachToActiveRun,
+import { runRemoteTurn, answerPending, attachToActiveRun,
   type RemoteChat, type RemotePermission, type RemoteApprovalRequest, type RemoteAskRequest, type AttachHandle } from '../../src/renderer/help/remote-run';
 // The app's real working indicator — the tumbling wireframe cube + typed phrase.
 // Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
@@ -36,6 +36,9 @@ import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize,
 // panel-stream.ts — see mobile-panel.ts for the /ws/panel + WebRTC + input port).
 import { mountMobilePanel, type MobilePanelHandle, type PanelState } from './mobile-panel';
 import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
+// The chat list lives on the member's desktop (v1: no server thread store, no
+// cloud worker) — read and written over the attach socket.
+import { desktopSessions } from './desktop-sessions';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -52,12 +55,16 @@ const NOFILL = { "data-1p-ignore": true, "data-lpignore": "true", "data-bwignore
 /** Per-thread runtime binding cache. "Committed" = the thread has a live runtime
  *  (url+token). Chats are cloud: the pod is provisioned once per thread, reused. */
 const remoteChats = new Map<string, RemoteChat>();
-/** A session's LOCUS is an IMMUTABLE fact, persisted by session id: it is FOREVER
- *  cloud or FOREVER a specific desktop (+ working folder). It NEVER flips. Only the
+/** Watching a run another surface started needs the server's run-stream broker
+ *  (/api/threads/:id/active-run) — not on the fork yet. */
+const RUN_STREAM = false;
+/** A session's LOCUS is an IMMUTABLE fact, persisted by session id: it is
+ *  FOREVER a specific desktop (+ working folder). An old `cloud` entry on this
+ *  device reads as no locus (v1 has no cloud workers). It NEVER flips. Only the
  *  connection STATUS (alive/idle) is dynamic and derived separately. The machine is
  *  keyed by NAME (its per-connection id changes on every reconnect — keying on that
  *  caused the flicker). */
-type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string } | { kind: 'cloud'; repo?: string };
+type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string };
 const LOCUS_KEY = 'yoSources';
 function loadLocus(): Record<string, SavedLocus> {
   try { return JSON.parse(localStorage.getItem(LOCUS_KEY) || '{}'); } catch { return {}; }
@@ -65,11 +72,6 @@ function loadLocus(): Record<string, SavedLocus> {
 function locusOf(id: string): SavedLocus | undefined { return loadLocus()[id]; }
 function saveLocus(id: string, l: SavedLocus): void {
   try { const all = loadLocus(); if (all[id]) return; all[id] = l; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } catch { /* */ }
-}
-/** Set the locus BEFORE the first send, when it is still a choice — saveLocus
- *  refuses to overwrite (the locus is immutable once a session has run). */
-function replaceLocus(id: string, l: SavedLocus): void {
-  try { const all = loadLocus(); all[id] = l; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } catch { /* */ }
 }
 function forgetLocus(id: string): void {
   try { const all = loadLocus(); if (all[id]) { delete all[id]; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } } catch { /* */ }
@@ -81,10 +83,6 @@ function chatFor(id: string): RemoteChat {
     c = { id, mode: 'code' };
     const l = locusOf(id);
     if (l?.kind === 'local') c.source = { kind: 'local', ...(l.machineId ? { machineId: l.machineId } : {}), path: l.path };
-    // A cloud session bound to a GitHub repo — the pod clones it and the agent
-    // works IN it (remote-run forwards `repo`); restored here so a reload keeps
-    // the working folder the user picked.
-    else if (l?.kind === 'cloud' && l.repo) c.source = { kind: 'cloud-repo', repo: l.repo };
     remoteChats.set(id, c);
   }
   return c;
@@ -303,10 +301,9 @@ function useLongPress(cb?: () => void, ms = 440) {
   };
 }
 
-/* ── Loops / models / permissions — real SDK data (glyphh().loops, .models).
-   A loop declares role slots (Planner/Builder/…); each role carries its allowed
-   model `choices` and the currently-resolved `modelId`. ────────────────────── */
-interface LoopItem { id: string; slug: string; name: string; description?: string; builtIn?: boolean; }
+/* ── Models / permissions — real SDK data (glyphh().models). There is ONE loop
+   (2026-09-28), so there is one role — the agent — and its choices are the
+   member's available models. ────────────────────────────────────────────── */
 interface ModelChoice { id: string; name: string; providerSlug?: string; modality?: string; }
 interface RoleItem { name: string; label?: string; description?: string; modality?: string; modelId: string | null; choices: ModelChoice[]; }
 const MODEL_TOP_N = 5;
@@ -319,12 +316,10 @@ const PERMS: { id: string; name: string; desc: string }[] = [
 ];
 /** A model id may be provider-qualified ("anthropic::claude-opus-4-8"); show the tail. */
 function shortModelId(id: string): string { const i = id.indexOf('::'); return i >= 0 ? id.slice(i + 2) : id; }
-/** Default loop: the built-in 'default', else any built-in, else the first. */
-function defaultLoopSlug(loops: LoopItem[]): string {
-  return loops.find((l) => l.slug === 'default')?.slug ?? loops.find((l) => l.builtIn)?.slug ?? loops[0]?.slug ?? '';
-}
+/** The one loop's one role: the model pick falls back to the full available pool. */
+const AGENT_ROLES: RoleItem[] = [{ name: 'agent', label: 'Agent', modelId: null, choices: [] }];
 
-/* ── Sessions — real SDK data (glyphh().sessions.threads()). One thread = one
+/* ── Sessions — real SDK data (desktopSessions.threads()). One thread = one
    session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
    `mode` field is still written as "code" for server compatibility, but nothing
    here branches on it. ────── */
@@ -412,11 +407,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
       {/* Connections — the one rail destination (opens Settings → Connections),
           directly under New Session and above Recents. */}
       <nav className="m-rail-nav">
-        {/* Artifacts first — the desktop rail's order (Artifacts → Connections → Apps). */}
-        <button className="m-nav-item" onClick={onArtifacts}>
-          <Icon name="filedoc" />
-          <span>Artifacts</span>
-        </button>
+        {/* Artifacts is hidden: the server has no /api/files (2026-09-30). */}
         <button className="m-nav-item" onClick={onConnections}>
           <Icon name="link" />
           <span>Connections</span>
@@ -459,7 +450,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, loopName, modelSummary, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, modelSummary, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -521,7 +512,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           {/* Every session is a Code session now: the permission pill + the
               loop/model chip beside it (the most-capable composer). */}
           <button className={'m-tool-pill m-pill-cfg' + (permId === 'auto' ? ' m-pill-auto' : '')} onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
-          <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
+          <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{modelSummary || 'Model'}</span></button>
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening || srvLive ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           <button className="m-tool-mic m-tool-mic-caret" aria-label="Voice options" onClick={() => { haptic(); setMicMenu((v) => !v); }}><Icon name="chevron" /></button>
@@ -697,14 +688,13 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
 
 /* ── Session: the standard Glyphh agent view (transparent blurred header,
    messages, composer pinned at the bottom). ─────────────────────────────── */
-type SelSection = 'sections' | 'loop' | 'models' | 'permission';
+type SelSection = 'sections' | 'models' | 'permission';
 interface CompProps {
   onPlus: () => void;
   onOpenSelector: (section: SelSection) => void;
   permLabel: string;
   permId: string;
   modelSummary: string;   // dots "Change model" subtitle / home dropdown
-  loopName: string;       // dots "Change loop" subtitle / home dropdown
   draft: string;                    // composer input value (single active composer)
   setDraft: (v: string) => void;
   onSend: () => void;
@@ -1055,12 +1045,11 @@ function AgentMessage({ m, streaming, onOpenTools, onLongPress }: { m: Message; 
     </div>
   );
 }
-/** "· 1,240 cr · 3.2s" style footer from a turn's usage meta. */
-function usageLabel(meta: { creditsMicro?: number; ms?: number }): string {
+/** "· $0.042 · 3.2s" style footer from a turn's usage meta (dollars, not credits). */
+function usageLabel(meta: { usd?: number; ms?: number }): string {
   const parts: string[] = [];
-  if (typeof meta.creditsMicro === 'number' && meta.creditsMicro > 0) {
-    const cr = meta.creditsMicro / 1e6;
-    parts.push(`${cr >= 10 ? Math.round(cr).toLocaleString() : cr.toFixed(2)} cr`);
+  if (typeof meta.usd === 'number' && meta.usd > 0) {
+    parts.push(`$${meta.usd >= 1 ? meta.usd.toFixed(2) : meta.usd.toFixed(3)}`);
   }
   if (typeof meta.ms === 'number') parts.push(meta.ms >= 1000 ? `${(meta.ms / 1000).toFixed(1)}s` : `${meta.ms}ms`);
   return parts.join(' · ');
@@ -1312,7 +1301,7 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
           <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
           <div className="m-home-center">
             <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
-              <span>{comp.loopName} / {comp.modelSummary}</span>
+              <span>{comp.modelSummary || 'Model'}</span>
               <Icon name="caret" />
             </button>
           </div>
@@ -1335,14 +1324,10 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
           <button className="m-chats-icon" aria-label="Options" onClick={() => { haptic(); setMenu((v) => !v); }}><Icon name="dots" /></button>
           {menu && (
             <div className="m-sv-menu" role="menu">
-              {/* Every session is a Code session — loop/model change lives here. */}
+              {/* The model and working folder change here (one loop — no loop to pick). */}
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
                 <Icon name="swap" />
                 <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change model</span><span className="m-sv-menu-s">{comp.modelSummary}</span></span>
-              </button>
-              <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); comp.onOpenSelector('sections'); }}>
-                <Icon name="loop" />
-                <span className="m-sv-menu-text"><span className="m-sv-menu-t">Change loop</span><span className="m-sv-menu-s">{comp.loopName}</span></span>
               </button>
               <div className="m-sv-menu-sep" />
               <button className="m-sv-menu-row" onClick={() => { haptic(); setMenu(false); onRename(); }}>
@@ -3201,34 +3186,24 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, roleSel, setRoleSel, models,
-  sourceLabel, sourceLocked, sourceRepo, repos, gitState, onLoadRepos, onPickCloud, onPickRepo, onConnectGit,
+function SelectorSheet({ open, section, onClose, roles, roleSel, setRoleSel, models,
+  sourceLabel, sourceLocked,
   desktops, onPickDesktop }: {
   open: boolean;
-  section: 'loop' | 'models' | null;   // deep-link entry point
+  section: 'models' | null;   // deep-link entry point
   onClose: () => void;
-  loops: LoopItem[] | null;
-  loop: string; setLoop: (v: string) => void;
   roles: RoleItem[] | null;
   roleSel: Record<string, string>; setRoleSel: (fn: (m: Record<string, string>) => Record<string, string>) => void;
   models: ModelChoice[];
-  /** WHERE the session works — cloud, a cloud clone of a GitHub repo, or a
-   *  folder on a connected desktop (his report, 2026-08-28: mobile had no way
-   *  to choose either). Locked once the session has run: a locus is immutable. */
+  /** WHERE the session works — a folder on a connected desktop (v1: no cloud
+   *  workers yet). Locked once the session has run: a locus is immutable. */
   sourceLabel: string;
   sourceLocked: boolean;
-  sourceRepo: string;
-  repos: { id: string; fullName: string; private: boolean }[] | null;
-  gitState: 'unknown' | 'off' | 'on';
-  onLoadRepos: () => void;
-  onPickCloud: () => void;
-  onPickRepo: (repo: string) => void;
-  onConnectGit: () => void;
   desktops: AttachedMachine[];
   onPickDesktop: (d: AttachedMachine) => void;
 }) {
   // Depth track: 0 = sections, 1 = a section tray, 2 = More models (per role).
-  const [tray, setTray] = useState<'loop' | 'models' | 'source'>('models');
+  const [tray, setTray] = useState<'models' | 'source'>('models');
   const [depth, setDepth] = useState(0);
   const [moreRole, setMoreRole] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});   // undefined → expanded
@@ -3248,17 +3223,14 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
     for (const r of roleList) { const c = r.choices.find((x) => x.id === id); if (c) return c.name; }
     return models.find((m) => m.id === id)?.name ?? shortModelId(id);
   };
-  const loopName = (loops ?? []).find((l) => l.slug === loop)?.name ?? '';
-  const openTray = (t: 'loop' | 'models' | 'source') => {
+  const openTray = (t: 'models' | 'source') => {
     haptic(); setTray(t); setDepth(1);
-    if (t === 'source' && !sourceLocked) onLoadRepos();
   };
-  const trayTitle = tray === 'loop' ? 'Loop' : tray === 'source' ? 'Working folder' : 'Models';
+  const trayTitle = tray === 'source' ? 'Working folder' : 'Models';
   const modelsSummary = roleList.length === 1 ? modelName(selectedFor(roleList[0])) : roleList.length ? `${roleList.length} models` : '';
   const setRoleModel = (roleName: string, id: string) => { haptic(); setRoleSel((m) => ({ ...m, [roleName]: id })); };
   const toggleRole = (roleName: string) => { haptic(); setExpanded((e) => ({ ...e, [roleName]: !(e[roleName] ?? true) })); };
   const openMore = (roleName: string) => { haptic(); setMoreRole(roleName); setDepth(2); };
-  const loopItems = (loops ?? []).map((l) => ({ id: l.slug, name: l.name, desc: l.description }));
   const moreRoleObj = roleList.find((r) => r.name === moreRole);
   const moreItems = moreRoleObj ? choicesFor(moreRoleObj).slice(MODEL_TOP_N).map((c) => ({ id: c.id, name: c.name, desc: c.providerSlug })) : [];
 
@@ -3276,9 +3248,6 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
             </div>
             <div className="m-sel-body">
               <div className="m-sel-group">
-                <button className="m-sel-row" onClick={() => openTray('loop')}>
-                  <span className="m-sel-row-label">Loop</span><span className="m-sel-row-val">{loopName}</span><Icon name="chevron" />
-                </button>
                 <button className="m-sel-row" onClick={() => openTray('models')}>
                   <span className="m-sel-row-label">Models</span><span className="m-sel-row-val">{modelsSummary}</span><Icon name="chevron" />
                 </button>
@@ -3296,46 +3265,15 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
               <span className="m-sel-title">{trayTitle}</span>
             </div>
             <div className="m-sel-body">
-              {tray === 'loop' && (
-                loops === null
-                  ? <div className="m-list-note">Loading…</div>
-                  : loopItems.length === 0
-                  ? <div className="m-list-note">No loops available.</div>
-                  : <OptionList items={loopItems} selected={loop} onPick={(id) => { haptic(); setLoop(id); setDepth(0); }} />
-              )}
               {tray === 'source' && (
                 sourceLocked
                   ? <div className="m-list-note">This session works in {sourceLabel}. A session&rsquo;s working folder is fixed when it starts — start a new session to work somewhere else.</div>
                   : (
                 <>
-                  <div className="m-sel-group">
-                    <button className="m-sel-row" onClick={() => { haptic(); onPickCloud(); setDepth(0); }}>
-                      <span className="m-sel-row-label">Cloud</span>
-                      <span className="m-sel-row-val">{!sourceRepo ? 'Current' : ''}</span>
-                    </button>
-                  </div>
-                  {/* A GitHub repo — the pod clones it and the agent works in it. */}
-                  {gitState === 'off' ? (
-                    <div className="m-sel-group">
-                      <button className="m-sel-row" onClick={() => { haptic(); onConnectGit(); }}>
-                        <span className="m-sel-row-label">Connect GitHub</span><Icon name="chevron" />
-                      </button>
-                    </div>
-                  ) : repos === null ? (
-                    <div className="m-list-note">Loading repositories&hellip;</div>
-                  ) : repos.length === 0 ? (
-                    <div className="m-list-note">No repositories on the connected account.</div>
-                  ) : (
-                    <div className="m-sel-group">
-                      {repos.map((r) => (
-                        <button key={r.id} className="m-sel-row" onClick={() => { haptic(); onPickRepo(r.fullName); setDepth(0); }}>
-                          <span className="m-sel-row-label">{r.fullName}</span>
-                          <span className="m-sel-row-val">{sourceRepo === r.fullName ? 'Current' : r.private ? 'Private' : ''}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   {/* A folder on a connected desktop — the existing picker tray. */}
+                  {desktops.length === 0 && (
+                    <div className="m-list-note">No desktop is connected. Open the Glyphh desktop app and sign in — sessions run there.</div>
+                  )}
                   {desktops.length > 0 && (
                     <div className="m-sel-group">
                       {desktops.map((d) => (
@@ -3929,14 +3867,9 @@ function App() {
   const viewRef = useRef<{ screen: string; sid: string | null }>({ screen: 'home', sid: null });
   const convoRef = useRef<Message[]>([]);                              // source of truth for the transcript
   const observerRef = useRef<AttachHandle | null>(null);               // live-run subscription for the OPEN thread (observe a run started elsewhere)
-  const [selectorAt, setSelectorAt] = useState<'sections' | 'loop' | 'models' | null>(null);
+  const [selectorAt, setSelectorAt] = useState<'sections' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
-  const [loops, setLoops] = useState<LoopItem[] | null>(null);
-  const [loop, setLoop] = useState<string>('');                        // selected loop slug
-  const [roles, setRoles] = useState<RoleItem[] | null>(null);         // resolved roles for `loop`
-  // The selected loop's MEMORY POLICY (manifest.memory → run body). Ref, not
-  // state: it only rides the next run, never re-renders anything.
-  const loopMemoryRef = useRef<{ recall?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string } | null>(null);
+  const roles = AGENT_ROLES;                                            // one loop, one role
   // One-shot: suppress the nav slide-in for the NEXT screen switch (used when
   // the keyboard is collapsing at the same time — the two compose diagonally).
   const navNoAnimRef = useRef(false);
@@ -3964,7 +3897,6 @@ function App() {
     for (const r of roleList) { const c = r.choices.find((x) => x.id === id); if (c) return c.name; }
     return models.find((m) => m.id === id)?.name ?? shortModelId(id);
   };
-  const loopName = (loops ?? []).find((l) => l.slug === loop)?.name ?? '';
   const modelSummary = roleList.length
     ? (roleList.length > 1 ? `${modelNameById(effModel(roleList[0]))} +${roleList.length - 1}` : modelNameById(effModel(roleList[0])))
     : '';
@@ -3998,16 +3930,17 @@ function App() {
   // server still persists a `mode` field for compatibility, so we hardcode it.
   const SESSION_MODE = 'code' as const;
 
-  /** Persist the live transcript back to the thread (LWW by updatedAt), then
-   *  refresh the list so the chat surfaces with its new title/timestamp. */
+  /** Name the thread on the desktop (its title, type and folder — the desktop
+   *  writes the turn's messages itself), then refresh the list so the chat
+   *  surfaces with its new title/timestamp. */
   const persistThread = async (id: string) => {
     try {
-      const messages = convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }));
       // Preserve a custom/renamed title (local override or the one already on the thread)
       // instead of re-deriving from the first message — otherwise a rename gets clobbered.
       const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
-      await glyphh().sessions.pushThread(id, { title, mode: SESSION_MODE, messages, updatedAt: Date.now() });
-      const t = await glyphh().sessions.threads();
+      const src = chatFor(id).source;
+      await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}) });
+      const t = await desktopSessions.threads();
       setThreads(Array.isArray(t) ? t : []);
     } catch { /* offline / not-ready — the transcript stays local for now */ }
   };
@@ -4020,6 +3953,9 @@ function App() {
    *  transcript model a local turn writes. No-op when nothing is running. */
   const observeActiveRun = (sess: Recent, chat: RemoteChat) => {
     stopObserving();
+    // v1 (2026-09-30): the fork has no run-stream broker, so there is no live
+    // run to tail from here yet; the transcript refreshes when the turn lands.
+    if (!RUN_STREAM) return;
     let asstId = '';        // fresh per observed run (reset in onRun below)
     let created = false;
     const msgOf = () => convoRef.current.find((x) => x.id === asstId);
@@ -4083,7 +4019,7 @@ function App() {
   const loadSession = (s: Recent) => {
     stopObserving();
     convoRef.current = []; setMsgs(null);
-    glyphh().sessions.thread(s.id)
+    desktopSessions.thread(s.id)
       .then((t: { messages?: ThreadMsg[] }) => {
         // `streaming` here is a STALE CLOSURE (captured when loadSession ran).
         // If the user sent a turn while this fetch was in flight, the stale
@@ -4105,19 +4041,17 @@ function App() {
     // machine (sourceOf reads the thread) while the RUN targeted the cloud
     // (isLocal reads chat.source, which only the locus store populated):
     // "shows connected to my desktop but is running in the cloud".
+    const meta = (threads ?? []).find((t) => t.id === s.id);
+    if (meta?.mode === 'work' || meta?.mode === 'code') chat.mode = meta.mode;
     if (!chat.source) {
-      const src = (threads ?? []).find((t) => t.id === s.id)?.source;
+      const src = meta?.source;
       if (src?.kind === 'local') {
         chat.source = { kind: 'local', ...(src.machineId ? { machineId: src.machineId } : {}), path: src.path || '' };
       }
     }
-    // LOCAL (machine-bound) sessions run ON the desktop over the relay — no cloud
-    // pod to provision; the turn connects per-run via attach.run. Cloud sessions
-    // provision their pod up front.
-    if (chat.source?.kind !== 'local' && !isCommitted(s.id)) {
-      setConnecting(true);
-      void ensureRuntime(chat, () => {}, { rotor: loop }).then(() => setConnecting(false)).catch(() => setConnecting(false));
-    } else { setConnecting(false); }
+    // Sessions run ON the desktop over the relay — nothing to provision up
+    // front; the turn connects per-run via attach.run. (Cloud workers: later.)
+    setConnecting(false);
   };
 
   /** Send the composer draft — minting the chat on the first message, then
@@ -4149,6 +4083,17 @@ function App() {
     const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
     const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];
     if ((!prompt && imgs.length === 0) || streaming || sendBusyRef.current) return;
+    // EVERY SESSION RUNS ON A DESKTOP (v1, 2026-09-30 — cloud workers come
+    // later): a session without a desktop folder is not sent anywhere. The
+    // draft stays; the picker opens on the attached desktop, or the transcript
+    // says to open the app.
+    if (!session || chatFor(session.id).source?.kind !== 'local') {
+      haptic();
+      if (desktops[0]) { setFolderPick(desktops[0]); return; }
+      convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: 'Sessions run on your computer. Open the Glyphh desktop app and sign in, then pick a folder to work in.' }];
+      renderConvo();
+      return;
+    }
     // Hold the guard through the double-tap / ghost-click window; by the time it
     // releases, `streaming` state has committed and takes over re-entry blocking.
     sendBusyRef.current = true;
@@ -4177,8 +4122,6 @@ function App() {
       const title = prompt.slice(0, 60) || sess.title;
       sess = { ...sess, title };
       setSession(sess);
-      // Cloud placeholders carry no locus yet; desktop sessions already stamped theirs.
-      if (!locusOf(sess.id)) saveLocus(sess.id, { kind: 'cloud' });
       setThreads((t) => {
         const rest = (t ?? []).filter((x) => x.id !== sess!.id);   // never double-insert
         return [{ id: sess!.id, title, mode: SESSION_MODE, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0 }, ...rest];
@@ -4235,7 +4178,7 @@ function App() {
     const ac = new AbortController();
     streamAbortRef.current = ac;
     const turnStart = Date.now();
-    let creditsMicro = 0;
+    let usd = 0;
     const sid = sess.id;
     // Design (top-down): a chat turn rides the cloud rrotor carrying the LOOP
     // (rotor), the MODEL, and the PERMISSION mode. Chat is tool-less → one model
@@ -4261,26 +4204,24 @@ function App() {
             if (a && /^https?:\/\//i.test(u)) setTrayApp({ slug: a.slug, name: a.name, url: u });
           }).catch(() => { /* not resolvable here */ });
         },
-        onUsage: (u) => { if (typeof u.creditsMicro === 'number') creditsMicro = u.creditsMicro; },
+        onUsage: (u) => { if (typeof u.usd === 'number') usd = u.usd; },
         onApproval: (a) => { setConnecting(false); setPending({ t: 'approval', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.title || 'Approve an action'); },
         onAsk: (a) => { setConnecting(false); setPending({ t: 'ask', ...a }); setPendingSessionId(sid); setAct(sid, 'waiting'); notifyNeedsInput(sess!, a.questions?.[0]?.question || 'The agent has a question'); },
         onDone: (full) => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); if (full) setAsst(full); },
         onError: (detail) => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); setAsst('⚠️ ' + detail); },
         onStopped: () => { setConnecting(false); setPending(null); setPendingSessionId(null); setAct(sid, null); },
       },
-      { rotor: loop, ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal,
-        // The LOOP's memory policy rides the run — when memory is used and how.
-        ...(loopMemoryRef.current ? { memory: loopMemoryRef.current } : {}) },
+      { ...(model ? { model } : {}), ...(imgs.length ? { images: imgs } : {}), permission: perm as RemotePermission, signal: ac.signal },
     );
     setStreaming(false); setConnecting(false);
     setAct(sid, null);
     finalizeRunningSteps();   // no tool breadcrumb outlives the settled turn
     streamAbortRef.current = null;
-    // Per-turn footer: credits the runtime metered + wall-clock. Only stamp a
+    // Per-turn footer: the dollars the run metered + wall-clock. Only stamp a
     // real turn (not an unavailable outcome).
     const settled = convoRef.current.find((x) => x.id === asstId);
     if (settled && !(outcome && typeof outcome === 'object' && 'unavailable' in outcome)) {
-      settled.meta = { ...(creditsMicro ? { creditsMicro } : {}), ms: Date.now() - turnStart };
+      settled.meta = { ...(usd ? { usd } : {}), ms: Date.now() - turnStart };
       // Voice-out: speak the reply (autoplay) and, hands-free, re-listen.
       void voiceCtl.onTurnComplete(settled.text || '');
     }
@@ -4371,7 +4312,6 @@ function App() {
     permLabel: PERMS.find((p) => p.id === perm)?.name ?? 'Accept edits',
     permId: perm,
     modelSummary,
-    loopName,
     draft, setDraft,
     onSend: () => { void sendPrompt(); },
     onStop: () => { haptic(); streamAbortRef.current?.abort(); },
@@ -4401,8 +4341,7 @@ function App() {
       const d = desktops[0];
       return { icon: 'laptop', text: d?.name || d?.app || 'Desktop' };
     }
-    if (src?.kind === 'cloud-repo' && src.repo) return { icon: 'cloud', text: `Cloud · ${src.repo.split('/').pop()}` };
-    return { icon: 'cloud', text: 'Cloud' };
+    return undefined;
   })();
 
   // Hold the splash for its full beat regardless of how fast auth resolves.
@@ -4446,51 +4385,21 @@ function App() {
   };
   const onSignOut = () => { setSettings(false); void sdkSignOut(); };  // event flips to 'out'
 
-  // Load loops + available models once signed in; pick a default loop.
+  // The member's available models (the one loop's model pick) once signed in.
   useEffect(() => {
     if (authState !== 'in') return;
     let on = true;
-    glyphh().loops.list()
-      .then((r: { loops: LoopItem[] }) => { if (!on) return; const ls = (r?.loops ?? []).filter((l) => (l as { kind?: string }).kind !== "memory"); setLoops(ls); setLoop((cur) => cur || defaultLoopSlug(ls)); })
-      .catch(() => { if (on) setLoops([]); });
     glyphh().models.available()
       .then((m: ModelChoice[]) => { if (on) setModels(Array.isArray(m) ? m : []); })
       .catch(() => { if (on) setModels([]); });
     return () => { on = false; };
   }, [authState]);
 
-  // Resolve the selected loop's role/model slots; reset overrides on switch.
-  // ALSO fetch the loop's manifest for its MEMORY POLICY — the loop defines when
-  // memory is used and how; the policy rides every run body (memory field).
-  useEffect(() => {
-    if (!loop) { setRoles(null); loopMemoryRef.current = null; return; }
-    let on = true;
-    setRoles(null); setRoleSel({});
-    glyphh().loops.roles(loop)
-      .then((rs: RoleItem[]) => { if (on) setRoles(Array.isArray(rs) && rs.length ? rs : [{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); })
-      .catch(() => { if (on) setRoles([{ name: 'agent', label: 'Agent', modelId: null, choices: [] }]); });
-    glyphh().loops.get(loop)
-      .then((l: { manifest?: { memory?: { read?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string } } }) => {
-        if (!on) return;
-        const m = l?.manifest?.memory;
-        // manifest read/write → runtime recall/write; absent = null (runtime default).
-        loopMemoryRef.current = m ? {
-          ...(m.read !== undefined ? { recall: m.read } : {}),
-          ...(m.write !== undefined ? { write: m.write } : {}),
-          ...(m.topK !== undefined ? { topK: m.topK } : {}),
-          ...(m.threshold !== undefined ? { threshold: m.threshold } : {}),
-          ...(m.entity ? { entity: m.entity } : {}),
-        } : null;
-      })
-      .catch(() => { if (on) loopMemoryRef.current = null; });
-    return () => { on = false; };
-  }, [loop]);
-
   // Load the user's chat threads once signed in (feeds the rail + chats list).
   useEffect(() => {
     if (authState !== 'in') return;
     let on = true;
-    glyphh().sessions.threads()
+    desktopSessions.threads()
       .then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); })
       .catch(() => { if (on) setThreads([]); });
     // Attached desktops (Code strip). POLL it — a one-shot fetch goes stale the
@@ -4498,7 +4407,9 @@ function App() {
     // desktop re-attaches seconds later, but a single fetch never sees it).
     const loadDesktops = (): void => { void glyphh().attach.status()
       .then((s: { machines?: AttachedMachine[] }) => { if (on) setDesktops(Array.isArray(s?.machines) ? s.machines : []); })
-      .catch(() => { if (on) setDesktops([]); }); };
+      .catch(() => { if (on) setDesktops([]); });
+      // The chats live on the desktop: re-read them on the same beat.
+      void desktopSessions.threads().then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); }).catch(() => { /* keep the last list */ }); };
     loadDesktops();
     const desktopsTimer = setInterval(loadDesktops, 20000);
     return () => { on = false; clearInterval(desktopsTimer); };
@@ -4584,14 +4495,10 @@ function App() {
     setSession((s) => (s && s.id === id ? { ...s, title } : s));
     // Sync to the server so the new title shows on every surface (Rename is only offered
     // from an OPEN session, so convoRef holds the messages to push alongside it).
-    void glyphh().sessions.pushThread(id, {
-      title, mode: SESSION_MODE,
-      messages: convoRef.current.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })),
-      updatedAt: Date.now(),
-    }).catch(() => { /* offline — the local override + list update still stand */ });
+    void desktopSessions.pushThread(id, { title }).catch(() => { /* offline — the local override + list update still stand */ });
   };
   const deleteSession = async (s: Recent) => {
-    try { await glyphh().sessions.deleteThread(s.id); } catch { /* best effort */ }
+    try { await desktopSessions.deleteThread(s.id); } catch { /* best effort */ }
     remoteChats.delete(s.id); forgetLocus(s.id);
     setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
@@ -4607,54 +4514,17 @@ function App() {
    *  switch, no remount, no iOS keyboard drop. The placeholder is NOT added to
    *  Recents (setThreads) until that first send, so an abandoned new chat leaves
    *  nothing behind. Its immutable cloud locus is stamped on first send too. */
-  // ── WORKING FOLDER (his report, 2026-08-28) ───────────────────────────────
-  // A session runs in the cloud, in a cloud clone of a GitHub repo, or in a
-  // folder on a connected desktop. remote-run already forwards `repo` for a
-  // cloud-repo source, so choosing one here is the whole feature.
-  const [repos, setRepos] = useState<{ id: string; fullName: string; private: boolean }[] | null>(null);
-  const [gitState, setGitState] = useState<'unknown' | 'off' | 'on'>('unknown');
-  const loadRepos = () => {
-    if (gitState === 'on' && repos) return;
-    void (async () => {
-      try {
-        const st = await glyphh().git.status();
-        if (!st?.connected) { setGitState('off'); setRepos(null); return; }
-        setGitState('on');
-        setRepos(await glyphh().git.repos());
-      } catch { setGitState('off'); }
-    })();
-  };
-  const connectGit = () => {
-    void (async () => {
-      try {
-        const link = await glyphh().git.connect();
-        if (link?.url) window.open(link.url, '_blank', 'noopener');
-      } catch { /* the row stays as it was */ }
-    })();
-  };
-  /** The session's source, while it is still a choice (before the first send). */
-  const sourceRepo = session ? ((chatFor(session.id).source as { kind?: string; repo?: string } | undefined)?.kind === 'cloud-repo'
-    ? String((chatFor(session.id).source as { repo?: string }).repo || '') : '') : '';
-  // Locked once the session has actually run — the locus never flips.
+  // ── WORKING FOLDER ────────────────────────────────────────────────────────
+  // A session works in a folder on a connected desktop (v1, 2026-09-30 —
+  // cloud workers and cloud repo clones come later). Locked once it has run.
   const sourceLocked = !!session && !!msgs && msgs.length > 0;
   const sourceLabel = (() => {
-    if (!session) return 'Cloud';
+    if (!session) return 'None';
     const l = locusOf(session.id);
     if (l?.kind === 'local') return l.machineName || 'Local machine';
-    return sourceRepo ? sourceRepo.split('/').pop() || 'Cloud' : 'Cloud';
+    const src = chatFor(session.id).source;
+    return src?.kind === 'local' && src.path ? src.path.split('/').filter(Boolean).pop() || 'Desktop' : 'None';
   })();
-  const pickCloud = () => {
-    if (!session) return;
-    delete (chatFor(session.id) as { source?: unknown }).source;
-    replaceLocus(session.id, { kind: 'cloud' });
-    setSession({ ...session });
-  };
-  const pickRepo = (repo: string) => {
-    if (!session) return;
-    (chatFor(session.id) as { source?: unknown }).source = { kind: 'cloud-repo', repo };
-    replaceLocus(session.id, { kind: 'cloud', repo });
-    setSession({ ...session });
-  };
 
   const newSession = () => {
     haptic();
@@ -4681,7 +4551,8 @@ function App() {
     setSession({ id, title: 'New session', when: 'now' });
     setScreen('session'); setDrawer(false);
     // Empty transcript ([] not null) → shows the mascot empty state, not "Loading…".
-    convoRef.current = []; setMsgs([]); setDraft(''); setPending(null);
+    // The draft stays: the send gate opens this picker with a message typed.
+    convoRef.current = []; setMsgs([]); setPending(null);
     // A desktop session runs ON the machine over the relay — no cloud pod to
     // provision. It connects per-turn (attach.run); the first send establishes it.
     setConnecting(false);
@@ -4760,12 +4631,9 @@ function App() {
         open={selectorAt !== null}
         section={selectorAt === 'sections' ? null : selectorAt}
         onClose={() => { haptic(); setSelectorAt(null); }}
-        loops={loops} loop={loop} setLoop={setLoop}
         roles={roles} roleSel={roleSel} setRoleSel={setRoleSel}
         models={models}
-        sourceLabel={sourceLabel} sourceLocked={sourceLocked} sourceRepo={sourceRepo}
-        repos={repos} gitState={gitState} onLoadRepos={loadRepos}
-        onPickCloud={pickCloud} onPickRepo={pickRepo} onConnectGit={connectGit}
+        sourceLabel={sourceLabel} sourceLocked={sourceLocked}
         desktops={desktops}
         onPickDesktop={(d) => { setSelectorAt(null); setFolderPick(d); }}
       />

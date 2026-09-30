@@ -42,6 +42,10 @@ const ENV = loadEnv();
 const ROOT = fileURLToPath(new URL('../dist/renderer/', import.meta.url));
 const PORT = ENV.PORT || 3002;
 const BRIDGE = '/glyphh-web-bundle.js';
+// MOBILE-ONLY (mobile.glyphh.ai, 2026-09-30): every page is the mobile app —
+// its own sign-in included — and nothing from the desktop renderer's web shell
+// (index.html, home.html, the bridge) is served or needed in the build.
+const MOBILE_ONLY = ENV.GLYPHH_MOBILE_ONLY === '1' || ENV.GLYPHH_MOBILE_ONLY === 'true';
 
 // ── LOCAL DEV runtime tunnel (opt-in via LOCAL_RUNTIME_PROXY=1) ────────────────
 // A phone loading this over ngrok can't reach the control plane or the rrotor
@@ -245,7 +249,7 @@ const server = http.createServer(async (req, res) => {
     const isConsentRoute = p === '/settings/mcp' || p === '/settings/mcp/';
     const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isConsentRoute
       && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
-    const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
+    const isMobileShell = (MOBILE_ONLY && !extname(p)) || MOBILE_ROUTES.has(p) || phoneWantsApp;
     // The app-web command center (/home) was removed (his call, 2026-08-29): the
     // Platform is the only desktop-browser web surface now (mobile keeps /m).
     // Bounce a desktop-browser /home → /platform, query intact. Phones are

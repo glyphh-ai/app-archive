@@ -32,37 +32,25 @@ export interface SettingGroup {
   label: string;
   rows: SettingRow[];
 }
-// Reconciled to the real Glyphh domains that the SDK backs today. Notifications /
-// Privacy / Shared links / Capabilities / Voice are hidden until they exist
-// server+SDK-side. `sub` is the tray key; icon is an Icon name.
+// Reconciled to what the SERVER (the LiteLLM fork) backs today (2026-09-30).
+// HIDDEN, their trays kept for when the server side returns: API keys (BYOK is
+// dead), Runtime (no cloud workers yet), Voice (no /api/voice), Artifacts (no
+// /api/files), Apps-as-settings (no /api/apps/mine), Models (provider keys —
+// the console owns the org's models), Workspaces, Domains, Guardrails, and the
+// Platform group (super admin lives in the console). `sub` is the tray key;
+// icon is an Icon name.
 export const SETTINGS_GROUPS: SettingGroup[] = [
   { label: 'Account', rows: [
     { icon: 'user', label: 'Profile', sub: 'profile' },
     { icon: 'dollar', label: 'Billing', sub: 'billing' },
     { icon: 'chart', label: 'Usage', sub: 'usage' },
-    { icon: 'key', label: 'API keys', sub: 'apikeys' },
     { icon: 'building', label: 'Organization', sub: 'org', admin: true },
     { icon: 'users', label: 'Members', sub: 'members', admin: true },
   ] },
   { label: 'App', rows: [
-    { icon: 'cloud', label: 'Runtime', sub: 'runtime' },
     { icon: 'sliders', label: 'General', sub: 'general' },
-    { icon: 'voice', label: 'Voice', sub: 'voice' },
     { icon: 'grid', label: 'Connections', sub: 'connections' },
-    { icon: 'grid', label: 'Apps', sub: 'apps' },
-    { icon: 'filedoc', label: 'Artifacts', sub: 'artifacts' },
     { icon: 'contrast', label: 'Appearance', sub: 'appearance' },
-  ] },
-  { label: 'Admin', rows: [
-    { icon: 'sliders', label: 'Models', sub: 'models', admin: true },
-    { icon: 'grid', label: 'Workspaces', sub: 'workspaces', admin: true },
-    { icon: 'link', label: 'Domains', sub: 'domains', admin: true },
-    { icon: 'shield', label: 'Guardrails', sub: 'guardrails', admin: true },
-  ] },
-  { label: 'Platform', rows: [
-    { icon: 'chart', label: 'Usage', sub: 'padmin-usage', super: true },
-    { icon: 'dollar', label: 'Plans', sub: 'padmin-plans', super: true },
-    { icon: 'building', label: 'Organizations', sub: 'padmin-orgs', super: true },
   ] },
   { label: 'Support', rows: [
     { icon: 'help', label: 'Help & Support', sub: 'help' },
@@ -104,7 +92,7 @@ export interface Message {
     | { kind: 'tools'; steps: Array<{ name: string; status: 'running' | 'ok' | 'denied' | 'failed'; thought?: string; title?: string; diff?: string; error?: string }> }
   >;
   /** Per-turn usage footer: credits (micro) the runtime metered + wall-clock ms. */
-  meta?: { creditsMicro?: number; ms?: number };
+  meta?: { usd?: number; ms?: number };
   /** User turns: image attachment preview URLs (dataURLs), rendered as thumbs. */
   images?: string[];
 }
