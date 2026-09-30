@@ -10,6 +10,11 @@
  * (`run:<runId>`). The caller's threadId is the chat, so a relayed conversation
  * continues across turns on the same thread.
  *
+ * The turn is WRITTEN to this machine's chat store (the phone has no store of
+ * its own, 2026-09-30): the user message before the loop runs — which is also
+ * what seeds the loop's history — and the reply on `done`, so the desktop's
+ * rail and the phone's list show the same conversation.
+ *
  * Answers to parked approvals arrive as `agent.answer {id, allow}`;
  * `agent.stop {runId}` interrupts; `agent.permission {runId, permission}`
  * flips the mode mid-flight. A per-run frame RING backs `agent.frames` so a
@@ -18,7 +23,7 @@
 import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-host.js";
-import { runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
+import { appendStoredMessage, runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
 import { toWireFrame, turnText, relayPermission } from "./attach-run-frames.js";
 
 interface RunRecord { frames: Array<Record<string, unknown> & { seq: number }>; status: "running" | "done" | "error"; chatId: string }
@@ -35,6 +40,7 @@ function str(params: unknown, key: string): string {
  *  AND retains them on the run's ring for reattach. */
 function makeSink(runId: string, chatId: string): WebContents {
   let seq = 0;
+  let answer = "";
   const rec: RunRecord = { frames: [], status: "running", chatId };
   rings.set(runId, rec);
   const sink = {
@@ -45,6 +51,8 @@ function makeSink(runId: string, chatId: string): WebContents {
       rec.frames.push(frame as Record<string, unknown> & { seq: number });
       if (rec.frames.length > RING_CAP) rec.frames.splice(0, rec.frames.length - RING_CAP);
       const t = (frame as { type?: string }).type;
+      if (t === "delta") answer += String((frame as { delta?: string }).delta ?? "");
+      if (t === "done") appendStoredMessage(chatId, { role: "assistant", text: answer });
       if (t === "done" || t === "error") {
         rec.status = t === "done" ? "done" : "error";
         const timer = setTimeout(() => rings.delete(runId), RING_TTL_AFTER_END_MS);
@@ -67,11 +75,13 @@ export function installAttachRunHandlers(): void {
     if (!prompt && !Array.isArray(p.messages)) throw new Error("agent.run requires { prompt } or { messages }");
     const text = turnText(p, prompt);
     const sink = makeSink(runId, chatId);
+    const mode = str(p, "mode") === "work" ? "work" : "code";
+    appendStoredMessage(chatId, { role: "user", text }, { mode, workdir: str(p, "workdir") });
     sink.send("glyphh-agent:prompt", { text });
     // The RELAYING client's permission and model win over this machine's own:
     // the run is theirs. Absent, the loop falls back to the org's defaults.
     void runAgentTurn(sink, {
-      chatId, prompt: text,
+      chatId, prompt: text, mode,
       ...(relayPermission(p.permission) ? { permission: relayPermission(p.permission) } : {}),
       ...(str(p, "model") ? { model: str(p, "model") } : {}),
       ...(str(p, "workdir") ? { workdir: str(p, "workdir") } : {}),

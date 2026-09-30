@@ -12,6 +12,10 @@ export interface RelayChatMessage { role: "system" | "user" | "assistant"; conte
  *  wire mapping. `data` carries the emit payload (minus seq/runId/at). */
 export function toWireFrame(channel: string, data: Record<string, unknown>, seq: number, runId: string, now: number = Date.now()): Record<string, unknown> | null {
   const base = { seq, runId, at: now };
+  // A SUB-AGENT's text and steps (tagged `agent`) are its own feed: spliced
+  // into the relayed reply they read as the parent's answer. The phone has no
+  // swarm view yet, so they do not ride the wire.
+  if (data.agent && (channel === "glyphh-agent:delta" || channel === "glyphh-agent:tool")) return null;
   switch (channel) {
     // The user's prompt as the FIRST frame of a run, so an observing surface
     // renders the turn's user message.
