@@ -37,6 +37,11 @@ describe("toWireFrame — every glyphh-agent:* event maps to its HarnessWireFram
     expect(wf("glyphh-agent:prompt", { text: "hi" })).toMatchObject({ type: "prompt", text: "hi" });
     expect(wf("glyphh-agent:mystery", { x: 1 })).toBeNull();
   });
+  it("keeps a sub-agent's text and steps off the relayed reply", () => {
+    expect(wf("glyphh-agent:delta", { delta: "swarm", agent: "a1" })).toBeNull();
+    expect(wf("glyphh-agent:tool", { phase: "start", name: "read", agent: "a1" })).toBeNull();
+    expect(wf("glyphh-agent:delta", { delta: "parent" })).toMatchObject({ type: "delta", delta: "parent" });
+  });
 });
 
 describe("baseMessages / turnText / relayPermission", () => {

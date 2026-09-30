@@ -97,10 +97,12 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// The outbound attach socket (RELAY-RESEARCH.md §4, back 2026-09-21): starts
-// with the session, stops with it. Lazy import: attach-host imports auth.
-function attachStart(): void { void import("./attach-host.js").then((m) => m.startAttach()).catch((e) => console.warn("[attach] start failed", String(e))); }
-function attachStop(): void { void import("./attach-host.js").then((m) => m.stopAttach()).catch(() => undefined); }
+// The outbound attach socket (RELAY-RESEARCH.md §4) is REMOTE CONTROL now
+// (2026-09-30): with the session it comes up only if this device has remote
+// control on (remote-control.ts), and it always goes with the session. Lazy
+// import: the host imports auth.
+function attachStart(): void { void import("./remote-control.js").then((m) => m.remoteControlBoot()).catch((e) => console.warn("[remote-control] boot failed", String(e))); }
+function attachStop(): void { void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined); }
 
 setSignedOutHandler(() => {
   signedIn = false;

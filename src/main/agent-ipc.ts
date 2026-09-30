@@ -151,6 +151,71 @@ function storedChat(chatId: string): StoredChat | undefined {
   return (loadSessionsFile().chats as StoredChat[]).find((x) => x?.id === chatId);
 }
 
+// ── the store as the PHONE sees it (attach-handlers.ts sessions.*) ───────────
+// The chats live on this machine only; mobile.glyphh.ai reads and writes them
+// over the attach socket. Rich desktop fields (steps, parts, pins) are never
+// replaced by the phone's plain {role, text} copies: the phone writes metadata,
+// and a relayed turn's two messages are appended here (attach-run.ts).
+
+export interface RelayChat extends StoredChat { title?: string; createdAt?: number; mode?: string; workdir?: string; source?: unknown; pinned?: boolean }
+
+export function listStoredChats(): RelayChat[] {
+  return (loadSessionsFile().chats as RelayChat[]).filter((c) => c && typeof c.id === "string");
+}
+
+export function getStoredChat(chatId: string): RelayChat | undefined {
+  return storedChat(chatId) as RelayChat | undefined;
+}
+
+/** Create the chat if it is new, else patch its metadata. Messages are only
+ *  ever seeded on creation. */
+export function upsertStoredChat(chatId: string, patch: { title?: string; mode?: string; workdir?: string; messages?: StoredMessage[] }): RelayChat {
+  const snap = loadSessionsFile();
+  const chats = snap.chats as RelayChat[];
+  const now = Date.now();
+  let chat = chats.find((c) => c?.id === chatId);
+  if (!chat) {
+    chat = {
+      id: chatId, title: patch.title?.trim() || "New session", createdAt: now, updatedAt: now,
+      mode: patch.mode === "work" ? "work" : "code", messages: patch.messages ?? [],
+      ...(patch.workdir ? { workdir: patch.workdir, source: { kind: "local", path: patch.workdir } } : {}),
+    };
+    chats.unshift(chat);
+  } else {
+    if (patch.title?.trim()) chat.title = patch.title.trim();
+    if (patch.workdir && !chat.workdir) { chat.workdir = patch.workdir; chat.source = { kind: "local", path: patch.workdir }; }
+    chat.updatedAt = now;
+  }
+  saveSessionsFile({ chats, currentId: snap.currentId });
+  return chat;
+}
+
+/** Append one message to a chat (creating it when a relayed turn is its first).
+ *  A repeat of the last message is not written twice. */
+export function appendStoredMessage(chatId: string, msg: { role: "user" | "assistant"; text: string }, seed?: { title?: string; mode?: string; workdir?: string }): void {
+  const text = msg.text.trim();
+  if (!chatId || !text) return;
+  const snap = loadSessionsFile();
+  const chats = snap.chats as RelayChat[];
+  if (!chats.some((c) => c?.id === chatId)) { upsertStoredChat(chatId, { ...seed, title: seed?.title || text.slice(0, 60) }); return appendStoredMessage(chatId, msg); }
+  const chat = chats.find((c) => c?.id === chatId)!;
+  // A chat the phone named before its first turn has no folder yet: the turn's is its folder.
+  if (seed?.workdir && !chat.workdir) { chat.workdir = seed.workdir; chat.source = { kind: "local", path: seed.workdir }; }
+  const msgs = Array.isArray(chat.messages) ? chat.messages : (chat.messages = []);
+  const last = msgs[msgs.length - 1];
+  if (last && last.role === msg.role && String(last.text ?? "").trim() === text) return;
+  msgs.push({ role: msg.role, text });
+  chat.updatedAt = Date.now();
+  saveSessionsFile({ chats, currentId: snap.currentId });
+}
+
+export function deleteStoredChat(chatId: string): boolean {
+  const snap = loadSessionsFile();
+  if (!(snap.chats as StoredChat[]).some((c) => c?.id === chatId)) return false;
+  saveSessionsFile({ chats: (snap.chats as StoredChat[]).filter((c) => c?.id !== chatId), currentId: snap.currentId === chatId ? null : snap.currentId, deleted: [chatId] });
+  return true;
+}
+
 // ── one turn ─────────────────────────────────────────────────────────────────
 
 export interface RunPayload {

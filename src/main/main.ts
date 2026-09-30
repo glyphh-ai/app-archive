@@ -73,6 +73,7 @@ import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installAttachHandlers } from "./attach-handlers";
+import { registerRemoteControlIpc } from "./remote-control";
 import { installAttachRunHandlers } from "./attach-run";
 import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
@@ -459,6 +460,7 @@ async function boot() {
     // The Glyphh Agent panel's engine — a bridge over the claude CLI
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
     registerAgentIpc();
+    registerRemoteControlIpc();
     registerAgentLiveIpc();
   }
 

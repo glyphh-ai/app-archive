@@ -12,6 +12,14 @@
  *   machine.appOpen  {app}     → launch one by (fuzzy) name
  *   machine.openUrl  {url}     → open an http(s) url in the default browser
  *   scrape.page {url, wait?}   → load a URL headlessly, return title/text/html
+ *   sessions.list {}           → this machine's chats, newest first (metadata)
+ *   sessions.get  {id}         → one chat's last 200 messages
+ *   sessions.put  {id, title?, mode?, workdir?} → create a chat / patch its metadata
+ *   sessions.delete {id}       → delete one chat
+ *
+ * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
+ * live on this machine only (the chat store in agent-ipc.ts), so the phone
+ * lists and opens them over the attach socket.
  *
  * loops.run / skills.run / agents.run are gone with the scheduler they ran on
  * (2026-09-21); tasks are programs the desktop runs, and the MCP tools that
@@ -24,6 +32,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node
 import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
+import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, type RelayChat } from "./agent-ipc.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -47,7 +56,49 @@ export function gitStateOf(dir: string): { isRepo: boolean; branch?: string } {
   }
 }
 
+/** A chat as the phone lists it: never its messages. */
+function sessionMeta(c: RelayChat): Record<string, unknown> {
+  const folder = c.workdir || ((c.source as { kind?: string; path?: string } | undefined)?.kind === "local" ? (c.source as { path?: string }).path : undefined);
+  return {
+    id: c.id, title: c.title?.trim() || "New session",
+    createdAt: c.createdAt ?? c.updatedAt ?? 0, updatedAt: c.updatedAt ?? c.createdAt ?? 0,
+    mode: c.mode === "work" || c.mode === "chat" ? "work" : "code",
+    messageCount: c.messages?.length ?? 0,
+    ...(folder ? { source: { kind: "local", path: folder } } : {}),
+    ...(c.pinned ? { pinned: true } : {}),
+  };
+}
+
 export function installAttachHandlers(): void {
+  registerRelayHandler("sessions.list", async () => ({
+    sessions: listStoredChats().map(sessionMeta).sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt)),
+  }));
+
+  registerRelayHandler("sessions.get", async (params) => {
+    const id = str(params, "id");
+    if (!id) throw new Error("sessions.get requires { id }");
+    const c = getStoredChat(id);
+    if (!c) throw new Error(`no session ${id} on this machine`);
+    const messages = (c.messages ?? [])
+      .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+      .slice(-200)
+      .map((m) => ({ role: m.role, text: typeof m.text === "string" ? m.text : "" }));
+    return { session: { ...sessionMeta(c), messages } };
+  });
+
+  registerRelayHandler("sessions.put", async (params) => {
+    const id = str(params, "id");
+    if (!id) throw new Error("sessions.put requires { id }");
+    const chat = upsertStoredChat(id, { title: str(params, "title"), mode: str(params, "mode"), workdir: str(params, "workdir") });
+    return { session: sessionMeta(chat) };
+  });
+
+  registerRelayHandler("sessions.delete", async (params) => {
+    const id = str(params, "id");
+    if (!id) throw new Error("sessions.delete requires { id }");
+    return { deleted: deleteStoredChat(id) };
+  });
+
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();
     let path = str(params, "path") || home;

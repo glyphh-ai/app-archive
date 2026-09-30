@@ -5,27 +5,31 @@
  * this file binds it to the app: the signed-in client, the capability
  * registry, the local push bus, and the pty teardown when the socket drops.
  *
- * Starts on sign-in, stops on sign-out (auth.ts). Re-advertises the table
- * once main.ts has installed every handler (refreshHello), so the first hello
- * never lists a partial method table.
+ * REMOTE CONTROL (his order, 2026-09-30): the socket is up only while the
+ * member has remote control on (remote-control.ts decides, and hands over the
+ * table — the remote-safe methods, bounded to the granted folders — and the
+ * folders every hello names). Stops on sign-out and when it is turned off.
+ * Re-advertises the table once main.ts has installed every handler
+ * (refreshHello), so the first hello never lists a partial method table.
  */
 
 import { hostname } from "node:os";
 import { app } from "electron";
 import { startAttachHost, type AttachHost } from "@glyphh/sdk/runtime";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
-import { dispatchRelayMethod, listRelayMethods, onLocalPush } from "./relay-client.js";
-import { killAllRelayPtys } from "./relay-pty.js";
 
 let host: AttachHost | null = null;
-let unsubscribePush: (() => void) | null = null;
 
-/** The registry as a live handler table: read on every hello. */
-function table(): Record<string, (params: unknown) => Promise<unknown>> {
-  return Object.fromEntries(listRelayMethods().map((m) => [m, (params: unknown) => dispatchRelayMethod(m, params)]));
+export interface AttachStartOptions {
+  /** What the server may call — read on every hello. */
+  handlers: () => Record<string, (params: unknown) => Promise<unknown>>;
+  /** The granted folders — read on every hello. */
+  folders: () => string[];
+  /** The org turned remote control off: the host has stopped for good. */
+  onRefused: (reason: string) => void;
 }
 
-export function startAttach(): void {
+export function startAttach(opts: AttachStartOptions): void {
   if (host) return;
   host = startAttachHost({
     client: getClient(),
@@ -33,19 +37,17 @@ export function startAttach(): void {
     app: "glyphh-desktop",
     version: app.getVersion(),
     name: hostname(),
-    handlers: table,
-    // A dropped socket kills the relayed shells: nothing buffers forever for a
-    // web terminal that is gone.
-    onDown: () => { try { killAllRelayPtys(); } catch { /* none open */ } },
+    handlers: opts.handlers,
+    folders: opts.folders,
+    onRefused: (reason) => { stopAttach(); opts.onRefused(reason); },
   });
-  // fs watchers and ptys push on the local bus; the socket carries the same frames.
-  unsubscribePush = onLocalPush((channel, data) => { host?.push(channel, data); });
+  // Only a relayed run's frames go up (attach-run.ts pushToAttach). The local
+  // bus (ptys, fs watchers) stays on this machine: no shell or watcher is
+  // reachable remotely, so none of their output has anywhere to go.
   console.info("[attach] host started", { server: SERVER_URL });
 }
 
 export function stopAttach(): void {
-  unsubscribePush?.();
-  unsubscribePush = null;
   host?.stop();
   host = null;
   console.info("[attach] host stopped");
