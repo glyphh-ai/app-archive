@@ -96,6 +96,16 @@
                   </div>
                 </div>
 
+                <h3 class="settings-subheading">CLI agents</h3>
+                <label class="settings-toggle set-pref-row" id="cli-gateway-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Use Glyphh models in my CLIs</div>
+                    <div class="set-pref-desc" id="cli-gateway-desc">Claude Code, Codex and Gemini run on your organization's Glyphh models instead of their own login. A workspace slot can override this. Copilot and Cursor always use their own login.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-cli-gateway" />
+                  <span class="toggle-switch"></span>
+                </label>
+
                 <h3 class="settings-subheading">App</h3>
 
                 <!-- Embeddings + memory moved to Settings → Memory (his order, 2026-09-19). -->
@@ -227,12 +237,6 @@
                   <input type="checkbox" id="toggle-memory-sensitive" />
                   <span class="toggle-switch"></span>
                 </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">The bridge</div>
-                    <div class="set-pref-desc">Every loop's traffic passes through Glyphh's local bridge on this machine. That is where memory is read and written. Claude's is currently the only supported loop for this feature.</div>
-                  </div>
-                </div>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Embeddings model</div>

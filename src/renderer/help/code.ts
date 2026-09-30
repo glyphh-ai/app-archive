@@ -31,7 +31,7 @@ import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "
 import { sessionDisplayTitle } from "./session-title.js";
 import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
-import { glyphhLoopMarkUrl } from "./mascots.js";
+import { glyphhLoopMarkUrl, mascotSvg, GLYPHH_LOOP_MASCOT } from "./mascots.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -4994,6 +4994,45 @@ interface RailCliAgent { id: string; name: string; cli?: string; icon?: string; 
 const railAgents: RailCliAgent[] = [{ id: GLYPHH_LOOP, name: "Glyphh", cli: GLYPHH_LOOP }];
 /** The loop wears the brand mascot every other surface wears. */
 const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
+// THE LOOP MARKS ARE BACK ON THE RAIL (his order, 2026-09-30: "the left rail
+// recents needs the 'loop' icon back and the icon for cli vs desktop"). The
+// vendor CLIs wear their public marks, fetched once through main.
+const RAIL_CLI_MARK_URLS: Record<string, string> = {
+  claude: "https://claude.ai/favicon.ico",
+  codex: "https://openai.com/favicon.ico",
+  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
+  copilot: "https://github.com/favicon.ico",
+  cursor: "https://cursor.com/favicon.ico",
+};
+const vendorMarks: Record<string, string> = {};
+function primeVendorMarks(): void {
+  for (const [cli, url] of Object.entries(RAIL_CLI_MARK_URLS)) {
+    if (vendorMarks[cli] !== undefined) continue;
+    vendorMarks[cli] = "";
+    void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
+      .webIconFetch?.(url).then((d) => { if (d) { vendorMarks[cli] = d; renderRailSessions(); } }).catch(() => {});
+  }
+}
+/** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
+function sessMarkEl(sess: RailSession): HTMLSpanElement {
+  const mark = document.createElement("span");
+  mark.className = "code-sess-mark";
+  if (sess.origin === "cli" && sess.cli === GLYPHH_LOOP) mark.innerHTML = mascotSvg(GLYPHH_LOOP_MASCOT);
+  else if (sess.origin === "cli" && vendorMarks[sess.cli]) {
+    const img = document.createElement("img");
+    img.className = `cli-mark-${sess.cli}`;
+    img.src = vendorMarks[sess.cli];
+    img.alt = "";
+    mark.appendChild(img);
+  } else if (sess.origin !== "cli") {
+    const img = document.createElement("img");
+    img.src = GLYPHH_MASCOT_SRC;
+    img.alt = "";
+    mark.appendChild(img);
+  }
+  mark.title = sess.origin !== "cli" ? "Glyphh" : sess.cli === GLYPHH_LOOP ? "Glyphh CLI" : (CLI_DISPLAY[sess.cli] ?? sess.cli);
+  return mark;
+}
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
@@ -5016,8 +5055,11 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    UX is the MAIN-era recents wholesale: Pinned first, then one group per
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
-interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType }
+interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli" }
 let railSessions: RailSession[] = [];
+/** The CLI agents' sessions, from each CLI's own store — the RAIL's and the CLI
+ *  window's, never the Glyphh agent's dropdown (his order, 2026-09-30). */
+let railCliSessions: RailSession[] = [];
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
 //    running ANYWHERE in the app: this document, another agent panel, the CLI.
@@ -5115,6 +5157,8 @@ const sessDisplayTitle = sessionDisplayTitle;
  *  is a data-URL image that renders as a broken tile outside the panel (his
  *  screenshot). A session's own SPACE is the useful fact, so it rides as a
  *  glyph drawn in currentColor — nothing to load, nothing to break. */
+const SESS_LOCAL_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+const SESS_CLI_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
 const SESS_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
 const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
 
@@ -5156,11 +5200,22 @@ async function loadRailSessions(): Promise<void> {
     }))
     .sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
+  railCliSessions = await loadCliSessions();
+  primeVendorMarks();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // one line per refresh pins what this surface actually painted.
   console.warn("[rail] sessions refreshed", JSON.stringify({ count: railSessions.length, newest: railSessions[0]?.title?.slice(0, 40) ?? null }));
   renderRailSessions();
 }
+
+/** Every CLI's recent sessions as rail rows. They are coding sessions, so they list under Code. */
+async function loadCliSessions(): Promise<RailSession[]> {
+  const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }> };
+  const r = await api.cliSessionsList?.().catch(() => null);
+  return (r?.ok ? r.sessions : []).map((x) => ({ ...x, mode: "code" as SessionType, origin: "cli" as const }));
+}
+(window.glyphh as unknown as { onCliSessionsChanged?: (cb: () => void) => void }).onCliSessionsChanged?.(() => scheduleRailSessionsRefresh());
+(window as unknown as { __glyphhCliSessions?: () => Promise<RailSession[]> }).__glyphhCliSessions = loadCliSessions;
 
 function sessPinned(id: string): boolean { return railSessionPins.includes(id); }
 
@@ -5179,7 +5234,7 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
   });
   if (!sure) return false;
   // A Glyphh-loop session lives in the thread store, not on disk.
-  if (sess.cli === "glyphh") {
+  if (sess.cli === "glyphh" && sess.origin !== "cli") {
     if (!chats.some((x) => x.id === sess.id)) return false;
     railSessions = railSessions.filter((x) => x.id !== sess.id);
     renderRailSessions();
@@ -5190,6 +5245,7 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
   const r = await api.cliSessionDelete?.(sess.id).catch(() => null);
   if (r?.ok) {
     railSessions = railSessions.filter((x) => x.id !== sess.id);
+    railCliSessions = railCliSessions.filter((x) => x.id !== sess.id);
     renderRailSessions();
     // A DELETED SESSION CANNOT BE RESUMED (his report, 2026-09-20): if it was
     // the one on screen, the panel starts over.
@@ -5280,6 +5336,13 @@ async function openGlyphhSession(id: string): Promise<void> {
 }
 
 function sessOpen(sess: RailSession): void {
+  // A CLI's session opens in ITS CLI window, resuming that conversation — never
+  // in the Glyphh agent (his order, 2026-09-30: CLI agents "only ever open in cli mode").
+  if (sess.origin === "cli") {
+    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
+      .__wbOpenAgentCli?.(sess.cli, undefined, { resumeId: sess.id, ...(sess.cwd ? { cwd: sess.cwd } : {}) });
+    return;
+  }
   // AGENT PANELS ARE INSTANCES in the shell (his ruling, 2026-09-26): a
   // running session fronts the panel that runs it; any other lands in the
   // panel the user touched last, else in a fresh one. The shell's own
@@ -5357,7 +5420,7 @@ function renderRailSessions(): void {
   // doesn't change the left rail's recents list in any way"). The panel's own
   // list and the dropdown were filtered; this one, the one he was looking at,
   // was not.
-  const items = railSessions
+  const items = [...railSessions, ...railCliSessions]
     .filter((x) => x.mode === typeTab)
     .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
   console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
@@ -5379,14 +5442,19 @@ function renderRailSessions(): void {
       // Leading slot: the RUNNING pulse while the session has a live turn —
       // here, in another agent panel, or in the CLI — else the locus icon.
       // Either way it toggles the pin.
-      const dot = sessDot(sess.id);
+      // Leading slot: the state dot while a turn is live, else WHERE the session
+      // runs — the desktop's Glyphh agent or a CLI (his order, 2026-09-30).
+      const idle = sessDotState(sess.id) === "idle";
+      const dot = idle ? document.createElement("span") : sessDot(sess.id);
+      if (idle) {
+        dot.className = "code-sess-ic";
+        dot.innerHTML = sess.origin === "cli" ? SESS_CLI_SVG : SESS_LOCAL_SVG;
+        dot.title = sess.origin === "cli" ? "CLI" : "Desktop";
+      }
       dot.classList.toggle("pinned", sessPinned(sess.id));
       dot.title = `${dot.title} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
       dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
-      // NO TYPE GLYPH ON A ROW (his order, 2026-09-29: "remove the icons from
-      // the left rail recents and the recents in the top of the agent panel").
-      // The tab above the list already says which type these are; the only
-      // mark a row carries is its state dot.
+      const markEl = sessMarkEl(sess);
       const label = document.createElement("span");
       label.className = "code-history-title";
       label.textContent = sessDisplayTitle(sess.title);
@@ -5396,7 +5464,7 @@ function renderRailSessions(): void {
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
       menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      row.append(dot, label, menuBtn);
+      row.append(dot, markEl, label, menuBtn);
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
     }
@@ -5405,7 +5473,7 @@ function renderRailSessions(): void {
 
 /** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
  *  search on top, the rail's grouping, rows with pin + delete icons. */
-function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: string; onPick: (sess: RailSession) => void }): void {
+function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: string; pool?: RailSession[]; onPick: (sess: RailSession) => void }): void {
   document.querySelector(".wb-session-menu")?.remove();
   const menu = document.createElement("div");
   menu.className = "code-drop wb-session-menu";
@@ -5445,22 +5513,24 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   };
   tabs.append(mkTab("work"), mkTab("code"));
   menu.appendChild(searchWrap);
-  menu.appendChild(tabs);
+  // The CLI window hands its own list: every CLI's sessions, no type tabs.
+  if (!opts.pool) menu.appendChild(tabs);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
   search.addEventListener("input", () => { menuQuery = search.value; paint(); });
-  const pool = railSessions;
+  let pool = opts.pool ?? railSessions;
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
     const visible = pool
-      .filter((x) => x.mode === menuTab)
+      .filter((x) => !!opts.pool || x.mode === menuTab)
       .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row";
       row.appendChild(sessDot(sess.id));
+      if (opts.pool) row.appendChild(sessMarkEl(sess));
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
@@ -5480,7 +5550,10 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       del.innerHTML = SESS_TRASH_SVG;
       del.addEventListener("click", (e) => {
         e.stopPropagation();
-        void sessDelete(sess).then((gone) => { if (gone && menu.isConnected) paint(); });
+        void sessDelete(sess).then((gone) => {
+          if (gone && opts.pool) pool = pool.filter((x) => x.id !== sess.id);
+          if (gone && menu.isConnected) paint();
+        });
       });
       row.append(title, pin, del);
       return row;

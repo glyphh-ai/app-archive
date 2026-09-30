@@ -116,12 +116,23 @@ async function ensureAppNames(): Promise<void> {
 function resolveApp(panelId: string): LayoutApp | undefined {
   return appById[panelId] || appById[panelId.replace(/-\d+$/, "")];
 }
-/** Cells saved in the CLI era carry `agent:<id>`; they all resolve to the one
- *  agent now (2026-09-28). */
+/** THE CLI AGENTS a workspace slot can hold (his order, 2026-09-30: "workspaces
+ *  should allow those agents to be included into the workspace"). A cell is
+ *  `agent:<cli>`; `gateway` marks the CLIs that can take the Glyphh gateway. */
+const CLI_AGENTS: Array<{ id: string; name: string; gateway: boolean }> = [
+  { id: "claude", name: "Claude", gateway: true },
+  { id: "codex", name: "Codex", gateway: true },
+  { id: "gemini", name: "Gemini", gateway: true },
+  { id: "copilot", name: "Copilot", gateway: false },
+  { id: "cursor", name: "Cursor", gateway: false },
+  { id: "glyphh", name: "Glyphh CLI", gateway: false },
+];
+const cliAgentOf = (panelId: string): { id: string; name: string; gateway: boolean } | undefined =>
+  panelId.startsWith("agent:") ? CLI_AGENTS.find((a) => a.id === panelId.slice(6)) : undefined;
 const CLI_AGENT_CELL_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6"/><rect x="4" y="6" width="16" height="12.5" rx="3.5"/><circle cx="9" cy="11.4" r="1.2"/><circle cx="15" cy="11.4" r="1.2"/><path d="M8.6 15.8h6.8"/></svg>`;
 
 function panelLabel(panelId: string): string {
-  if (panelId.startsWith("agent:")) return "Glyphh";
+  if (panelId.startsWith("agent:")) return cliAgentOf(panelId)?.name ?? panelId.slice(6);
   return resolveApp(panelId)?.name || panelId;
 }
 /** Built-in workbench tool panels selectable in a layout cell. id = `tool:<ViewKind>`:
@@ -339,6 +350,8 @@ interface CellConfig {
   folder?: string;
   model?: string;
   session?: "keep" | "new" | "last";
+  /** A CLI agent slot's gateway choice: absent = the member's default in Settings. */
+  gateway?: "on" | "off";
   railMenu?: boolean;
   railRecents?: boolean;
   railLayouts?: boolean;
@@ -631,7 +644,12 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   model.innerHTML = `<span class="layout-cell-field-label">Model</span><select class="settings-input"><option value="">Workspace default</option></select>`;
   const msel = model.querySelector("select") as HTMLSelectElement;
   msel.addEventListener("change", () => setCellValue(i, "model", msel.value));
-  void (async () => { msel.innerHTML = await loopModelOptionsHtml(cfg.model ?? "", "Workspace default"); })();
+  const cli = cliAgentOf(c.panelId);
+  // A CLI slot's model is a Glyphh model, so it only rides the gateway; on its
+  // own login the CLI runs its own default.
+  const modelDefault = cli ? "CLI default" : "Workspace default";
+  void (async () => { msel.innerHTML = await loopModelOptionsHtml(cfg.model ?? "", modelDefault); })();
+  if (cli) model.title = "Used when this slot runs on the Glyphh gateway";
   const folder = document.createElement("label");
   folder.className = "layout-cell-field";
   folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon pick" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon clear" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
@@ -643,6 +661,19 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   fields.appendChild(folder);
   fields.appendChild(model);
   fields.appendChild(selectRow("Session", [["", "Workspace default"], ["keep", "Keep the current session"], ["new", "Start a new session"], ["last", "Resume the last session"]], cfg.session ?? "", (v) => setCellValue(i, "session", v)));
+  if (cli?.gateway) {
+    // THE SLOT'S GATEWAY OVERRIDE (his order, 2026-09-30). Paid plans only:
+    // Free runs every CLI on its own login.
+    const gw = selectRow("Gateway", [["", "Default (Settings)"], ["on", "Glyphh models"], ["off", "Own login"]], cfg.gateway ?? "", (v) => setCellValue(i, "gateway", v));
+    fields.appendChild(gw);
+    void (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; hasPlan?: boolean }> }).cliAgentsList?.().then((r) => {
+      if (r?.ok && r.hasPlan === false) {
+        const sel = gw.querySelector("select") as HTMLSelectElement;
+        sel.disabled = true;
+        gw.title = "The Glyphh gateway needs a paid plan. On Free this CLI uses its own login.";
+      }
+    }).catch(() => {});
+  }
   row.appendChild(fields);
   return row;
 }
@@ -728,7 +759,7 @@ function renderGridPreview() {
       if (cell.sticky) cls.push("sticky");
       let label = cell.panelId ? panelLabel(cell.panelId) : "\u2014";
       if (cell.panelId && isToolPanel(cell.panelId)) label = toolPanelLabel(cell.panelId);
-      else if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
+      else if (cell.panelId?.startsWith("agent:")) label = panelLabel(cell.panelId);
       else if (cell.panelId === "agents-tabbed") label = "Loops (tabbed)";
       const pin = cell.sticky
         ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
@@ -939,6 +970,8 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
+    `<div class="cell-panel-group-label">CLI agents</div>`,
+    ...CLI_AGENTS.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Tabs</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,

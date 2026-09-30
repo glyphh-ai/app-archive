@@ -459,6 +459,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   memoryTurnUpdate: (input: { source: string; title?: string; summary?: string; details: string[] }) => ipcRenderer.invoke("memory-turn-update", input) as Promise<{ ok: boolean; chunks?: number; error?: string }>,
   memoryCurateNow: () => ipcRenderer.invoke("memory-curate-now") as Promise<{ ok: boolean; error?: string }>,
   memoryTurnForget: (source: string) => ipcRenderer.invoke("memory-turn-forget", source) as Promise<{ ok: boolean; deleted?: number; error?: string }>,
+  // CLI agents (his order, 2026-09-30) — the vendor CLIs and the Glyphh CLI, in their own window.
+  cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli: string; cmd: string; mcp: boolean; session: "keep" | "new" | "last"; command: string; gatewayCapable: boolean }>; hasPlan?: boolean; gatewayDefault?: boolean; error?: string }>,
+  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean; gateway?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; gateway?: boolean; error?: string; missing?: { cli: string; name: string; bin: string; install: string; login: string; note?: string } }>,
+  cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
+  cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  onCliSessionsChanged: (callback: () => void) => { ipcRenderer.on("cli-sessions-changed", () => callback()); },
   embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,
   embeddingsConfigSet: (input: { model?: string }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; model?: string; error?: string }>,
 

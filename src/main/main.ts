@@ -108,6 +108,8 @@ import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
+import { registerCliAgentsIpc } from "./cli-agents.js";
+import { startCliSessionWatch } from "./cli-session-watch.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -1080,6 +1082,9 @@ async function boot() {
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerConnToolModesIpc();
+  // THE CLI AGENTS (his order, 2026-09-30): their own window, beside the Glyphh loop.
+  registerCliAgentsIpc();
+  startCliSessionWatch();
   registerLocalAgentsIpc();
   registerHubIpc();
   registerTaskRunnerIpc();

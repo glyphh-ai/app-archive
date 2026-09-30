@@ -659,7 +659,7 @@ function wireAppUserChip(nav: HTMLElement): void {
     const admin = !!role && ["org_admin", "super_admin"].includes(role);
     (chip.querySelector(".asu-plan") as HTMLElement).textContent = !admin
       ? String((info as { orgName?: string }).orgName || "")
-      : tier === "none" || tier === "free" ? "No plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+      : tier === "none" || tier === "free" ? "Free plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
   };
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then(paintChip).catch(() => { /* signed out — the dash stays */ });
   // RE-PAINT on every account refresh (his report, 2026-09-01: a first paint

@@ -242,7 +242,7 @@ void (async () => {
           const first = (info.firstName || "").trim() || (info.email || "").split("@")[0] || "—";
           const tier = (info.tier || "none").toLowerCase();
           chip.querySelector("#platform-user-name")!.textContent = first;
-          chip.querySelector("#platform-user-plan")!.textContent = tier === "none" || tier === "free" ? "No plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+          chip.querySelector("#platform-user-plan")!.textContent = tier === "none" || tier === "free" ? "Free plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
           const face = chip.querySelector("#platform-user-avatar") as HTMLElement;
           const avatar = (info as { avatarUrl?: string } | null)?.avatarUrl || "";
           if (avatar) {
