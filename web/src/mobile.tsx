@@ -39,6 +39,7 @@ import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // The chat list lives on the member's desktop (v1: no server thread store, no
 // cloud worker) — read and written over the attach socket.
 import { desktopSessions } from './desktop-sessions';
+import { resolveDefaultModel } from './default-model';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -3904,7 +3905,9 @@ function App() {
   const observerRef = useRef<AttachHandle | null>(null);               // live-run subscription for the OPEN thread (observe a run started elsewhere)
   const [selectorAt, setSelectorAt] = useState<'sections' | 'models' | null>(null);
   const [permOpen, setPermOpen] = useState(false);
-  const roles = AGENT_ROLES;                                            // one loop, one role
+  // One loop, one role — opening on the Glyphh agent's default (default-model.ts).
+  const [defaultModelId, setDefaultModelId] = useState('');
+  const roles: RoleItem[] = defaultModelId ? [{ ...AGENT_ROLES[0], modelId: defaultModelId }] : AGENT_ROLES;
   // One-shot: suppress the nav slide-in for the NEXT screen switch (used when
   // the keyboard is collapsing at the same time — the two compose diagonally).
   const navNoAnimRef = useRef(false);
@@ -4472,6 +4475,20 @@ function App() {
       .catch(() => { if (on) setModels([]); });
     return () => { on = false; };
   }, [authState]);
+
+  // The model a session opens on: the member's Default model, else the org's
+  // (his order, 2026-09-30: "should default just like the glyphh agent does").
+  useEffect(() => {
+    if (authState !== 'in' || !models.length) return;
+    let on = true;
+    void Promise.all([
+      glyphh().profile.prefs().catch(() => ({})) as Promise<Record<string, unknown>>,
+      glyphh().plans.gates().catch(() => ({})) as Promise<{ defaultModel?: string }>,
+    ]).then(([prefs, gates]) => {
+      if (on) setDefaultModelId(resolveDefaultModel(models, String(prefs?.defaultModel ?? ''), String(gates?.defaultModel ?? '')));
+    });
+    return () => { on = false; };
+  }, [authState, models]);
 
   // Load the user's chat threads once signed in (feeds the rail + chats list).
   useEffect(() => {
