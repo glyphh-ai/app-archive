@@ -6504,7 +6504,11 @@ async function init(): Promise<void> {
         // layout cells — Slides/Docs/Sheets/Drive/Browser are apps to the user.
         // Same rule as the app branch: a seat handoff was declared for THIS
         // open, so the pin does not get to claim it.
-        const pinnedT = seatHandoff ? undefined : openList.find((x) => x.tile.sticky && x.card && x !== e);
+        // A CLI AGENT is the agent, never an app for the pinned card to swallow
+        // (his report, 2026-09-30: a rail click "is targeting the terminal app
+        // and not updating the session").
+        const isCliAgent = (t.slug || "").startsWith("agent:");
+        const pinnedT = seatHandoff || isCliAgent ? undefined : openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinnedT && !openingLayout) {
           const card = pinnedT.card!;
           setShadow(false, false);
@@ -6669,6 +6673,22 @@ async function init(): Promise<void> {
       (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli?.(id, undefined, { fresh: true, ...(slot.cwd ? { cwd: slot.cwd } : {}) });
     };
     (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli = (id: string, prompt?: string, opts?: AgentOpenOpts) => {
+      // A SESSION PICKED ON THE RAIL LANDS IN THE OPEN CLI WINDOW (his order,
+      // 2026-09-30: "if cli agent is open it should target that agent
+      // window"): the one running that CLI, else the newest CLI window, which
+      // re-targets to it. Only with none open does a new window start.
+      if (opts?.resumeId && !opts.fresh) {
+        const cliCards = openList.filter((x) => x.card && (x.toolSlot as TermSlot | undefined)?.view === "terminal" && !!(x.toolSlot as TermSlot).agent);
+        const target = cliCards.find((x) => (x.toolSlot as TermSlot).agent!.id === id) ?? cliCards[cliCards.length - 1];
+        const hostEl = target?.card?.querySelector<HTMLElement>(".ws-terminal-host");
+        const tabsEl = target?.card?.querySelector<HTMLElement>(".ws-terminal-tabs");
+        if (target && hostEl && tabsEl) {
+          flash(target.card);
+          void (window as unknown as { __wbResumeInAgentSlot?: (h: HTMLElement, sl: TermSlot, t: HTMLElement, id: string, sid: string, cwd?: string) => Promise<void> })
+            .__wbResumeInAgentSlot?.(hostEl, target.toolSlot as TermSlot, tabsEl, id, opts.resumeId, opts.cwd);
+          return;
+        }
+      }
       const row = cliAgentRows.find((x) => x.id === id);
       if (row) { openAgentCliCard(cliAgentTileOf(row), prompt, opts); return; }
       void yoApi?.cliAgentsList?.().then((r) => {
@@ -9260,6 +9280,8 @@ async function init(): Promise<void> {
     paintTermTabs(tabsEl, hostEl, slot);
     mountTerminal(hostEl, slot);
   }
+
+  (window as unknown as { __wbResumeInAgentSlot?: typeof resumeHere }).__wbResumeInAgentSlot = resumeHere;
 
   /** THE CLI AGENT WINDOW'S HEAD — the pre-cut header exactly, minus the way
    *  back to the Glyphh view (his order, 2026-09-30: "exactly like it was before
