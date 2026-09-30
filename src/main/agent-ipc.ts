@@ -199,6 +199,8 @@ export function appendStoredMessage(chatId: string, msg: { role: "user" | "assis
   const chats = snap.chats as RelayChat[];
   if (!chats.some((c) => c?.id === chatId)) { upsertStoredChat(chatId, { ...seed, title: seed?.title || text.slice(0, 60) }); return appendStoredMessage(chatId, msg); }
   const chat = chats.find((c) => c?.id === chatId)!;
+  // A chat the phone named before its first turn has no folder yet: the turn's is its folder.
+  if (seed?.workdir && !chat.workdir) { chat.workdir = seed.workdir; chat.source = { kind: "local", path: seed.workdir }; }
   const msgs = Array.isArray(chat.messages) ? chat.messages : (chat.messages = []);
   const last = msgs[msgs.length - 1];
   if (last && last.role === msg.role && String(last.text ?? "").trim() === text) return;
