@@ -18,7 +18,7 @@ import type { LibEnvelope } from "./help/library-types.js";
  *  says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
 /** Settings → Remote control (mirrors main/remote-control.ts). */
-type RemoteControlView = { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string };
+type RemoteControlView = { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null };
 
 // Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so
 // the renderer program (ES2022 module tsconfig) never pulls preload.ts
@@ -354,6 +354,7 @@ declare global {
       remoteControlSetEnabled?: (enabled: boolean) => Promise<RemoteControlView>;
       remoteControlAddFolder?: () => Promise<RemoteControlView>;
       remoteControlRemoveFolder?: (folder: string) => Promise<RemoteControlView>;
+      adaRegisterDevice?: () => Promise<RemoteControlView>;
       onRemoteControlChanged?: (cb: (v: RemoteControlView) => void) => () => void;
       onPreferenceChanged: (cb: (key: string, value: unknown) => void) => void;
       onboardingComplete: () => Promise<void>;

@@ -17,6 +17,10 @@
  * THE ORG'S SWITCH: attach.status says whether remote control is allowed; a
  * 4403 at the socket says it was turned off while on. Either way the page says
  * so and nothing attaches.
+ *
+ * ADA (his order, 2026-10-01): a computer registered as an Ada device
+ * (ada-device.ts) keeps the socket up for its records even with remote control
+ * off — then the table is the ada.* row store alone, with no folders.
  */
 
 import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
@@ -28,6 +32,7 @@ import { gitStateOf } from "./attach-handlers.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
 import { getPreference, loadPreferences, setPreference } from "./stores/preferences-db.js";
+import { adaDevice, adaHandlers, registerAdaDevice, type AdaDeviceInfo } from "./ada-device.js";
 
 export interface RemoteControlSetting { enabled: boolean; folders: string[] }
 
@@ -38,6 +43,8 @@ export interface RemoteControlView extends RemoteControlSetting {
   attached: boolean;
   /** Why the server refused this machine, when it did. */
   refused?: string;
+  /** This computer as an Ada device, when it is one. */
+  ada: AdaDeviceInfo | null;
 }
 
 /** Everything a phone may call — the server's REMOTE_METHODS, no more. */
@@ -137,15 +144,19 @@ function changed(): void {
   void remoteControlView().then((v) => broadcast("remote-control:changed", v)).catch(() => undefined);
 }
 
+const remoteOn = (s: RemoteControlSetting): boolean => s.enabled && s.folders.length > 0;
+
 async function start(): Promise<void> {
-  const { folders, enabled } = readSetting();
-  if (!enabled || !folders.length || running) return;
+  const ada = adaDevice();
+  if ((!remoteOn(readSetting()) && !ada) || running) return;
   if (!(await orgAllows())) { refused = "remote control is off for your organization"; changed(); return; }
   refused = undefined;
+  const records = await adaHandlers().catch(() => ({}));
   const m = await import("./attach-host.js");
   m.startAttach({
-    handlers: () => remoteTable(() => readSetting().folders),
-    folders: () => readSetting().folders,
+    handlers: () => ({ ...(remoteOn(readSetting()) ? remoteTable(() => readSetting().folders) : {}), ...records }),
+    folders: () => (remoteOn(readSetting()) ? readSetting().folders : []),
+    ...(ada ? { adaDevice: () => ada.device_id } : {}),
     onRefused: (reason) => { running = false; refused = reason; changed(); },
   });
   running = true;
@@ -176,13 +187,13 @@ export async function remoteControlView(): Promise<RemoteControlView> {
   const s = readSetting();
   const allowed = await orgAllows();
   const { attachStatus } = await import("./attach-host.js");
-  return { ...s, device: hostname(), allowed, attached: attachStatus().attached, ...(refused ? { refused } : {}) };
+  return { ...s, device: hostname(), allowed, attached: attachStatus().attached, ada: adaDevice(), ...(refused ? { refused } : {}) };
 }
 
 async function apply(next: RemoteControlSetting): Promise<RemoteControlView> {
   writeSetting(next);
   await stop();
-  if (next.enabled && next.folders.length) await start();
+  await start();
   return remoteControlView();
 }
 
@@ -196,6 +207,12 @@ export function registerRemoteControlIpc(): void {
     const cur = readSetting();
     if (!picked || cur.folders.includes(picked)) return remoteControlView();
     return apply({ ...cur, folders: [...cur.folders, picked] });
+  });
+  ipcMain.handle("ada:register-device", async () => {
+    await registerAdaDevice();
+    await stop();
+    await start();
+    return remoteControlView();
   });
   ipcMain.handle("remote-control:remove-folder", (_e, folder: string) => {
     const cur = readSetting();
