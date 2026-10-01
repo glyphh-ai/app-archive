@@ -18,6 +18,8 @@ vi.mock("../../src/main/conn-tool-modes", () => ({ effectiveToolMode: () => "ask
 vi.mock("../../src/main/stores/preferences-db", () => ({ preferencesByPrefix: () => ({}), getPreference: (_k: string, d: unknown) => d }));
 vi.mock("../../src/main/glyphh-client", () => ({ SERVER_URL: "https://api.test" }));
 vi.mock("../../src/main/working-directory", () => ({ getWorkingDirectory: () => "" }));
+let bundledCli: string | null = null;
+vi.mock("../../src/main/bundled-cli", () => ({ bundledGlyphhCli: () => bundledCli }));
 let orgDefault = "claude-sonnet-5";
 vi.mock("../../src/main/org-models", () => ({
   bareModel: (m: string) => m.replace(/^[a-z0-9_-]+::/i, "").trim(),
@@ -87,6 +89,26 @@ describe("composeCommand — what the terminal plays", () => {
     const line = composeCommand(agentRowFor("glyphh")!, {}, false, "posix");
     expect(line).toContain(path.join(home, "glyphh-cli-sessions.json"));
     expect(line).not.toContain("agent-sessions.json");
+  });
+
+  it("runs the CLI the app carries with the app's own binary, on both shells (his order, 2026-10-01)", () => {
+    bundledCli = "/Apps/Glyphh Desktop.app/Contents/Resources/glyphh-cli/run.mjs";
+    try {
+      const sh = composeCommand(agentRowFor("glyphh")!, {}, false, "posix");
+      expect(sh).toContain(' ELECTRON_RUN_AS_NODE="1"');
+      expect(sh).toContain(`"${process.execPath}" "${bundledCli}" --trust`);
+      const ps = composeCommand(agentRowFor("glyphh")!, {}, false, "powershell");
+      expect(ps).toContain("$env:ELECTRON_RUN_AS_NODE = '1';");
+      expect(ps).toContain(`& "${process.execPath}" "${bundledCli}" --trust`);
+    } finally {
+      bundledCli = null;
+    }
+  });
+
+  it("falls back to the glyphh on PATH when the build carries no CLI", () => {
+    const line = composeCommand(agentRowFor("glyphh")!, {}, false, "posix");
+    expect(line).toContain(" glyphh --trust");
+    expect(line).not.toContain("ELECTRON_RUN_AS_NODE");
   });
 
   it("names the Glyphh CLI for what it is", () => {

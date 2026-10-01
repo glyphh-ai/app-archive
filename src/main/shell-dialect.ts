@@ -70,6 +70,13 @@ export function andThen(parts: string[], d: Dialect): string {
   return d === "powershell" ? kept.join("; if ($?) { ") + " }".repeat(kept.length - 1) : kept.join(" && ");
 }
 
+/** Run a program by its full path with arguments. PowerShell reads a quoted
+ *  path as a string expression, not a command, unless `&` calls it. */
+export function invoke(exe: string, args: string[], d: Dialect): string {
+  const line = [exe, ...args].map((a) => quotePath(a, d)).join(" ");
+  return d === "powershell" ? `& ${line}` : line;
+}
+
 /** Change directory. */
 export function cd(dir: string, d: Dialect): string {
   return d === "powershell" ? `Set-Location -LiteralPath ${quotePath(dir, d)}` : `cd ${quotePath(dir, d)}`;

@@ -32,7 +32,8 @@ import { SERVER_URL } from "./glyphh-client.js";
 import { CLI_INSTALL, missingCli } from "./cli-install.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { bareModel, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
-import { hostDialect, andThen, cd as shCd, setVar, sourceEnvFile, type Dialect } from "./shell-dialect.js";
+import { hostDialect, andThen, cd as shCd, invoke, setVar, sourceEnvFile, type Dialect } from "./shell-dialect.js";
+import { bundledGlyphhCli } from "./bundled-cli.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -286,8 +287,13 @@ export function composeCommand(row: CliAgentRow, ov: OpenOverrides, viaGateway: 
     const mcpToken = row.mcp && port ? ensureMcpToken(row.id) : "";
     const envPairs: Array<[string, string]> = [["GLYPHH_SERVER_URL", SERVER_URL], ["GLYPHH_APP_SESSIONS", glyphhCliSessionsFile()]];
     if (mcpToken) envPairs.push(["GLYPHH_APP_MCP_URL", `http://127.0.0.1:${port}/mcp`], ["GLYPHH_APP_MCP_TOKEN", mcpToken]);
+    // The CLI the app carries, run by the app's own binary as Node; the PATH
+    // `glyphh` only when this build carries none (a dev checkout).
+    const bundled = bundledGlyphhCli();
+    if (bundled) envPairs.push(["ELECTRON_RUN_AS_NODE", "1"]);
     const env = envPairs.map(([k, v]) => setVar(k, v, d)).join("").trim();
-    const base = `${env} ${row.cmd} --trust${resumePart}${modelFlag(row.cli, picked)}${promptPart}`;
+    const bin = bundled ? invoke(process.execPath, [bundled], d) : row.cmd;
+    const base = `${env} ${bin} --trust${resumePart}${modelFlag(row.cli, picked)}${promptPart}`;
     return cwd ? andThen([shCd(cwd, d), base], d) : base;
   }
   let base: string;
@@ -689,7 +695,7 @@ export function registerCliAgentsIpc(): void {
       if (!row) return { ok: false, error: `unknown CLI agent: ${String(id)}` };
       await refreshOrgModels().catch(() => undefined);
       const ov: OpenOverrides = overrides ?? {};
-      const missing = await missingCli(row);
+      const missing = row.cli === "glyphh" && bundledGlyphhCli() ? null : await missingCli(row);
       if (ov.light !== undefined) {
         try {
           if (row.cli === "claude") ensureClaudeTheme(ov.light);

@@ -147,10 +147,13 @@ function changed(): void {
 const remoteOn = (s: RemoteControlSetting): boolean => s.enabled && s.folders.length > 0;
 
 async function start(): Promise<void> {
-  const ada = adaDevice();
-  if ((!remoteOn(readSetting()) && !ada) || running) return;
+  if ((!remoteOn(readSetting()) && !adaDevice()) || running) return;
   if (!(await orgAllows())) { refused = "remote control is off for your organization"; changed(); return; }
   refused = undefined;
+  // A MACHINE WITH REMOTE CONTROL ON IS AN ADA DEVICE (his report, 2026-10-01:
+  // the console's Ada create dialog found no devices beside a connected Mac).
+  // Registering is once per computer; a failure leaves remote control working.
+  const ada = adaDevice() ?? (await registerAdaDevice().catch(() => null));
   const records = await adaHandlers().catch(() => ({}));
   const m = await import("./attach-host.js");
   m.startAttach({

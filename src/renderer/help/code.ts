@@ -5253,6 +5253,8 @@ const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 // the dropdown disagreed — the rail only refreshed at boot): every history
 // change schedules one debounced re-read of the CLI stores.
 let railSessionsTimer: ReturnType<typeof setTimeout> | null = null;
+let railRefreshedLog = "";
+let railPaintedLog = "";
 function scheduleRailSessionsRefresh(): void {
   if (railSessionsTimer) clearTimeout(railSessionsTimer);
   railSessionsTimer = setTimeout(() => { railSessionsTimer = null; void loadRailSessions(); }, 800);
@@ -5290,8 +5292,10 @@ async function loadRailSessions(): Promise<void> {
   railCliSessions = await loadCliSessions();
   primeVendorMarks();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
-  // one line per refresh pins what this surface actually painted.
-  console.warn("[rail] sessions refreshed", JSON.stringify({ count: railSessions.length, newest: railSessions[0]?.title?.slice(0, 40) ?? null }));
+  // a line pins what this surface actually read — but only when it CHANGED
+  // (his report, 2026-10-01: every panel save printed the same pair again).
+  const refreshed = JSON.stringify({ count: railSessions.length, newest: railSessions[0]?.title?.slice(0, 40) ?? null });
+  if (refreshed !== railRefreshedLog) { railRefreshedLog = refreshed; console.warn("[rail] sessions refreshed", refreshed); }
   renderRailSessions();
 }
 
@@ -5511,7 +5515,8 @@ function renderRailSessions(): void {
     .filter((x) => x.mode === typeTab)
     .filter((x) => loopFilterKeeps(x))
     .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
-  console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
+  const painted = JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null });
+  if (painted !== railPaintedLog) { railPaintedLog = painted; console.warn("[rail] painted", painted); }
   host.textContent = "";
   if (!items.length) {
     const empty = document.createElement("div");
@@ -7185,8 +7190,9 @@ export function initCode(): void {
     void reloadSessionsFromDisk();
     // The RAIL follows the same announcement (his report, 2026-09-29): the
     // shell's recents and the panel's dropdown are one list, so a write in
-    // either document repaints both.
-    void loadRailSessions();
+    // either document repaints both. Debounced like every other history
+    // change: a panel saves many times a turn, and each save lands here.
+    scheduleRailSessionsRefresh();
   });
   // THE LIVE LEDGER (main's agent-live.ts): which sessions are running
   // anywhere in the app — the rail's rows pulse by it.
