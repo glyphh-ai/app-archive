@@ -21730,3 +21730,17 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .tv-copy svg { width: 13px; height: 13px; }
 .tv-copy:hover { background: var(--hover); color: var(--text); }
 .tv-copy.done { color: var(--success); }
+
+/* ── The display face (his pick, 2026-10-02): every heading in JetBrains Mono
+   700, as on the site and the console. Body text stays Geist. A document the
+   member is writing (.gdoc-paper) keeps its own faces. ──────────────────── */
+:root { --font-display: var(--font-mono); }
+:is(h1, h2, h3, h4):not(.gdoc-paper *),
+.yo-modal-title, .dash-modal-title, .conn-modal-title, .gdz-modal-title,
+.yo-panel-title, .dash-section-title, .gdrive-section-title, .gmem-sec-title,
+.mem-page-title, .settings-subheading, .ws-tasks-heading, .mkt-banner-title,
+.mkt-console-title, .dash-cowork-title, .lockout-title, .wtour-title {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}

@@ -1,67 +1,64 @@
-/* mobile.css — the mobile web app's OWN stylesheet. Self-contained: real Inter
- * font, real token VALUES (copied from the design system, not invented), real
+/* mobile.css — the mobile web app's OWN stylesheet. Self-contained: real Geist
+ * and JetBrains Mono fonts, real token VALUES (copied from the design system, not invented), real
  * button, and the mobile layout. NO desktop CSS. */
 
-/* ── Real font (so type isn't the thin system fallback) ───────────────────── */
+/* ── Real fonts (so type isn't the thin system fallback): Geist for text,
+   JetBrains Mono for headings and code, the same two as every other surface. */
 @font-face {
-  font-family: 'Inter';
+  font-family: 'Geist';
   font-style: normal;
-  font-weight: 400 800;
+  font-weight: 100 900;
   font-display: swap;
-  src: url(/fonts/Inter-latin.woff2) format('woff2');
+  src: url(/fonts/Geist-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(/fonts/JetBrainsMono-latin.woff2) format('woff2');
 }
 
-/* ── Tokens (values from the design system) ───────────────────────────────── */
+/* ── Tokens: the desktop's High Vis palette, verbatim (his order, 2026-10-02:
+   mobile aligns with the app and the console on the basics: colours, fonts,
+   buttons). Change a value in src/renderer/styles.css and here together. ── */
 :root, [data-theme="light"] {
-  color-scheme: light;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --bg: #f5f5f5;
-  --surface: #ffffff;
-  --surface-2: #fafafa;
-  --surface-3: #f0f0f0;
-  --border: #e5e5e5;
-  --border-2: #d4d4d4;
-  --text: #1f2937;
-  --text-2: #4b5563;
-  --text-3: #6b7280;
-  --text-faint: #9ca3af;
-  --white: #111111;
-  --hover: #f0f0f0;
-  --accent: #af5fff;
-  --accent-hover: #c184ff;
-  --accent-text: #cda2ff;
-  --accent-bg: #f5ecfd;
-  --success: #16a34a;        /* connected-green (matches styles.css light) */
-  --danger: #e5484d;         /* matches styles.css light */
-  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
-  --overlay-bg: rgba(0, 0, 0, 0.3);
-  --grad-accent: linear-gradient(to top right, #af5fff, #ec4899);
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  --font-display: var(--font-mono);
+  --bg-2: var(--surface-2);
   --radius: 10px;
   --radius-sm: 8px;
   --transition: 0.15s ease;
+  color-scheme: light;
+  --mark-invert: 0;
+  --bg: #ffffff; --bg-raised: #ffffff; --surface: #f7f7f7; --surface-2: #efefef; --surface-3: #e6e6e6;
+  /* var() resolves at use time, so a theme that declares no --sidebar gets
+     ITS OWN ground for the rail (before this, :root's white leaked into every
+     dark theme that skipped the token). */
+  --sidebar: var(--bg); --sidebar-border: var(--border);
+  --border: #8a8a8a; --border-2: #6a6a6a; --border-3: #4a4a4a;
+  --text: #000000; --text-bright: #000000; --text-2: #1a1a1a; --text-3: #333333; --text-muted: #4d4d4d; --text-faint: #6f6f6f;
+  --white: #000000; --hover: #ececec; --active-bg: rgba(140, 59, 242, 0.14);
+  --accent: #8c3bf2; --accent-hover: #7a2fe0; --accent-fg: #fff; --accent-text: #7a2fe0; --accent-dark: #6a22cc; --accent-bg: #f1e8ff;
+  --danger: #d40000; --danger-soft: #e53535; --danger-bg: #ffe8e8; --warning: #c96a00; --success: #00873f; --blue: #0070d1; --purple: #8c3bf2;
+  --overlay-bg: rgba(0, 0, 0, 0.45); --shadow: rgba(0, 0, 0, 0.20); --selection: rgba(140, 59, 242, 0.25);
+  --scrollbar: #8a8a8a; --scrollbar-hover: #8c3bf2; --toast-bg: #ffffff; --code-inline: #7a2fe0;
+  --input-bg: #ffffff; --card-bg: var(--surface); --grad-accent: linear-gradient(120deg, #8c3bf2, #af5fff);
 }
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1a1a1c;
-  --surface: #252528;
-  --surface-2: #2e2e32;
-  --surface-3: #29292c;
-  --border: #3f3f46;
-  --border-2: #4a4a52;
-  --text: #f1f1f1;
-  --text-2: #c4c4c4;
-  --text-3: #a7a7a7;
-  --text-faint: #808080;
-  --white: #ffffff;
-  --hover: #303035;
-  --accent: #af5fff;
-  --accent-hover: #c184ff;
-  --accent-text: #cda2ff;
-  --accent-bg: #241a2e;
-  --success: #3fb950;        /* connected-green (matches styles.css dark) */
-  --danger: #f85149;         /* matches styles.css dark */
-  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
-  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
+  --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
+  --sidebar: #000000; --sidebar-border: #5a5a5a;
+  --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
+  --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(176, 102, 255, 0.20);
+  --accent: #b066ff; --accent-hover: #c68cff; --accent-fg: #fff; --accent-text: #c68cff; --accent-dark: #af5fff; --accent-bg: #221133;
+  --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
+  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(176, 102, 255, 0.35);
+  --scrollbar: #5a5a5a; --scrollbar-hover: #b066ff; --toast-bg: #0d0d0d; --code-inline: #c68cff;
+  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #b066ff, #af5fff);
 }
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
@@ -73,6 +70,7 @@
 /* ── Reset ────────────────────────────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100dvh; }
+button, input, textarea, select { font-family: inherit; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -85,40 +83,63 @@ body {
 }
 #glyphh-mobile-root { height: 100dvh; }
 
-/* ── Button (the real .btn-primary) ───────────────────────────────────────── */
+/* ── Buttons: the desktop's .btn and .btn-primary, verbatim ───────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  font: 600 0.8125rem var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
 }
-.btn-lg { padding: 0.875rem 1.25rem; font-size: 0.9375rem; border-radius: 10px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-full { width: 100%; }
+.btn-lg {
+  padding: 0.875rem 1.25rem;
+  font-size: 0.9375rem;
+  border-radius: 10px;
+}
 .btn-primary {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  /* Theme's primary CONTRAST — white pill in dark, black pill in light — never a
-     hardcoded colour, so it stays legible in every theme. Accent lives only in
-     the gradient sweep on press (::before). */
-  background: var(--white);
-  color: var(--bg);
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
   border: none;
+  transition: background-color 220ms ease, opacity var(--transition);
 }
 .btn-primary::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--grad-accent);
+  /* The hover shade of the same accent, wiping across as before. */
+  background: var(--accent-hover);
   transform: translateX(-100%);
+  transition: none;
 }
 .btn-primary:hover:not(:disabled)::before,
-.btn-primary:active:not(:disabled)::before { transform: translateX(0); transition: transform 280ms ease; }
+.btn-primary:active:not(:disabled)::before,
+.btn-primary:focus-visible:not(:disabled)::before {
+  transform: translateX(0);
+  transition: transform 280ms ease;
+}
+.btn-primary:disabled::before {
+  transform: translateX(0);
+  transition: none;
+}
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled),
+.btn-primary:focus-visible:not(:disabled) {
+  /* The gradient wipe slides under the label — white text on the accent, not
+     black. */
+  color: #fff;
+}
 
 /* ── App frame ── */
 .m-app { position: fixed; inset: 0; overflow: hidden; background: var(--surface); }
@@ -657,7 +678,7 @@ body {
 .m-md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .m-md strong { font-weight: 700; }
 .m-md em { font-style: italic; }
-.m-md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+.m-md code { font-family: var(--font-mono); font-size: 0.86em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
 .m-md-ul, .m-md-ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; }
 .m-md-ul { list-style: disc; } .m-md-ol { list-style: decimal; }
 .m-md-li { padding-left: 2px; }
@@ -686,7 +707,7 @@ body {
 .m-cb-chev { display: inline-flex; transition: transform 0.2s ease; }
 .m-cb-chev[data-folded="false"] { transform: rotate(180deg); }
 .m-cb-pre { margin: 0; padding: 13px 15px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.m-cb-pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14.5px; line-height: 1.6; background: none; border: 0; padding: 0; white-space: pre; color: var(--text); }
+.m-cb-pre code { font-family: var(--font-mono); font-size: 14.5px; line-height: 1.6; background: none; border: 0; padding: 0; white-space: pre; color: var(--text); }
 .tk-kw { color: var(--accent); font-weight: 600; }
 .tk-str { color: var(--success); }
 .tk-com { color: var(--text-faint); font-style: italic; }
@@ -733,7 +754,7 @@ body {
 .m-toolrow:active { opacity: 0.55; }
 .m-toolrow-spin { flex: 0 0 13px; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border-2); border-top-color: var(--accent); animation: m-spin 0.7s linear infinite; }
 .m-toolrow-lead { color: var(--text-3); font: 400 19px/1.35 var(--font-sans); }
-.m-toolrow-lead code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; color: var(--text-2); }
+.m-toolrow-lead code { font-family: var(--font-mono); font-size: 0.9em; color: var(--text-2); }
 .m-toolrow-bad .m-toolrow-lead { color: var(--danger); }
 .m-toolrow-diff { display: inline-flex; gap: 6px; font: 600 16px/1 ui-monospace, monospace; }
 .m-toolrow-chev { display: inline-flex; color: var(--text-faint); }
@@ -750,7 +771,7 @@ body {
 /* The shared per-app icon (server resolver — same image as desktop/web). */
 .m-action-appicon { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; display: block; }
 .m-action-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-action-name code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; color: var(--text-2); }
+.m-action-name code { font-family: var(--font-mono); font-size: 0.9em; color: var(--text-2); }
 .m-action-chev { flex: 0 0 18px; color: var(--text-faint); display: inline-flex; }
 .m-action-chev svg { width: 16px; height: 16px; }
 .m-action-file { margin-top: 6px; font: 400 15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-2); word-break: break-all; }
@@ -2050,6 +2071,54 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 .m-field-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); margin-top: 22px; }
 
 /* ── Full theme set (tokens ported from styles.css; mobile subset) ────────── */
+/* The palettes mobile called light and dark before 2026-10-02: the desktop's Modern pair. */
+[data-theme="modern-light"] {
+  color-scheme: light;
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f0f0f0;
+  --border: #e5e5e5;
+  --border-2: #d4d4d4;
+  --text: #1f2937;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --text-faint: #9ca3af;
+  --white: #111111;
+  --hover: #f0f0f0;
+  --accent: #af5fff;
+  --accent-hover: #c184ff;
+  --accent-text: #cda2ff;
+  --accent-bg: #f5ecfd;
+  --success: #16a34a;        /* connected-green (matches styles.css light) */
+  --danger: #e5484d;         /* matches styles.css light */
+  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --grad-accent: linear-gradient(to top right, #af5fff, #ec4899);
+}
+[data-theme="modern-dark"] {
+  color-scheme: dark;
+  --bg: #1a1a1c;
+  --surface: #252528;
+  --surface-2: #2e2e32;
+  --surface-3: #29292c;
+  --border: #3f3f46;
+  --border-2: #4a4a52;
+  --text: #f1f1f1;
+  --text-2: #c4c4c4;
+  --text-3: #a7a7a7;
+  --text-faint: #808080;
+  --white: #ffffff;
+  --hover: #303035;
+  --accent: #af5fff;
+  --accent-hover: #c184ff;
+  --accent-text: #cda2ff;
+  --accent-bg: #241a2e;
+  --success: #3fb950;        /* connected-green (matches styles.css dark) */
+  --danger: #f85149;         /* matches styles.css dark */
+  --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+}
 [data-theme="purple"], [data-theme="aurora"] {
   color-scheme: dark;
   --bg:#140a1f; --surface:#221634; --surface-2:#2c1e42; --surface-3:#281a3c;
@@ -2081,13 +2150,17 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 }
 [data-theme="highvis"] {
   color-scheme: dark;
-  --bg:#000000; --surface:#0d0d0d; --surface-2:#141414; --surface-3:#1a1a1a;
-  --border:#5a5a5a; --border-2:#7a7a7a;
-  --text:#ffffff; --text-2:#eaeaea; --text-3:#c8c8c8; --text-faint:#909090;
-  --white:#ffffff; --hover:#1f1f1f;
-  --accent:#b066ff; --accent-hover:#c68cff; --accent-text:#c68cff; --accent-bg:#221133;
-  --success:#00e676; --danger:#ff2b2b; --overlay-bg:rgba(0,0,0,0.8);
-  --grad-accent:linear-gradient(120deg,#b066ff,#af5fff);
+  --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
+  --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
+  --sidebar: #000000; --sidebar-border: #5a5a5a;
+  --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
+  --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(176, 102, 255, 0.20);
+  --accent: #b066ff; --accent-hover: #c68cff; --accent-fg: #fff; --accent-text: #c68cff; --accent-dark: #af5fff; --accent-bg: #221133;
+  --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
+  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(176, 102, 255, 0.35);
+  --scrollbar: #5a5a5a; --scrollbar-hover: #b066ff; --toast-bg: #0d0d0d; --code-inline: #c68cff;
+  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #b066ff, #af5fff);
 }
 [data-theme="claude"] {
   color-scheme: light;
@@ -2337,4 +2410,14 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
 /* Tablet: don't go full-bleed — a right-docked panel reads better. */
 @media (min-width: 768px) {
   .m-apptray { width: min(720px, 92vw); border-radius: 18px 0 0 18px; }
+}
+
+/* ── The display face (his pick, 2026-10-02): headings in JetBrains Mono 700,
+   as on the site, the desktop and the console. Body text is Geist. ──────── */
+h1, h2, h3, h4,
+.m-chats-title, .m-login-title, .m-sel-title, .m-recent-title, .m-sheet-title,
+.m-confirm-title, .m-prompt-title, .m-md-h1, .m-md-h2, .m-md-h3, .m-md-h4 {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
 }
