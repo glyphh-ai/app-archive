@@ -30,16 +30,19 @@ const path = require("path");
 
 const CREDENTIALS = ["ES_USERNAME", "ES_PASSWORD", "ES_CREDENTIAL_ID", "ES_TOTP_SECRET"];
 
-/** True when Windows already trusts the file's existing signature. */
-function alreadySigned(file) {
-  if (process.platform !== "win32") return false;
+/** The file's current Authenticode status as Windows reports it ("Valid",
+ *  "NotSigned", ...), or a note on why it could not be read. */
+function signatureStatus(file) {
+  if (process.platform !== "win32") return "not windows";
   const literal = file.replace(/'/g, "''");
   const r = spawnSync(
     "powershell",
     ["-NoProfile", "-NonInteractive", "-Command", `(Get-AuthenticodeSignature -LiteralPath '${literal}').Status`],
     { encoding: "utf8" },
   );
-  return r.status === 0 && r.stdout.trim() === "Valid";
+  if (r.error) return `check failed: ${r.error.message}`;
+  if (r.status !== 0) return `check exited ${r.status}: ${(r.stderr || "").trim()}`;
+  return r.stdout.trim() || "empty";
 }
 
 /** @param {{ path: string, hash: string }} configuration */
@@ -55,10 +58,12 @@ module.exports = async function sign(configuration) {
     console.warn(`[win-sign] ${why} — ${name} left unsigned (local pack)`);
     return;
   }
-  if (alreadySigned(file)) {
+  const status = signatureStatus(file);
+  if (status === "Valid") {
     console.log(`[win-sign] ${name} already carries a valid signature — kept`);
     return;
   }
+  console.log(`[win-sign] ${name}: existing signature ${status} — signing`);
 
   // The jar reads conf/code_sign_tool.properties relative to CODE_SIGN_TOOL_PATH
   // and expects to run from that directory (the layout is <root>/jar/<jar>).
