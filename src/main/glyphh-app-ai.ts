@@ -27,7 +27,7 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
-import { gatewayEmbed, selectedEmbedModel } from "./embeddings-config.js";
+import { gatewayEmbed, offers, orgEmbedModels, resolveEmbedModel } from "./embeddings-config.js";
 
 // kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
 // OPTIONAL feature, and on some machines the prebuilt can't load — most often a
@@ -60,14 +60,8 @@ async function embedTexts(texts: string[], model: string): Promise<number[][]> {
   return gatewayEmbed(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
 }
 
-/** The model NEW collections and embeds use: the member's pick, else "" —
- *  which embedTexts reports as "not configured" rather than guessing. */
-function activeEmbedModel(): string {
-  return selectedEmbedModel();
-}
-
 export async function llmEmbed(args: Record<string, unknown>): Promise<{ model: string; dim: number; vectors: number[][] }> {
-  const model = String(args.model || activeEmbedModel());
+  const model = String(args.model || await resolveEmbedModel());
   const texts = Array.isArray(args.texts) ? args.texts.map(String) : args.text ? [String(args.text)] : [];
   if (!texts.length) throw new Error("text or texts is required");
   if (texts.length > MAX_EMBED_BATCH) throw new Error(`max ${MAX_EMBED_BATCH} texts per call`);
@@ -148,9 +142,40 @@ function toBlob(vec: number[]): Buffer {
   return Buffer.from(arr.buffer);
 }
 
-function collectionOf(db: Database.Database, name: string): { name: string; model: string; dim: number } | undefined {
-  return db.prepare("SELECT name, model, dim FROM collections WHERE name = ?").get(name) as
-    { name: string; model: string; dim: number } | undefined;
+type Collection = { name: string; model: string; dim: number };
+
+function collectionOf(db: Database.Database, name: string): Collection | undefined {
+  return db.prepare("SELECT name, model, dim FROM collections WHERE name = ?").get(name) as Collection | undefined;
+}
+
+/** A collection embedded with a model the org no longer publishes follows the
+ *  model embeds run on now: every stored text is embedded again, in batches, and
+ *  an item that came as a bare vector cannot follow and is dropped. A collection
+ *  with nothing to carry over is simply forgotten and made afresh by the next
+ *  upsert. Nothing moves while the pinned model is still published, or the org
+ *  publishes nothing to move to. */
+async function repinned(db: Database.Database, slug: string, coll: Collection): Promise<Collection | undefined> {
+  const models = await orgEmbedModels();
+  if (models === null || !models.length || offers(models, coll.model)) return coll;
+  const next = await resolveEmbedModel();
+  if (!next || next === coll.model) return coll;
+  const rows = db.prepare("SELECT id, text FROM items WHERE collection = ? AND text IS NOT NULL ORDER BY id").all(coll.name) as
+    Array<{ id: string; text: string }>;
+  const vectors: number[][] = [];
+  for (let at = 0; at < rows.length; at += MAX_EMBED_BATCH) {
+    vectors.push(...await embedTexts(rows.slice(at, at + MAX_EMBED_BATCH).map((r) => r.text), next));
+  }
+  const dim = vectors[0]?.length ?? 0;
+  const dropped = (db.prepare("SELECT COUNT(*) AS n FROM items WHERE collection = ? AND text IS NULL").get(coll.name) as { n: number }).n;
+  const rewrite = db.prepare("UPDATE items SET embedding = ? WHERE collection = ? AND id = ?");
+  db.transaction(() => {
+    db.prepare("DELETE FROM items WHERE collection = ? AND text IS NULL").run(coll.name);
+    rows.forEach((r, i) => rewrite.run(toBlob(vectors[i]), coll.name, r.id));
+    if (dim) db.prepare("UPDATE collections SET model = ?, dim = ? WHERE name = ?").run(next, dim, coll.name);
+    else db.prepare("DELETE FROM collections WHERE name = ?").run(coll.name);
+  })();
+  console.warn(`[glyphh-app-ai] ${slug}/${coll.name}: ${coll.model} is no longer published; ${rows.length} items embedded again with ${next}, ${dropped} bare vectors dropped`);
+  return dim ? { name: coll.name, model: next, dim } : undefined;
 }
 
 /** Every collection in an app's vector store, with item counts — the map the
@@ -171,8 +196,9 @@ export async function vectorUpsert(slug: string, args: Record<string, unknown>):
   if (items.length > MAX_UPSERT_ITEMS) throw new Error(`max ${MAX_UPSERT_ITEMS} items per call`);
 
   const db = getVecDb(slug);
-  let coll = collectionOf(db, collection);
-  const model = String(args.model || coll?.model || activeEmbedModel());
+  const pinned = collectionOf(db, collection);
+  const coll = pinned ? await repinned(db, slug, pinned) : undefined;
+  const model = String(args.model || coll?.model || await resolveEmbedModel());
   if (coll && args.model && model !== coll.model) {
     throw new Error(`collection "${collection}" uses model ${coll.model}; delete it to change models`);
   }
@@ -215,7 +241,8 @@ export async function vectorUpsert(slug: string, args: Record<string, unknown>):
 export async function vectorSearch(slug: string, args: Record<string, unknown>): Promise<{ matches: Array<{ id: string; score: number; text?: string; metadata?: unknown }> }> {
   const collection = String(args.collection || "").trim();
   const db = getVecDb(slug);
-  const coll = collectionOf(db, collection);
+  const pinned = collectionOf(db, collection);
+  const coll = pinned ? await repinned(db, slug, pinned) : undefined;
   if (!coll) throw new Error(`unknown collection: ${collection}`);
   const k = Math.max(1, Math.min(100, Number(args.k) || 10));
 

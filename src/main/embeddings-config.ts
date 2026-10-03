@@ -18,8 +18,9 @@ export interface EmbedModel { id: string; name: string; providerSlug: string }
 const MODELS_TTL_MS = 60_000;
 let cached: { at: number; models: EmbedModel[] } | null = null;
 
-/** The org's embedding models, as the server's catalog reports them. */
-export async function orgEmbedModels(force = false): Promise<EmbedModel[]> {
+/** The org's embedding models, as the server's catalog reports them; null
+ *  when the server could not be asked and nothing is cached. */
+export async function orgEmbedModels(force = false): Promise<EmbedModel[] | null> {
   if (!force && cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
   try {
     const rows = await getClient().http.get<Array<{ id: string; name: string; providerSlug: string; modality?: string; active?: boolean }>>("/api/models/available");
@@ -30,7 +31,7 @@ export async function orgEmbedModels(force = false): Promise<EmbedModel[]> {
     return models;
   } catch (err) {
     console.warn("[embeddings] model list unavailable:", err instanceof Error ? err.message : String(err));
-    return cached?.models ?? [];
+    return cached?.models ?? null;
   }
 }
 
@@ -39,8 +40,32 @@ export function selectedEmbedModel(): string {
   return String(getPreference<string>("embeddingsModel", "") ?? "");
 }
 
+/** Whether a published model is this one: by its id, or by the name the gateway
+ *  is sent (an app may pin a collection by that name). */
+export function offers(models: EmbedModel[], model: string): boolean {
+  return models.some((m) => m.id === model || routeName(m.id) === model);
+}
+
+/** The model embeds run on NOW. The member's pick while the org still publishes
+ *  it; else the first model the org does publish, which becomes the pick, so an
+ *  admin removing a model does not stop memory and search for everyone who had
+ *  chosen it (his report, 2026-10-03: every embed refused 403 for a model that
+ *  was gone). The pick as it stands when the server cannot be asked; "" when
+ *  the org publishes none. */
+export async function resolveEmbedModel(): Promise<string> {
+  const pick = selectedEmbedModel();
+  const models = await orgEmbedModels();
+  if (models === null) return pick;
+  if (!models.length) return "";
+  if (offers(models, pick)) return pick;
+  const next = models[0].id;
+  if (pick) console.warn(`[embeddings] ${pick} is no longer published for this organization; embeds move to ${next}`);
+  setPreference("embeddingsModel", next);
+  return next;
+}
+
 /** The model id the gateway should embed with, stripped of our provider prefix. */
-function routeName(id: string): string {
+export function routeName(id: string): string {
   const cut = id.indexOf("::");
   return cut === -1 ? id : id.slice(cut + 2);
 }
@@ -78,8 +103,8 @@ export async function gatewayEmbed(texts: string[], model: string): Promise<numb
 export function registerEmbeddingsIpc(): void {
   registerMemoryIpc();
   ipcMain.handle("embeddings-config-get", async () => {
-    const models = await orgEmbedModels();
-    return { ok: true, model: selectedEmbedModel(), models };
+    const models = (await orgEmbedModels()) ?? [];
+    return { ok: true, model: await resolveEmbedModel(), models };
   });
 
   ipcMain.handle("embeddings-config-set", (_e, input: { model?: string }) => {
