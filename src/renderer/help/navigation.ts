@@ -242,10 +242,16 @@ let settingsModalWebviewsGuarded = false;
 let settingsModalPanelsHidden = false;
 let settingsModalHidePromise: Promise<boolean> | null = null;
 
+/** The MAIN settings nav's own items, wherever the rail keeps them: as its direct
+ *  children, or under the scrolling list the desktop's user-chip footer wraps them in. */
+function settingsNavOwn<T extends Element>(cls: string): T[] {
+  return Array.from(document.querySelectorAll<T>(`.settings-nav > ${cls}, .settings-nav > .settings-nav-list > ${cls}`));
+}
+
 function selectSettingsSub(sub: string): void {
   const target = settingsSubAlias(sub);
   // Direct children of the MAIN settings nav/panels only.
-  const navBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav > .settings-nav-item");
+  const navBtns = settingsNavOwn<HTMLButtonElement>(".settings-nav-item");
   const panels = document.querySelectorAll<HTMLDivElement>(".settings-modal-body > .settings-layout > .settings-panels > .settings-panel");
   // Two rail items may share a sub (Dashboard + Organization › Usage both
   // open "usage") — the programmatic path lights only the FIRST; a direct
@@ -696,8 +702,7 @@ function gateAdminSubs(): void {
     // SECURITY and GATEWAY are admin groups too (his ruling, 2026-09-12) —
     // the whole cluster (headers + items) rides one class, like nav-super.
     // The server enforces the role on every route regardless.
-    document.querySelectorAll<HTMLElement>(".settings-nav > .nav-admin")
-      .forEach((el) => el.classList.toggle("hidden", !admin));
+    settingsNavOwn<HTMLElement>(".nav-admin").forEach((el) => el.classList.toggle("hidden", !admin));
     // BILLING IS THE MONEY DOOR and it is org_admin's alone, on every surface
     // (his order, 2026-09-17: a member of an org should not see it in the app
     // either). Someone who signed up alone is org_admin of their own org, so
@@ -711,8 +716,7 @@ function gateAdminSubs(): void {
     // The platform axis is the REAL gate (bootstrap seeds the admin as an
     // org_admin member with is_platform_admin=true); role kept as fallback.
     const superAdmin = (info as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true || info?.role === "super_admin";
-    document.querySelectorAll<HTMLElement>(".settings-nav > .nav-super")
-      .forEach((el) => el.classList.toggle("hidden", !superAdmin));
+    settingsNavOwn<HTMLElement>(".nav-super").forEach((el) => el.classList.toggle("hidden", !superAdmin));
     paintImpersonationBanner(info as { orgName?: string; impersonatingOrgId?: string | null } | null);
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
 }
@@ -1080,7 +1084,7 @@ export function initHelp() {
   // section-scoped selectors that break once the layout leaves the section)
   // and re-query the panel set at click time from wherever the layout now is.
   // Scope to the MAIN settings nav's own direct items.
-  const settingsSubNav = document.querySelectorAll<HTMLButtonElement>(".settings-nav > .settings-nav-item");
+  const settingsSubNav = settingsNavOwn<HTMLButtonElement>(".settings-nav-item");
   settingsSubNav.forEach((btn) => {
     btn.addEventListener("click", () => {
       // Docs has its own topics nav, so it opens as its own section — and the
@@ -1092,7 +1096,7 @@ export function initHelp() {
         return;
       }
       const sub = btn.dataset.sub!;
-      document.querySelectorAll(".settings-nav > .settings-nav-item").forEach((n) => n.classList.remove("active"));
+      settingsNavOwn(".settings-nav-item").forEach((n) => n.classList.remove("active"));
       document.querySelectorAll(".settings-panels > .settings-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       const target = document.querySelector(`.settings-panels > .settings-panel[data-sub="${sub}"]`);
