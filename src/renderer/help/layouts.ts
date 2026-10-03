@@ -1200,6 +1200,8 @@ async function newLayout() {
 }
 
 function cancelLayout() {
+  // A New tab form still open in the editor goes home to the Tabs page.
+  (window as unknown as { __glyphhReturnAddTabForm?: () => void }).__glyphhReturnAddTabForm?.();
   layoutEditor.classList.add("hidden");
   layoutsList.classList.remove("hidden");
   layoutsToolbar.classList.remove("hidden"); layoutsHead?.classList.remove("hidden");
@@ -1343,6 +1345,23 @@ export function initLayoutsEvents() {
   document.getElementById("layout-save-btn")!.addEventListener("click", saveLayout);
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-back-link")!.addEventListener("click", cancelLayout);
+  // "+ New tab" IN the editor (his order, 2026-10-03): the Tabs page's own
+  // form, standalone here; a saved tab is in the slot pickers at once (they
+  // read the server's list on every open), and the name map is topped up so
+  // a cell picked straight away shows it by name.
+  const newTabBtn = document.getElementById("layout-new-tab-btn");
+  const newTabHost = document.getElementById("layout-new-tab-host");
+  newTabBtn?.addEventListener("click", () => {
+    const mount = (window as unknown as { __glyphhMountAddTabForm?: (host: HTMLElement, cb: { onSaved: () => void; onCancel: () => void }) => void }).__glyphhMountAddTabForm;
+    if (!newTabHost || !mount) return;
+    const done = (): void => { newTabHost.classList.add("hidden"); newTabBtn.classList.remove("hidden"); };
+    newTabHost.classList.remove("hidden");
+    newTabBtn.classList.add("hidden");
+    mount(newTabHost, {
+      onSaved: () => { done(); void ensureAppNames().then(() => renderGridPreview()); },
+      onCancel: done,
+    });
+  });
   document.getElementById("layout-delete-btn")!.addEventListener("click", deleteLayout);
   // Open the layout being edited — real OS windows tiled across the display.
   document.getElementById("layout-open-btn")!.addEventListener("click", () => {

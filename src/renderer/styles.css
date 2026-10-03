@@ -21783,3 +21783,10 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
   font-weight: 700 !important;
   letter-spacing: -0.02em;
 }
+
+/* The Workspaces editor's "+ New tab": the Tabs page's own form, standalone
+   under the grid (his order, 2026-10-03). */
+.layout-new-tab { margin-top: 12px; }
+#layout-new-tab-host { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+#layout-new-tab-host.hidden { display: none; }
+

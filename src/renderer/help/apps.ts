@@ -42,6 +42,16 @@ const appPreview = document.getElementById("app-preview") as HTMLElement & {
   reload: () => void;
 };
 const appsToolbar = document.getElementById("apps-toolbar")!;
+type MountAddTabForm = (host: HTMLElement, cb: { onSaved: () => void; onCancel: () => void }) => void;
+let standalone: { home: { parent: HTMLElement; next: Node | null }; onSaved: () => void; onCancel: () => void } | null = null;
+/** The form back where the Tabs page keeps it, hidden; no-op when it is home. */
+function returnAddForm(): void {
+  if (!standalone) return;
+  const { home } = standalone;
+  home.parent.insertBefore(appAddForm, home.next);
+  appAddForm.classList.add("hidden");
+  standalone = null;
+}
 const appsHead = document.getElementById("tabs-head");
 const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
@@ -1352,7 +1362,9 @@ function initApps() {
     if (glyphhOpt) glyphhOpt.disabled = rows.length === 0;
   };
 
-  document.getElementById("apps-add-btn")?.addEventListener("click", () => {
+  /** The New tab form, blank and ready: what the Tabs page's + and the
+   *  Workspaces page's "+ New tab" both start from. */
+  const prepareAddForm = (): void => {
     addNameInput.value = "";
     addSlugInput.value = "";
     slugTouched = false;
@@ -1367,11 +1379,33 @@ function initApps() {
     toggleTypeFields("app-add", "browser");
     toggleArchetypeFields("app-add", "generic");
     appFormError.classList.add("hidden");
+  };
+  document.getElementById("apps-add-btn")?.addEventListener("click", () => {
+    returnAddForm();
+    prepareAddForm();
     appsList.classList.add("hidden");
     appsToolbar.classList.add("hidden"); appsHead?.classList.add("hidden");
     appAddForm.classList.remove("hidden");
     addNameInput.focus();
   });
+  // THE SAME FORM, STANDALONE ON ANOTHER PAGE (his order, 2026-10-03: the
+  // Workspaces editor adds a tab in place, and the new tab is there for the
+  // slot pickers). The ONE form node moves into the host and comes home when
+  // it is saved or cancelled, so the Tabs page is never left without it.
+  (window as unknown as { __glyphhMountAddTabForm?: MountAddTabForm }).__glyphhMountAddTabForm = (host, cb) => {
+    returnAddForm();
+    standalone = { home: { parent: appAddForm.parentElement!, next: appAddForm.nextSibling }, ...cb };
+    host.appendChild(appAddForm);
+    prepareAddForm();
+    appAddForm.classList.remove("hidden");
+    addNameInput.focus();
+  };
+  (window as unknown as { __glyphhReturnAddTabForm?: () => void }).__glyphhReturnAddTabForm = () => {
+    if (!standalone) return;
+    const cb = standalone.onCancel;
+    returnAddForm();
+    cb();
+  };
 
   // Add-form archetype toggle + Browse… button (the type control is gone).
   addArchetypeSelect?.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
@@ -1396,6 +1430,7 @@ function initApps() {
       appAddForm.classList.add("hidden");
       const apps = (await window.glyphh.panelAppsList?.()) || [];
       reloadPanelApps(apps.map(toPanelApp));
+      if (standalone) { const cb = standalone.onSaved; returnAddForm(); cb(); return; }
       const createdLocal = panelApps.find((a) => a.slug === tab.slug);
       if (createdLocal) openPanelAppDetail(createdLocal);
       return;
@@ -1455,6 +1490,7 @@ function initApps() {
     appAddForm.classList.add("hidden");
     const apps = (await window.glyphh.panelAppsList?.()) || [];
     reloadPanelApps(apps.map(toPanelApp));
+    if (standalone) { const cb = standalone.onSaved; returnAddForm(); cb(); return; }
     const createdLocal = panelApps.find((a) => a.id === created.app!.id);
     if (createdLocal) openPanelAppDetail(createdLocal);
     else loadApps();
@@ -1493,8 +1529,12 @@ function initApps() {
   });
 
   // App add form cancel
-  document.getElementById("app-add-cancel")?.addEventListener("click", () => { loadApps(); });
-  document.getElementById("app-add-cancel-btn")?.addEventListener("click", () => { loadApps(); });
+  const cancelAdd = (): void => {
+    if (standalone) { const cb = standalone.onCancel; returnAddForm(); cb(); return; }
+    loadApps();
+  };
+  document.getElementById("app-add-cancel")?.addEventListener("click", cancelAdd);
+  document.getElementById("app-add-cancel-btn")?.addEventListener("click", cancelAdd);
 
   // Tab buttons — [data-tab] only: other editors (Roles) share the tab
   // CLASS but key their own data attributes.
