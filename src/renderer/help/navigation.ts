@@ -612,6 +612,20 @@ function initCollapsibleNavGroups(): void {
 /** The DESKTOP settings rail's user chip — bottom-left, like the platform's:
  *  avatar initial, first name, plan; clicking opens Account. */
 function wireAppUserChip(nav: HTMLElement): void {
+  // THE CHIP IS THE RAIL'S FOOTER (his report, 2026-10-03: it sat above Support,
+  // floating over the groups as they scrolled under it). The groups scroll in
+  // a list of their own; the search box stays at the top and the chip at the
+  // very bottom, outside the scroll, so nothing is ever drawn beneath it.
+  let list = nav.querySelector<HTMLElement>("#app-settings-nav-list");
+  if (!list) {
+    list = document.createElement("div");
+    list.id = "app-settings-nav-list";
+    list.className = "settings-nav-list";
+    for (const el of Array.from(nav.children)) {
+      if (el.id !== "settings-nav-search-wrap") list.appendChild(el);
+    }
+    nav.appendChild(list);
+  }
   let chip = nav.querySelector<HTMLButtonElement>("#app-settings-user");
   if (!chip) {
     chip = document.createElement("button");
