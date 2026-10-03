@@ -35,11 +35,13 @@ const CREDENTIALS = ["ES_USERNAME", "ES_PASSWORD", "ES_CREDENTIAL_ID", "ES_TOTP_
 function signatureStatus(file) {
   if (process.platform !== "win32") return "not windows";
   const literal = file.replace(/'/g, "''");
-  const r = spawnSync(
-    "powershell",
-    ["-NoProfile", "-NonInteractive", "-Command", `(Get-AuthenticodeSignature -LiteralPath '${literal}').Status`],
-    { encoding: "utf8" },
-  );
+  const args = ["-NoProfile", "-NonInteractive", "-Command", `(Get-AuthenticodeSignature -LiteralPath '${literal}').Status`];
+  // pwsh first: on the hosted runner PSModulePath is set for PowerShell 7, and
+  // Windows PowerShell 5.1 then cannot load its own Microsoft.PowerShell.Security
+  // module ("command was found in the module ... but the module could not be
+  // loaded") — the v1.4.3 build re-signed every Microsoft-signed file for that.
+  let r = spawnSync("pwsh", args, { encoding: "utf8" });
+  if (r.error && r.error.code === "ENOENT") r = spawnSync("powershell", args, { encoding: "utf8" });
   if (r.error) return `check failed: ${r.error.message}`;
   if (r.status !== 0) return `check exited ${r.status}: ${(r.stderr || "").trim()}`;
   return r.stdout.trim() || "empty";
