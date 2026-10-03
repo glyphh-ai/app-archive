@@ -2294,7 +2294,12 @@ async function init(): Promise<void> {
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
-      <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div></div>
+      <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div>
+        <div class="echo-search-wrap">
+          <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="echo-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search the wall" />
+        </div>
+      </div>
       <div class="echo-topbar echo-topbar-stacked">
         <div class="echo-dock">${DOCK_ITEMS.map((d) => `<button class="echo-dock-btn" data-dock="${d.key}" title="${d.title}" type="button">${d.icon}</button>`).join("")}</div>
       </div>
@@ -2366,6 +2371,13 @@ async function init(): Promise<void> {
       const pageCount = pagesEl.children.length;
       if (!grid) { dotsEl.classList.add("hidden"); prevArrow.style.display = "none"; nextArrow.style.display = "none"; return; }
       const sr = stage.getBoundingClientRect();
+      // THE SEARCH BAR sits centred between the dock and the tiles (his ask,
+      // 2026-10-03), and the tiles start under it: the dock's labels and its
+      // zoom reach are measured, not guessed, so neither ever runs into it.
+      const dock = body.querySelector<HTMLElement>(".echo-dock");
+      const dr = dock && dock.offsetParent !== null ? dock.getBoundingClientRect() : null;
+      const searchTop = dr && dr.height > 0 ? Math.round(dr.bottom - sr.top + 34) : 18;
+      stage.style.setProperty("--echo-search-top", `${searchTop}px`);
       // Measure the LAST ICON, not the grid box — the grid's bottom padding
       // pushed the dots halfway down the page.
       const icons = grid.querySelectorAll<HTMLElement>(".echo-app-btn");
@@ -3081,7 +3093,42 @@ async function init(): Promise<void> {
       if (firstGrid) chromeRo.observe(firstGrid);
       requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
       reconcileDock();
+      paintSearch();
     };
+    // ── SEARCH (restored from the top bar of 2026-08-18, his ask 2026-10-03):
+    // typing dims every tile that does not match its name, Enter opens the
+    // best match wherever its page is, Escape clears. Typing never reaches the
+    // wall's own keys, and the pill never starts a drag. ──
+    const searchWrap = stage.querySelector<HTMLElement>(".echo-search-wrap")!;
+    const searchEl = searchWrap.querySelector<HTMLInputElement>(".echo-search")!;
+    const searchable = (): TileEntry[] => wallBands.flat().filter((x) => !!x.iconEl);
+    const hits = (x: TileEntry, q: string): boolean =>
+      (x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q);
+    const paintSearch = (): void => {
+      const q = searchEl.value.trim().toLowerCase();
+      for (const x of searchable()) x.iconEl!.classList.toggle("echo-search-miss", !!q && !hits(x, q));
+    };
+    for (const evName of ["pointerdown", "mousedown", "click", "dragstart"] as const) {
+      searchWrap.addEventListener(evName, (ev) => ev.stopPropagation());
+    }
+    searchEl.addEventListener("input", paintSearch);
+    searchEl.addEventListener("keydown", (ev) => {
+      ev.stopPropagation();
+      const q = searchEl.value.trim().toLowerCase();
+      if (ev.key === "Escape") {
+        searchEl.value = "";
+        paintSearch();
+        searchEl.blur();
+      } else if (ev.key === "Enter" && q) {
+        const pool = searchable().filter((x) => hits(x, q));
+        const best = pool.find((x) => (x.tile.name || "").toLowerCase().startsWith(q)) ?? pool[0];
+        if (best) {
+          searchEl.value = "";
+          paintSearch();
+          activateTile(best);
+        }
+      }
+    });
     const scrollToPage = (i: number, smooth = true): void => {
       pageIndex = Math.max(0, Math.min(i, Math.max(0, pagesEl.children.length - 1)));
       pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth ? "smooth" : "auto" });

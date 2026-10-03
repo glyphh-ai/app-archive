@@ -17018,9 +17018,36 @@ body.echo-drag .echo-card webview { pointer-events: none; }
     var(--echo-wall-natural) + (100% - var(--echo-wall-natural)) * var(--echo-wall-w, 0) / 100
   );
   margin-inline: auto;
-  /* More air under the dock (labels live there now). */
-  padding: 142px 34px 148px;
+  /* More air under the dock (labels live there now), and under the search
+     pill between the dock and the tiles (--echo-search-top is measured by
+     positionPageChrome; the pill is 44px tall). */
+  padding: calc(var(--echo-search-top, 98px) + 44px + 26px) 34px 148px;
 }
+
+/* THE SEARCH PILL (his ask, 2026-10-03): round, centred, in the theme's own
+   surface and border, between the dock and the tiles. Restored from the
+   2026-08 top bar; a miss dims, a hit stays. */
+.echo-search-wrap {
+  position: absolute; left: 50%; top: var(--echo-search-top, 98px); transform: translateX(-50%);
+  z-index: 3;
+  display: flex; align-items: center; gap: 10px;
+  width: min(520px, 64vw); height: 44px;
+  padding: 0 18px; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  cursor: text;
+  transition: border-color 120ms ease;
+}
+.echo-search-wrap:focus-within { border-color: var(--accent); }
+.echo-search-ic { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
+.echo-search {
+  flex: 1; min-width: 0; border: none; background: none; outline: none;
+  color: var(--text); font: inherit; font-size: 15px;
+}
+.echo-search::placeholder { color: var(--text-faint); }
+.echo-app-btn.echo-search-miss { opacity: 0.14; }
 
 /* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
    which sits on the agent's top row, right of the caret) */
