@@ -837,10 +837,34 @@ async function init(): Promise<void> {
   /** The composer's caret, mirrored so a restore survives the node being replaced. */
   let caretAt = 0;
   let caretTo = 0;
+  /** The agent's own surface: its section, composer card, seat or ask dock. */
+  const inAgentPanel = (t: EventTarget | null): boolean =>
+    t instanceof Element && !!t.closest("#code-section, .code-composer, .ws-agent-placeholder, .ws-agent-holder, #code-ask-dock");
+  /** Somewhere typing lands: a guest page, a terminal, a field. */
+  const isTypingSurface = (t: Element): boolean =>
+    t.tagName === "WEBVIEW" || t.tagName === "TEXTAREA" || t.tagName === "INPUT" || (t as HTMLElement).isContentEditable
+    || !!t.closest?.(".xterm");
+  // A GUEST IS A THIEF ONLY WHILE IT LOADS (his rule, 2026-10-03: "the agent
+  // should only hold the focus when that panel is active, period"). Clicks
+  // inside a <webview> never reach the host as pointer events, so the old
+  // "no recent pointerdown = stolen" test read every click into Slack's
+  // input as a theft and snapped the caret back. A guest's load and
+  // navigation events DO reach the host (capture), so a focus arriving within
+  // a moment of one is the load grabbing it; any other focus on a guest is
+  // the user working there, and the agent lets go.
+  const GUEST_LOAD_WINDOW_MS = 1500;
+  const guestLoadAt = new WeakMap<EventTarget, number>();
+  for (const ev of ["did-start-loading", "did-navigate", "did-navigate-in-page", "dom-ready", "did-attach", "did-finish-load"]) {
+    document.addEventListener(ev, (e) => { if (e.target) guestLoadAt.set(e.target, Date.now()); }, true);
+  }
+  const guestLoading = (t: EventTarget | null): boolean => !!t && Date.now() - (guestLoadAt.get(t) ?? 0) < GUEST_LOAD_WINDOW_MS;
   document.addEventListener("pointerdown", (e) => {
     lastPointerTarget = e.target;
     lastPointerAt = Date.now();
     pointerDown = true;
+    // A press anywhere outside the agent's own panel is the user moving on:
+    // the agent stops holding the caret until they come back to it.
+    if (!inAgentPanel(e.target)) composerHeld = false;
   }, true);
   document.addEventListener("pointerup", () => { pointerDown = false; }, true);
   // A release OUTSIDE the window fires neither pointerup nor pointercancel on
@@ -898,9 +922,23 @@ async function init(): Promise<void> {
     // user's typing. Once the composer has been focused it STAYS focused until
     // the user deliberately moves to something that actually takes typing.
     // Programmatic steals are handed straight back.
-    if (t.id === "code-input") { composerHeld = true; return; }
-    const deliberate = Date.now() - lastPointerAt < 600
+    if (t.id === "code-input") {
+      // A programmatic focus of the composer (a run finishing, a section
+      // switch, a re-render) never takes the caret away from another panel
+      // the user is working in: without a host gesture behind it, the panel
+      // that had the caret gets it back and the agent stays unarmed.
+      const robbed = (e as FocusEvent).relatedTarget as Element | null;
+      const gesture = Date.now() - lastPointerAt < 600;
+      if (!gesture && robbed && isTypingSurface(robbed) && !inAgentPanel(robbed) && document.contains(robbed)) {
+        (robbed as HTMLElement).focus();
+        return;
+      }
+      composerHeld = true;
+      return;
+    }
+    const pointed = Date.now() - lastPointerAt < 600
       && (t === lastPointerTarget || (lastPointerTarget instanceof Node && t.contains(lastPointerTarget)));
+    const deliberate = pointed || (t.tagName === "WEBVIEW" && !guestLoading(t));
     // Surrender ONLY to a deliberate press on a real keyboard target. Clicking
     // Send, a chip, or a tool card used to hand the caret away and leave the
     // guard disarmed for the rest of the turn — that was the hole.
@@ -937,7 +975,7 @@ async function init(): Promise<void> {
     const pointedAt = !!a && Date.now() - lastPointerAt < 600
       && (a === lastPointerTarget || (lastPointerTarget instanceof Node && a.contains(lastPointerTarget)));
     const stolen = !dropped && !!a && !pointedAt
-      && (a.tagName === "WEBVIEW" || a.classList?.contains("xterm-helper-textarea"));
+      && ((a.tagName === "WEBVIEW" && guestLoading(a)) || a.classList?.contains("xterm-helper-textarea"));
     if (!dropped && !stolen) return;
     // A drag-select in the transcript also parks focus on <body>; refocusing
     // would collapse the selection out from under them.
