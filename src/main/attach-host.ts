@@ -27,8 +27,6 @@ export interface AttachStartOptions {
   folders: () => string[];
   /** The org turned remote control off: the host has stopped for good. */
   onRefused: (reason: string) => void;
-  /** This computer's Ada device id, when it holds Ada records (ada-device.ts). */
-  adaDevice?: () => string | undefined;
 }
 
 export function startAttach(opts: AttachStartOptions): void {
@@ -41,7 +39,6 @@ export function startAttach(opts: AttachStartOptions): void {
     name: hostname(),
     handlers: opts.handlers,
     folders: opts.folders,
-    ...(opts.adaDevice ? { adaDevice: opts.adaDevice } : {}),
     onRefused: (reason) => { stopAttach(); opts.onRefused(reason); },
   });
   // Only a relayed run's frames go up (attach-run.ts pushToAttach). The local

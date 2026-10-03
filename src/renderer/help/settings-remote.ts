@@ -7,7 +7,7 @@
  */
 
 /** Mirrors main/remote-control.ts RemoteControlView. */
-interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null }
+interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string }
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
@@ -49,19 +49,6 @@ function paint(v: RemoteControlView): void {
   list.querySelectorAll<HTMLButtonElement>("[data-remove-folder]").forEach((b) => {
     b.onclick = () => { void window.glyphh.remoteControlRemoveFolder?.(b.dataset.removeFolder || "").then(paint); };
   });
-  paintAda(v);
-}
-
-/** Ada: whether this computer holds the records of the org's local Ada models. */
-function paintAda(v: RemoteControlView): void {
-  const status = el("ada-device-status");
-  const register = el<HTMLButtonElement>("ada-register-device");
-  if (!status || !register) return;
-  register.classList.toggle("hidden", !!v.ada);
-  register.disabled = !v.allowed;
-  status.textContent = !v.ada
-    ? "Not an Ada device. Register it, and an org admin can create Ada models whose records stay on this computer."
-    : `Ada device ${v.ada.device_id} (${v.ada.name || v.device}) · ${v.attached ? "serving its records" : v.allowed ? "connecting…" : "offline: your organization doesn't allow remote connections"}`;
 }
 
 export async function loadRemoteControl(): Promise<void> {
@@ -72,16 +59,6 @@ export async function loadRemoteControl(): Promise<void> {
       void g.remoteControlSetEnabled?.((e.target as HTMLInputElement).checked).then(paint);
     });
     el<HTMLButtonElement>("remote-add-folder")?.addEventListener("click", () => { void g.remoteControlAddFolder?.().then(paint); });
-    el<HTMLButtonElement>("ada-register-device")?.addEventListener("click", (e) => {
-      const b = e.currentTarget as HTMLButtonElement;
-      b.disabled = true;
-      void g.adaRegisterDevice?.().then(paint).catch((err: unknown) => {
-        b.disabled = false;
-        const s = el("ada-device-status");
-        if (s) s.textContent = `Could not register: ${err instanceof Error ? err.message : String(err)}`;
-      });
-    });
-    if (!g.adaRegisterDevice) el("ada-device-block")?.classList.add("hidden");
     g.onRemoteControlChanged?.(paint);
   }
   const v = await g.remoteControlGet?.().catch(() => null);
