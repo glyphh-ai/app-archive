@@ -3933,7 +3933,9 @@ async function init(): Promise<void> {
        *  for a local file entry) — origin-independent so the same workspace
        *  restores against the local bundle OR the hosted origin. */
       route?: string;
-      files?: Array<{ name: string; path: string; mode?: "preview" | "code" }>;
+      /** The editor's tabs; an unsaved tab carries its live `content` and
+       *  `dirty`, so a workspace switch never loses what was typed. */
+      files?: Array<{ name: string; path: string; mode?: "preview" | "code"; content?: string; dirty?: boolean }>;
       activeIdx?: number;
       tabs?: Array<{ url: string; title?: string }>;
       activeTab?: number;
@@ -3958,6 +3960,8 @@ async function init(): Promise<void> {
      *     document;
      *   settings — his exception: it always opens at its front page. */
     const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings", "section"]);
+    /** How much unsaved editor text one cell may carry through a switch. */
+    const UNSAVED_BYTES_KEPT = 256 * 1024;
     const holdsDocState = (view: string): boolean => !NO_DOC_STATE.has(view);
     /** A loose card's identity, enough to reopen it: what the wall tile or ad-hoc
      *  entry carried, minus the live objects (layoutRow, cells). */
@@ -3993,8 +3997,23 @@ async function init(): Promise<void> {
       if (e.toolSlot?.view === "monaco") {
         const m = e.toolSlot as MonacoSlot;
         if (m.tabs.length) {
+          // Only the ACTIVE tab lives in the Monaco model: fold its live
+          // buffer into the tab first, else the capture would carry the
+          // last-saved snapshot and the switch would throw the typing away
+          // (his report, 2026-10-03: "changing workspaces... is resetting the
+          // users work").
+          const h = e.card?.querySelector(".ws-monaco-host") as (HTMLElement & { __editor?: { getValue: () => string }; __modelPath?: string }) | null;
+          if (h?.__editor && h.__modelPath) {
+            const live = m.tabs.find((x) => x.path === h.__modelPath);
+            if (live?.dirty) live.content = h.__editor.getValue();
+          }
+          let room = UNSAVED_BYTES_KEPT;
           return {
-            files: m.tabs.map((t) => ({ name: t.name, path: t.path, ...(t.mode ? { mode: t.mode } : {}) })),
+            files: m.tabs.map((t) => {
+              const keep = !!t.dirty && t.content.length <= room;
+              if (keep) room -= t.content.length;
+              return { name: t.name, path: t.path, ...(t.mode ? { mode: t.mode } : {}), ...(keep ? { content: t.content, dirty: true } : {}) };
+            }),
             activeIdx: m.activeIdx,
           };
         }
@@ -4038,10 +4057,12 @@ async function init(): Promise<void> {
      *  each panel was doing. */
     const saveEchoLayoutMem = (): void => {
       if (!echoLayoutName || !echoGrid) return;
-      // Panel STATE persists only under the "last" contract — a "new"/"keep"
-      // layout keeps its geometry memory but starts panels from the
-      // definition every open. Geometry always saves.
-      const keepState = echoActiveLayout?.mode === "last";
+      // Panel STATE rides every contract but "new" (his order, 2026-10-03:
+      // "when the session is set to keep the current session it should retain
+      // the state from transition to transition"): "keep" and "last" carry
+      // the panels' documents through a switch; "new" starts panels from
+      // the definition every open. Geometry always saves.
+      const keepState = echoActiveLayout?.mode !== "new";
       // A degenerate save (webviews already torn down) must not WIPE state a
       // healthier save remembered — carry the old cell state forward when
       // this pass captured nothing.
@@ -4061,8 +4082,8 @@ async function init(): Promise<void> {
       // EVERYTHING ELSE the workspace had open (his order, 2026-09-23): the
       // loose cards beside the definition — no memKey, a live card, not the
       // agent seat (the session contract owns that) — with their cells and
-      // documents, plus the appended columns' seams. "last" only; "new"/"keep"
-      // reset them on close and keep just the definition's geometry.
+      // documents, plus the appended columns' seams. "keep" and "last"; "new"
+      // resets them on close and keeps just the definition's geometry.
       const extraRef = (t: EchoTile): ExtraTileRef => ({
         name: t.name, slug: t.slug, kind: t.kind, toolView: t.toolView, url: t.url, glyphh: t.glyphh,
         appId: t.appId, iconUrl: t.iconUrl, workbench: t.workbench, sticky: t.sticky,
@@ -4101,9 +4122,12 @@ async function init(): Promise<void> {
       if (!st) return;
       if (st.files?.length && entry.toolSlot?.view === "monaco") {
         const m = entry.toolSlot as MonacoSlot;
-        m.tabs = st.files.map((f) => ({ name: f.name, path: f.path, content: "", ...(f.mode ? { mode: f.mode } : {}) }));
+        m.tabs = st.files.map((f) => ({
+          name: f.name, path: f.path, content: f.dirty ? (f.content ?? "") : "", ...(f.mode ? { mode: f.mode } : {}), ...(f.dirty ? { dirty: true } : {}),
+        }));
         m.activeIdx = Math.min(st.activeIdx ?? 0, m.tabs.length - 1);
-        void Promise.all(m.tabs.map(async (t) => {
+        // An unsaved tab comes back as it was typed; a clean one re-reads its file.
+        void Promise.all(m.tabs.filter((t) => !t.dirty).map(async (t) => {
           try {
             const r = await window.wb.readFile(t.path);
             t.content = r.error ? `// error: ${r.error}` : r.content;
