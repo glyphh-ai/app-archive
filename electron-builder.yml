@@ -29,6 +29,16 @@ win:
     - nsis
   icon: assets/icon.png
   artifactName: "Glyphh-Setup.${ext}"
+  # EVERY exe is signed through scripts/win-sign.cjs (SSL.com CodeSignTool):
+  # the app exe, the exes under app.asar.unpacked, the uninstaller and the
+  # installer. Until 2026-10-03 only the installer was signed, after the fact,
+  # and Norton flagged the unsigned "Glyphh Desktop.exe" on first launch.
+  # sha256 only: the default sha1+sha256 pair calls the hook twice per file,
+  # and each call is one eSigner signing against the monthly quota.
+  signtoolOptions:
+    sign: ./scripts/win-sign.cjs
+    signingHashAlgorithms:
+      - sha256
 
 # UBUNTU / Linux (2026-08-26). AppImage ONLY, deliberately: it is the one Linux
 # format electron-updater can auto-update, so a Linux install rides the SAME

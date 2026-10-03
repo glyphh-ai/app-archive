@@ -207,11 +207,16 @@ jobs:
           cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
           cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
-      - name: Package Windows (unsigned)
-        run: npx electron-builder --win --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-
+      # ── Sign every Windows executable ───────────────────────────────
+      # Signing runs INSIDE electron-builder (win.signtoolOptions.sign →
+      # scripts/win-sign.cjs), so the app exe, the exes under
+      # app.asar.unpacked, the uninstaller and the installer all carry the
+      # SSL.com signature, and latest.yml is computed from the signed
+      # installer. Until 2026-10-03 this job packed unsigned and signed only
+      # Glyphh-Setup.exe afterwards: "Glyphh Desktop.exe" shipped unsigned and
+      # Norton flagged it on first launch; the hash refresh step that the
+      # after-the-fact signing forced on latest.yml is gone with it.
+      #
       # SSL.com's esigner-codesign action ran CodeSignTool on the JDK bundled
       # in the tool's zip — Java 11.0.2 from January 2019, whose trust store
       # predates "SSL.com TLS RSA Root CA 2022". On 2026-09-22 cs.ssl.com began
@@ -220,19 +225,14 @@ jobs:
       # action re-extracts the tool on every run, so nothing patched around it
       # survives. Run the same jar ourselves on a maintained Temurin 11 (the
       # windows-2022 toolcache carries it) — same credentials, same config the
-      # action wrote, same output path, so the hash refresh below is unchanged.
+      # action wrote.
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: "11"
 
-      - name: Sign Windows exe with SSL.com
+      - name: Prepare SSL.com CodeSignTool
         shell: pwsh
-        env:
-          ES_USERNAME: ${{ secrets.ES_USERNAME }}
-          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
-          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
-          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         run: |
           $ErrorActionPreference = "Stop"
           $tool = Join-Path $env:RUNNER_TEMP "CodeSignTool"
@@ -242,7 +242,6 @@ jobs:
           $jar = Get-ChildItem $tool -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1
           if (-not $jar) { throw "code_sign_tool jar not found in the CodeSignTool zip" }
           $root = $jar.Directory.Parent.FullName
-          $env:CODE_SIGN_TOOL_PATH = $root
           # The production endpoints, verbatim what the action wrote to conf/.
           @(
             "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8",
@@ -251,42 +250,32 @@ jobs:
             "TSA_URL=http://ts.ssl.com",
             "TSA_LEGACY_URL=http://ts.ssl.com/legacy"
           ) | Set-Content -Path (Join-Path $root "conf\code_sign_tool.properties") -Encoding ascii
-          New-Item -ItemType Directory -Force -Path release\signed | Out-Null
-          $in = (Resolve-Path release\Glyphh-Setup.exe).Path
-          $out = (Resolve-Path release\signed).Path
           java -version 2>&1 | Write-Host
-          Push-Location $root
-          & java -Xmx1024M -jar $jar.FullName sign `
-            "-username=$env:ES_USERNAME" "-password=$env:ES_PASSWORD" `
-            "-credential_id=$env:ES_CREDENTIAL_ID" "-totp_secret=$env:ES_TOTP_SECRET" `
-            "-input_file_path=$in" "-output_dir_path=$out" "-malware_block=false"
-          $code = $LASTEXITCODE
-          Pop-Location
-          if ($code -ne 0) { throw "CodeSignTool exited $code" }
-          if (-not (Test-Path (Join-Path $out "Glyphh-Setup.exe"))) { throw "CodeSignTool produced no signed exe" }
+          "CODE_SIGN_TOOL_PATH=$root" | Add-Content -Path $env:GITHUB_ENV
+          "CODE_SIGN_TOOL_JAR=$($jar.FullName)" | Add-Content -Path $env:GITHUB_ENV
 
-      - name: Replace unsigned exe with signed
-        run: Move-Item -Force release\signed\Glyphh-Setup.exe release\Glyphh-Setup.exe
+      - name: Package Windows (signed)
+        run: npx electron-builder --win --publish never
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
 
-      # electron-builder generated latest.yml against the UNSIGNED exe.
-      # SSL.com signing changed the file's bytes, so latest.yml's sha512/size
-      # no longer match the published exe — every Windows auto-update would
-      # fail its integrity check. Recompute them against the signed exe.
-      - name: Refresh latest.yml hashes for signed exe
+      # Fail here, not on a user's machine: every exe in the installer tree and
+      # the installer itself must carry a signature.
+      - name: Verify every shipped exe is signed
         shell: pwsh
         run: |
-          $exe = "release/Glyphh-Setup.exe"
-          $stream = [System.IO.File]::OpenRead($exe)
-          $sha = [System.Security.Cryptography.SHA512]::Create()
-          $hash = [System.Convert]::ToBase64String($sha.ComputeHash($stream))
-          $stream.Close()
-          $size = (Get-Item $exe).Length
-          $ymlPath = (Resolve-Path release/latest.yml).Path
-          $yml = Get-Content $ymlPath -Raw
-          $yml = $yml -replace 'sha512: .*', "sha512: $hash"
-          $yml = $yml -replace 'size: .*', "size: $size"
-          [System.IO.File]::WriteAllText($ymlPath, $yml)
-          Write-Host "Patched latest.yml: size=$size sha512=$hash"
+          $ErrorActionPreference = "Stop"
+          $files = @(Get-Item release/Glyphh-Setup.exe) + @(Get-ChildItem release/win-unpacked -Recurse -Filter *.exe)
+          $bad = @()
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $f.FullName
+            Write-Host ("{0,-8} {1}  {2}" -f $sig.Status, $sig.SignerCertificate.Subject, $f.FullName)
+            if ($sig.Status -ne "Valid") { $bad += $f.FullName }
+          }
+          if ($bad.Count) { throw "unsigned or invalid: $($bad -join ', ')" }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
