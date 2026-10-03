@@ -2412,9 +2412,12 @@ async function init(): Promise<void> {
       // THE SEARCH BAR sits centred between the dock and the tiles (his ask,
       // 2026-10-03), and the tiles start under it: the dock's labels and its
       // zoom reach are measured, not guessed, so neither ever runs into it.
-      const dock = body.querySelector<HTMLElement>(".echo-dock");
-      const dr = dock && dock.offsetParent !== null ? dock.getBoundingClientRect() : null;
-      const searchTop = dr && dr.height > 0 ? Math.round(dr.bottom - sr.top + 34) : 18;
+      // The bar may be parked in the body-level portal (dock-portal.ts); a
+      // tucked one is off screen and reserves nothing.
+      const dock = body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
+      const dockShown = !!dock && dock.offsetParent !== null && !document.body.classList.contains("echo-dock-tucked");
+      const dr = dockShown ? dock.getBoundingClientRect() : null;
+      const searchTop = dr && dr.height > 0 && dr.bottom > sr.top ? Math.round(dr.bottom - sr.top + 34) : 18;
       stage.style.setProperty("--echo-search-top", `${searchTop}px`);
       // Measure the LAST ICON, not the grid box — the grid's bottom padding
       // pushed the dots halfway down the page.
@@ -2447,6 +2450,18 @@ async function init(): Promise<void> {
     };
     const chromeRo = new ResizeObserver(repaintStage);
     chromeRo.observe(stage);
+    // THE DOCK GROWS AFTER THE FIRST PAINT (his report, 2026-10-03: it drew over
+    // the search pill until Settings was opened and closed): the icon-size
+    // preference lands after the wall's first measure, and the stage itself
+    // never changes size for it. The dock is watched too, so its own growth
+    // re-measures the pill.
+    const dockRo = new ResizeObserver(repaintStage);
+    const watchDock = (): void => {
+      dockRo.disconnect();
+      const d = body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
+      if (d) dockRo.observe(d);
+    };
+    watchDock();
     // THE SETTINGS-CLOSE DEAD WALL (his report, 2026-08-28: after settings,
     // clicks and zoom were dead until a window resize "def fixes it
     // immediately"). The modal's open/close leaves the stage's geometry
@@ -3129,6 +3144,7 @@ async function init(): Promise<void> {
       chromeRo.observe(stage);
       const firstGrid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
       if (firstGrid) chromeRo.observe(firstGrid);
+      watchDock();
       requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
       reconcileDock();
       paintSearch();
