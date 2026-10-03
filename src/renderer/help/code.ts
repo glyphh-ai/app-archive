@@ -3500,8 +3500,23 @@ function flushPendingNotes(tries = 0): void {
   paintPendingNotes();
   ta.value = ta.value.trim() ? `${text}\n\n${ta.value.trim()}` : text;
   autoGrow(ta);
+  // THE NOTES GO; THE ATTACHMENTS STAY (his report: images attached AFTER a
+  // note was queued rode out with the auto-send before he was ready). A queued
+  // note was written without them, so the flush sends only words — anything
+  // sitting in the attach tray is still his to send, with his next message.
+  const held = pendingAttach;
+  pendingAttach = [];
+  paintAttachChips();
   // After the finishRun paint settles, so the new turn lands under the old one.
-  setTimeout(() => send(), 0);
+  setTimeout(() => {
+    send();
+    if (held.length) {
+      // send() emptied the tray for its own turn; restore his pending files
+      // (minus any that somehow left in the meantime) so the chips come back.
+      for (const a of held) if (!pendingAttach.some((p) => p.path === a.path)) pendingAttach.push(a);
+      paintAttachChips();
+    }
+  }, 0);
 }
 
 function queueAttachments(refs: AttachRef[]): void {
@@ -5422,6 +5437,12 @@ async function openGlyphhSession(id: string): Promise<void> {
   // asks too, but asking here means the history lands even if the thread is
   // painted by something else first.
   hydrateMessagesIfNeeded(chat.id);
+  // A WORKSPACE'S SEAT already shows this document's agent — selectChat above
+  // put the thread in it. Seating the loop again would go through
+  // openAgentForLoop, which in the instanced shell mints ANOTHER panel (his
+  // report: a recent "loads correctly in the agent panel BUT it also opens
+  // another instance of the agent"). Front the seat and stop.
+  if ((window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat?.()) return;
   const loop = agentForSess({ id, cli: GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat), mode: modeOf(chat) });
   if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
 }
@@ -5463,7 +5484,10 @@ function sessOpen(sess: RailSession): void {
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
   const agent = agentForSess(sess);
   if (!agent) return;
-  (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+  // Same rule as openGlyphhSession: a seated agent adopts in place, no new panel.
+  if (!(window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat?.()) {
+    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+  }
   (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
     .__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: sess.id, agentId: agent.id, cli: sess.cli });
 }

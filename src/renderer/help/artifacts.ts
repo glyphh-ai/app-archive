@@ -61,12 +61,23 @@ function shortDir(d: string): string {
 interface WbFiles { readFile?: (p: string) => Promise<{ content?: string; error?: string }> }
 const wbFiles = (): WbFiles => ((window as unknown as { wb?: WbFiles }).wb ?? {});
 
+/**
+ * The last text read for a path, kept so a REBUILT card paints its preview
+ * synchronously. The thread is re-rendered on every tool frame of a live run;
+ * when each rebuild had to wait on an async read, the card painted short, then
+ * grew — the view lurched to the buttons and flickered while the agent typed.
+ * A card first paints from here, then refreshes from disk when the read lands.
+ */
+const textCache = new Map<string, string>();
+
 async function readText(p: string): Promise<{ text: string } | { error: string }> {
   try {
     const r = await wbFiles().readFile?.(p);
     if (!r) return { error: "This surface can't read files." };
     if (r.error) return { error: r.error };
-    return { text: String(r.content ?? "") };
+    const text = String(r.content ?? "");
+    textCache.set(p, text);
+    return { text };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -183,9 +194,12 @@ export function artifactCardEl(a: ArtifactRef, lightbox: (src: string, name: str
     card.appendChild(preview);
   } else if (kind === "text" || kind === "markdown") {
     card.appendChild(preview);
-    void readText(a.path).then((r) => {
-      if ("error" in r) { preview.remove(); return; }
-      const lines = r.text.split("\n");
+    let painted: string | null = null;
+    const paint = (text: string): void => {
+      if (text === painted) return; // same bytes → leave the DOM alone (no flicker)
+      painted = text;
+      preview.textContent = "";
+      const lines = text.split("\n");
       const head14 = lines.slice(0, PREVIEW_LINES).join("\n");
       const pre = document.createElement("pre");
       pre.className = "art-code";
@@ -200,6 +214,14 @@ export function artifactCardEl(a: ArtifactRef, lightbox: (src: string, name: str
         more.textContent = `${lines.length - PREVIEW_LINES} more line${lines.length - PREVIEW_LINES === 1 ? "" : "s"}`;
         preview.appendChild(more);
       }
+    };
+    // Paint what we last read RIGHT NOW so the card is full height on first
+    // layout; then refresh from disk (the agent may still be writing it).
+    const cached = textCache.get(a.path);
+    if (cached !== undefined) paint(cached);
+    void readText(a.path).then((r) => {
+      if ("error" in r) { if (painted === null) preview.remove(); return; }
+      paint(r.text);
     });
   }
 
@@ -235,6 +257,20 @@ export function artifactCardEl(a: ArtifactRef, lightbox: (src: string, name: str
   return card;
 }
 
+/** WHERE THE MODAL MOUNTS: the visible agent panel, so the preview stays
+ *  inside the window it was opened from (a workspace card, a rail seat) rather
+ *  than covering the whole app. With no agent showing it falls back to the
+ *  body, where it covers the window as before. */
+function modalHost(): { host: HTMLElement; inPanel: boolean } {
+  const agent = document.querySelector<HTMLElement>(".ws-agent-holder > .code-agent")
+    ?? document.querySelector<HTMLElement>(".code-agent");
+  if (agent) {
+    const r = agent.getBoundingClientRect();
+    if (r.width > 120 && r.height > 120 && agent.offsetParent !== null) return { host: agent, inPanel: true };
+  }
+  return { host: document.body, inPanel: false };
+}
+
 /** THE INLINE MODAL: the whole file, over the conversation, without leaving
  *  it. Markdown renders, code highlights, a picture goes to the lightbox, and
  *  a page offers the browser — never a frame (see the header). */
@@ -244,9 +280,10 @@ export function openArtifactModal(path: string, lightbox: (src: string, name: st
   if (kind === "pdf") { browse(path); return; }
   if (kind === "other") { openSmart(path); return; }
   document.querySelector(".art-modal")?.remove();
+  const { host, inPanel } = modalHost();
 
   const overlay = document.createElement("div");
-  overlay.className = "art-modal";
+  overlay.className = `art-modal${inPanel ? " in-panel" : ""}`;
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
   overlay.setAttribute("aria-label", nameOf(path));
@@ -285,7 +322,7 @@ export function openArtifactModal(path: string, lightbox: (src: string, name: st
 
   panel.append(head, body, foot);
   overlay.appendChild(panel);
-  document.body.appendChild(overlay);
+  host.appendChild(overlay);
 
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.stopPropagation(); dismiss(); } };
   const dismiss = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey, true); };

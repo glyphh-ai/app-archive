@@ -13797,6 +13797,11 @@ select:focus {
   /* Right gets +4 over left: the scrollbar rides in the right gutter and
      visually tightens it. */
   padding: 20px 52px 24px 48px;
+  /* The thread is REBUILT on every live-run frame; the browser's scroll
+     anchoring then latched onto an artifact card's button row and tugged the
+     view back to it as text streamed (his report: "anchored to the div with
+     the buttons and flickers"). Following is ours: threadPinned sets scrollTop. */
+  overflow-anchor: none;
 }
 .code-thread-inner {
   width: 100%;
@@ -21621,6 +21626,14 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 
 /* ── THE PREVIEW MODAL — the whole file over the conversation. ── */
 .art-modal { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 28px; background: var(--overlay-bg, rgba(0, 0, 0, 0.6)); }
+/* INSIDE THE AGENT PANEL (his order: the modal stays within the working
+   window): mounted in `.code-agent`, it fills that panel, not the app. The
+   agent becomes the containing block; a narrow card gets a tighter gutter and
+   the grid-laid holder agent needs the overlay lifted out of the grid flow. */
+.code-agent { position: relative; }
+.art-modal.in-panel { position: absolute; padding: 16px; z-index: 50; border-radius: inherit; }
+.ws-agent-holder > .code-agent > .art-modal.in-panel { grid-area: 1 / 1 / -1 / -1; }
+@container agent (max-width: 520px) { .art-modal.in-panel { padding: 8px; } }
 .art-modal-panel { width: min(960px, 100%); max-height: 100%; display: flex; flex-direction: column; border: 1px solid var(--border-2); border-radius: 14px; background: var(--bg-raised, var(--surface)); box-shadow: 0 20px 60px var(--shadow, rgba(0, 0, 0, 0.5)); overflow: hidden; }
 .art-modal-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-2); }
 .art-close { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); cursor: pointer; }

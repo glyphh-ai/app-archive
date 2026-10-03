@@ -5513,6 +5513,21 @@ async function init(): Promise<void> {
       return entry;
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
+    /** The INSTANCED shell's in-document agent seat (a workspace's agent
+     *  cell), fronted; false when there is none — or when this document is a
+     *  solo panel / the web build, whose one agent keeps the old open path.
+     *  A recent picked while a workspace seats the agent is already selected
+     *  INTO that seat; seating the loop through openAgentForLoop here would
+     *  mint ANOTHER panel (his report: "the recent loads correctly in the
+     *  agent panel BUT it also opens another instance of the agent"). */
+    (window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat = () => {
+      if (!AGENT_INSTANCED) return false;
+      const seated = openList.find((x) => !!x.card?.isConnected && x.tile.kind === "agent");
+      if (!seated?.card) return false;
+      flash(seated.card);
+      seated.card.scrollIntoView?.({ block: "nearest" });
+      return true;
+    };
     /** Open the default agent with text already in the composer, UNSENT (his
      *  order, 2026-09-18: "+ New artifact" starts a conversation, not a file).
      *  The composer lives in the agent's own document, which mounts async, so
@@ -5611,10 +5626,29 @@ async function init(): Promise<void> {
         // the OUTGOING layout remembers what its panels were doing (last
         // page, open files, browser tabs) — capture before the teardown
         saveEchoLayoutMem();   // the OUTGOING layout's save runs under ITS contract
+        // The OUTGOING "last" layout pins the session it was riding NOW, so a
+        // return resumes exactly this conversation (the change listener
+        // below covers switches mid-ride; this covers the leave itself).
+        {
+          type SessionsApi = { currentId(): string | null; list?: () => Array<{ id: string; mode?: string }> };
+          const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
+          const riding = echoActiveLayout?.name;
+          const cur = sess?.currentId?.();
+          if (riding && cur && echoActiveLayout?.mode === "last") {
+            const listed = sess?.list?.()?.find((c) => c.id === cur);
+            const space = listed?.mode === "code" ? "code" : listed?.mode === "chat" ? "chat" : "cowork";
+            try { uiStateSet(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
+          }
+        }
         // B3: OPEN = WIPE-THEN-MOUNT — a layout open first tears down whatever
         // is up (the previous layout AND any standalone apps), so only the new
         // layout's panels remain.
-        for (const x of [...openList]) closeCard(x, { parkTerms: true });
+        // THE SESSION SURVIVES THE SWAP (his order, 2026-10-02): the agent
+        // card is only a seat — closing it here must NOT forget the running
+        // session, or "keep current" has nothing to keep and the panel
+        // drops to the landing before the session contract below can act.
+        // "new" starts fresh and "last" re-targets explicitly, right after.
+        for (const x of [...openList]) closeCard(x, { parkTerms: true, keepSession: true });
         echoLayoutName = layout.name || null;
         scheduleWallSave();   // a layout is now the wall's state — persist its name
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
