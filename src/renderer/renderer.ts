@@ -354,7 +354,6 @@ declare global {
       remoteControlSetEnabled?: (enabled: boolean) => Promise<RemoteControlView>;
       remoteControlAddFolder?: () => Promise<RemoteControlView>;
       remoteControlRemoveFolder?: (folder: string) => Promise<RemoteControlView>;
-      adaRegisterDevice?: () => Promise<RemoteControlView>;
       onRemoteControlChanged?: (cb: (v: RemoteControlView) => void) => () => void;
       onPreferenceChanged: (cb: (key: string, value: unknown) => void) => void;
       onboardingComplete: () => Promise<void>;

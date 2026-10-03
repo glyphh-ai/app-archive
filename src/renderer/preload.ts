@@ -520,8 +520,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   remoteControlSetEnabled: (enabled: boolean) => ipcRenderer.invoke("remote-control:set-enabled", enabled) as Promise<RemoteControlView>,
   remoteControlAddFolder: () => ipcRenderer.invoke("remote-control:add-folder") as Promise<RemoteControlView>,
   remoteControlRemoveFolder: (folder: string) => ipcRenderer.invoke("remote-control:remove-folder", folder) as Promise<RemoteControlView>,
-  // Settings → Remote control → Ada: make this computer hold the org's local Ada models' records.
-  adaRegisterDevice: () => ipcRenderer.invoke("ada:register-device") as Promise<RemoteControlView>,
   onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
     const h = (_e: unknown, v: RemoteControlView) => cb(v);
     ipcRenderer.on("remote-control:changed", h);
