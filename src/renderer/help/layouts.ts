@@ -1288,7 +1288,7 @@ async function saveLayout() {
   // The Model/Session rows only bind when the grid hosts the agent panel.
   const hasAgentSeat = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
   const selections = hasAgentSeat ? builderModelSelections : {};
-  await window.glyphh.layoutsSaveGrid({
+  const saved = await window.glyphh.layoutsSaveGrid({
     name,
     cols: builderCols,
     rows: builderRows,
@@ -1301,6 +1301,14 @@ async function saveLayout() {
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     folder: layoutFolderInput?.value.trim() || null,
   });
+  // A refused save says why on the form — the plan gate on the desktop, or
+  // the web's "workspaces are kept on your desktop" (web-contract.js) —
+  // instead of closing the editor as if the write had landed.
+  if (typeof saved === "object" && saved !== null && saved.error) {
+    layoutFormError.textContent = saved.error;
+    layoutFormError.classList.remove("hidden");
+    return;
+  }
   cancelLayout();
   // Settle pass: re-pull once the server write has certainly landed, so the
   // page cards AND the rail tiles repaint with what was actually saved even
@@ -1319,6 +1327,15 @@ async function deleteLayout() {
     danger: true,
   });
   if (!confirmed) return;
+  // The delete goes first: refused (on web the workspace lives on the
+  // desktop — web-contract.js), the form says so and nothing it owned is
+  // forgotten.
+  const deleted = await window.glyphh.layoutsDelete(editingLayoutName);
+  if (typeof deleted === "object" && deleted !== null && deleted.error) {
+    layoutFormError.textContent = deleted.error;
+    layoutFormError.classList.remove("hidden");
+    return;
+  }
   // A deleted layout forgets EVERYTHING it owned. The session binding is
   // per-space (`...:<name>:code`) and the Echo panel memory is its own family,
   // so this drops each prefix rather than three exact keys — the old cleanup
@@ -1328,7 +1345,6 @@ async function deleteLayout() {
   uiStateRemovePrefix(`workbench:namedlayout:${gone}`);
   uiStateRemovePrefix(`workbench:layoutsession:${gone}`);
   uiStateRemovePrefix(`echo:layout:${gone}`);
-  await window.glyphh.layoutsDelete(editingLayoutName);
   cancelLayout();
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
 }
