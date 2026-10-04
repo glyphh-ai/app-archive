@@ -376,6 +376,7 @@ declare global {
       recheckAccount: () => Promise<{ status: string }>;
       onFocusInput: (callback: () => void) => void;
       onPanelAppsChanged: (callback: () => void) => void;
+      onLibrarySynced?: (callback: (info: { kind: string; pulled: string[]; deleted: string[]; taken: string[] }) => void) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
       pickWorkingDir: (opts?: { asDefault?: boolean }) => Promise<string | null>;
