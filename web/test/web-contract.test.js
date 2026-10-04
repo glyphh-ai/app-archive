@@ -13,11 +13,14 @@
  * regression guard for the blank-screen class of bug.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildContract, DESKTOP_ONLY, EMPTY, mergeRows, toLoopModels, trimWsState } from '../src/web-contract.js';
+import { buildContract, NEEDS_DESKTOP, EMPTY, toLoopModels, trimWsState } from '../src/web-contract.js';
+import { mergeServerFirst } from '../../src/shared/member-library';
+import { seededLibrary } from './helpers/member-library.js';
 
 /** A fake SDK client whose domain methods resolve canned SDK shapes (the AUTHED path). */
 function authedClient() {
   return {
+    memberLibrary: seededLibrary(),
     me: vi.fn(async () => ({ email: 'a@b.co', name: 'Ada Lovelace', role: 'org_admin', tier: 'pro' })),
     org: { get: vi.fn(async () => ({ name: 'Acme' })) },
     billing: {
@@ -62,6 +65,7 @@ function rejectingClient() {
     org: rej, billing: rej, usage: rej, profile: rej, connections: rej, loops: rej,
     skills: rej, agents: rej, layouts: rej, drips: rej, apps: rej, orgModels: rej,
     catalog: rej, support: rej,
+    memberLibrary: { list: boom, get: boom, put: boom, remove: boom, files: boom },
   };
 }
 
@@ -101,7 +105,8 @@ describe('buildContract — AUTHED shapes', () => {
   });
   it('library envelopes (skills/agents/models)', async () => {
     expect(await c.librarySkillsList()).toEqual({ ok: true, data: [{ id: 's' }] });
-    expect(await c.libraryAgentsList()).toEqual({ ok: true, data: [{ id: 'a' }] });
+    // Agents are the MEMBER LIBRARY's now (database-as-truth): the record rides whole.
+    expect(await c.libraryAgentsList()).toMatchObject({ ok: true, data: [{ id: 'a', slug: 'a', name: 'Ada' }] });
     expect(await c.orgModelsList()).toEqual({ ok: true, data: [{ id: 'm1' }] });
     expect(await c.orgProvidersList()).toEqual({ ok: true, data: [{ slug: 'anthropic' }] });
   });
@@ -288,8 +293,9 @@ describe('the sweep shims (2026-10-04)', () => {
     const k = buildContract(sweepClient(), deps);
     expect(await k.connectorsGetPopular()).toEqual([{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [], installs: 9 }]);
     expect(await k.connectorsGetCategories()).toEqual([{ name: 'Chat', count: 1, apps: [{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [] }] }]);
-    expect(await k.libraryAgentCreate({ name: 'Ada' })).toEqual({ ok: true, data: { id: 'n', name: 'Ada' } });
-    expect(await k.libraryAgentUpdate('ada', { name: 'Ada 2' })).toEqual({ ok: true, data: { id: 'ada', name: 'Ada 2' } });
+    // Agents write THE MEMBER LIBRARY (member-library-web.js): the same row the desktop's local-agents builds.
+    expect(await k.libraryAgentCreate({ name: 'Ada' })).toMatchObject({ ok: true, data: { id: 'ada', slug: 'ada', name: 'Ada', live: true } });
+    expect(await k.libraryAgentUpdate('ada', { name: 'Ada 2' })).toMatchObject({ ok: true, data: { id: 'ada', name: 'Ada 2' } });
     expect(await k.libraryAgentDelete('ada')).toEqual({ ok: true, data: true });
     expect(await k.releasesList()).toEqual({ ok: true, releases: [{ tag: 'v1.4.8', publishedAt: null, assets: [] }] });
     expect(await k.releasesAssetUrl('v1.4.8', 'Glyphh.dmg')).toEqual({ ok: true, url: 'https://dl/v1.4.8/Glyphh.dmg' });
@@ -325,12 +331,11 @@ describe('the sweep shims (2026-10-04)', () => {
   });
 });
 
-// ── The Customize libraries live on the DESKTOP (his report, 2026-10-04: "none of my
-// workspaces, app tabs, etc. are showing on the web"): the lists are what the attached
-// machines answer over the relay (layouts.list / panelApps.list), in front of the
-// server library the desktop no longer writes; a write is refused with the line the
-// Workspaces / Tabs pages show.
-describe('buildContract — workspaces and app tabs read the attached desktops', () => {
+// ── THE MEMBER LIBRARY IS DATABASE-AS-TRUTH (his rule, 2026-10-04): the lists read the
+// server FIRST (client.memberLibrary), the rows an attached desktop still holds fill in
+// behind them (the server wins a tie), and a write goes to the server at this client's
+// clock — the desktop pulls it on its next sync. Nothing is refused any more.
+describe('buildContract — workspaces and app tabs read the server first, write the server', () => {
   const DESK_LAYOUT = { name: 'Research', cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: 'glyphh', loop: 'glyphh', modelSelections: { default: 'm' }, sessionMode: 'new', folder: '/Users/me/code', space: 'code', splits: [{ panelId: 'tool:coding', col: 0, row: 0, colSpan: 1, rowSpan: 1 }] };
   const DESK_TAB = { id: 'crm', orgId: '', createdBy: '', name: 'CRM (desktop)', slug: 'crm', system: false, url: 'https://crm.local', isBrowser: true, execPath: null, appArchetype: 'web', launchConfig: { forceWeb: true }, access: 'members', owned: true, latestVersion: null, version: '', secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null, listing: null, mcp: null, commands: {}, createdAt: '', updatedAt: '' };
   const STUDIO_TAB = { ...DESK_TAB, id: 'mail', slug: 'mail', name: 'Mail' };
@@ -345,70 +350,81 @@ describe('buildContract — workspaces and app tabs read the attached desktops',
   });
   const withDesktops = (client, answers) => ({ ...client, attach: attachFor(answers) });
 
-  it('layoutsList: the desktops\' rows first (the layouts-list shape untouched), the server\'s after, a name the desktop has wins', async () => {
+  it('layoutsList: the SERVER\'s rows first (the layouts-list shape), then a desktop\'s rows it lacks; a name on both is the server\'s', async () => {
     const attach = attachFor({
       m1: { 'layouts.list': { layouts: [DESK_LAYOUT, { ...DESK_LAYOUT, name: 'Grid', cols: 9 }] } },
       m2: { 'layouts.list': new Error('machine went away') },
     });
     const c = buildContract({ ...authedClient(), attach }, deps);
     const rows = await c.layoutsList();
-    expect(rows.map((l) => l.name)).toEqual(['Research', 'Grid']);
-    expect(rows[0]).toEqual(DESK_LAYOUT);
-    expect(rows[1].cols).toBe(9);                       // the desktop's "Grid", not the server's (cols 2)
+    expect(rows.map((l) => l.name)).toEqual(['Grid', 'Research']);
+    expect(rows[0]).toMatchObject({ cols: 2, splits: [{ panelId: 'p' }], updatedAt: 1_000 }); // the server's Grid, not the desktop's (cols 9)
+    expect(rows[1]).toEqual(DESK_LAYOUT);                                                   // the desktop's own row, untouched
     expect(attach.dispatch).toHaveBeenCalledWith('layouts.list', {}, { machineId: 'm1' });
-    expect(attach.dispatch).toHaveBeenCalledWith('layouts.list', {}, { machineId: 'm2' });
   });
 
-  it('layoutsList: the server library still shows behind the desktops (a name the desktops lack)', async () => {
-    const c = buildContract(withDesktops(authedClient(), { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
-    const rows = await c.layoutsList();
-    expect(rows.map((l) => l.name)).toEqual(['Research', 'Grid']);
-    expect(Array.isArray(rows[1].splits)).toBe(true);   // the server row still goes through toLegacyLayouts
-  });
-
-  it('layoutsList: a 401 on the server read leaves the desktops\' rows standing; a dead attach leaves the server\'s', async () => {
+  it('layoutsList: a 401 on the server read leaves the desktop\'s rows standing; a dead attach leaves the server\'s', async () => {
     const offline = buildContract(withDesktops(rejectingClient(), { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
     expect((await offline.layoutsList()).map((l) => l.name)).toEqual(['Research']);
     const noAttach = buildContract({ ...authedClient(), attach: { status: async () => { throw new Error('offline'); }, dispatch: async () => ({}) } }, deps);
     expect((await noAttach.layoutsList()).map((l) => l.name)).toEqual(['Grid']);
-    // No attach client at all (an SDK without the resource) → the server read alone, no throw.
     expect((await buildContract(authedClient(), deps).layoutsList()).map((l) => l.name)).toEqual(['Grid']);
   });
 
-  it('panelAppsList: every machine\'s tabs as the desktop hands them, then the server\'s apps the desktops lack', async () => {
+  it('layoutsSaveGrid / layoutsDelete write the server at this client\'s clock', async () => {
+    const client = authedClient();
+    const c = buildContract(client, deps);
+    expect(await c.layoutsSaveGrid({ name: 'Research', cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [], loop: 'glyphh', sessionMode: 'keep' })).toBe(true);
+    const [kind, id, input] = client.memberLibrary.put.mock.calls[0];
+    expect([kind, id]).toEqual(['workspace', 'research']);
+    expect(input.data).toMatchObject({ name: 'Research', version: 2, loop: 'glyphh', updatedAt: input.updatedAt });
+    expect(input.data.sessionMode).toBeUndefined();           // "keep" is the default — not written
+    expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Grid', 'Research']);
+    expect(await c.layoutsDelete('Research')).toBe(true);
+    expect(client.memberLibrary.remove).toHaveBeenCalledWith('workspace', 'research', { updatedAt: expect.any(Number) });
+    expect((await c.layoutsList()).map((l) => l.name)).toEqual(['Grid']);
+    expect(await c.layoutsDelete('never-there')).toBe(true);  // 404 = already gone
+    expect(await c.layoutsSaveGrid({ name: ' ' })).toEqual({ error: 'A name is required.' });
+  });
+
+  it('panelAppsList: the server\'s tabs first (tabRowOf), then every machine\'s the server lacks', async () => {
     const c = buildContract(withDesktops(authedClient(), {
       m1: { 'panelApps.list': { apps: [DESK_TAB] } },
       m2: { 'panelApps.list': { apps: [STUDIO_TAB, { ...DESK_TAB, name: 'CRM (studio)' }] } },
     }), deps);
     const rows = await c.panelAppsList();
-    expect(rows.map((a) => a.name)).toEqual(['CRM (desktop)', 'Mail']);  // the server's 'crm' and the second machine's 'crm' fold into the first
-    expect(rows[0]).toEqual(DESK_TAB);                                  // launchConfig and all — the desktop's own row
+    expect(rows.map((a) => a.name)).toEqual(['CRM', 'Mail']);               // the server's crm wins; Mail only a machine has
+    expect(rows[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, url: 'https://crm', mcp: null, commands: {} });
+    expect(rows[1]).toEqual(STUDIO_TAB);
   });
 
-  it('panelAppsList: the server\'s apps alone when nothing is attached (the old read, unchanged)', async () => {
-    const c = buildContract(withDesktops(authedClient(), {}), deps);
-    expect((await c.panelAppsList()).map((a) => a.slug)).toEqual(['crm']);
-    expect((await c.panelAppsList())[0]).toMatchObject({ name: 'CRM', isBrowser: true, mcp: null });
-  });
-
-  it('a write to either library is refused with the line the page shows; the SDK is never asked to write', async () => {
+  it('panelAppsCreate / Update / Delete write the server; config vars never ride', async () => {
     const client = authedClient();
-    client.layouts.save = vi.fn(); client.layouts.delete = vi.fn();
-    const c = buildContract(withDesktops(client, { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
-    expect(await c.layoutsSaveGrid({ name: 'Research', cols: 1, rows: 1, cells: [] })).toEqual({ error: DESKTOP_ONLY.workspaces });
-    expect(await c.layoutsDelete('Research')).toEqual({ error: DESKTOP_ONLY.workspaces });
-    expect(await c.panelAppsCreate({ name: 'X', slug: 'x', isBrowser: true, url: 'https://x' })).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
-    expect(await c.panelAppsUpdate('crm', { name: 'Y' })).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
-    expect(await c.panelAppsDelete('crm')).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
-    expect(client.layouts.save).not.toHaveBeenCalled();
-    expect(client.layouts.delete).not.toHaveBeenCalled();
+    const c = buildContract(client, deps);
+    const made = await c.panelAppsCreate({ name: 'Mail', slug: 'mail', isBrowser: true, url: 'https://mail', launchConfig: { iconUrl: 'https://i', env: { TOKEN: 'secret' } } });
+    expect(made).toMatchObject({ ok: true, app: { id: 'mail', slug: 'mail', url: 'https://mail', isBrowser: true } });
+    const put = client.memberLibrary.put.mock.calls.find(([k, id]) => k === 'tab' && id === 'mail');
+    expect(put[2].data.config).toEqual({ iconUrl: 'https://i' });            // env stripped
+    expect(put[2].data.updatedAt).toBe(new Date(put[2].updatedAt).toISOString());
+    expect(await c.panelAppsCreate({ name: 'Mail' })).toMatchObject({ ok: false, error: /already exists/ });
+    expect(await c.panelAppsUpdate('crm', { name: 'CRM 2', isBrowser: false, execPath: '/Applications/CRM.app' })).toMatchObject({ ok: true, app: { name: 'CRM 2', isBrowser: false, execPath: '/Applications/CRM.app', appArchetype: 'native' } });
+    expect(await c.panelAppsUpdate('nope', { name: 'x' })).toMatchObject({ ok: false });
+    expect(await c.panelAppsDelete('crm')).toEqual({ ok: true });
+    expect((await c.panelAppsList()).map((a) => a.slug)).toEqual(['mail']);
   });
 
-  it('mergeRows: desktop rows first, server rows only for keys no desktop row carries', () => {
+  it('what still needs the machine answers so, per action', async () => {
+    const c = buildContract(authedClient(), deps);
+    expect(await c.taskRun('t')).toEqual({ ok: false, error: NEEDS_DESKTOP });
+    expect(await c.libraryAgentTaskAdd('a', {})).toEqual({ ok: false, error: NEEDS_DESKTOP });
+    expect(await c.skillReveal('glyphh:x')).toEqual({ ok: false, error: NEEDS_DESKTOP });
+    expect(await c.libraryAgentTasks('a')).toEqual({ ok: true, data: [] });
+  });
+
+  it('mergeServerFirst: server rows first, relay rows only for keys the server lacks', () => {
     const key = (r) => r.k;
-    expect(mergeRows([{ k: 'a', from: 'desk' }, { k: 'b', from: 'desk' }], [{ k: 'b', from: 'srv' }, { k: 'c', from: 'srv' }], key))
-      .toEqual([{ k: 'a', from: 'desk' }, { k: 'b', from: 'desk' }, { k: 'c', from: 'srv' }]);
-    expect(mergeRows([], [{ k: 'c' }], key)).toEqual([{ k: 'c' }]);
-    expect(mergeRows(undefined, undefined, key)).toEqual([]);
+    expect(mergeServerFirst([{ k: 'a', from: 'srv' }, { k: 'b', from: 'srv' }], [{ k: 'b', from: 'desk' }, { k: 'c', from: 'desk' }], key))
+      .toEqual([{ k: 'a', from: 'srv' }, { k: 'b', from: 'srv' }, { k: 'c', from: 'desk' }]);
+    expect(mergeServerFirst([], [{ k: 'c' }], key)).toEqual([{ k: 'c' }]);
   });
 });

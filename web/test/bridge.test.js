@@ -8,9 +8,12 @@
  * assert the plumbing — method name, arguments, and that the legacy shape comes out.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { seededLibrary } from './helpers/member-library.js';
 
 // A fake SDK client whose domain methods are spies returning canned SDK shapes.
 const fake = {
+  // The member library (database-as-truth, 2026-10-04): workspaces, tabs, agents, skills, tasks.
+  memberLibrary: seededLibrary(),
   me: vi.fn(async () => ({ email: 'a@b.co', name: 'Ada Lovelace', role: 'org_admin', tier: 'free' })),
   org: { get: vi.fn(async () => ({ name: 'Acme' })) },
   billing: { status: vi.fn(async () => ({ tier: 'pro', billingStatus: 'active' })) },
@@ -142,15 +145,15 @@ describe('bridge KNOWN wiring', () => {
     expect(out).toEqual({ ok: true, data: [{ id: 's', slug: 'sk' }] });
   });
 
-  it('libraryAgentsList / libraryAgentTasks → agents.* wrapped', async () => {
-    expect(await glyphh.libraryAgentsList()).toEqual({ ok: true, data: [{ id: 'a' }] });
-    const tasks = await glyphh.libraryAgentTasks('a');
-    expect(fake.agents.tasks).toHaveBeenCalledWith('a');
-    expect(tasks).toEqual({ ok: true, data: [{ id: 't' }] });
+  it('libraryAgentsList → the member library\'s agent records; an agent\'s schedules are the desktop\'s (an honest empty list)', async () => {
+    expect(await glyphh.libraryAgentsList()).toMatchObject({ ok: true, data: [{ id: 'a', slug: 'a', name: 'Ada' }] });
+    expect(fake.memberLibrary.list).toHaveBeenCalledWith('agent');
+    expect(await glyphh.libraryAgentTasks('a')).toEqual({ ok: true, data: [] });
   });
 
-  it('layoutsList → layouts.list, desktop layout shape with a splits array', async () => {
+  it('layoutsList → memberLibrary.list("workspace"), desktop layout shape with a splits array', async () => {
     const out = await glyphh.layoutsList();
+    expect(fake.memberLibrary.list).toHaveBeenCalledWith('workspace');
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ name: 'Grid', cols: 2, rows: 1 });
     // splits must always be an array so the rail's `l.splits.map` never throws.
@@ -161,9 +164,9 @@ describe('bridge KNOWN wiring', () => {
     expect(await glyphh.dripsList()).toEqual([{ name: 'd', recipe: 'confetti' }]);
   });
 
-  it('panelAppsList → apps.mine, SavedPanelApp defaults', async () => {
+  it('panelAppsList → memberLibrary.list("tab"), SavedPanelApp defaults', async () => {
     const out = await glyphh.panelAppsList();
-    expect(fake.apps.mine).toHaveBeenCalled();
+    expect(fake.memberLibrary.list).toHaveBeenCalledWith('tab');
     expect(out[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });
 

@@ -1363,6 +1363,12 @@ export function initLayoutsEvents() {
   };
   document.getElementById("layout-new-btn")!.addEventListener("click", newLayout);
   document.getElementById("layouts-refresh-btn")?.addEventListener("click", () => { void loadLayouts(); });
+  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web wrote, or
+  // dropped what it deleted): the list re-reads. An open editor is left alone.
+  window.glyphh.onLibrarySynced?.((info) => {
+    if (info.kind !== "workspace") return;
+    if (document.getElementById("layout-editor")?.classList.contains("hidden") !== false) void loadLayouts();
+  });
   document.getElementById("layout-save-btn")!.addEventListener("click", saveLayout);
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-back-link")!.addEventListener("click", cancelLayout);

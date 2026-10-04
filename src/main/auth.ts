@@ -101,8 +101,18 @@ function triggerReauth(): void {
 // (2026-09-30): with the session it comes up only if this device has remote
 // control on (remote-control.ts), and it always goes with the session. Lazy
 // import: the host imports auth.
-function attachStart(): void { void import("./remote-control.js").then((m) => m.remoteControlBoot()).catch((e) => console.warn("[remote-control] boot failed", String(e))); }
-function attachStop(): void { void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined); }
+function attachStart(): void {
+  void import("./remote-control.js").then((m) => m.remoteControlBoot()).catch((e) => console.warn("[remote-control] boot failed", String(e)));
+  // THE MEMBER LIBRARY AND THE THREADS SYNC WITH THE SERVER from sign-in on
+  // (his rule, 2026-10-04: database-as-truth) — late-bound like the attach
+  // socket so auth stays importable by the stores.
+  void import("./library-sync.js").then((m) => m.startLibrarySync()).catch((e) => console.warn("[library-sync] start failed", String(e)));
+  void import("./thread-publish.js").then((m) => m.publishThreadsNow()).catch((e) => console.warn("[threads] publish failed", String(e)));
+}
+function attachStop(): void {
+  void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined);
+  void import("./library-sync.js").then((m) => m.stopLibrarySync()).catch(() => undefined);
+}
 
 setSignedOutHandler(() => {
   signedIn = false;

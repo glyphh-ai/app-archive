@@ -11,6 +11,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
+import { threadLocus } from "../../shared/member-library.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
@@ -5370,7 +5371,7 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    UX is the MAIN-era recents wholesale: Pinned first, then one group per
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
-interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli" }
+interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli"; /** Where the thread runs (his rule, 2026-10-04): this machine, or the cloud. */ locus?: "local" | "cloud" }
 let railSessions: RailSession[] = [];
 /** The CLI agents' sessions, from each CLI's own store — the RAIL's and the CLI
  *  window's, never the Glyphh agent's dropdown (his order, 2026-09-30). */
@@ -5507,13 +5508,16 @@ async function loadRailSessions(): Promise<void> {
   // a moment before the write-through resolves.
   const rows: CodeChat[] = storeLoaded && chats.length ? chats : ((snap?.chats as CodeChat[]) ?? []);
   railSessions = rows
-    .filter((c) => (c.messages?.length ?? 0) > 0)
+    // A thread adopted from the server (a cloud thread, or one made on another
+    // surface) carries only a messageCount until opened — it lists all the same.
+    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0)
     .map((c) => ({
       id: c.id, cli: GLYPHH_LOOP, title: c.title, cwd: c.workdir || "", mtime: touchedAtOf(c),
       // A thread's own space. Every NEW session is born in Code (modeOf); the
       // older Chat and Work threads keep theirs, which is what makes the glyph
       // worth reading.
       mode: modeOf(c),
+      locus: threadLocus(c),
     }))
     .sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
@@ -5794,7 +5798,13 @@ function renderRailSessions(): void {
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
       menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      row.append(dot, markEl, label, menuBtn);
+      // WHERE IT RUNS (his rule, 2026-10-04): the rail lists this machine's
+      // threads and the cloud's side by side, each wearing its locus.
+      const locus = document.createElement("span");
+      locus.className = `code-sess-locus code-sess-locus-${sess.locus ?? "local"}`;
+      locus.textContent = sess.locus === "cloud" ? "cloud" : "local";
+      locus.title = sess.locus === "cloud" ? "Runs in the cloud" : "Runs on this machine";
+      row.append(dot, markEl, label, locus, menuBtn);
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
     }

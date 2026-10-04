@@ -28,6 +28,10 @@ import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer } from "./local-mcp-server.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
+// The server's copy of every local thread (his rule, 2026-10-04): each write
+// here publishes the index + the new messages (thread-publish.ts).
+import { noteThreadsSaved, noteThreadDeleted, threadsList, threadsGet, threadsPush, threadsDelete } from "./thread-publish.js";
+import type { PushThreadInput } from "@glyphh/sdk";
 import {
   compactGlyphhLoop, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
   runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop, type LoopPermission,
@@ -143,6 +147,10 @@ function saveSessionsFile(snap: SessionsSnapshot, from?: WebContents): void {
       if (wc.isDestroyed() || (from && wc.id === from.id)) continue;
       wc.send("glyphh-sessions-updated", { deleted });
     }
+    // THE SERVER HEARS EVERY WRITE: the index and the new messages of each
+    // local thread ride up (debounced); a deleted id is tombstoned there.
+    for (const id of deleted) noteThreadDeleted(id);
+    noteThreadsSaved();
   } catch { /* a failed save loses nothing but the recents ordering */ }
 }
 
@@ -372,4 +380,12 @@ export function registerAgentIpc(): void {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null, ...(Array.isArray(p?.deleted) ? { deleted: p.deleted.map(String) } : {}) }, e.sender);
     return true;
   });
+
+  // THE SERVER'S THREADS SURFACE for the renderer's thread-store (dead ends in
+  // agent-stubs.ts until 2026-10-04): the rail lists local + cloud threads
+  // from it, and a cloud thread's transcript comes down whole (thread-publish.ts).
+  ipcMain.handle("glyphh-threads-list", () => threadsList());
+  ipcMain.handle("glyphh-threads-get", (_e: unknown, id: string) => threadsGet(String(id)));
+  ipcMain.handle("glyphh-threads-push", (_e: unknown, p: { id: string; body: PushThreadInput }) => threadsPush(String(p?.id ?? ""), p?.body));
+  ipcMain.handle("glyphh-threads-delete", (_e: unknown, id: string) => threadsDelete(String(id)));
 }

@@ -12,6 +12,7 @@
 import * as appsStore from "./apps-store.js";
 import type { LocalAppRow } from "./apps-store.js";
 import { appCache } from "./glyphh-client.js";
+import { tabRowOf } from "../shared/member-library.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
 export interface OrgAppRow {
@@ -108,37 +109,9 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
   launchConfig: { nav: n.nav },
 }));
 
-/** Native and glyphh apps launch from a local path; every other kind opens a
- *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
- *  tag (isGlyphhAppRow and friends match on it). */
-function toRow(app: LocalAppRow): OrgAppRow {
-  return {
-    id: app.id,
-    orgId: "",
-    createdBy: "",
-    name: app.name,
-    slug: app.slug,
-    system: false,
-    url: app.prodUrl,
-    isBrowser: app.kind !== "native" && app.kind !== "glyphh",
-    execPath: app.nativeRef,
-    appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
-    launchConfig: app.config ?? null,
-    access: app.access,
-    owned: app.owned,
-    latestVersion: app.latestVersion,
-    version: app.version,
-    secretNames: app.secretNames ?? [],
-    requiredConnections: app.requiredConnections,
-    connectionIds: app.requiredConnections.map((c) => c.slug),
-    iconUrl: typeof app.config?.iconUrl === "string" ? app.config.iconUrl : null,
-    listing: null,
-    mcp: null,
-    commands: {},
-    createdAt: app.createdAt,
-    updatedAt: app.updatedAt,
-  };
-}
+/** The tab row in the renderer's shape — ONE projection (shared/member-library.ts
+ *  tabRowOf), the same the web applies to the server's record of the tab. */
+const toRow = (app: LocalAppRow): OrgAppRow => tabRowOf(app) as OrgAppRow;
 
 /** The org's apps in the renderer's shape, short-TTL cached so the palette
  *  render and the click that follows share one request. */

@@ -390,10 +390,12 @@ async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
 
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
-  // THE FOLDERS ON THE MACHINE (~/.glyphh/skills, main/skills-fs.ts): a browser
-  // tab has none, and the web bridge serves no skillsList. The page is the one
-  // card that says so (shared library items live under Build → Library).
-  if (paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
+  // SKILLS AND TASKS ARE THE MEMBER LIBRARY'S (his rule, 2026-10-04): the web
+  // lists, views and edits them from the server (web-contract.js); the
+  // desktop syncs its folders from the same records. APPS and PLUGINS are
+  // machine bundles still — a browser tab has none, and the page is the one
+  // card that says so.
+  if ((cfg.kind === "app" || cfg.kind === "plugin") && paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
     Array.from(el("skills-list-view")?.querySelectorAll<HTMLElement>(".skills-head, .skills-tabs") ?? []))) { el("skill-detail-view")?.classList.add("hidden"); el("skills-list-view")?.classList.remove("hidden"); return; }
   wire();
   el("skill-detail-view")?.classList.add("hidden");
@@ -1745,6 +1747,12 @@ function sortMenu(): MenuItem[] {
 function wire(): void {
   if (wired) return;
   wired = true;
+  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web wrote, or
+  // dropped what it deleted): the list re-reads. An open detail is left alone.
+  (api() as unknown as { onLibrarySynced?: (cb: (info: { kind: string }) => void) => void }).onLibrarySynced?.((info) => {
+    if (info.kind !== "skill" && info.kind !== "task") return;
+    if (el("skill-detail-view")?.classList.contains("hidden") !== false) void loadSkillsSettings();
+  });
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
   const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });

@@ -543,6 +543,12 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // Fired by main whenever the saved-app library changes server-side (e.g. an
   // app was installed over the MCP relay) — the Apps page re-fetches.
+  /** THE MEMBER LIBRARY MOVED under this surface (library-sync.ts pulled a
+   *  workspace, a tab, a skill, an agent or a task the web wrote, or dropped
+   *  one the web deleted): the open page re-reads its list. */
+  onLibrarySynced: (callback: (info: { kind: string; pulled: string[]; deleted: string[]; taken: string[] }) => void) => {
+    ipcRenderer.on("glyphh:library-synced", (_e: unknown, info?: { kind: string; pulled: string[]; deleted: string[]; taken: string[] }) => callback(info ?? { kind: "", pulled: [], deleted: [], taken: [] }));
+  },
   onPanelAppsChanged: (callback: () => void) => {
     ipcRenderer.on("panel-apps-changed", () => callback());
   },
