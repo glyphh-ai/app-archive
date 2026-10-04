@@ -43,6 +43,10 @@ function forgetWorkspaceMemory(name: string): void {
 }
 import { maybeStartWallTour } from "./wall-tour.js";
 import { initDockPortal } from "./dock-portal.js";
+import {
+  DOCK_ENABLED_PREF, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, dockEnabledFrom, applyDockEnabled,
+  dockBand, searchTopFor, cardBandTop,
+} from "./help/dock-band.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -2442,6 +2446,27 @@ async function init(): Promise<void> {
     };
     const prevArrow = mkArrow(-1);
     const nextArrow = mkArrow(1);
+    /** The dock row wherever it lives: in the stage, or parked in the
+     *  body-level portal layer (dock-portal.ts) while panels are up. */
+    const dockRow = (): HTMLElement | null =>
+      body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
+    /** THE DOCK BAND — one measure for the stage AND the card band (help/
+     *  dock-band.ts; his report, 2026-10-04: on the web the dock drew over the
+     *  tiles, the pill and a panel's header). `band` = px from the stage's top
+     *  to the dock's bottom edge (0 = no dock: off, tucked, absent, unlaid);
+     *  `reach` = how far below that edge the labels and the zoom's dip go (the
+     *  row's own bottom margin, which the stylesheet scales with the zoom). */
+    const measureDock = (stageTop: number): { band: number; reach: number } => {
+      const dock = dockRow();
+      const band = dockBand({
+        enabled: !document.body.classList.contains(DOCK_OFF_CLASS),
+        tucked: document.body.classList.contains("echo-dock-tucked"),
+        rect: dock ? dock.getBoundingClientRect() : null,
+        stageTop,
+      });
+      const reach = band > 0 && dock ? parseFloat(getComputedStyle(dock).marginBottom) || 0 : 0;
+      return { band, reach };
+    };
     /** Dots ride just UNDER the icon grid; arrows center on it. */
     const positionPageChrome = (): void => {
       const grid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
@@ -2449,15 +2474,10 @@ async function init(): Promise<void> {
       if (!grid) { dotsEl.classList.add("hidden"); prevArrow.style.display = "none"; nextArrow.style.display = "none"; return; }
       const sr = stage.getBoundingClientRect();
       // THE SEARCH BAR sits centred between the dock and the tiles (his ask,
-      // 2026-10-03), and the tiles start under it: the dock's labels and its
-      // zoom reach are measured, not guessed, so neither ever runs into it.
-      // The bar may be parked in the body-level portal (dock-portal.ts); a
-      // tucked one is off screen and reserves nothing.
-      const dock = body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
-      const dockShown = !!dock && dock.offsetParent !== null && !document.body.classList.contains("echo-dock-tucked");
-      const dr = dockShown ? dock.getBoundingClientRect() : null;
-      const searchTop = dr && dr.height > 0 && dr.bottom > sr.top ? Math.round(dr.bottom - sr.top + 34) : 18;
-      stage.style.setProperty("--echo-search-top", `${searchTop}px`);
+      // 2026-10-03), and the tiles start under it: the dock is measured, not
+      // guessed (help/dock-band.ts), so neither ever runs into it; no dock
+      // (off, tucked, absent) → the pill sits high and the tiles follow.
+      stage.style.setProperty("--echo-search-top", `${searchTopFor(measureDock(sr.top).band)}px`);
       // Measure the LAST ICON, not the grid box — the grid's bottom padding
       // pushed the dots halfway down the page.
       const icons = grid.querySelectorAll<HTMLElement>(".echo-app-btn");
@@ -2497,10 +2517,30 @@ async function init(): Promise<void> {
     const dockRo = new ResizeObserver(repaintStage);
     const watchDock = (): void => {
       dockRo.disconnect();
-      const d = body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
+      const d = dockRow();
       if (d) dockRo.observe(d);
     };
     watchDock();
+    // THE DOCK MOVES WITHOUT RESIZING (the web, 2026-10-04: one document, so
+    // the park into the portal layer, the tuck and the peek all change where
+    // the dock IS and never its size — no observer above fires). The body
+    // classes that drive those moves (dock-portal.ts, syncWallVisibility)
+    // re-measure the stage and the card band, once per frame.
+    {
+      let raf = 0;
+      const onBodyClass = (): void => {
+        if (!body.isConnected) { bodyClassMo.disconnect(); return; }
+        if (raf) return;
+        raf = requestAnimationFrame(() => { raf = 0; repaintStage(); });
+      };
+      const bodyClassMo = new MutationObserver(onBodyClass);
+      bodyClassMo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    }
+    /** A late re-measure after a render: a preference or a web font landing
+     *  after the first paint can move the dock's labels without a resize. */
+    const settlePageChrome = (): void => {
+      for (const ms of [250, 1200]) window.setTimeout(() => { if (body.isConnected) positionPageChrome(); }, ms);
+    };
     // THE SETTINGS-CLOSE DEAD WALL (his report, 2026-08-28: after settings,
     // clicks and zoom were dead until a window resize "def fixes it
     // immediately"). The modal's open/close leaves the stage's geometry
@@ -3185,6 +3225,7 @@ async function init(): Promise<void> {
       if (firstGrid) chromeRo.observe(firstGrid);
       watchDock();
       requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
+      settlePageChrome();
       reconcileDock();
       paintSearch();
     };
@@ -3440,6 +3481,8 @@ async function init(): Promise<void> {
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
+      /** Desktop: main's `preference-changed` broadcast (every document). Web: absent — one document, DOM events. */
+      onPreferenceChanged?: (cb: (key: string, value: unknown) => void) => unknown;
       cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
       cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean; gateway?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; error?: string; missing?: MissingCliInfo }>;
     };
@@ -3897,6 +3940,7 @@ async function init(): Promise<void> {
         window.clearTimeout(revealTimer);
         if (!on) { document.body.classList.remove("echo-dock-peek"); return; }
         if (!document.body.classList.contains("echo-dock-tucked")) return;
+        if (document.body.classList.contains(DOCK_OFF_CLASS)) return;
         revealTimer = window.setTimeout(() => {
           if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
         }, dockRevealMs);
@@ -3929,7 +3973,14 @@ async function init(): Promise<void> {
         yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
         yoApi?.getPreference?.("echoDockRevealMs", 350) ?? 350,
-      ]).then(([d, z, pp, rv]) => {
+        yoApi?.getPreference?.(DOCK_ENABLED_PREF, true) ?? true,
+      ]).then(([d, z, pp, rv, en]) => {
+        // SHOW THE DOCK (his order, 2026-10-04): off = not rendered at all —
+        // the stylesheet drops the bar, the portal layer and the hover strip
+        // under body.echo-dock-off, and every band measured from the dock
+        // reads zero. The wall, the rail and the menus still open everything
+        // the dock did (New session, Settings, the command center, Close all).
+        applyDockEnabled(document.body, dockEnabledFrom(en));
         const rvn = Number(rv);
         dockRevealMs = Number.isFinite(rvn) ? Math.max(0, Math.min(1500, rvn)) : 350;
         document.body.classList.toggle("echo-dock-autohide", d !== false);
@@ -3943,15 +3994,29 @@ async function init(): Promise<void> {
         const nextPp = Number.isFinite(ppn) ? Math.max(8, Math.min(120, ppn)) : 56;
         if (nextPp !== perPage) { perPage = nextPp; renderPages(); }
         syncWallVisibility();
-        layoutCards();
+        // The pill and the card band both follow the dock's presence.
+        repaintStage();
       });
     };
     readAutoHide();
     const onAutoHideChanged = (): void => {
-      if (!body.isConnected) { document.removeEventListener("glyphh:echo-autohide-changed", onAutoHideChanged); return; }
+      if (!body.isConnected) {
+        document.removeEventListener("glyphh:echo-autohide-changed", onAutoHideChanged);
+        document.removeEventListener(DOCK_ENABLED_CHANGED_EVENT, onAutoHideChanged);
+        return;
+      }
       readAutoHide();
     };
     document.addEventListener("glyphh:echo-autohide-changed", onAutoHideChanged);
+    document.addEventListener(DOCK_ENABLED_CHANGED_EVENT, onAutoHideChanged);
+    // DESKTOP: Settings may live in another document (an agent panel is also
+    // home.html); main's broadcast carries the write here. Web: no broadcast —
+    // one document, the event above.
+    try {
+      yoApi?.onPreferenceChanged?.((key) => {
+        if (key === DOCK_ENABLED_PREF || key === "echoAutoHideDock" || key === "echoDockZoom" || key === "echoDockRevealMs") onAutoHideChanged();
+      });
+    } catch { /* no listener on this host */ }
     // A layout opened in Echo pins its GRID: cards sit at the layout's own
     // col/row geometry until a card outside the grid appears (then the flow
     // layout takes back over).
@@ -4559,20 +4624,14 @@ async function init(): Promise<void> {
       // The band's outer margins MATCH the 7px inter-panel gap — panels sit
       // as close to the edges as they sit to each other.
       const margin = 7;
-      let top = margin;
-      // The bar may be PARKED in the body-level portal layer (panels up,
-      // auto-hide off) — it still sits fixed across the top, so its band
-      // must still be reserved (his report, 2026-08-28: panels rode up
-      // underneath it when only the stage was searched).
-      const bar = body.querySelector<HTMLElement>(".echo-topbar")
-        ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-topbar");
-      // A TUCKED dock is off screen — reserving its band left a dead strip
-      // above every panel (his report, 2026-08-28). Reserve only when the
-      // bar actually occupies the stage.
-      if (bar && !document.body.classList.contains("echo-dock-tucked")) {
-        const r = bar.getBoundingClientRect();
-        if (r.height > 0 && r.bottom > 0) top = Math.max(top, r.bottom - stageR.top + margin);
-      }
+      // The dock's band — THE SAME measure the stage uses for its pill (help/
+      // dock-band.ts). A bar PARKED in the body-level portal layer (panels up,
+      // auto-hide off) still sits fixed across the top, so its band is still
+      // reserved (his report, 2026-08-28: panels rode up underneath it); a
+      // TUCKED dock is off screen and reserves nothing (same day: a dead strip
+      // above every panel); a dock turned OFF reserves nothing either.
+      const dock = measureDock(stageR.top);
+      let top = cardBandTop(dock.band, dock.reach, margin);
       let bottom = h - margin;
       // Anytime the WALL is off screen (cards fully covering it, or a layout
       // without an agent cell) the composer is TUCKED — overlay, no reserved
@@ -4686,7 +4745,7 @@ async function init(): Promise<void> {
       // dock off the top — fixed and above EVERY layer (the agent panel was
       // burying it) — leaving the hint sliver; hovering the top edge peeks
       // the dock back over the panels. Pinned (auto-hide off) it stays put.
-      const dockTucked = hidden && autoHideOn;
+      const dockTucked = hidden && autoHideOn && !document.body.classList.contains(DOCK_OFF_CLASS);
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
       // DOCK PROOF (2026-09-16): one line per visibility change, after layout settles.

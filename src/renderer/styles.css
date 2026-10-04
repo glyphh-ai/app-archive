@@ -1717,12 +1717,26 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
 }
 /* The app itself starts at the VERY top on web — no reserved band, no var
    dependence (the exposed body background above #help-overlay was the black
-   bar in the report). */
-.glyphh-web #help-overlay { inset: 0 !important; }
+   bar in the report). TOP ONLY (his report, 2026-10-04: "the space always
+   stays full screen under the left rail even when it is docked"): this was
+   `inset: 0 !important`, and that !important beat the inline `left:
+   var(--rail-w)` help/code.ts pins on the shell — the one thing that moves the
+   workspace beside the sidebar on the desktop, and follows body.rail-collapsed
+   (--rail-w → 0) and the rail's drag width (--rail-w-open). The left edge is
+   the rail's, on web as on the desktop. */
+.glyphh-web #help-overlay { top: 0 !important; right: 0 !important; bottom: 0 !important; }
 .glyphh-web #panel-container { height: 100vh !important; }
-/* The rail clears the fixed wordmark header (now taller: 10px pad + 32px logo)
-   with comfortable breathing room. */
-.glyphh-web #app-rail { padding-top: 50px; }
+/* THE RAIL DOCKS UNDER ITS OWN HEADER ON THE WEB TOO (his report, 2026-10-04:
+   the rail rendered but did not dock). The 50px here dated from a wordmark
+   header the web no longer has (#panel-wc is an empty box once the window
+   controls are removed), so the rail's content started 12px below its 38px
+   header strip instead of against it, as it does on the desktop. The same
+   --rail-top-h as the desktop, and the header's left inset — room for the
+   traffic lights — collapses with them. */
+.glyphh-web #app-rail { padding-top: var(--rail-top-h); }
+.glyphh-web #app-rail-top,
+.glyphh-web #rail-collapsed-strip { padding-left: 6px; }
+.glyphh-web #panel-wc { display: none !important; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
 .glyphh-web .echo-layout-bar {
@@ -20676,6 +20690,16 @@ body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
 /* Desktop: the window drag strip owns the top of the page — the tucked-dock
    chrome (sliver, hot zone, peeked bar) starts below it. */
 body.wb-has-dragstrip { --wb-top-inset: 38px; }
+
+/* SHOW THE DOCK = off (his order, 2026-10-04; pref `dockEnabled`, Settings →
+   Appearance → Dock, shared by desktop and web): the dock is NOT RENDERED —
+   not tucked, not parked — its portal layer and its hover strip go with it,
+   and every band measured from it (the search pill, the card band, help/
+   dock-band.ts) reads zero. Everything the dock opened stays reachable from
+   the rail and the keyboard (New session, Settings, ⌘⇧Space, Close all). */
+body.echo-dock-off .echo-topbar,
+body.echo-dock-off #echo-dock-layer,
+body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 
 
 /* (The standalone Loops PAGE is gone — loops are settings; its card,
