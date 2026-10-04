@@ -300,9 +300,9 @@ const NATIVE = new Set([
 
 // Prefixes/names that only a real machine can serve — on web these route over
 // the attach protocol to a connected provider (desktop OR `glyphh remote-control`).
-// NOTE: Ada (memory/vectors/encoding) is deliberately NOT here — it is cloud-only
-// now, so a user's memory + sessions are portable to any surface. The only thing
-// genuinely local is the file system (and the shell that acts on it).
+// NOTE: memory is deliberately NOT here — it is cloud-only, so a user's memory +
+// sessions are portable to any surface. The only thing genuinely local is the
+// file system (and the shell that acts on it).
 const LOCAL_PREFIXES = ['files:', 'git:', 'pty:', 'terminal:', 'localMcp', 'workingDir'];
 const LOCAL_NAMES = new Set([
   'getWorkingDir', 'setWorkingDir', 'pickWorkingDir', 'getWorkingDirRecents',

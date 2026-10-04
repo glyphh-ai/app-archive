@@ -286,11 +286,6 @@ describe('classifyMethod', () => {
       expect(classifyMethod(n)).toBe('native');
     }
   });
-  it('treats Ada / memory as CLOUD so sessions stay portable across surfaces', () => {
-    for (const n of ['adaRecall', 'adaAsk']) {
-      expect(classifyMethod(n)).toBe('cloud');
-    }
-  });
   it('keeps product-critical reads as cloud (not silently native/local)', () => {
     for (const n of [
       'appsBrowse', 'modelsList', 'billingStatus', 'dashboardData',

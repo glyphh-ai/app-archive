@@ -49,7 +49,6 @@ way `net.request` does. If proxy support must survive, pass an Electron-net
 | connectors.ts:108/180/215 | connectors accounts/disconnect/connect | `client.connections.personalList()` / `.removePersonal()` / `.personalConnect()` |
 | apps-ipc.ts:150–166 | /api/connections CRUD + tools | `client.connections.list()` / `.tools()` etc. |
 | connector-tools-client.ts | connector tool list/run | `client.connections.resolvedTools()` / `.runTool()` |
-| ada/indexer.ts:85, william.ts:410, william-tools.ts:498 | GET /api/connections | `client.connections.list()` |
 | apps-ipc.ts:183–212, main.ts:1191 | /api/mcp-connections CRUD/tools/install | `client.connections.orgMcp*` / `.personalMcp*` (renamed on new server) |
 | marketplace.ts:200/244/373 | /api/marketplace/apps → browse/install/detail | `client.apps.list()` / `.get()` / `.install()` (new path /api/apps) |
 | drip-manager.ts:558–605 | /api/drips CRUD | `client.drips` (LibraryClient → /api/library/drip) |

@@ -326,7 +326,7 @@ export interface PanelAppInput {
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
 /** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
-interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null }
+interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string }
 /** The library kinds a bundle can be: every one of them is a skill, the
  *  kind says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
