@@ -59,3 +59,25 @@ describe("baseMessages / turnText / relayPermission", () => {
     expect(relayPermission("yolo")).toBeUndefined();
   });
 });
+
+import { frameTargets, markRelaySink, isRelaySink } from "../../src/main/attach-run-frames.js";
+
+describe("frameTargets — a relay originator keeps its frames when a desktop panel adopts the run", () => {
+  const panelA = { id: "a" };
+  const panelB = { id: "b" };
+  it("a turn nobody adopted streams to the panel that started it", () => {
+    expect(frameTargets(panelA, undefined)).toEqual([panelA]);
+    expect(frameTargets(panelA, panelA)).toEqual([panelA]);
+  });
+  it("a desktop panel adopting a desktop turn REPLACES the first panel", () => {
+    expect(frameTargets(panelA, panelB)).toEqual([panelB]);
+  });
+  it("a desktop panel adopting a RELAYED turn is added beside the relay sink, never instead of it", () => {
+    const sink = { id: "relay" };
+    markRelaySink(sink);
+    expect(isRelaySink(sink)).toBe(true);
+    expect(isRelaySink(panelA)).toBe(false);
+    expect(frameTargets(sink, panelB)).toEqual([sink, panelB]);
+    expect(frameTargets(sink, undefined)).toEqual([sink]);
+  });
+});

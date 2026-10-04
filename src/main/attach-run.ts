@@ -24,7 +24,7 @@ import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-host.js";
 import { appendStoredMessage, runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
-import { toWireFrame, turnText, relayPermission } from "./attach-run-frames.js";
+import { toWireFrame, turnText, relayPermission, markRelaySink } from "./attach-run-frames.js";
 
 interface RunRecord { frames: Array<Record<string, unknown> & { seq: number }>; status: "running" | "done" | "error"; chatId: string }
 const RING_CAP = 4000;
@@ -61,6 +61,7 @@ function makeSink(runId: string, chatId: string): WebContents {
       pushToAttach(`run:${runId}`, frame);
     },
   };
+  markRelaySink(sink);
   return sink as unknown as WebContents;
 }
 

@@ -12,9 +12,11 @@
  * 2026-10-04): the desktop's table is its copy, synced, and its clock reads
  * that table; the web lists, makes, edits, arms and deletes through the
  * server (web/src/member-library-web.js) and the desktop picks the change up
- * within a sync interval. RUNS are the machine's — "Run now" and the history
- * come from the desktop's clock until the cloud clock exists, so on web the
- * page says so in one line and paints the desktop card where runs would be.
+ * within a sync interval. TASK schedules fire on the server's cloud clock and
+ * run on the member's worker; SKILL schedules fire on the desktop, where
+ * their agent lives. "Run now" and the run history still come from the
+ * desktop here, so on web the page says so in one line and paints the
+ * desktop card where runs would be.
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
@@ -196,7 +198,7 @@ export function openScheduleOnLoad(id: string): void { pendingOpen = String(id |
 const runsHere = (): boolean => !onWeb() && hostHas("scheduleRunNow");
 
 /** The one line the web page carries above its list: where the runs are. */
-const RUNS_NOTE = "Runs come from your desktop's clock until the cloud clock exists — the schedules themselves are here, synced from the server.";
+const RUNS_NOTE = "Task schedules fire on the cloud clock and run on your worker; skill schedules fire on your desktop, where their agent lives. Run history for cloud runs lands here next.";
 
 function paintRunsNote(): void {
   const overview = el("schedules-overview");

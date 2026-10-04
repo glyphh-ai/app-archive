@@ -66,3 +66,21 @@ export function relayPermission(raw: unknown): RelayPermission | undefined {
   const v = raw === "bypass" ? "auto" : raw;
   return (PERMISSIONS as readonly string[]).includes(v as string) ? (v as RelayPermission) : undefined;
 }
+
+/** The relay sinks: the fake WebContents a relayed run (attach-run.ts) streams
+ *  into. Marked here so the loop can tell a relay's originator from a panel. */
+const relaySinks = new WeakSet<object>();
+export function markRelaySink(sink: object): void { relaySinks.add(sink); }
+export function isRelaySink(sink: object | null | undefined): boolean { return !!sink && relaySinks.has(sink); }
+
+/** Where a turn's frames go. A panel that adopts a run REPLACES the panel that
+ *  started it (the thread moved windows). A RELAY sink is different: it is the
+ *  web or the phone that asked for the turn, and a desktop panel opening the
+ *  same thread must not take the frames away from it (his report, 2026-10-04:
+ *  "the stream worked sending to the desktop but the route back did not"). So
+ *  a relay originator always stays a target, and the adopter is added beside it. */
+export function frameTargets<T extends object>(origin: T, adopted: T | undefined): T[] {
+  if (!adopted || adopted === origin) return [origin];
+  return isRelaySink(origin) ? [origin, adopted] : [adopted];
+}
+

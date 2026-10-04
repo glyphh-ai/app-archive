@@ -229,15 +229,16 @@
               <!-- DEVICES (his order, 2026-10-04): every machine of yours attached with
                    remote control on, and the ones you disconnected from here. -->
               <div class="settings-panel" data-sub="devices">
-                <h2>Devices</h2>
+                <div class="set-title-row">
+                  <h2>Devices</h2>
+                  <button class="action-btn set-icon-btn" id="devices-refresh" title="Refresh" aria-label="Refresh">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+                  </button>
+                </div>
                 <p class="section-desc">Your computers attached to Glyphh with remote control on. Disconnect one to close its connection now; it cannot attach again until you allow it here and turn remote control on there.</p>
                 <div class="set-pref-desc hidden" id="devices-org-off">Your organization's admin has turned remote control off — nothing attaches.</div>
                 <div class="set-pref-desc hidden" id="devices-status"></div>
                 <div id="devices-list"></div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text"></div>
-                  <div class="set-pref-value"><button class="action-btn" id="devices-refresh">Refresh</button></div>
-                </div>
                 <div id="devices-blocked-section" class="hidden">
                   <h3 class="settings-subheading">Disconnected from the web</h3>
                   <div id="devices-blocked"></div>

@@ -216,6 +216,10 @@ const liveJobs = new Map<string, ScheduledTask>();
 export function armSchedule(row: ScheduleRow): void {
   liveJobs.get(row.id)?.stop();
   liveJobs.delete(row.id);
+  // A TASK schedule fires on the cloud clock (the server sweeps the member
+  // library every minute and runs the task on the member's worker), so this
+  // desktop never fires it too. A skill schedule needs an agent here.
+  if (row.kind === "task") return;
   if (!row.enabled || !cron.validate(row.cron)) return;
   const task = cron.schedule(row.cron, () => { void runSchedule(row.id).catch(() => {}); });
   liveJobs.set(row.id, task);

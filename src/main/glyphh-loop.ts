@@ -27,6 +27,7 @@ import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
+import { frameTargets } from "./attach-run-frames.js";
 import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 
@@ -343,7 +344,11 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     // The chat id IS the terminal's session id: the panel binds it per CLI, and
     // the >_ hop opens `glyphh --resume <id>` on the same conversation.
     const extra = type === "setup" ? { cliSessionId: p.chatId } : {};
-    try { if (!to.isDestroyed()) to.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
+    // A relayed turn's originator (the web, the phone) keeps its frames even
+    // after a desktop panel adopts the thread (attach-run-frames.ts frameTargets).
+    for (const target of frameTargets(sender, to)) {
+      try { if (!target.isDestroyed()) target.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
+    }
   };
   // ATTACHMENTS (the composer's paperclip, paste and drop). Images always
   // become real vision blocks. A file reaches the turn one of two ways, and the
