@@ -48,10 +48,14 @@ export interface RemoteControlView extends RemoteControlSetting {
  *  reads off this machine (attach-handlers.ts) — reads, no path, no write. */
 const PASS_THROUGH = [
   "relay.ping",
-  "sessions.list", "sessions.get", "sessions.delete",
+  "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
   "layouts.list", "layouts.get", "panelApps.list",
   "agent.answer", "agent.stop", "agent.permission", "agent.frames",
   "pty.input", "pty.resize", "pty.close",
+  // A STREAMED PANEL on this machine for the web (panel-host.ts): the panel
+  // broker refuses `panel.open` on a machine whose hello does not advertise
+  // these, so they ride the door. A panel takes an http(s) url, no path.
+  "panel.open", "panel.input", "panel.nav", "panel.clipboard", "panel.close", "panel.stats", "panel.webrtc",
 ] as const;
 
 const key = (): string => `remoteControl:${hostname()}`;

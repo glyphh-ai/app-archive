@@ -28,7 +28,7 @@
 import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js";
 // The relay envelope (auth'd /ws/panel socket, req/res/push frames) lives in
 // the shared relay-socket helper — the remote terminal rides the same one.
-import { connectRelaySocket, relaySdk, type RelaySocket } from "./relay-socket.js";
+import { connectRelaySocket, relaySdk, machineDetached, type RelaySocket } from "./relay-socket.js";
 // Keyboard + clipboard capture rides the shared hidden-proxy module (the
 // mobile tray mounts the same one) — see panel-kb.ts for the why.
 import { mountPanelKb, modBits } from "./panel-kb.js";
@@ -319,7 +319,13 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     relay = sock;
     // `relay === sock` gates both callbacks: once a newer boot swaps the
     // socket out, this one's events are history, not state.
-    sock.onClose(() => { if (!disposed && relay === sock) setOverlay(offlineHtml("disconnected")); });
+    // A 4410 is the DESKTOP detaching mid-panel (the server's "machine
+    // detached"): the same "Desktop disconnected" card, saying so, with Try
+    // again — which re-runs boot() once the desktop is back.
+    sock.onClose((info) => {
+      if (disposed || relay !== sock) return;
+      setOverlay(offlineHtml("disconnected", machineDetached(info) ? "Your desktop detached from the server. When it is attached again, try again." : undefined));
+    });
     // Filter to OUR panel's channel — panelId isn't known until panel.open
     // returns, so match at delivery time rather than subscribing per-channel.
     sock.onPush(null, (channel, data) => {

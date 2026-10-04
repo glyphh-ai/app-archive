@@ -36,6 +36,13 @@ export function relayWsUrl(token: string): string {
   return `${base}/ws/panel?token=${encodeURIComponent(token)}`;
 }
 
+/** Why the socket closed. `code` is the WebSocket close code; a server-side
+ *  refusal names its reason. 0 when this side closed it. */
+export interface RelayClose { code: number; reason: string }
+/** The server's code when the attached desktop detached mid-socket. */
+export const MACHINE_DETACHED = 4410;
+export const machineDetached = (info: RelayClose | undefined): boolean => info?.code === MACHINE_DETACHED;
+
 // ── the envelope client ──────────────────────────────────────────────────────
 
 const RPC_TIMEOUT_MS = 15_000;
@@ -48,8 +55,10 @@ export interface RelaySocket {
   /** Subscribe to push frames. `channel` filters to one channel; null = all.
    *  Returns the unsubscribe. */
   onPush(channel: string | null, cb: (channel: string, data: unknown) => void): () => void;
-  /** Runs once when the socket closes (any reason). Returns the unsubscribe. */
-  onClose(cb: () => void): () => void;
+  /** Runs once when the socket closes (any reason), with the close code and
+   *  the server's reason — 4410 "machine detached" is the desktop going away
+   *  mid-panel. Returns the unsubscribe. */
+  onClose(cb: (info: RelayClose) => void): () => void;
   isOpen(): boolean;
   /** Close the socket; every pending call rejects. Idempotent. */
   close(): void;
@@ -67,14 +76,16 @@ export function connectRelaySocket(token: string): Promise<RelaySocket> {
     let closed = false;
     const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
     const pushSubs = new Set<{ channel: string | null; cb: (channel: string, data: unknown) => void }>();
-    const closeSubs = new Set<() => void>();
+    const closeSubs = new Set<(info: RelayClose) => void>();
+    let closeInfo: RelayClose = { code: 0, reason: "" };
 
-    const settleClosed = (): void => {
+    const settleClosed = (info?: RelayClose): void => {
       if (closed) return;
       closed = true;
-      for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new Error("relay socket closed")); }
+      if (info) closeInfo = info;
+      for (const [, p] of pending) { clearTimeout(p.timer); p.reject(new Error(closeInfo.reason ? `relay socket closed: ${closeInfo.reason}` : "relay socket closed")); }
       pending.clear();
-      for (const cb of closeSubs) { try { cb(); } catch { /* subscriber's problem */ } }
+      for (const cb of closeSubs) { try { cb(closeInfo); } catch { /* subscriber's problem */ } }
       closeSubs.clear();
       pushSubs.clear();
     };
@@ -100,7 +111,7 @@ export function connectRelaySocket(token: string): Promise<RelaySocket> {
         return () => pushSubs.delete(sub);
       },
       onClose(cb) {
-        if (closed) { cb(); return () => {}; }
+        if (closed) { cb(closeInfo); return () => {}; }
         closeSubs.add(cb);
         return () => closeSubs.delete(cb);
       },
@@ -113,9 +124,10 @@ export function connectRelaySocket(token: string): Promise<RelaySocket> {
 
     socket.onopen = () => { opened = true; resolve(api); };
     socket.onerror = () => { /* onclose follows */ };
-    socket.onclose = () => {
-      if (!opened) reject(new Error("relay socket failed to connect"));
-      settleClosed();
+    socket.onclose = (ev?: CloseEvent) => {
+      const reason = ev?.reason || "";
+      if (!opened) reject(new Error(reason ? `relay socket failed to connect: ${reason}` : "relay socket failed to connect"));
+      settleClosed({ code: ev?.code ?? 0, reason });
     };
     socket.onmessage = (ev) => {
       let f: { t?: string; id?: string; ok?: boolean; result?: unknown; error?: string; channel?: string; data?: unknown };

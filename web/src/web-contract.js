@@ -1257,6 +1257,13 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    // THE DESKTOP'S CLI SESSIONS (his report, 2026-10-04: the web rail showed
+    // only the Glyphh threads): the vendor CLIs' own stores live on the
+    // attached desktop, read over the relay (`cliSessions.list`, attach-
+    // handlers.ts) — the rows the desktop rail draws, with the `>_` + vendor
+    // mark, in preload's cliSessionsList shape. No desktop → an empty list.
+    cliSessionsList: async () => ({ ok: true, sessions: await desktopRead('cliSessions.list', 'sessions') }),
+
     // Vendor marks (the rail's recents, the wall's CLI tiles, the dock): the
     // desktop fetches them in main; the browser cannot — the vendors refuse a
     // cross-origin fetch — so an allowlisted mark comes from OUR origin through
