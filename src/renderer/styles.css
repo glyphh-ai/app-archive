@@ -21749,3 +21749,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .devices-tag { font-size: 10.5px; font-weight: 500; color: var(--text-3); margin-left: 6px; }
 .devices-folders { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
 .devices-folders code { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+
+/* The Platform row in Settings is an anchor styled as a nav row (opens the org console in a new tab). */
+.settings-nav a.settings-nav-ext { text-decoration: none; }
+.settings-nav a.settings-nav-ext.active { background: none; }
+

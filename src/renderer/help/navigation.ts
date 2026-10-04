@@ -1086,6 +1086,7 @@ export function initHelp() {
   // Scope to the MAIN settings nav's own direct items.
   const settingsSubNav = settingsNavOwn<HTMLButtonElement>(".settings-nav-item");
   settingsSubNav.forEach((btn) => {
+    if (btn instanceof HTMLAnchorElement) return; // an external row (Platform) is a plain link
     btn.addEventListener("click", () => {
       // Docs has its own topics nav, so it opens as its own section — and the
       // settings modal must step aside for it.
