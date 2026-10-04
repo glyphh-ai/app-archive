@@ -16,6 +16,9 @@
  *   sessions.get  {id}         → one chat's last 200 messages
  *   sessions.put  {id, title?, mode?, workdir?} → create a chat / patch its metadata
  *   sessions.delete {id}       → delete one chat
+ *   cliSessions.list {}        → the vendor CLIs' own sessions on this machine (Claude, Codex,
+ *                                Gemini, Copilot, Cursor, the Glyphh CLI): the rows the desktop's
+ *                                cli-sessions-list IPC lists, read-only, each with its resume handle
  *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
  *   layouts.get  {name}        → one workspace by name
  *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
@@ -44,6 +47,7 @@ import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
 import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, type RelayChat } from "./agent-ipc.js";
+import { listCliSessions } from "./cli-agents.js";
 import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
 
@@ -105,6 +109,15 @@ export function installAttachHandlers(): void {
     const chat = upsertStoredChat(id, { title: str(params, "title"), mode: str(params, "mode"), workdir: str(params, "workdir") });
     return { session: sessionMeta(chat) };
   });
+
+  // THE CLI SESSIONS TOO (his report, 2026-10-04: the web rail showed only
+  // the Glyphh threads — `sessions.list` is the Glyphh chat store alone).
+  // The same rows the desktop rail draws with the `>_` + vendor mark; `resume`
+  // is what the CLI's own --resume takes (the session id), `updatedAt` the
+  // file's clock. A read of the vendors' stores, never a write.
+  registerRelayHandler("cliSessions.list", async () => ({
+    sessions: listCliSessions().map((r) => ({ id: r.id, cli: r.cli, title: r.title, cwd: r.cwd, mtime: r.mtime, updatedAt: r.mtime, resume: r.id })),
+  }));
 
   registerRelayHandler("sessions.delete", async (params) => {
     const id = str(params, "id");

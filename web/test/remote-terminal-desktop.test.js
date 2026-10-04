@@ -90,6 +90,17 @@ describe('the web terminal on the attached desktop', () => {
     expect(sock.sent.some((f) => f.method === 'pty.close')).toBe(false);
   });
 
+  it('no folder of its own → the shell starts in the first folder the desktop granted (the server checks cwd)', async () => {
+    globalThis.window.glyphhSdk.attach.status = async () => ({ attached: true, machines: [{ id: 'm1', folders: ['/Users/me/code', '/Users/me/notes'] }] });
+    const hooks = { onData: vi.fn(), onExit: vi.fn(), onDrop: vi.fn() };
+    const a = await openRemotePty({ cols: 80, rows: 24, target: 'desktop' }, hooks);
+    expect(FakeSocket.instances[0].sent[0]).toMatchObject({ t: 'req', method: 'pty.open', params: { cols: 80, rows: 24, cwd: '/Users/me/code' } });
+    // The session's own folder wins over the grant list.
+    const b = await openRemotePty({ cols: 80, rows: 24, cwd: '/Users/me/notes/x', target: 'desktop' }, hooks);
+    expect(FakeSocket.instances[0].sent.at(-1)).toMatchObject({ method: 'pty.open', params: { cwd: '/Users/me/notes/x' } });
+    a.dispose(); b.dispose();   // release the shared socket for the next case
+  });
+
   it('no desktop attached → the honest desktop-offline state, before any socket', async () => {
     attached = false;
     await expect(openRemotePty({ cols: 80, rows: 24, target: 'desktop' }, { onData() {}, onExit() {}, onDrop() {} }))

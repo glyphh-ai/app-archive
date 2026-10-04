@@ -37,6 +37,7 @@
 
 import { BrowserWindow, clipboard as osClipboard } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
+import { pushToAttach } from "./attach-host.js";
 import { toCdp, clampDim } from "./panel-input.js";
 import type { PanelNavAction } from "./panel-source.js";
 import type { InputEvent } from "./panel-input.js";
@@ -315,6 +316,12 @@ async function closePanel(panelId: string): Promise<{ closed: boolean } & PanelS
 
 /** Register the panel relay methods. Call once at boot (alongside installAttachHandlers). */
 export function installPanelHost(): void {
+  // A STREAMED PANEL'S FRAMES GO UP THE ATTACH SOCKET (his order, 2026-10-04)
+  // — to the web client that opened it through remote-control.ts's door —
+  // and onto the local push bus, exactly as relay-pty.ts does for a shell's
+  // output. The attach push drops while the socket is down; the panel itself
+  // is closed by the web side's own close, or by closeAllPanels on quit.
+  setPanelPushSink((channel, data) => { pushToAttach(channel, data); pushLocal(channel, data); });
   registerRelayHandler("panel.open", async (params) => {
     const p = params as { url?: string; width?: number; height?: number; quality?: number } | null;
     return openPanel({

@@ -526,6 +526,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   remoteControlSetEnabled: (enabled: boolean) => ipcRenderer.invoke("remote-control:set-enabled", enabled) as Promise<RemoteControlView>,
   remoteControlAddFolder: () => ipcRenderer.invoke("remote-control:add-folder") as Promise<RemoteControlView>,
   remoteControlRemoveFolder: (folder: string) => ipcRenderer.invoke("remote-control:remove-folder", folder) as Promise<RemoteControlView>,
+  // Settings → Devices (main/remote-control.ts): the member's attached machines, Disconnect, Allow.
+  attachDevicesList: () => ipcRenderer.invoke("attach-devices:list") as Promise<{ source: "devices" | "status"; allowed?: boolean; devices: Array<Record<string, unknown>>; blocked: Array<Record<string, unknown>> }>,
+  attachDeviceDisconnect: (machineId: string) => ipcRenderer.invoke("attach-devices:disconnect", machineId) as Promise<{ disconnected: boolean; device?: string; hours?: number }>,
+  attachDeviceAllow: (device: string) => ipcRenderer.invoke("attach-devices:allow", device) as Promise<{ allowed: boolean }>,
   onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
     const h = (_e: unknown, v: RemoteControlView) => cb(v);
     ipcRenderer.on("remote-control:changed", h);

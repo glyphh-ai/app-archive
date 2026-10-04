@@ -160,6 +160,10 @@ interface TermSlot {
   /** Set ONLY by openAgentCliCard: this terminal is a CLI AGENT, and its tab
    *  row becomes the agent header. Plain terminals never carry it. */
   agent?: { id: string; name: string };
+  /** WEB ONLY: which far side runs this slot's shell. A CLI session resumed
+   *  off the attached desktop's own stores runs THERE (his order, 2026-10-04),
+   *  whatever the current session's locus; absent = the session's locus. */
+  target?: RemotePtyTarget;
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
@@ -6976,7 +6980,11 @@ async function init(): Promise<void> {
         }
         if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
         // The terminal's folder is main's answer, and the pty spawns there.
-        setPendingAgentTermMeta({ id: a.id, name: t.name, ...(r?.cwd ? { cwd: r.cwd } : {}) });
+        // WEB: a CLI SESSION resumed from the rail lives in the attached
+        // desktop's own stores — its shell runs on the desktop over the relay,
+        // in the session's folder (which the desktop must have granted).
+        const onDesktop = isWebTarget() && !!opts?.resumeId;
+        setPendingAgentTermMeta({ id: a.id, name: t.name, ...(r?.cwd ? { cwd: r.cwd } : {}), ...(onDesktop ? { target: "desktop" as const } : {}) });
         activateTile(entry);
         pendingParkedTerms = null;
         // typeIntoTerminal: the desktop's local pty over wb-term IPC, or the WEB
@@ -9538,8 +9546,8 @@ async function init(): Promise<void> {
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   // The agent stamp rides a pending var because the slot is minted inside
   // activateTile — and PLACEMENT MAY RENDER ASYNC, so it carries a short deadline.
-  let pendingAgentTermMeta: { id: string; name: string; cwd?: string; at: number } | null = null;
-  function setPendingAgentTermMeta(m: { id: string; name: string; cwd?: string } | null): void {
+  let pendingAgentTermMeta: { id: string; name: string; cwd?: string; target?: RemotePtyTarget; at: number } | null = null;
+  function setPendingAgentTermMeta(m: { id: string; name: string; cwd?: string; target?: RemotePtyTarget } | null): void {
     pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
   }
 
@@ -9547,6 +9555,7 @@ async function init(): Promise<void> {
     if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
       slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
       if (pendingAgentTermMeta.cwd) slot.cwd = pendingAgentTermMeta.cwd;
+      if (pendingAgentTermMeta.target) slot.target = pendingAgentTermMeta.target;
       pendingAgentTermMeta = null;
     }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
@@ -9633,6 +9642,8 @@ async function init(): Promise<void> {
       (window as unknown as { __wbRetargetAgentCard?: (slot: TermSlot, id: string, name: string) => void }).__wbRetargetAgentCard?.(slot, agentId, slot.agent.name);
     }
     if (r?.cwd) slot.cwd = r.cwd;
+    // WEB: the resumed session is the attached desktop's — run there.
+    if (isWebTarget()) slot.target = "desktop";
     const old = slot.terminals[slot.activeIdx];
     if (old) { try { killTerminal(old); } catch { /* already gone */ } }
     slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };
@@ -9772,7 +9783,7 @@ async function init(): Promise<void> {
         if (isWebTarget()) {
           // WEB: window.wb is a no-op — the shell runs on the user's ATTACHED
           // DESKTOP over the pty relay instead (remote-terminal.ts).
-          void spawnRemoteTerm(wbt, hostEl, cols, rows);
+          void spawnRemoteTerm(wbt, hostEl, cols, rows, slot, spawnCwd);
         } else {
           // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
           // light/dark variant to match the app.
@@ -9884,17 +9895,22 @@ async function init(): Promise<void> {
    * disconnected) into the terminal host, with a retry — never a dead black
    * rectangle.
    */
-  async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number): Promise<void> {
+  async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number, slot?: TermSlot, spawnCwd?: string): Promise<void> {
     const term = wbt.term;
     if (wbt.remote || !term) return;
     const locus = (window as unknown as { wb?: { locus?: () => { local?: boolean; cloud?: boolean; scope?: string; chatId?: string } } }).wb?.locus?.();
-    const target: RemotePtyTarget = locus?.local ? "desktop" : "worker";
+    // The slot's own target first (a CLI session resumed off the desktop),
+    // else the current session's locus.
+    const target: RemotePtyTarget = slot?.target ?? (locus?.local ? "desktop" : "worker");
+    // The slot's own folder (a session's) beats the workbench's; the desktop
+    // side must have granted it (remote-terminal.ts falls back to the first grant).
+    const cwd = spawnCwd || slot?.cwd || "";
     // The worker shell runs in the CURRENT cloud session's workspace (its fs
     // scope — the space's id for a re-entered space, else the thread id).
     const scope = locus?.cloud ? (locus.scope || locus.chatId || "") : "";
     const command = wbt.initCmd;
     try {
-      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined, target, ...(scope ? { scope } : {}), ...(command ? { command } : {}) }, {
+      const remote = await openRemotePty({ cols, rows, ...(cwd ? { cwd } : {}), target, ...(scope ? { scope } : {}), ...(command ? { command } : {}) }, {
         onData: (bytes) => term.write(bytes),
         // Leave the buffer up on exit so the user can read it (local parity).
         onExit: () => { wbt.remote = undefined; },

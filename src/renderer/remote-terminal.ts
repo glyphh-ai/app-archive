@@ -271,8 +271,19 @@ async function openDesktopPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): P
   // Honest offline state: check attach BEFORE opening a socket (same order as
   // the streamed panel).
   let attached = false;
-  try { attached = (await client.attach.status()).attached; } catch { attached = false; }
+  let granted: string[] = [];
+  try {
+    const st = await client.attach.status();
+    attached = st.attached;
+    granted = (st.machines ?? []).flatMap((m) => (m as { folders?: unknown }).folders).filter((f): f is string => typeof f === "string" && !!f);
+  } catch { attached = false; }
   if (!attached) throw new RemotePtyError("desktop-offline");
+
+  // THE SHELL STARTS INSIDE A GRANTED FOLDER (the server checks `cwd` before
+  // the desktop fills a default): the session's own folder when it has one,
+  // else the first folder the desktop granted. A status that names no grant
+  // (an older server) sends none and lets the far side answer.
+  const cwd = opts.cwd || granted[0] || "";
 
   const token = await client.token().catch(() => null);
   if (!token) throw new RemotePtyError("signed-out");
@@ -286,7 +297,7 @@ async function openDesktopPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): P
     const r = (await sock.call("pty.open", {
       cols: opts.cols,
       rows: opts.rows,
-      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+      ...(cwd ? { cwd } : {}),
     })) as { ptyId?: string } | null;
     if (!r || typeof r.ptyId !== "string") throw new Error("pty.open returned no ptyId");
     ptyId = r.ptyId;

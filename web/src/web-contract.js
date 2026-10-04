@@ -1258,6 +1258,30 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    // THE DESKTOP'S CLI SESSIONS (his report, 2026-10-04: the web rail showed
+    // only the Glyphh threads): the vendor CLIs' own stores live on the
+    // attached desktop, read over the relay (`cliSessions.list`, attach-
+    // handlers.ts) — the rows the desktop rail draws, with the `>_` + vendor
+    // mark, in preload's cliSessionsList shape. No desktop → an empty list.
+    cliSessionsList: async () => ({ ok: true, sessions: await desktopRead('cliSessions.list', 'sessions') }),
+
+    // ── Settings → Devices (his order, 2026-10-04) ─────────────────────────────────
+    // main/remote-control.ts's three IPC answers, off the SDK handle: the server's
+    // /api/attach/devices (attached machines + the ones disconnected from the web),
+    // Disconnect by machine id, Allow by the stable device key. A server without
+    // the routes yet (404) lists attach.status's machines instead.
+    attachDevicesList: async () => {
+      try {
+        const r = await client.http.get('/api/attach/devices');
+        return { source: 'devices', ...(typeof r?.allowed === 'boolean' ? { allowed: r.allowed } : {}), devices: Array.isArray(r?.devices) ? r.devices : [], blocked: Array.isArray(r?.blocked) ? r.blocked : [] };
+      } catch (err) {
+        if (Number(err?.httpStatus) !== 404) throw err;
+        const st = await client.attach.status();
+        return { source: 'status', ...(typeof st?.allowed === 'boolean' ? { allowed: st.allowed } : {}), devices: Array.isArray(st?.machines) ? st.machines : [], blocked: [] };
+      }
+    },
+    attachDeviceDisconnect: (machineId) => client.http.post(`/api/attach/devices/${encodeURIComponent(String(machineId || ''))}/disconnect`),
+    attachDeviceAllow: (device) => client.http.post(`/api/attach/devices/${encodeURIComponent(String(device || ''))}/allow`),
     // Vendor marks (the rail's recents, the wall's CLI tiles, the dock): the
     // desktop fetches them in main; the browser cannot — the vendors refuse a
     // cross-origin fetch — so an allowlisted mark comes from OUR origin through

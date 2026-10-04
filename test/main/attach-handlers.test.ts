@@ -27,6 +27,12 @@ vi.mock("../../src/main/agent-ipc.js", () => ({
 }));
 const TAB = { id: "crm", orgId: "", createdBy: "", name: "CRM", slug: "crm", system: false, url: "https://crm.example", isBrowser: true, execPath: null, appArchetype: "web", launchConfig: null, access: "members", owned: true, latestVersion: null, version: "", secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null, listing: null, mcp: null, commands: {}, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" };
 vi.mock("../../src/main/org-apps.js", () => ({ fetchOrgApps: async () => [TAB] }));
+vi.mock("../../src/main/cli-agents.js", () => ({
+  listCliSessions: () => [
+    { id: "s-claude", cli: "claude", title: "fix the sync bug", cwd: "/Users/me/code/app", mtime: 20 },
+    { id: "c-glyphh", cli: "glyphh", title: "triage", cwd: "", mtime: 10 },
+  ],
+}));
 
 const GRID = {
   name: "Research", version: 2, cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1],
@@ -49,8 +55,16 @@ beforeAll(async () => {
 
 describe("the Customize libraries over the attach socket", () => {
   it("registers the three reads beside the sessions.* four", () => {
-    for (const m of ["sessions.list", "sessions.get", "layouts.list", "layouts.get", "panelApps.list"]) expect(handlers.has(m)).toBe(true);
+    for (const m of ["sessions.list", "sessions.get", "layouts.list", "layouts.get", "panelApps.list", "cliSessions.list"]) expect(handlers.has(m)).toBe(true);
     expect(handlers.has("layouts.save")).toBe(false);
+  });
+
+  it("cliSessions.list hands the web the vendor CLIs' sessions with their resume handles (his report, 2026-10-04)", async () => {
+    const { sessions } = (await handlers.get("cliSessions.list")!({})) as { sessions: Array<Record<string, unknown>> };
+    expect(sessions).toEqual([
+      { id: "s-claude", cli: "claude", title: "fix the sync bug", cwd: "/Users/me/code/app", mtime: 20, updatedAt: 20, resume: "s-claude" },
+      { id: "c-glyphh", cli: "glyphh", title: "triage", cwd: "", mtime: 10, updatedAt: 10, resume: "c-glyphh" },
+    ]);
   });
 
   it("layouts.list hands the web the desktop's layouts-list rows, read off the files", async () => {
