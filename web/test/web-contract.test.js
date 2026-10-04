@@ -13,7 +13,7 @@
  * regression guard for the blank-screen class of bug.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildContract, EMPTY } from '../src/web-contract.js';
+import { buildContract, EMPTY, toLoopModels } from '../src/web-contract.js';
 
 /** A fake SDK client whose domain methods resolve canned SDK shapes (the AUTHED path). */
 function authedClient() {
@@ -195,4 +195,47 @@ describe('boot render path — the Chat front door + rail + landing fire the con
       expect(sess).toHaveProperty('currentId');
     });
   }
+});
+
+describe('the composer model list + plan gates on web (main/loop-models.ts parity)', () => {
+  const rows = [
+    { id: 'm1', name: 'gpt-5', providerSlug: 'openai', modality: 'chat', reasoning: true, freePlan: false },
+    { id: 'm2', name: 'auto', providerSlug: 'glyphh', modality: 'chat', autoRouter: true },
+    { id: 'm3', name: 'claude-sonnet-4-5', providerSlug: 'anthropic', modality: 'chat' },
+    { id: 'm4', name: 'claude-sonnet-4-5', providerSlug: 'anthropic', modality: 'chat' },   // duplicate name
+    { id: 'm5', name: 'gpt-image-1', providerSlug: 'openai', modality: 'image' },
+  ];
+  it('toLoopModels: chat only, Auto named, deduped, provider-then-name order, flags kept', () => {
+    expect(toLoopModels(rows)).toEqual([
+      { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5', providerSlug: 'anthropic' },
+      { id: 'auto', name: 'Auto', providerSlug: 'auto' },
+      { id: 'gpt-5', name: 'gpt-5', providerSlug: 'openai', reasoning: true, freePlan: false },
+    ]);
+    expect(toLoopModels(null)).toEqual([]);
+  });
+  it('loopModels answers the preload shape, cached 60 s, force bypasses', async () => {
+    const available = vi.fn(async () => rows);
+    const c = buildContract({ ...authedClient(), models: { available } }, deps);
+    const a = await c.loopModels('glyphh', true);
+    expect(a.ok).toBe(true);
+    expect(a.source).toBe('gateway');
+    expect(a.baseUrl).toBeNull();
+    expect(a.models.map((m) => m.name)).toEqual(['claude-sonnet-4-5', 'Auto', 'gpt-5']);
+    await c.loopModels('glyphh');
+    expect(available).toHaveBeenCalledTimes(1);
+    await c.loopModels('glyphh', true);
+    expect(available).toHaveBeenCalledTimes(2);
+  });
+  it('loopModels offline → the honest none shape (never throws)', async () => {
+    const c = buildContract({ ...authedClient(), models: { available: vi.fn(async () => { throw new Error('401'); }) } }, deps);
+    const r = await c.loopModels('glyphh', true);
+    expect(r).toMatchObject({ ok: false, source: 'none', baseUrl: null, models: [] });
+  });
+  it('planGates is the SDK read; onModelsChanged is an explicit no-op subscription', async () => {
+    const gates = { gatewayAllowed: true, trialEndsAt: null, governance: false, sso: false, rpm: 60, defaultModel: 'auto' };
+    const c = buildContract({ ...authedClient(), plans: { gates: vi.fn(async () => gates) } }, deps);
+    expect(await c.planGates()).toEqual(gates);
+    const off = c.onModelsChanged(() => {});
+    expect(typeof off).toBe('function');
+  });
 });

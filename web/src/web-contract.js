@@ -72,6 +72,28 @@ export const EMPTY = {
  * @param {{ apiUrl:string, isAuthenticated:()=>Promise<boolean>, signOut:()=>Promise<void> }} deps
  * @returns {Record<string, Function>} the contract method map (bridge.js's KNOWN)
  */
+/** main/loop-models.ts's mapping, verbatim: chat models only, the auto-router
+ *  as "Auto", one row per name, provider-then-name order. Exported for its test. */
+export function toLoopModels(rows) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((m) => m && m.modality === 'chat')
+    .map((m) => ({
+      id: m.name, name: m.autoRouter ? 'Auto' : m.name, providerSlug: m.autoRouter ? 'auto' : m.providerSlug,
+      ...(typeof m.reasoning === 'boolean' ? { reasoning: m.reasoning } : {}),
+      ...(typeof m.freePlan === 'boolean' ? { freePlan: m.freePlan } : {}),
+    }))
+    .filter((m) => {
+      const key = String(m.name ?? m.id).trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
+}
+const MODELS_TTL_MS = 60_000;
+let modelsCache = null;
+
 export function buildContract(client, deps) {
   const { apiUrl, isAuthenticated, signOut } = deps;
   // The API origin as a PROPERTY (preload.ts parity) — settings-mcp shows
@@ -1141,6 +1163,33 @@ export function buildContract(client, deps) {
     // the boot render is clean. P6 routes them over attach to a connected provider; until
     // then a user-triggered local ACTION surfaces "needs a machine" (not a boot read).
     recentsList: async () => EMPTY.list(),          // rail recents (local app/layout opens)
+
+    // ── The composer's model list + plan gates ─────────────────────────────────────
+    // THE SAME ANSWER main gives (src/main/loop-models.ts listLoopModels): the
+    // server's `models.available()` — the team's list, public names — narrowed
+    // to chat models, the auto-router named "Auto", deduped by name, sorted by
+    // provider then name; 60 s cache, `force` bypasses it. No gateway creds on
+    // web, so baseUrl is null. A failed read is the honest `source: "none"` shape.
+    loopModels: async (_loopId, force) => {
+      if (!force && modelsCache && Date.now() - modelsCache.at < MODELS_TTL_MS) return modelsCache.value;
+      let value;
+      try {
+        const rows = await client.models.available();
+        value = { ok: true, source: 'gateway', baseUrl: null, models: toLoopModels(rows) };
+        modelsCache = { at: Date.now(), value };
+      } catch (err) {
+        value = { ok: false, source: 'none', baseUrl: null, models: [], error: err?.message ?? String(err) };
+      }
+      return value;
+    },
+    /** What this org's plan allows (SDK plans.gates() — main's plan-gates IPC
+     *  is the same pass-through). The renderer's plan-gate.ts falls back to
+     *  its CLOSED gates on a throw, so this one may throw. */
+    planGates: () => client.plans.gates(),
+    /** Main pushes this when the server moves the list; the web has no push
+     *  seam yet (the composer re-reads on focus + open). An explicit no-op
+     *  subscription, so `has('onModelsChanged')` is honest. */
+    onModelsChanged: () => () => {},
 
     // ── The CLI agent window (his order, 2026-10-04) ───────────────────────────────
     // The tiles exist on web too; an open yields the command the WORKER's terminal
