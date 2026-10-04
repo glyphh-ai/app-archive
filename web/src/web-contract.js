@@ -1197,6 +1197,16 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    // Vendor marks for the rail: the desktop fetches them in main; the browser tries
+    // the URL itself and settles for no icon when the vendor's CORS says no.
+    webIconFetch: async (url) => {
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        if (!res.ok) return "";
+        const blob = await res.blob();
+        return await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result || "")); r.onerror = () => resolve(""); r.readAsDataURL(blob); });
+      } catch { return ""; }
+    },
     cliAgentOpen: async (id, overrides) => openWebCliAgent(id, overrides ?? {}),
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),

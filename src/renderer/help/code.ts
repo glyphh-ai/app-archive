@@ -5239,8 +5239,10 @@ function primeVendorMarks(): void {
   for (const [cli, url] of Object.entries(RAIL_CLI_MARK_URLS)) {
     if (vendorMarks[cli] !== undefined) continue;
     vendorMarks[cli] = "";
-    void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
-      .webIconFetch?.(url).then((d) => { if (d) { vendorMarks[cli] = d; renderRailSessions(); } }).catch(() => {});
+    // On the web the bridge makes every name a function; a desktop-only one answers
+    // undefined, so the call is wrapped before `.then` (that was the first web crash).
+    const fetchIcon = (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> | undefined }).webIconFetch;
+    void Promise.resolve(fetchIcon?.(url)).then((d) => { if (d) { vendorMarks[cli] = d; renderRailSessions(); } }).catch(() => {});
   }
 }
 /** THE LOOP FILTER IS BACK (his order, 2026-09-30: "the left rail to the right

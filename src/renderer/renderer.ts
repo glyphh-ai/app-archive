@@ -635,11 +635,11 @@ document.addEventListener("keydown", (e) => {
   // Cmd+Plus / Cmd+Minus to zoom the home view
   if ((e.key === "=" || e.key === "+") && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.glyphh.panelsGetZoom().then((z) => window.glyphh.panelsZoom(z + 0.1));
+    void Promise.resolve(window.glyphh.panelsGetZoom()).then((z) => { if (typeof z === "number") window.glyphh.panelsZoom(z + 0.1); });   // web: the bridge answers undefined, the browser zooms itself
   }
   if (e.key === "-" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
-    window.glyphh.panelsGetZoom().then((z) => window.glyphh.panelsZoom(z - 0.1));
+    void Promise.resolve(window.glyphh.panelsGetZoom()).then((z) => { if (typeof z === "number") window.glyphh.panelsZoom(z - 0.1); });   // web: the bridge answers undefined, the browser zooms itself
   }
   if (e.key === "0" && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
