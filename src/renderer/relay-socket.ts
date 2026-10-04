@@ -49,7 +49,8 @@ const RPC_TIMEOUT_MS = 15_000;
 
 export interface RelaySocket {
   /** Request/response — resolves the far `result`, rejects on error/timeout. */
-  call(method: string, params: unknown): Promise<unknown>;
+  /** `timeoutMs` for a call that legitimately takes long (a cloud browser's cold start behind panel.open). */
+  call(method: string, params: unknown, opts?: { timeoutMs?: number }): Promise<unknown>;
   /** Fire-and-forget request (input events don't need a reply). */
   send(method: string, params: unknown): void;
   /** Subscribe to push frames. `channel` filters to one channel; null = all.
@@ -91,11 +92,11 @@ export function connectRelaySocket(token: string): Promise<RelaySocket> {
     };
 
     const api: RelaySocket = {
-      call(method, params) {
+      call(method, params, opts) {
         return new Promise((res, rej) => {
           if (socket.readyState !== WebSocket.OPEN) { rej(new Error("relay socket not open")); return; }
           const id = "w" + (++seq);
-          const timer = setTimeout(() => { pending.delete(id); rej(new Error(`${method} timed out`)); }, RPC_TIMEOUT_MS);
+          const timer = setTimeout(() => { pending.delete(id); rej(new Error(`${method} timed out`)); }, opts?.timeoutMs ?? RPC_TIMEOUT_MS);
           pending.set(id, { resolve: res, reject: rej, timer });
           try { socket.send(JSON.stringify({ t: "req", id, method, params })); }
           catch (err) { clearTimeout(timer); pending.delete(id); rej(err as Error); }

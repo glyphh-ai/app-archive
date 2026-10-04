@@ -27,6 +27,8 @@
  */
 
 import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js";
+
+const PANEL_OPEN_TIMEOUT_MS = 90_000;
 // The relay envelope (auth'd /ws/panel socket, req/res/push frames) lives in
 // the shared relay-socket helper — the remote terminal rides the same one.
 import { connectRelaySocket, relaySdk, machineDetached, type RelaySocket } from "./relay-socket.js";
@@ -354,7 +356,9 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
       // sock.call, not the shared call(): if a newer boot has already swapped
       // `relay`, this superseded open must ride (and die with) ITS socket.
-      const r = (await sock.call("panel.open", panelOpenParams(locus, { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 }))) as { panelId: string };
+      // A cloud browser's first Chromium takes ~20 s on a fresh machine, behind
+      // the machine's own start; the open waits for that, not the 15 s default.
+      const r = (await sock.call("panel.open", panelOpenParams(locus, { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 }), { timeoutMs: PANEL_OPEN_TIMEOUT_MS })) as { panelId: string };
       if (disposed || gen !== bootGen) { sock.send("panel.close", { panelId: r.panelId }); return; }
       panelId = r.panelId;
       // Layout may have settled while the socket/open round-tripped — sync
