@@ -11,7 +11,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { threadLocus } from "../../shared/member-library.js";
+import { threadLocus } from "./thread-locus.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
