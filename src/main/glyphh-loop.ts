@@ -203,6 +203,8 @@ async function agentDefs(): Promise<LoopAgentDef[]> {
   }
 }
 
+/** How long the last memory recall took — part of the turn timing line. */
+let lastFactsMs = 0;
 const loop = new GlyphhLoop({
   host: "desktop",
   gateway: gatewayCreds,
@@ -210,7 +212,7 @@ const loop = new GlyphhLoop({
   agents: agentDefs,
   catalog: catalogEntries,
   skills: skillIndex,
-  facts: memoryFacts,
+  facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
   warn: (m) => console.warn(m),
 });
@@ -266,6 +268,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   //   error    → error (red): kept after done, so an idle row can still say so
   //   done     → clear (grey), unless the turn failed
   loopSenders.set(p.chatId, sender);
+  const clock = { start: Date.now(), ready: 0, first: 0 };
   const mark = (status: "working" | "waiting" | "error", runId: string): void => {
     if (status === "working" && !agentLive.list().some((r) => r.chatId === p.chatId && r.status !== "error")) {
       agentLive.start({ chatId: p.chatId, cliSessionId: p.chatId, cli: "glyphh", runId, senderId: sender.id });
@@ -300,10 +303,12 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
         subagents.approval(ev.agent, String((payload as { title?: string }).title ?? ""));
       }
     }
-    if (type === "setup") mark("working", ev.runId);
+    if (type === "setup") { mark("working", ev.runId); clock.ready ||= Date.now(); }
     else if (type === "approval") mark("waiting", ev.runId);
     else if (type === "error" && !child) mark("error", ev.runId);
     if (type === "done") {
+      const now = Date.now();
+      console.warn(`[loop] turn ${p.chatId}: ready=${clock.ready ? clock.ready - clock.start : -1}ms first=${clock.first ? clock.first - clock.start : -1}ms total=${now - clock.start}ms facts=${lastFactsMs}ms`);
       agentLive.done(p.chatId, ev.runId);
       // The Agents panel shows a swarm while its parent works (his order,
       // 2026-09-29): the parent's turn is over, so its sub-agents go.
@@ -311,6 +316,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     }
     else if (type === "delta" && !child) {
       const d = String((payload as { delta?: string }).delta ?? "");
+      clock.first ||= Date.now();
       answer += d;
       noteRunDelta(p.chatId, d);
       mark("working", ev.runId);

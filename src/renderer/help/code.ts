@@ -53,7 +53,7 @@ import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -957,6 +957,8 @@ interface LiveRun {
   thinking?: string;           // the model's thinking so far (the loop's `thinking` deltas)
   thinkEl?: HTMLElement | null; // its live fold (current chat only)
   startAt: number;
+  readyAt?: number;            // the loop said ready (tools + prompt built; the model call begins)
+  firstAt?: number;            // the first text delta
   inTok: number;
   outTok: number;
   usd: number;                 // running Pipedream spend for the turn, in dollars
@@ -1368,6 +1370,21 @@ function fmtTok(n: number): string {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
   return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+/** WHERE A TURN'S TIME WENT (his report, 2026-10-04: "very slow to and from"):
+ *  ready = the loop's preamble (tools, prompt, memory), first = the model's
+ *  first word, then the output rate. Kept with the answer so a slow turn can
+ *  be named, not guessed at. */
+function turnTiming(run: LiveRun): string {
+  const now = Date.now();
+  const sec = (ms: number): string => `${(Math.max(0, ms) / 1000).toFixed(1)}s`;
+  const parts: string[] = [];
+  if (run.readyAt) parts.push(`ready ${sec(run.readyAt - run.startAt)}`);
+  if (run.firstAt) parts.push(`first token ${sec(run.firstAt - run.startAt)}`);
+  if (run.firstAt && run.outTok > 0 && now - run.firstAt > 500) parts.push(`${Math.round(run.outTok / ((now - run.firstAt) / 1000))} tok/s`);
+  parts.push(`${sec(now - run.startAt)} total`);
+  return parts.join(" · ");
 }
 
 function fmtElapsed(ms: number): string {
@@ -2482,6 +2499,12 @@ function renderThread(): void {
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
         inner.appendChild(el);
+        if (b.msg.timing) {
+          const timing = document.createElement("div");
+          timing.className = "code-msg-timing";
+          timing.textContent = b.msg.timing;
+          inner.appendChild(timing);
+        }
         // COPY THE WHOLE REPLY (his order, 2026-09-29: "inline copy… theme
         // aligned"): the markdown as written, so pasting it anywhere keeps the
         // code fences and lists intact.
@@ -4573,7 +4596,9 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   void refreshSpend(true);   // a turn spent money: the banner re-reads where it stands
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
-  if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now(), ...(run?.thinking ? { thinking: run.thinking } : {}) });
+  const timing = run ? turnTiming(run) : "";
+  if (timing) console.info(`[turn] ${chatId} ${timing}`);
+  if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now(), ...(run?.thinking ? { thinking: run.thinking } : {}), ...(timing ? { timing } : {}) });
   maybeBudgetPrompt(chatId, text);
   if (chat && stopped) {
     chat.messages.push({
@@ -4919,7 +4944,7 @@ function initGlyphhAgentEvents(): void {
         (window as unknown as { __wbPreviewHtml?: (h: string, l?: string) => void }).__wbPreviewHtml?.(doc, label);
       }
     } else {
-      for (const r of liveRuns.values()) r.setupMeta = "";
+      for (const r of liveRuns.values()) { r.setupMeta = ""; r.readyAt ??= Date.now(); }
     }
     paintRunMeta();
   });
@@ -5077,6 +5102,7 @@ function initGlyphhAgentEvents(): void {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].text += d.delta;
+    e[1].firstAt ??= Date.now();
     queueStreamPaint(e[0]);
   });
   window.glyphh.onGlyphhAgentThinking?.((d) => {

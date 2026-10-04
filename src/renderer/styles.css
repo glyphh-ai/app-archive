@@ -21756,3 +21756,6 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .settings-nav a.settings-nav-ext { text-decoration: none; }
 .settings-nav a.settings-nav-ext.active { background: none; }
 
+/* The turn's timing line under an answer (ready · first token · tok/s · total). */
+.code-msg-timing { font-size: 10.5px; color: var(--text-faint); margin: 4px 0 0 2px; font-variant-numeric: tabular-nums; }
+
