@@ -50,6 +50,8 @@ const USER_MENU_ROWS: ReadonlyArray<{ label: string; sub: string; icon: string }
 /** Render the shared rows + Log out into `menu`. `go` routes a sub.
  *  `insideSettings` drops the Settings row: it is the door into the dialog,
  *  and inside the dialog there is nowhere for it to go. */
+/** The org console; the same address the Settings row under Organization opens. */
+const PLATFORM_URL = "https://platform.glyphh.ai";
 const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicked: () => void, insideSettings = false): void => {
   for (const r of USER_MENU_ROWS) {
     if (insideSettings && !r.sub) continue;
@@ -69,6 +71,15 @@ const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicke
         .find((sp) => sp.textContent === "About")
         ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="${st.ready ? "An update is ready to install" : "A new release is available"}"></span>`);
     }).catch(() => {});
+  // PLATFORM (his order, 2026-10-04): the org console, in a new tab — a
+  // browser tab on the web, a workspace panel on the desktop (house rule).
+  const platform = document.createElement("button");
+  platform.type = "button";
+  platform.className = "code-menu-item";
+  platform.setAttribute("role", "menuitem");
+  platform.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg><span>Platform</span>`;
+  platform.addEventListener("click", () => { onPicked(); window.open(PLATFORM_URL, "_blank", "noopener"); });
+  menu.appendChild(platform);
   const sep = document.createElement("div");
   sep.className = "menu-sep";
   menu.appendChild(sep);
