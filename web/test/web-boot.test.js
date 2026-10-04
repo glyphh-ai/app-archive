@@ -28,6 +28,31 @@ describe('parseCallbackParams', () => {
   });
 });
 
+describe('surfacePath — where sign-in lands', () => {
+  const fine = { innerWidth: 1440, innerHeight: 900, matchMedia: () => ({ matches: false }) };
+  const phone = { innerWidth: 390, innerHeight: 844, matchMedia: (q) => ({ matches: q.includes('coarse') }) };
+  const tablet = { innerWidth: 1024, innerHeight: 768, matchMedia: (q) => ({ matches: q.includes('coarse') }) };
+  it('a desktop browser lands on the command center (/home), not the platform', async () => {
+    const { surfacePath, HOME_PATH } = await import('../src/web-boot.js');
+    expect(surfacePath(fine)).toBe('/home');
+    expect(HOME_PATH).toBe('/home');
+  });
+  it('a phone lands on the mobile shell', async () => {
+    const { surfacePath, isPhoneDevice } = await import('../src/web-boot.js');
+    expect(isPhoneDevice(phone)).toBe(true);
+    expect(surfacePath(phone)).toBe('/m');
+  });
+  it('a tablet keeps the desktop app', async () => {
+    const { surfacePath, isPhoneDevice } = await import('../src/web-boot.js');
+    expect(isPhoneDevice(tablet)).toBe(false);
+    expect(surfacePath(tablet)).toBe('/home');
+  });
+  it('no viewport information → the desktop app', async () => {
+    const { surfacePath } = await import('../src/web-boot.js');
+    expect(surfacePath({})).toBe('/home');
+  });
+});
+
 describe('decideBootState', () => {
   it('authed → app', () => {
     expect(decideBootState({ pathname: '/', search: '', authenticated: true })).toBe('app');
@@ -115,7 +140,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('authed + regionChosen=false (NEW user) → first-run shown once, then navigates to the Desktop on completion', async () => {
+  it('authed + regionChosen=false (NEW user) → first-run shown once, then navigates to the command center on completion', async () => {
     const { els, drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'new@b.co', regionChosen: false });
@@ -127,11 +152,11 @@ describe('startWebBoot routing', () => {
     // workspace) — a new user gets the region choice stamped, then navigates.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalledWith({ region: 'local', tier: 'shared' });
   });
 
-  it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to the Platform, NO first-run', async () => {
+  it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to the command center (/home), NO first-run', async () => {
     const { drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
@@ -139,17 +164,17 @@ describe('startWebBoot routing', () => {
     // Drivers are never consulted on the login shell; a returning user just lands.
     expect(drivers.enterApp).not.toHaveBeenCalled();
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
-  it('sign-in always lands on /platform — the Platform is the only web surface (2026-08-29)', async () => {
+  it('sign-in on a desktop browser lands on /home — the identical desktop app on the web (2026-10-04)', async () => {
     installDom({ pathname: '/' });
     globalThis.localStorage = { getItem: vi.fn(() => 'builder'), setItem: vi.fn() };
     try {
       web.isAuthenticated.mockResolvedValueOnce(true);
       web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
       await startWebBoot();
-      expect(window.location.assign).toHaveBeenCalledWith('/platform');
+      expect(window.location.assign).toHaveBeenCalledWith('/home');
     } finally {
       delete globalThis.localStorage;
     }
@@ -163,10 +188,10 @@ describe('startWebBoot routing', () => {
     expect(web.syncGating).toHaveBeenCalled();
     expect(window.history.replaceState).toHaveBeenCalledWith(null, '', '/chat');
     expect(login.mountLogin).not.toHaveBeenCalled();
-    // New user via magic link: region stamped through the SDK, then /platform —
+    // New user via magic link: region stamped through the SDK, then /home —
     // no tutorial on the blank login shell.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalled();
   });
 
@@ -177,7 +202,7 @@ describe('startWebBoot routing', () => {
     expect(web.exchangeCode).toHaveBeenCalledWith('c');
     expect(web.syncGating).toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback exchange failure → falls back to the login screen', async () => {
@@ -191,7 +216,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('drivers never appear → dispatches yo-onboarding-done AND navigates to the Platform so the app still lands', async () => {
+  it('drivers never appear → dispatches yo-onboarding-done AND navigates to the command center so the app still lands', async () => {
     installDom({ pathname: '/', webBoot: false });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'x@b.co', regionChosen: true });
@@ -200,7 +225,7 @@ describe('startWebBoot routing', () => {
     await p;
     expect(window.dispatchEvent).toHaveBeenCalled();
     expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 });
 

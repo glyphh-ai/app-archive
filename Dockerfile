@@ -1,4 +1,10 @@
-# mobile.glyphh.ai on Fly — the MOBILE WEB APP ONLY (glyphh-ai-mobile).
+# The Glyphh web apps on Fly — ONE image, two deploys:
+#   · app.glyphh.ai    (fly.toml,        glyphh-ai-app)    BUILD_SCRIPT=build:web
+#       the IDENTICAL desktop app on the web (his order, 2026-10-04): the full
+#       command center, every turn on a cloud worker through /api/harness/* or
+#       on the member's desktop over the relay; phones still get the mobile shell.
+#   · mobile.glyphh.ai (fly.mobile.toml, glyphh-ai-mobile) BUILD_SCRIPT=build:mobile
+#       the mobile web app only (GLYPHH_MOBILE_ONLY=1 at runtime).
 #
 # Deploys go through GitHub Actions (.github/workflows/deploy-web.yml) — never a
 # local `fly deploy`. The workflow vendors the `file:../sdk` dependency into
@@ -6,7 +12,7 @@
 # sibling ../sdk checkout doesn't exist inside the Docker build context. A local
 # `docker build` without that vendor step fails on the COPY below — expected.
 #
-# Runtime is a static server: `node web/serve.mjs` serves the prebuilt mobile shell,
+# Runtime is a static server: `node web/serve.mjs` serves the prebuilt shells,
 # injecting window.__GLYPHH_* config (from env — fly.toml [env]) + the SDK bridge
 # into HTML. No web/.env in the image; process.env wins in serve.mjs.
 
@@ -26,9 +32,12 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
-# The mobile bundle only (plus the brand art and fonts it references) — the
-# desktop renderer's web shell is not part of this target.
-RUN npm run build:mobile
+# Which shells this image carries. build:web = the desktop renderer's web shell
+# (command center + login + platform, the bridge, monaco, xterm, the app libs)
+# PLUS the mobile bundle, brand art and fonts; build:mobile = the mobile bundle
+# only. fly.toml / fly.mobile.toml pass it under [build.args].
+ARG BUILD_SCRIPT=build:web
+RUN npm run "$BUILD_SCRIPT"
 
 # ── run ───────────────────────────────────────────────────────────────────────
 # Lean: only serve.mjs + the built renderer. serve.mjs resolves ../dist/renderer
@@ -39,6 +48,7 @@ ENV NODE_ENV=production \
     PORT=3002
 
 COPY --from=build /work/app/web/serve.mjs ./web/serve.mjs
+COPY --from=build /work/app/web/serve-routes.mjs ./web/serve-routes.mjs
 COPY --from=build /work/app/dist/renderer ./dist/renderer
 
 EXPOSE 3002

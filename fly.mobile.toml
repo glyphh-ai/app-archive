@@ -1,0 +1,48 @@
+# mobile.glyphh.ai on Fly — the mobile web app (web/src/mobile.tsx), SDK-direct.
+#
+# Deploys go through GitHub Actions (.github/workflows/deploy-web.yml) — never a
+# local `fly deploy`; this config rides `flyctl deploy --config fly.mobile.toml`.
+# Naming convention: Fly apps are <org-slug>-<surface>.
+#
+# [env] is RUNTIME config: serve.mjs reads process.env and injects these as
+# window.__GLYPHH_* before the app boots — the SDK talks DIRECTLY to the API
+# (the same server the desktop attaches to), no proxy here. GLYPHH_MOBILE_ONLY
+# makes every page the mobile app (its own sign-in included).
+#
+# Turns run on the member's DESKTOP over the attach relay (v1, 2026-09-30) or on
+# a cloud worker through /api/harness/* (the app-web lane, 2026-10-04).
+
+app = "glyphh-ai-mobile"
+primary_region = "iad"
+
+[build.args]
+  BUILD_SCRIPT = "build:mobile"
+
+[env]
+  PORT = "3002"
+  GLYPHH_MOBILE_ONLY = "1"
+  GLYPHH_SERVER_URL = "https://api.glyphh.ai"
+  GLYPHH_GOOGLE_CLIENT_ID = "247280496034-equmvbu3j8qpd5karj7e22f71v6flm1s.apps.googleusercontent.com"
+  GLYPHH_WEB_URL = "https://glyphh.ai"
+
+[http_service]
+  internal_port = 3002
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Front door: keep one machine warm — no cold starts at sign-in.
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks]
+  [checks.http]
+    type = "http"
+    port = 3002
+    # "/" serves the mobile shell with a 200.
+    path = "/"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"

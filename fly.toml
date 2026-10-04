@@ -1,22 +1,30 @@
-# mobile.glyphh.ai on Fly — the mobile web app (web/src/mobile.tsx), SDK-direct.
+# app.glyphh.ai on Fly — the IDENTICAL desktop app on the web (his order,
+# 2026-10-04): the full command center, served by web/serve.mjs from the
+# desktop renderer's web build (Dockerfile BUILD_SCRIPT=build:web).
 #
 # Deploys go through GitHub Actions (.github/workflows/deploy-web.yml) — never a
 # local `fly deploy`. Naming convention: Fly apps are <org-slug>-<surface>.
+# The app name below is a placeholder until the Fly app + DNS exist (his call).
 #
 # [env] is RUNTIME config: serve.mjs reads process.env and injects these as
 # window.__GLYPHH_* before the app boots — the SDK talks DIRECTLY to the API
 # (the same server the desktop attaches to), no proxy here. GLYPHH_MOBILE_ONLY
-# makes every page the mobile app (its own sign-in included).
+# is deliberately UNSET: a desktop browser gets the command center at /home,
+# a phone still gets the mobile shell (web/serve-routes.mjs).
 #
-# Turns run on the member's DESKTOP over the attach relay (v1, 2026-09-30); there
-# are no cloud workers yet.
+# Every web turn runs on a cloud worker through the server's /api/harness/*
+# (the SDK's `run({target:"cloud"})`), or on the member's own desktop over the
+# attach relay when one is attached (`target:"desktop"`). Terminals ride the
+# worker pty (/api/harness/pty); streamed web panels stay behind a flag.
 
-app = "glyphh-ai-mobile"
+app = "glyphh-ai-app"
 primary_region = "iad"
+
+[build.args]
+  BUILD_SCRIPT = "build:web"
 
 [env]
   PORT = "3002"
-  GLYPHH_MOBILE_ONLY = "1"
   GLYPHH_SERVER_URL = "https://api.glyphh.ai"
   GLYPHH_GOOGLE_CLIENT_ID = "247280496034-equmvbu3j8qpd5karj7e22f71v6flm1s.apps.googleusercontent.com"
   GLYPHH_WEB_URL = "https://glyphh.ai"
@@ -37,7 +45,7 @@ primary_region = "iad"
   [checks.http]
     type = "http"
     port = 3002
-    # "/" serves the mobile shell with a 200.
+    # "/" serves the login shell with a 200.
     path = "/"
     interval = "30s"
     timeout = "5s"

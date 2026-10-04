@@ -43,14 +43,28 @@ export const HOME_PATH = '/home';
  *  the pathname). THE web surface: sign-in always lands here; the Builder
  *  opens from the platform's Apps-row launcher in its own tab. */
 export const PLATFORM_PATH = '/platform';
-/** Where a signed-in desktop browser lands: always the Platform. Client-side
- *  only — never touches auth/device/mobile routing (phones never run this
- *  module; serve.mjs routes them to /m before the bridge loads). */
-export function surfacePath() {
-  // The Platform IS the web surface (his call, 2026-08-29): the app-web command
-  // center was removed, so there is no Desktop surface to default into on the
-  // web — sign-in lands on the platform dashboard, period.
-  return PLATFORM_PATH;
+/** The mobile shell (web/src/mobile.tsx) — where a signed-in PHONE lands. */
+export const MOBILE_PATH = '/m';
+/** A phone-class device: a coarse primary pointer AND a phone-sized viewport.
+ *  Tablets (iPad reports as Macintosh, coarse pointer, wide) keep the desktop
+ *  app, exactly like serve.mjs's touch pre-bridge redirect leaves them alone
+ *  once `glyphh_force_desktop` is set. Overridable for tests. */
+export function isPhoneDevice(env = globalThis) {
+  try {
+    const w = env.innerWidth, h = env.innerHeight;
+    const coarse = typeof env.matchMedia === 'function' && env.matchMedia('(pointer: coarse)').matches;
+    if (!coarse || typeof w !== 'number' || typeof h !== 'number') return false;
+    return Math.min(w, h) < 600;
+  } catch { return false; }
+}
+/** Where a signed-in browser lands after sign-in: the COMMAND CENTER (/home —
+ *  the identical desktop app on the web, his order 2026-10-04) on a desktop
+ *  browser, the mobile shell on a phone. Client-side only — never touches
+ *  auth/device routing (serve.mjs already routes phone UAs to /m before the
+ *  bridge loads; this is the belt to that suspenders for touch devices the UA
+ *  sniff misses). The Platform stays reachable at /platform. */
+export function surfacePath(env = globalThis) {
+  return isPhoneDevice(env) ? MOBILE_PATH : HOME_PATH;
 }
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the

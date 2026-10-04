@@ -3,6 +3,11 @@
 // SDK client) before any renderer script runs. No Electron; cloud is SDK-direct,
 // local/native degrade until a machine attaches.
 //
+// app.glyphh.ai (his order, 2026-10-04) = the IDENTICAL desktop app on the web:
+// a signed-in desktop browser lands on the command center at /home; phones get
+// the mobile shell; with GLYPHH_MOBILE_ONLY (mobile.glyphh.ai) every page is the
+// mobile app. The route decision itself is pure (serve-routes.mjs, unit-tested).
+//
 //   node web/serve.mjs   ->   http://localhost:3002  (same port platform used, so the
 //   existing localhost:3002 Google OAuth origin works in dev with no console change)
 //
@@ -13,6 +18,7 @@ import { readFile, access } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveRoute, isNestedShellRoute } from './serve-routes.mjs';
 
 // ── Env (web/.env) ────────────────────────────────────────────────────────────
 // A tiny dependency-free .env parse of the CLIENT-SAFE web config. These are
@@ -95,32 +101,6 @@ function rewriteRuntimeUrl(j, url) {
   else if (d && typeof d === 'object') { fix(d); fix(d.session); }
 }
 
-// SPA fallback paths — client-side routes with no file on disk, mirroring the
-// platform's: /auth/callback (OAuth + magic-link return) and /auth/device (the
-// device-grant approval page). They serve the LOGIN SHELL (index.html) IN PLACE,
-// so the browser STAYS on the URL the boot script routes off. That is the whole
-// point for /auth/device: a 302 to /?code=… made the device code arrive looking
-// exactly like an OAuth callback code, and web-boot exchanged it as one.
-// index.html's asset URLs are relative, so a shell served at a NESTED path also
-// gets `<base href="/">` injected — that, not a redirect, is what keeps
-// styles.css / brand/* resolving (the ENOENT + naked-page problem).
-const SHELL_ROUTES = new Set([
-  '/', '/login', '/auth', '/auth/',
-  '/auth/callback', '/auth/callback/',
-  '/auth/device', '/auth/device/',
-  '/auth/accept-invite', '/auth/accept-invite/',
-  // The OAuth consent screen /oauth/authorize redirects to. It was handled by
-  // isNestedShellRoute below (for <base>) but never listed HERE, which is the set
-  // that actually selects the shell — so it fell through to a static file lookup
-  // and 404'd, dead-ending every MCP client trying to connect.
-  '/settings/mcp', '/settings/mcp/',
-]);
-/** A shell route BELOW the root needs <base href="/"> for its relative assets.
- *  /settings/mcp is two levels deep — without <base>, home.html's relative
- *  src="home.js" resolves to /settings/home.js (404) and the consent page
- *  never boots (stuck on the wb-booting veil, blank). */
-const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !== '/login';
-
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
 function configScript() {
@@ -145,12 +125,6 @@ const TYPES = {
   '.gif': 'image/gif', '.ico': 'image/x-icon', '.wasm': 'application/wasm',
   '.webmanifest': 'application/manifest+json',
 };
-
-// The mobile web app (web/src/mobile.tsx → /glyphh-mobile.js) is its own React
-// surface, served at /m. Unlike the desktop shells it does NOT get the renderer
-// bridge injected — it loads its own bundle — but it still needs the client-safe
-// config so the SDK knows the API url.
-const MOBILE_ROUTES = new Set(['/m', '/m/']);
 
 // Baseline security headers (mirror platform's middleware). A strict CSP is the
 // real XSS mitigation but must be audited against the renderer's inline scripts +
@@ -214,58 +188,39 @@ const server = http.createServer(async (req, res) => {
     // access): the base page is the LOGIN SHELL (index.html carries the splash→auth→
     // login flow: Google + magic-link, same as platform's). web-boot sends an
     // already-authed session straight through to /home, so returning users never see
-    // the login. home.html (the Chat tab) is the AUTHED app surface at /home; the
-    // bridge bounces an anonymous visitor there back here.
+    // the login. home.html (the command center) is the AUTHED app surface at /home;
+    // the bridge bounces an anonymous visitor there back here.
     // The nested client-side routes (/auth/callback, /auth/device) serve the SAME
     // shell IN PLACE — no redirect — with <base href="/"> injected below so their
     // relative assets still resolve from the root. web-boot then routes off the
     // real pathname + query (device vs. callback).
+    // Device routing, phones vs desktop browsers vs the mobile-only deploy, is
+    // ONE pure decision (serve-routes.mjs resolveRoute) — see its tests.
     const nested = isNestedShellRoute(p);
-    // Device routing: the mobile app owns the authed experience on PHONES. /m is
-    // always the mobile app; a SIGNED-IN phone (glyphh_logged_in cookie) also
-    // gets it for the app shell + /home, so login lands in the mobile ui instead
-    // of the desktop rail. Signed-out phones still see the working login shell,
-    // and /auth/* stays on the shell so magic-link/device token exchange runs.
-    const ua = req.headers['user-agent'] || '';
-    const isPhoneUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
-    const authedCookie = /(?:^|;\s*)glyphh_logged_in=1\b/.test(req.headers.cookie || '');
-    const isAuthRoute = p === '/auth' || p.startsWith('/auth/');
-    // /platform — the admin surface (the settings shell as a full page). Same
-    // home.html document as /home; home.ts branches on the pathname client-side.
-    const isPlatformRoute = p === '/platform' || p === '/platform/';
-    // Stripe returns to the OLD platform's /billing route (success/cancel and
-    // top-up redirects) — bounce it into the shell with the query intact; the
-    // shell opens the Billing tab from those params.
-    if (p === '/billing' || p === '/billing/') {
+    const route = resolveRoute({
+      path: p,
+      ua: req.headers['user-agent'] || '',
+      cookie: req.headers.cookie || '',
+      mobileOnly: MOBILE_ONLY,
+    });
+    if (route.kind === 'redirect') {
+      // Stripe returns to the OLD platform's /billing route (success/cancel and
+      // top-up redirects) — bounce it into the shell with the query intact; the
+      // shell opens the Billing tab from those params.
       const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
       res.statusCode = 302;
-      res.setHeader('Location', `/platform${qs}`);
+      res.setHeader('Location', `${route.location}${qs}`);
       res.end();
       return;
     }
-    // The OAuth consent screen is web-boot's, on every device: the mobile shell has
-    // no consent view, so handing a phone mobile.html here would swallow the
-    // authorization request and strand the MCP client mid-flow.
-    const isConsentRoute = p === '/settings/mcp' || p === '/settings/mcp/';
-    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isConsentRoute
-      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
-    const isMobileShell = (MOBILE_ONLY && !extname(p)) || MOBILE_ROUTES.has(p) || phoneWantsApp;
-    // The app-web command center (/home) was removed (his call, 2026-08-29): the
-    // Platform is the only desktop-browser web surface now (mobile keeps /m).
-    // Bounce a desktop-browser /home → /platform, query intact. Phones are
-    // exempt — phoneWantsApp already routed them to the mobile shell above.
-    if (!isMobileShell && (p === '/home' || p === '/home/')) {
-      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-      res.statusCode = 302;
-      res.setHeader('Location', `/platform${qs}`);
-      res.end();
-      return;
-    }
+    const isMobileShell = route.kind === 'mobile';
     if (isMobileShell) {
       p = '/mobile.html';
-    } else if (SHELL_ROUTES.has(p)) {
+    } else if (route.kind === 'login') {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    } else if (isPlatformRoute) {
+    } else if (route.kind === 'app' || route.kind === 'platform') {
+      // /home (the command center) and /platform (the admin surface) are the
+      // same home.html document; home.ts branches on the pathname client-side.
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));
