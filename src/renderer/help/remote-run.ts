@@ -20,6 +20,15 @@
  * The renderer cannot import from @glyphh/sdk (preload boundary), so the SDK
  * handle's shapes are mirrored here (same discipline as code-source-chip.ts /
  * library-types.ts). They cross window.glyphhSdk verbatim from the SDK.
+ *
+ * THE DESKTOP HAS NO window.glyphhSdk — its SDK client lives in MAIN. A cloud
+ * turn there rides the IPC lane (main/cloud-run.ts: glyphh-cloud-run-*),
+ * wrapped by `createIpcCloudRun` into the SAME HarnessRunHandle shape, so
+ * everything below the transport — dispatchFrame, the answer seam, the typed
+ * outcomes — is one code path for web and desktop (his words, 2026-10-04:
+ * "the desktop can reach both the local file system and the sandbox on the
+ * ephemeral machine"). A desktop LOCAL session never comes here: main's own
+ * loop (glyphhRun) runs it.
  */
 
 import type { Source } from "./code-source-chip.js";
@@ -86,6 +95,139 @@ interface SdkHandle {
 
 const sdk = (): SdkHandle | undefined =>
   (window as unknown as { glyphhSdk?: SdkHandle }).glyphhSdk;
+
+// ── The desktop's cloud lane (preload cloudRun* → main/cloud-run.ts) ─────────
+
+/** What the IPC lane takes to start a cloud turn — main hands it to the SDK's
+ *  `client.run({ target: "cloud", … })` verbatim. */
+export interface CloudRunStartPayload {
+  chatId: string;
+  threadId: string;
+  prompt: string;
+  mode: "work" | "code";
+  model?: string;
+  loop?: string;
+  permission?: RemotePermission;
+  effort?: string;
+  images?: Array<{ mediaType: string; data: string }>;
+  memory?: RemoteMemoryPolicy;
+  subdir?: string;
+  repo?: string;
+}
+
+export type CloudRunDoneEvent = { chatId: string; runId: string } & (
+  | { ok: true; result: { runId: string; stopped: boolean; text: string; error?: string } }
+  | { ok: false; error: string }
+);
+
+/** The preload bridge's cloud lane, as remote-run drives it. */
+export interface CloudRunIpc {
+  cloudRunStart: (p: CloudRunStartPayload) => Promise<{ ok: true; runId: string } | { ok: false; error: string }>;
+  cloudRunAnswer: (p: { runId: string; id: string; reply: { allow?: boolean; answers?: string[] } }) => Promise<{ ok: boolean; error?: string }>;
+  cloudRunStop: (p: { runId?: string; chatId?: string }) => Promise<{ ok: boolean; error?: string }>;
+  cloudRunPermission: (p: { runId: string; mode: RemotePermission }) => Promise<{ ok: boolean; error?: string }>;
+  onCloudRunFrame: (cb: (p: { chatId: string; runId: string; frame: HarnessWireFrame }) => void) => () => void;
+  onCloudRunDone: (cb: (p: CloudRunDoneEvent) => void) => () => void;
+}
+
+/** The desktop's lane, when this renderer is the desktop and the bridge has it.
+ *  Web's window.glyphh is a Proxy that answers ANY key, so the surface marker
+ *  gates first (web always runs through glyphhSdk). */
+function desktopCloudLane(): CloudRunIpc | undefined {
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return undefined;
+  const ipc = (window as unknown as { glyphh?: Partial<CloudRunIpc> }).glyphh;
+  if (typeof ipc?.cloudRunStart !== "function" || typeof ipc.onCloudRunFrame !== "function" || typeof ipc.onCloudRunDone !== "function") return undefined;
+  return ipc as CloudRunIpc;
+}
+
+/**
+ * ONE HarnessRunHandle over the IPC lane's events — the desktop's twin of the
+ * SDK's HarnessRun. Frames for this chat (main keys every event by chatId)
+ * fan out to `on` subscribers, a late subscriber replays the tape first, the
+ * `done` event settles `done` (an `error` FRAME resolves it with `error` set,
+ * a transport failure rejects it — the SDK's contract), and answer / stop /
+ * setPermission ride back as IPC calls by the run id the start ack minted.
+ * Pure over the bridge: the unit test drives it with a fake.
+ */
+export function createIpcCloudRun(ipc: CloudRunIpc, p: CloudRunStartPayload, signal?: AbortSignal): HarnessRunHandle {
+  const subs = new Set<(f: HarnessWireFrame) => void>();
+  const tape: HarnessWireFrame[] = [];
+  let runId = "";
+  let settled = false;
+  let started = false;
+  let resolveStarted!: (ack: { runId: string; sessionId: string; wire: string }) => void;
+  let rejectStarted!: (e: unknown) => void;
+  let resolveDone!: (r: { runId: string; stopped: boolean; text: string; error?: string }) => void;
+  let rejectDone!: (e: unknown) => void;
+  const whenStarted = new Promise<{ runId: string; sessionId: string; wire: string }>((res, rej) => { resolveStarted = res; rejectStarted = rej; });
+  const done = new Promise<{ runId: string; stopped: boolean; text: string; error?: string }>((res, rej) => { resolveDone = res; rejectDone = rej; });
+  // A consumer watching only one of the two must not crash on the other.
+  void whenStarted.catch(() => {});
+  void done.catch(() => {});
+
+  const ack = (id: string): void => {
+    if (started) return;
+    started = true;
+    runId = id;
+    resolveStarted({ runId: id, sessionId: p.threadId, wire: "glyphh.harness/v1" });
+  };
+  const settle = (): void => { settled = true; offFrame(); offDone(); };
+  const fail = (err: unknown): void => {
+    if (settled) return;
+    settle();
+    if (!started) { started = true; rejectStarted(err); }
+    rejectDone(err);
+  };
+
+  const offFrame = ipc.onCloudRunFrame((ev) => {
+    if (settled || ev.chatId !== p.chatId) return;
+    if (!runId && ev.runId) runId = ev.runId;
+    tape.push(ev.frame);
+    for (const fn of subs) { try { fn(ev.frame); } catch { /* a broken subscriber never takes the run down */ } }
+  });
+  const offDone = ipc.onCloudRunDone((ev) => {
+    if (settled || ev.chatId !== p.chatId) return;
+    if (!ev.ok) { fail(new Error(ev.error)); return; }
+    settle();
+    ack(ev.result.runId || ev.runId || runId);
+    resolveDone(ev.result);
+  });
+
+  void ipc.cloudRunStart(p).then(
+    (r) => { if (r.ok) ack(r.runId); else fail(new Error(r.error)); },
+    (err) => fail(err),
+  );
+
+  const ref = (): { runId: string } | { chatId: string } => (runId ? { runId } : { chatId: p.chatId });
+  const stop = async (): Promise<void> => {
+    if (settled) return;
+    try { await ipc.cloudRunStop(ref()); } catch { /* main unreachable — nothing to stop */ }
+  };
+  if (signal?.aborted) void stop();
+  else signal?.addEventListener("abort", () => void stop(), { once: true });
+
+  return {
+    whenStarted,
+    done,
+    on(fn) {
+      for (const f of tape) fn(f);
+      subs.add(fn);
+      return () => { subs.delete(fn); };
+    },
+    async answer(id, reply) {
+      const { runId: rid } = await whenStarted;
+      const r = await ipc.cloudRunAnswer({ runId: rid, id, reply });
+      if (!r?.ok) throw new Error(r?.error || "answer not delivered");
+    },
+    stop,
+    async setPermission(mode) {
+      if (settled) return;
+      const { runId: rid } = await whenStarted;
+      const r = await ipc.cloudRunPermission({ runId: rid, mode });
+      if (!r?.ok) throw new Error(r?.error || "permission not delivered");
+    },
+  };
+}
 
 // ── The chat's runtime binding — mirrors code.ts's CodeChat (kept structural so
 //    remote-run doesn't reach back into code.ts's interfaces). ────────────────
@@ -180,10 +322,11 @@ export function isRemoteSource(source?: Source): boolean {
   return !!source && source.kind !== "local";
 }
 
-/** A remote turn is only routed here on WEB, where the SDK handle is exposed and
- *  the local harness (window.glyphh.glyphhRun → main) does not exist. */
+/** A remote turn is routed here on WEB (the SDK handle is exposed) and, for a
+ *  CLOUD source, on the DESKTOP (main's cloud lane); a desktop local session
+ *  stays on the local harness (window.glyphh.glyphhRun → main). */
 export function canRunRemote(source?: Source): boolean {
-  return isRemoteSource(source) && !!sdk()?.harnessViaApi;
+  return isRemoteSource(source) && (!!sdk()?.harnessViaApi || !!desktopCloudLane());
 }
 
 /** The honest typed failure — never thrown to the UI, always rendered as the
@@ -211,7 +354,7 @@ export async function ensureRuntime(
   // `harnessViaApi()`, region-routed server-side. Hand back a synthetic binding
   // so the UI reads "connected" (isCommitted) instantly. The per-session
   // provision-and-poll path was deleted with the cutover (no-dead-code).
-  if (sdk()?.harnessViaApi) {
+  if (sdk()?.harnessViaApi || desktopCloudLane()) {
     const runtime: RuntimeBinding = { sessionId: chat.id, url: "api", token: "api" };
     chat.runtime = runtime; save();
     return { ok: true, runtime };
@@ -434,14 +577,24 @@ export async function runRemoteTurn(
   opts: { rotor?: unknown; model?: string; permission?: RemotePermission; effort?: string; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
 ): Promise<RemoteRunOutcome> {
   void save; // callers keep it in the signature; nothing binds a pod per session now
-  const client = sdk() as unknown as { run?: (o: unknown) => HarnessRunHandle };
-  if (!client?.run) {
+  const client = sdk() as unknown as { run?: (o: unknown) => HarnessRunHandle } | undefined;
+  // Called ON the client (the SDK's resources reach for their own `this`).
+  const sdkRun = client?.run ? (o: unknown): HarnessRunHandle => client.run!(o) : null;
+  const lane = sdkRun ? undefined : desktopCloudLane();
+  if (!sdkRun && !lane) {
     const u = unavailable("open", new Error("this build cannot run turns (SDK run missing)"));
     callbacks.onError?.(u.detail);
     return u;
   }
 
   const isLocal = chat.source?.kind === "local";
+  // The desktop's lane is the CLOUD only: its local sessions are main's own
+  // loop (code.ts never routes one here — canRunRemote says no).
+  if (lane && isLocal) {
+    const u = unavailable("open", new Error("a desktop session runs on this machine's own loop, not the cloud lane"));
+    callbacks.onError?.(u.detail);
+    return u;
+  }
   // Runtime binding for the UI's isCommitted state: the relay marker for an
   // on-machine run, a synthetic api binding for the front door (no pod url to hold).
   chat.runtime = isLocal ? RELAY_RUNTIME(chat) : { sessionId: chat.id, url: "api", token: "api" };
@@ -466,7 +619,21 @@ export async function runRemoteTurn(
 
   let run: HarnessRunHandle;
   try {
-    run = client.run({
+    run = lane ? createIpcCloudRun(lane, {
+      chatId: chat.id,
+      threadId,
+      prompt,
+      mode: modeFor(chat),
+      ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
+        ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
+      ...(repo ? { repo } : {}),
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
+      ...(opts.permission ? { permission: opts.permission } : {}),
+      ...(opts.effort ? { effort: opts.effort } : {}),
+      ...(opts.images && opts.images.length ? { images: opts.images } : {}),
+      ...(opts.memory ? { memory: opts.memory } : {}),
+    }, opts.signal) : sdkRun!({
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
       // The machine the session is bound to (remote control, 2026-09-30) — absent, the newest.
       ...(isLocal && chat.source?.kind === "local" && chat.source.machineId ? { machineId: chat.source.machineId } : {}),
@@ -545,9 +712,10 @@ export async function stopRunById(runId: string): Promise<boolean> {
 // ── Desktop observer transport ────────────────────────────────────────────────
 // Web exposes the browser SDK (window.glyphhSdk) so the observer consumes the
 // broker directly. The desktop renderer is IPC-only: the main process holds the
-// SDK client and forwards frames over run-stream-* channels (run-stream-ipc.ts).
-// The renderer mints the subscription token so pushed events are filterable
-// from the very first frame — no id-assignment race.
+// SDK client and forwards frames over the cloud lane's observe channels
+// (main/cloud-run.ts: glyphh-cloud-run-attach / -detach). The renderer mints
+// the subscription token so pushed events are filterable from the very first
+// frame — no id-assignment race.
 interface RunStreamIpc {
   runStreamAttach?: (threadId: string, token: string) => Promise<{ ok: boolean; error?: string }>;
   runStreamStop?: (token: string) => Promise<{ ok: boolean }>;
@@ -613,7 +781,12 @@ export function attachToActiveRun(
 ): AttachHandle {
   // Web: the browser SDK's broker consumer. Desktop: the IPC bridge to the
   // main-process SDK client. Neither present (tests, logged-out) → no-op.
-  const rs = (sdk() as unknown as { runStream?: RunStreamResource })?.runStream ?? ipcRunStream();
+  const webRs = (sdk() as unknown as { runStream?: RunStreamResource })?.runStream;
+  // On the DESKTOP a local thread's run is main's own: the live ledger and
+  // glyphh-agent-run-adopt reconnect it, so only a cloud thread is observed
+  // through the lane (a local one would ask the pod about a run it never had).
+  if (!webRs && !isRemoteSource(chat.source)) return { runId: null, stop: () => {} };
+  const rs = webRs ?? ipcRunStream();
   if (!rs?.attach) return { runId: null, stop: () => {} };
 
   // ONE call: the SDK owns "watch this thread and stream whatever runs on it, run after
