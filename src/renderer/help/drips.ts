@@ -1,9 +1,16 @@
 /**
  * Drips section — recipe builder, CRUD.
+ *
+ * A preset is a MEMBER LIBRARY record of kind `drip` (his rule, 2026-10-04:
+ * "anything that could be local before is now a db row with cloud storage"):
+ * the desktop keeps its copy in user-state.sqlite and syncs it; the web reads
+ * and writes the server directly (web/src/member-library-web.js). Playing a
+ * recipe is each host's own — the desktop's overlay windows, the web's iframe
+ * runner — and a control the host cannot serve is hidden (hostHas).
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
-import { paintDesktopOnly } from "./web-surface.js";
+import { hostHas, keepIfHost } from "./web-surface.js";
 
 // ── Drips ─────────────────────────────────────────────────
 
@@ -97,9 +104,6 @@ function parseRecipeIntoBuilder(recipe: string) {
 }
 
 async function loadDrips() {
-  // The drips engine is the desktop app's (its nav row is hidden on web, and
-  // a stale deep link lands on General); a section open still paints honestly.
-  if (paintDesktopOnly(dripsListEl, "Drips run on your desktop", "Open Glyphh Desktop to create and play them.", [dripsToolbar, dripsHead ?? null, dripEditor])) return;
   dripEditor.classList.add("hidden");
   dripFormError.classList.add("hidden");
 
@@ -170,12 +174,15 @@ function renderDripsList() {
     (tr.querySelector(".conn2-icon-initial") as HTMLElement).textContent = dripEmojis(drip.recipe)[0] || "✨";
     (tr.querySelector(".conn2-name") as HTMLElement).textContent = drip.name;
     (tr.querySelector(".drip-recipe") as HTMLElement).textContent = drip.recipe;
-    const play = document.createElement("button");
-    play.type = "button";
-    play.className = "action-btn conn2-connect";
-    play.textContent = "Play";
-    play.addEventListener("click", (ev) => { ev.stopPropagation(); window.glyphh.dripsPreview(drip.recipe); });
-    (tr.querySelector(".conn2-status") as HTMLElement).appendChild(play);
+    // Playing is the host's own engine; a host without one shows no button.
+    if (hostHas("dripsPreview")) {
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "action-btn conn2-connect";
+      play.textContent = "Play";
+      play.addEventListener("click", (ev) => { ev.stopPropagation(); void window.glyphh.dripsPreview(drip.recipe); });
+      (tr.querySelector(".conn2-status") as HTMLElement).appendChild(play);
+    }
     tr.addEventListener("click", () => openDripEditor(drip.name, drip.recipe));
     table.appendChild(tr);
   }
@@ -214,7 +221,7 @@ function closeDripEditor() {
   // Leaving the editor stops anything it started. A preview is scoped to the
   // editor that played it — a looping effect must never outlive the screen you
   // launched it from and sit over the app with no way to reach it.
-  void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
+  if (hostHas("dripsStop")) void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
   dripEditor.classList.add("hidden");
   dripsListEl.classList.remove("hidden");
   dripsToolbar.classList.remove("hidden"); dripsHead?.classList.remove("hidden");
@@ -272,12 +279,22 @@ export function initDripsEvents() {
   document.getElementById("drip-cancel-btn")!.addEventListener("click", closeDripEditor);
   document.getElementById("drip-back-link")!.addEventListener("click", closeDripEditor);
   document.getElementById("drip-delete-btn")!.addEventListener("click", deleteDrip);
-  document.getElementById("drip-preview-btn")!.addEventListener("click", () => {
-    const recipe = buildDripRecipe();
-    if (recipe) window.glyphh.dripsPreview(recipe);
-  });
-  document.getElementById("drip-stop-btn")!.addEventListener("click", () => {
-    void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
+  if (keepIfHost(document.getElementById("drip-preview-btn"), "dripsPreview")) {
+    document.getElementById("drip-preview-btn")!.addEventListener("click", () => {
+      const recipe = buildDripRecipe();
+      if (recipe) void window.glyphh.dripsPreview(recipe);
+    });
+  }
+  if (keepIfHost(document.getElementById("drip-stop-btn"), "dripsStop")) {
+    document.getElementById("drip-stop-btn")!.addEventListener("click", () => {
+      void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
+    });
+  }
+  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web saved, or
+  // dropped what it deleted): the list re-reads. An open editor is left alone.
+  window.glyphh.onLibrarySynced?.((info) => {
+    if (info.kind !== "drip") return;
+    if (dripEditor.classList.contains("hidden")) void loadDrips();
   });
   dripModeSelect.addEventListener("change", () => {
     dripCountInput.classList.toggle("hidden", dripModeSelect.value !== "counted");

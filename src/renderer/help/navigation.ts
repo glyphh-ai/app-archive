@@ -835,9 +835,6 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   organization: "org-general",
   runtime: "general",
   guardrails: "general",
-  // Drips left Settings for the workpanel dock (2026-08-25); a stale deep
-  // link lands on General rather than a tab that no longer exists.
-  drips: "general",
   // Apps and tasks are skills with a type now (2026-09-17) — their tabs are
   // hidden and every link to them lands on Skills, which lists them.
   apps: "skills",
@@ -852,14 +849,11 @@ const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
 };
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
-  // MCP is a desktop-machine feature — a browser tab has no machine to run the
-  // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
-  // + panels are CSS-hidden on web; any stale deep link (saved nav app,
-  // remembered homeLastSub) lands on General instead.
-  // Drips is a desktop-machine feature (no web); MCP shows EVERYWHERE (his
-  // order, 2026-08-25). General/Voice/Appearance hide only on the platform.
-  // Every DESKTOP-ONLY sub (web-surface.ts DESKTOP_ONLY_SUBS: schedules, the
-  // skill/plugin/task folders, drips, remote control) lands on General on web.
+  // MCP shows EVERYWHERE (his order, 2026-08-25). General/Voice/Appearance
+  // hide only on the platform. Every DESKTOP-ONLY sub (web-surface.ts
+  // DESKTOP_ONLY_SUBS: plugins, remote control) lands on General on web; its
+  // nav item + panel are CSS-hidden there. Drips and schedules are library
+  // records since 2026-10-04 and open on web like the rest.
   if (onWeb() && DESKTOP_ONLY_SUBS.has(target)) {
     return document.body.classList.contains("platform-shell") ? "dash" : "general";
   }

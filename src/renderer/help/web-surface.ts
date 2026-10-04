@@ -54,15 +54,16 @@ export async function copyText(text: string): Promise<boolean> {
   catch { return false; }
 }
 
-/** Settings sub-pages that are the DESKTOP's own (its clock, its skill folders,
- *  its drips engine): on web their nav rows + panels hide, a stale deep link
- *  lands on General, and a loader that still runs paints `desktopOnlyCard`. */
-/** Skills and tasks LEFT this set on 2026-10-04: the member library is
- *  database-as-truth, so the web lists, views and edits them from the server
- *  (web-contract.js). What still needs the machine — a plugin's Claude Code
- *  install, running a task now, a schedule's clock, drips, remote control —
- *  stays here or answers "runs on your desktop" per action. */
-export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["schedules", "plugins", "drips", "remote"]);
+/** Settings sub-pages that are the DESKTOP's own: on web their nav rows +
+ *  panels hide, a stale deep link lands on General, and a loader that still
+ *  runs paints `desktopOnlyCard`. */
+/** Skills and tasks LEFT this set on 2026-10-04, drips and schedules the same
+ *  day: the member library is database-as-truth, so the web lists, views and
+ *  edits them from the server (web-contract.js). What still needs the machine
+ *  — a plugin's Claude Code install, running a task or a schedule now, the
+ *  runs on the desktop's clock, remote control — stays here or answers "runs
+ *  on your desktop" per action. */
+export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote"]);
 
 /** Hide every desktop-only settings row + panel on web (idempotent; the
  *  settings DOM is static in home.html, so this runs once at init). */

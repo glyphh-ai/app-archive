@@ -7,10 +7,18 @@
  * old Scheduled Tasks work panel's view (runs chart, what fires next, recent
  * runs) in the settings layout, and an edit page in the Tabs/Drips grammar.
  * A schedule is written in words ("weekdays at 9am") or as a five-field cron.
+ *
+ * A schedule is a MEMBER LIBRARY record of kind `schedule` (his rule,
+ * 2026-10-04): the desktop's table is its copy, synced, and its clock reads
+ * that table; the web lists, makes, edits, arms and deletes through the
+ * server (web/src/member-library-web.js) and the desktop picks the change up
+ * within a sync interval. RUNS are the machine's — "Run now" and the history
+ * come from the desktop's clock until the cloud clock exists, so on web the
+ * page says so in one line and paints the desktop card where runs would be.
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { paintDesktopOnly } from "./web-surface.js";
+import { desktopOnlyCard, hostHas, onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
@@ -41,6 +49,7 @@ type Api = {
   skillsList: (kind?: string) => Promise<Env<SkillLite[]>>;
   libraryAgentsList: () => Promise<Env<AgentLite[]>>;
   onTaskRunsChanged?: (fn: () => void) => () => void;
+  onLibrarySynced?: (fn: (info: { kind: string }) => void) => void;
 };
 const api = (): Api => window.glyphh as unknown as Api;
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
@@ -182,14 +191,33 @@ async function runNow(r: ScheduleRow, btn: HTMLButtonElement): Promise<void> {
 let pendingOpen: string | null = null;
 export function openScheduleOnLoad(id: string): void { pendingOpen = String(id || "") || null; }
 
+/** Can this host run a schedule and show its runs? The desktop's clock can;
+ *  a browser tab reads the records only, until the cloud clock exists. */
+const runsHere = (): boolean => !onWeb() && hostHas("scheduleRunNow");
+
+/** The one line the web page carries above its list: where the runs are. */
+const RUNS_NOTE = "Runs come from your desktop's clock until the cloud clock exists — the schedules themselves are here, synced from the server.";
+
+function paintRunsNote(): void {
+  const overview = el("schedules-overview");
+  if (!overview) return;
+  let note = el("schedules-runs-note");
+  if (runsHere()) { note?.remove(); return; }
+  if (!note) {
+    note = document.createElement("p");
+    note.id = "schedules-runs-note";
+    note.className = "settings-hint";
+    note.style.margin = "0 0 10px";
+    overview.insertBefore(note, overview.firstChild);
+  }
+  note.textContent = RUNS_NOTE;
+  // The chart is the runs': nothing to draw from here.
+  el("schedules-chart")?.parentElement?.classList.add("hidden");
+}
+
 export async function loadSchedulesPage(): Promise<void> {
-  // THE DESKTOP'S CLOCK (its headless daemon) runs schedules; a browser tab
-  // has none. On web the page is the one card that says so — never a load
-  // of `schedulesList`, which the web bridge does not serve (the first
-  // schedules crash on app.glyphh.ai, 2026-10-04).
-  if (paintDesktopOnly(el("schedules-list"), "Schedules run on your desktop", "Open Glyphh Desktop to manage them — its clock runs every schedule, and the runs land there.",
-    [el("schedules-head"), el("schedules-toolbar"), el("schedules-chart")?.parentElement ?? null, el("schedules-recent")?.parentElement ?? null])) return;
   wire();
+  paintRunsNote();
   const [r, rr, t, s, a] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),
     api().tasksSpecs().catch(() => ({ ok: false } as Env<TaskSpecLite[]>)),
@@ -253,13 +281,16 @@ function paintOverview(): void {
     const ag = card.querySelector(".ws-task-agent") as HTMLElement | null; if (ag) ag.textContent = r.agentName || "";
     // RUN IT FROM HERE (his order, 2026-09-17): the card is where the user is
     // looking, and waiting 18 hours to find out whether it works is no test.
-    const run = document.createElement("button");
-    run.type = "button";
-    run.className = "action-btn ws-task-run";
-    run.textContent = "Run";
-    run.title = "Run it now";
-    run.addEventListener("click", (ev) => { ev.stopPropagation(); void runNow(r, run); });
-    (card.querySelector(".ws-task-head") as HTMLElement).appendChild(run);
+    // Only where a clock can run it — on web the page's note says where.
+    if (runsHere()) {
+      const run = document.createElement("button");
+      run.type = "button";
+      run.className = "action-btn ws-task-run";
+      run.textContent = "Run";
+      run.title = "Run it now";
+      run.addEventListener("click", (ev) => { ev.stopPropagation(); void runNow(r, run); });
+      (card.querySelector(".ws-task-head") as HTMLElement).appendChild(run);
+    }
     card.addEventListener("click", () => openEditor(r));
     list.appendChild(card);
   }
@@ -276,6 +307,7 @@ let openRecentId: string | null = null;
  *  on demand since this lane carries a summary only. */
 function paintRecents(): void {
   const host = el("schedules-recent"); if (!host) return;
+  if (!runsHere()) { host.innerHTML = desktopOnlyCard("Runs land on your desktop", "Open Glyphh Desktop to see what ran and run a schedule now."); return; }
   const named = recents.slice(0, 15).map((run) => ({
     ...run,
     label: run.scheduleName || (run.taskSlug ? (tasks.find((t) => t.slug === run.taskSlug)?.name || run.taskSlug) : "run"),
@@ -293,7 +325,7 @@ function paintRecents(): void {
 }
 
 function paintChart(): void {
-  const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas) return;
+  const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas || !runsHere()) return;
   const Chart = (window as unknown as { Chart?: new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void } }).Chart;
   if (!Chart) return;
   const css = getComputedStyle(document.documentElement);
@@ -377,7 +409,7 @@ async function openEditor(row: ScheduleRow | null): Promise<void> {
   const say = el<HTMLInputElement>("schedule-say")!; say.value = row?.cron ?? ""; previewSay();
   (el<HTMLInputElement>("schedule-enabled")!).checked = row ? row.enabled : true;
   el("schedule-delete-btn")?.classList.toggle("hidden", !row);
-  el("schedule-run-btn")?.classList.toggle("hidden", !row);
+  el("schedule-run-btn")?.classList.toggle("hidden", !row || !runsHere());
   el("schedule-runs-block")?.classList.toggle("hidden", !row);
   if (row) void paintRuns(row.id);
 }
@@ -392,6 +424,7 @@ function closeEditor(): void {
 
 async function paintRuns(id: string): Promise<void> {
   const host = el("schedule-runs"); if (!host) return;
+  if (!runsHere()) { host.innerHTML = desktopOnlyCard("Run history lives on your desktop", "Open Glyphh Desktop for this schedule's runs."); return; }
   host.innerHTML = loadingHtml("Loading history…");
   const r = await api().scheduleRuns(id);
   if (!host.isConnected || editing?.id !== id) return;
@@ -461,6 +494,12 @@ function wire(): void {
   api().onTaskRunsChanged?.(() => {
     if (!el("schedules-list")?.isConnected) return;
     void api().scheduleRecentRuns().then((rr) => { if (rr.ok) { recents = rr.data ?? []; if (!editing) { paintRecents(); paintChart(); } else void paintRuns(editing.id); } });
+  });
+  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web saved, or
+  // dropped what it deleted): the list re-reads. An open editor is left alone.
+  api().onLibrarySynced?.((info) => {
+    if (info.kind !== "schedule" || editing) return;
+    if (el("schedules-list")?.isConnected) void loadSchedulesPage();
   });
 }
 

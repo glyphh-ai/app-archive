@@ -33,9 +33,10 @@ const ALLOWED = {
   'src/renderer/help/files.ts': {
     filesRename: 'the Rename row is offered only when hostHas("filesRename")',
   },
-  // schedules.ts and settings-skills.ts: every name they read is SERVED on web
-  // since 2026-10-04 (member-library-web.js — the library from the server, the
-  // machine actions answering NEEDS_DESKTOP, the schedules honest empties).
+  // schedules.ts, drips.ts and settings-skills.ts: every name they read is
+  // SERVED on web since 2026-10-04 (member-library-web.js — the library from
+  // the server, the machine actions answering NEEDS_DESKTOP, the runs honest
+  // empties); drips.ts keeps its Stop/Play behind hostHas.
   'src/renderer/help/settings.ts': {
     localMcpSetEnabled: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
@@ -54,9 +55,15 @@ describe('the web bridge gate guard', () => {
     expect(w.has('localMcpSetPort')).toBe(false);
     expect(w.has('loopModels')).toBe(true);
     expect(w.has('wsStateLoad')).toBe(true);
-    // schedulesList IS served since 2026-10-04 (an honest empty list — the clock is the desktop's).
+    // Schedules and drips are member-library records since 2026-10-04: the
+    // web lists and writes them; only the runs and "run now" are the desktop's.
     expect(w.has('schedulesList')).toBe(true);
+    expect(w.has('scheduleSave')).toBe(true);
+    expect(w.has('dripsList')).toBe(true);
+    expect(w.has('dripsSave')).toBe(true);
+    expect(w.has('dripsDelete')).toBe(true);
     expect(unshimmedNames()).toContain('localMcpSetPort');
+    expect(unshimmedNames()).toContain('dripsRunning');     // what is on screen is the desktop's overlay
   });
 
   it('every unguarded result read of an unshimmed name is a known, gated site', () => {
