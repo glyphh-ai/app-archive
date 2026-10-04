@@ -1,6 +1,7 @@
 import { escapeHtml } from "./shared.js";
 import { hostHas } from "./web-surface.js";
-import { LOCUS_SVG, folderGranted, pickerSections, type Locus } from "./session-locus.js";
+import { LOCUS_SVG, filterPickerRows, folderGranted, pickerRecent, pickerSections, type Locus } from "./session-locus.js";
+import { placeMenu, type PlaceBox } from "./menu-place.js";
 /**
  * code-source-chip.ts — the WORKSPACE-SOURCE chip (ported from the platform's
  * RuntimeLocationChip), reimplemented in vanilla TS. It sits ABOVE the Code and
@@ -293,15 +294,23 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
  * sections, in this order:
  *
  *   ON THIS DESKTOP (the desktop) / ON <machine> (web: the attached desktop)
- *     · desktop → the machine's recent folders + "Choose folder…" (the OS
- *       picker); web → the folders that desktop GRANTED for remote control,
- *       each opening the folder browser (fs.list over the relay) inside it.
+ *     · THE LAST FIVE folders used there (his order, 2026-10-04) — the
+ *       desktop's own recent-folder list; on the web the folders this
+ *       member's desktop sessions ran in, inside the grants — then
+ *       "Browse…": the OS picker on the desktop, the folder browser
+ *       (fs.list over the relay) inside each granted root on the web.
  *   IN THE CLOUD
- *     · the member's existing cloud folders — the thread workspaces from
- *       GET /api/harness/fs/spaces (a worker workspace mirrored to R2) —
- *       and "New cloud folder…", a fresh workspace named by the session id
+ *     · THE LAST FIVE of the member's cloud folders — the thread workspaces
+ *       from GET /api/harness/fs/spaces (a worker workspace mirrored to R2)
+ *       — and "New cloud folder…", a fresh workspace named by the session id
  *       the first send mints. A born cloud session also offers "Folder in
  *       this workspace…" (the pod sub-folder browser).
+ *
+ * A SEARCH BOX under the head filters both sections by substring (the
+ * recents search's rule, session-locus.ts filterPickerRows); the Browse and
+ * New rows step aside while a query is typed. A cloud row that cannot be
+ * picked says why in its hint and title: the born lock, or the probe's own
+ * words (probeSources) — never a bare grey.
  *
  * A session's locus is FIXED AT BIRTH ("cloud stays cloud"): with a born
  * session open, the other section's rows are shown but not pickable, and
@@ -316,6 +325,9 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
    *  session's thread); null when there is none yet. */
   cloudScope: string | null;
   onPickCloudDir: (relDir: string) => void;
+  /** The member's recently used DESKTOP folders, newest first — the web's
+   *  come from its sessions (code.ts); the desktop asks main's own list. */
+  recentFolders?: () => readonly string[];
 }): void {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
@@ -335,115 +347,158 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   const surface = isWeb() ? "web" : "desktop";
   const src = opts.getSource();
   const currentFolder = src.kind === "local" ? src.path || "" : "";
+  const currentSpace = src.kind === "cloud-space" ? src.space : "";
 
-  const paintRoot = async (): Promise<void> => {
+  /** The frame: the head, the search, and the list the search filters —
+   *  the drill-downs (renderLocal) replace it and come back through paintRoot. */
+  const frame = (): { search: HTMLInputElement; list: HTMLElement } => {
     menu.textContent = "";
     menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Where this session works</span></div>`);
-    const [machines, spaces] = await Promise.all([listMachines(), listSpaces()]);
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "loop-drop-search repo-drop-search ws-locus-search";
+    search.placeholder = "Search folders…";
+    search.spellcheck = false;
+    search.autocomplete = "off";
+    search.addEventListener("mousedown", (ev) => ev.stopPropagation());
+    menu.appendChild(search);
+    const list = document.createElement("div");
+    list.className = "ws-locus-list";
+    menu.appendChild(list);
+    return { search, list };
+  };
+
+  const paintRoot = async (): Promise<void> => {
+    const { search, list } = frame();
+    list.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your places…</div>`);
+    const [machines, spaces, reach] = await Promise.all([listMachines(), listSpaces(), probeSources()]);
     if (!menu.isConnected) return;
     const model = pickerSections({
       surface,
-      machines: machines.filter((m) => surface === "web").map((m) => ({ id: m.id, name: m.name || m.app || "Glyphh desktop", folders: m.folders ?? [] })),
+      machines: machines.filter(() => surface === "web").map((m) => ({ id: m.id, name: m.name || m.app || "Glyphh desktop", folders: m.folders ?? [] })),
       spaces,
       bornLocus: opts.bornLocus,
     });
     const [desk, cloud] = model.sections;
+    const machine = surface === "web" ? (machines.find((m) => m.id === desk.machine?.id) ?? machines[0] ?? null) : null;
+    const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
+    // THE LAST FIVE (his order, 2026-10-04): the desktop's own recent-folder
+    // list there; on the web the folders this member's desktop sessions ran
+    // in — inside the grants, the only ones the relay will run.
+    const deskRecents = surface === "desktop"
+      ? (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? []
+      : (opts.recentFolders?.() ?? []);
+    if (!menu.isConnected) return;
+    const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
+    const labelOf = (sp: { id: string; top: readonly string[] }): string =>
+      (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `folder ${shortId(sp.id)}`);
+    const rows = pickerRecent({
+      surface,
+      current: currentFolder,
+      recents: deskRecents,
+      granted: desk.folders,
+      spaces: spaces.map((sp) => ({ id: sp.id, label: labelOf(sp), updatedAt: sp.updatedAt })),
+      ...(currentSpace ? { currentSpace } : {}),
+    });
+    // WHY a cloud row cannot be picked: the born lock first (cloud stays
+    // cloud), else the probe's own words. Never a bare grey.
+    const cloudWhy: string | undefined = cloud.locked ?? (reach.cloud === false ? (reach.cloudWhy || "Can't reach the cloud runtime right now") : undefined);
     const lockRow = (row: HTMLElement, why: string | undefined): boolean => {
       if (!why) return false;
       markUnreachable(row, why);
       return true;
     };
+    const mid = machine?.id ? { machineId: machine.id } : {};
 
-    // ── the desktop ──────────────────────────────────────────────────────
-    const deskLabel = document.createElement("div");
-    deskLabel.className = "ws-sec-label";
-    deskLabel.innerHTML = `${LOCUS_SVG.local}<span></span>`;
-    (deskLabel.querySelector("span") as HTMLElement).textContent = desk.label;
-    menu.appendChild(deskLabel);
-    if (desk.empty) {
-      const note = drillItem(surface === "web" && desk.machine ? "No folder granted" : "No desktop attached", desk.empty, "");
-      note.classList.add("ws-install");
-      markUnreachable(note, desk.empty);
-      menu.appendChild(note);
-    } else if (surface === "desktop") {
-      const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
-      const recents = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
-      if (!menu.isConnected) return;
-      const shown = [...new Set([currentFolder, ...recents].filter(Boolean))].slice(0, 6);
-      for (const dir of shown) {
-        const sel = dir === currentFolder;
-        const row = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
-        row.classList.add("ws-fs-row");
-        if (sel) row.classList.add("selected");
-        if (!lockRow(row, desk.locked)) row.addEventListener("click", () => pick({ kind: "local", path: dir }));
-        menu.appendChild(row);
+    const draw = (): void => {
+      list.textContent = "";
+      const q = search.value.trim();
+      const shown = filterPickerRows(rows, q);
+
+      // ── the desktop ────────────────────────────────────────────────────
+      const deskLabel = document.createElement("div");
+      deskLabel.className = "ws-sec-label";
+      deskLabel.innerHTML = `${LOCUS_SVG.local}<span></span>`;
+      (deskLabel.querySelector("span") as HTMLElement).textContent = desk.label;
+      list.appendChild(deskLabel);
+      if (desk.empty) {
+        const note = drillItem(surface === "web" && desk.machine ? "No folder granted" : "No desktop attached", desk.empty, "");
+        note.classList.add("ws-install");
+        markUnreachable(note, desk.empty);
+        list.appendChild(note);
+      } else {
+        for (const dir of shown.desktop) {
+          const sel = !!currentFolder && dir === currentFolder;
+          const row = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
+          row.classList.add("ws-fs-row");
+          if (sel) row.classList.add("selected");
+          if (!lockRow(row, desk.locked)) row.addEventListener("click", () => pick({ kind: "local", path: dir, ...mid }));
+          list.appendChild(row);
+        }
+        if (q && !shown.desktop.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No desktop folder matches.</div>`);
+        if (!q && surface === "desktop") {
+          const choose = drillItem("Browse…", "Pick any folder on this computer", "");
+          if (!lockRow(choose, desk.locked)) {
+            choose.addEventListener("click", () => {
+              void w?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) pick({ kind: "local", path: dir }); });
+            });
+          }
+          list.appendChild(choose);
+        } else if (!q) {
+          // One Browse per granted root (the relay walks nothing outside
+          // them); a single grant reads as plain "Browse…".
+          const one = desk.folders.length === 1;
+          for (const root of desk.folders) {
+            const inside = !!currentFolder && folderGranted(currentFolder, [root]);
+            const browse = drillItem(one ? "Browse…" : `Browse ${lastSeg(root)}…`, root, "");
+            if (!lockRow(browse, desk.locked)) {
+              browse.addEventListener("click", () => {
+                menu.textContent = "";
+                renderLocal(menu, opts, machine, pick, () => { void paintRoot(); }, inside ? currentFolder : root);
+              });
+            }
+            list.appendChild(browse);
+          }
+        }
       }
-      const choose = drillItem("Choose folder…", "Pick any folder on this computer", "");
-      if (!lockRow(choose, desk.locked)) {
-        choose.addEventListener("click", () => {
-          void w?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) pick({ kind: "local", path: dir }); });
-        });
-      }
-      menu.appendChild(choose);
-    } else {
-      const machine = machines.find((m) => m.id === desk.machine?.id) ?? machines[0] ?? null;
-      for (const f of desk.folders) {
-        const sel = !!currentFolder && folderGranted(currentFolder, [f]);
-        const row = drillItem(lastSeg(f), currentFolder && sel && currentFolder !== f ? `${f} · in ${lastSeg(currentFolder)}` : f, sel ? CHECK : "");
-        row.classList.add("ws-fs-row");
+
+      // ── the cloud ──────────────────────────────────────────────────────
+      const cloudLabel = document.createElement("div");
+      cloudLabel.className = "ws-sec-label";
+      cloudLabel.innerHTML = `${LOCUS_SVG.cloud}<span></span>`;
+      (cloudLabel.querySelector("span") as HTMLElement).textContent = cloud.label;
+      list.appendChild(cloudLabel);
+      for (const c of shown.cloud) {
+        const when = c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "";
+        const sel = c.id === currentSpace;
+        const row = drillItem(c.label, when ? `Cloud folder · ${when}` : "Cloud folder", sel ? CHECK : "");
         if (sel) row.classList.add("selected");
-        if (!lockRow(row, desk.locked)) {
-          // Into the granted folder: browse below it, or take it as is.
-          row.addEventListener("click", () => {
-            menu.textContent = "";
-            renderLocal(menu, opts, machine, pick, () => { void paintRoot(); }, sel && currentFolder ? currentFolder : f);
+        if (!lockRow(row, cloudWhy)) row.addEventListener("click", () => pick({ kind: "cloud-space", space: c.id, label: c.label }));
+        list.appendChild(row);
+      }
+      if (q && !shown.cloud.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No cloud folder matches.</div>`);
+      if (q) return;
+      if (src.kind !== "local" && opts.cloudScope) {
+        const sub = drillItem("Folder in this workspace…", "Pick a sub-folder of the session's cloud folder", "");
+        if (!lockRow(sub, reach.cloud === false ? cloudWhy : undefined)) {
+          sub.addEventListener("click", () => {
+            close();
+            openCloudFolderBrowser(anchor, { scope: opts.cloudScope, currentDir: (src as { dir?: string }).dir, onPickDir: opts.onPickCloudDir });
           });
         }
-        menu.appendChild(row);
+        list.appendChild(sub);
       }
-    }
-
-    // ── the cloud ────────────────────────────────────────────────────────
-    const cloudLabel = document.createElement("div");
-    cloudLabel.className = "ws-sec-label";
-    cloudLabel.innerHTML = `${LOCUS_SVG.cloud}<span></span>`;
-    (cloudLabel.querySelector("span") as HTMLElement).textContent = cloud.label;
-    menu.appendChild(cloudLabel);
-    const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
-    for (const sp of cloud.spaces.slice(0, 8)) {
-      const label = (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `folder ${shortId(sp.id)}`);
-      const when = sp.updatedAt ? new Date(sp.updatedAt).toLocaleDateString() : "";
-      const sel = src.kind === "cloud-space" && src.space === sp.id;
-      const row = drillItem(label, when ? `Cloud folder · ${when}` : "Cloud folder", sel ? CHECK : "");
-      if (sel) row.classList.add("selected");
-      if (!lockRow(row, cloud.locked)) row.addEventListener("click", () => pick({ kind: "cloud-space", space: sp.id, label }));
-      menu.appendChild(row);
-    }
-    if (src.kind !== "local" && opts.cloudScope) {
-      const sub = drillItem("Folder in this workspace…", "Pick a sub-folder of the session's cloud folder", "");
-      sub.addEventListener("click", () => {
-        close();
-        openCloudFolderBrowser(anchor, { scope: opts.cloudScope, currentDir: (src as { dir?: string }).dir, onPickDir: opts.onPickCloudDir });
-      });
-      menu.appendChild(sub);
-    }
-    const fresh = drillItem("New cloud folder…", "A fresh workspace, named by the new session's id and mirrored to R2", src.kind === "cloud-new" ? CHECK : "");
-    if (src.kind === "cloud-new") fresh.classList.add("selected");
-    if (!lockRow(fresh, cloud.locked)) fresh.addEventListener("click", () => pick({ kind: "cloud-new" }));
-    menu.appendChild(fresh);
-    // A cloud you cannot reach is not a choice (the source chip's rule).
-    void probeSources().then((reach) => {
-      if (reach.cloud !== false || !menu.isConnected) return;
-      let past = false;
-      for (const node of Array.from(menu.children)) {
-        if (node === cloudLabel) { past = true; continue; }
-        if (past && node.classList.contains("code-drop-item")) markUnreachable(node as HTMLElement, "Can't reach the cloud runtime right now");
-      }
-    });
+      const fresh = drillItem("New cloud folder…", "A fresh workspace, named by the new session's id and mirrored to R2", src.kind === "cloud-new" ? CHECK : "");
+      if (src.kind === "cloud-new") fresh.classList.add("selected");
+      if (!lockRow(fresh, cloudWhy)) fresh.addEventListener("click", () => pick({ kind: "cloud-new" }));
+      list.appendChild(fresh);
+    };
+    search.addEventListener("input", draw);
+    draw();
     clampDropUp(menu, anchor);
     clampDropX(menu, anchor);
+    requestAnimationFrame(() => search.focus());
   };
-  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Where this session works</span></div><div class="drop-empty">Checking your places…</div>`);
   void paintRoot();
 }
 
@@ -584,63 +639,60 @@ function clipBoxFor(anchor: HTMLElement): { top: number; bottom: number; left: n
   return { top, bottom, left, right };
 }
 
-/** Slide a drop horizontally so it sits inside its clip box. A drop anchored
- *  to the chip's right edge hangs LEFT, which runs off the edge of a narrow
- *  layout panel — there it has to move right instead. */
+/** The clip box as the placement box menu-place.ts reads. */
+function placeBoxFor(anchor: HTMLElement): PlaceBox {
+  const c = clipBoxFor(anchor);
+  return { left: c.left, top: c.top, width: Math.max(0, c.right - c.left), height: Math.max(0, c.bottom - c.top) };
+}
+
+/**
+ * Hang a drop from its chip and keep it inside its clip box — ONE rule
+ * (menu-place.ts placeMenu), shared with the recents dropdown and the filter
+ * menu. The chip's edge that faces the middle of its row is the preferred
+ * edge (chips on the left hang left-to-left, chips on the right hang
+ * right-to-right); when that runs off the box the menu FLIPS to the other
+ * edge, and when neither fits it is clamped and its width capped. A chip
+ * drop is a drop-UP and never flips below (it would cover the input): it
+ * caps its height to the room above and scrolls.
+ */
 export function clampDropX(menu: HTMLElement, anchor: HTMLElement): void {
   const a = anchor.getBoundingClientRect();
   const wrap = (anchor.parentElement || anchor).getBoundingClientRect();
-
-  // EDGE ALIGNMENT. A drop lines up with the edge of its chip that faces the
-  // middle of the screen: chips on the left of their row hang left-to-left,
-  // chips on the right hang right-to-right. Anything else throws the menu out
-  // over the surface it belongs to.
   const row = anchor.closest<HTMLElement>(".code-composer-bar, .dash-wd-chips, .code-source-slot, .code-chips");
   const rowRect = row?.getBoundingClientRect();
   const onRight = !!rowRect && a.left + a.width / 2 > rowRect.left + rowRect.width / 2;
-  if (onRight) {
-    menu.style.left = "auto";
-    menu.style.right = `${Math.round(wrap.right - a.right)}px`;
-  } else {
-    menu.style.right = "auto";
-    menu.style.left = `${Math.round(a.left - wrap.left)}px`;
-  }
-
-  // ...then keep it inside the surface, whichever edge it was hung from.
   const m = menu.getBoundingClientRect();
-  if (m.left < clip0(anchor).left + 8) {
-    menu.style.right = "auto";
-    menu.style.left = `${Math.round(clip0(anchor).left + 8 - wrap.left)}px`;
-  } else if (m.right > clip0(anchor).right - 8) {
-    menu.style.left = "auto";
-    menu.style.right = `${Math.round(wrap.right - (clip0(anchor).right - 8))}px`;
-  }
+  const p = placeMenu(
+    { left: a.left, top: a.top, width: a.width, height: a.height },
+    { width: m.width, height: m.height },
+    placeBoxFor(anchor),
+    { align: onRight ? "right" : "left", side: "above", gap: 8 },
+  );
+  // The drop is absolutely positioned inside its wrap: viewport → wrap coordinates.
+  menu.style.right = "auto";
+  menu.style.left = `${Math.round(p.left - wrap.left)}px`;
+  menu.style.maxWidth = `${p.maxWidth}px`;
 }
-const clip0 = clipBoxFor;
 
 /** The tallest any chip drop may be — the folder picker's height. Every drop
  *  shares it so the source menu can never out-grow the files menu and spill
  *  past the top of the surface it opens in. */
 const DROP_MAX_PX = 320;
 
-/** Size a drop to the room it has, and FLIP it below the chip when the room
- *  above can't hold a usable menu. */
+/** Size a drop-UP to the room ABOVE its chip (never below — a menu that
+ *  drops down covers the input the user is about to type in). When the room
+ *  is short the menu gets short and SCROLLS; it never overflows. */
 function clampDropUp(menu: HTMLElement, anchor: HTMLElement): void {
   const a = anchor.getBoundingClientRect();
-  const clip = clipBoxFor(anchor);
-  const above = a.top - clip.top - 16;
-  const below = clip.bottom - a.bottom - 16;
-  // NO minimum height. A floor is what let a drop spill past the top of a
-  // short window: it claimed room the surface did not have. Take the roomier
-  // side and never exceed what is actually there — a cramped menu scrolls,
-  // it does not overflow.
-  // ALWAYS UPWARD. These chips sit on a composer; a menu that drops down covers
-  // the input the user is about to type in. When the room above is short the
-  // menu gets short and SCROLLS — it never flips and never overflows.
-  void below;
+  const p = placeMenu(
+    { left: a.left, top: a.top, width: a.width, height: a.height },
+    { width: menu.offsetWidth, height: DROP_MAX_PX },
+    placeBoxFor(anchor),
+    { side: "above", gap: 8 },
+  );
   menu.style.bottom = "";
   menu.style.top = "";
-  menu.style.maxHeight = `${Math.min(DROP_MAX_PX, Math.max(0, Math.round(above)))}px`;
+  menu.style.maxHeight = `${Math.min(DROP_MAX_PX, p.maxHeight)}px`;
   menu.style.overflowY = "auto";
 }
 
@@ -708,20 +760,36 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
 /** `null` = NOT YET KNOWN (the transport isn't up), which is different from
  *  `false` = tried and failed. Conflating them made a still-booting bridge
  *  read as "Cloud unavailable". */
-export interface SourceReach { local: boolean | null; cloud: boolean | null }
+export interface SourceReach {
+  local: boolean | null;
+  cloud: boolean | null;
+  /** Why the cloud is down, when it is — the failure's own words, so a
+   *  greyed row can say more than "can't reach". */
+  cloudWhy?: string;
+}
 let reachCache: { at: number; value: SourceReach } | null = null;
 const REACH_TTL_MS = 15_000;
 
-/** Did the server ANSWER? An HTTP status — 401, 403, 500, anything — means we
- *  reached it. Only a transport-level failure (DNS, refused, offline, CORS)
- *  means unreachable. Treating an expired token as "the cloud is down" told
- *  the user to switch runtimes when all they needed was a refresh. */
+/** Did the server ANSWER? An HTTP status — 401, 403, 404, 500, anything —
+ *  means we reached it. Only a transport-level failure (DNS, refused,
+ *  offline, CORS) means unreachable. Treating an expired token as "the cloud
+ *  is down" told the user to switch runtimes when all they needed was a
+ *  refresh.
+ *
+ *  THE SDK'S OWN ERROR (core/errors.ts ApiError) carries the status as
+ *  `httpStatus` — this read `status`/`statusCode` only, so every answered
+ *  request the SDK made looked like an outage (his report, 2026-10-04: the
+ *  cloud rows all greyed out on the web). */
 function answered(err: unknown): boolean {
-  const e = err as { status?: number; statusCode?: number; response?: { status?: number }; message?: string };
-  if (typeof e?.status === "number" || typeof e?.statusCode === "number") return true;
+  const e = err as { status?: number; statusCode?: number; httpStatus?: number; response?: { status?: number }; message?: string };
+  if (typeof e?.status === "number" || typeof e?.statusCode === "number" || typeof e?.httpStatus === "number") return true;
   if (typeof e?.response?.status === "number") return true;
   return /\b(4\d{2}|5\d{2})\b/.test(String(e?.message ?? ""));
 }
+const errorText = (err: unknown): string => {
+  const m = (err as { message?: unknown })?.message;
+  return typeof m === "string" && m.trim() ? m.trim() : String(err ?? "no answer");
+};
 
 /** Can we reach an attached machine? Web asks the relay; on the desktop the
  *  machine is this process, so the only question is whether it can list. */
@@ -740,23 +808,33 @@ async function probeLocal(): Promise<boolean | null> {
 }
 
 /**
- * Can we reach the cloud runtime surface? The session list is the cheapest
- * authenticated call that proves the whole path (auth + control plane).
+ * Can we reach the cloud runtime surface?
  *
- * On WEB this must go through the SDK handle and nothing else: `window.glyphh`
- * there is a Proxy that fabricates a function for ANY name, so a desktop-style
- * fallback looks present, gets called, and fails — reporting the cloud down
- * while it was perfectly reachable.
+ * On WEB the probe is THE CALL THE CLOUD ROWS ARE MADE OF: the harness front
+ * door's `fsSpaces` (GET /api/harness/fs/spaces — the member's cloud folders).
+ * It used to be `sessions.list()` (GET /api/sessions), a control-plane route
+ * the server no longer serves: its 404 carried no `status` field this code
+ * read, so the cloud read as DOWN on every web open and every cloud row
+ * greyed out (his report, 2026-10-04). Reaching the front door — any HTTP
+ * answer — is reachable; only a transport failure is not. The probe goes
+ * through the SDK handle and nothing else: `window.glyphh` on web is a Proxy
+ * that fabricates a function for ANY name, so a desktop-style fallback looks
+ * present, gets called, and fails.
+ *
+ * On the DESKTOP main's thread list is the cheapest authenticated call that
+ * proves the same path (auth + control plane).
  */
-async function probeCloud(): Promise<boolean | null> {
+async function probeCloud(): Promise<{ ok: boolean | null; why?: string }> {
   if (isWeb()) {
-    const sessions = sdk()?.sessions;
-    if (!sessions?.list) return null;   // bridge not up yet — unknown, not down
-    try { await sessions.list(); return true; } catch (err) { return answered(err); }
+    const h = (sdk() as { harnessViaApi?: () => { fsSpaces: () => Promise<unknown> } } | undefined)?.harnessViaApi;
+    if (typeof h !== "function") return { ok: null };   // bridge not up yet — unknown, not down
+    try { await h().fsSpaces(); return { ok: true }; }
+    catch (err) { return answered(err) ? { ok: true } : { ok: false, why: `Can't reach the cloud runtime right now (${errorText(err)})` }; }
   }
   const g = (window as unknown as { glyphh?: { threadsList?: () => Promise<unknown> } }).glyphh;
-  if (typeof g?.threadsList !== "function") return null;
-  try { await g.threadsList(); return true; } catch (err) { return answered(err); }
+  if (typeof g?.threadsList !== "function") return { ok: null };
+  try { await g.threadsList(); return { ok: true }; }
+  catch (err) { return answered(err) ? { ok: true } : { ok: false, why: `Can't reach the cloud runtime right now (${errorText(err)})` }; }
 }
 
 /** Probe both, cached briefly so opening the menu twice is not two round trips.
@@ -765,11 +843,10 @@ export async function probeSources(force = false): Promise<SourceReach> {
   if (!force && reachCache && Date.now() - reachCache.at < REACH_TTL_MS) return reachCache.value;
   if (force) reachCache = null;
   const [local, cloud] = await Promise.all([probeLocal(), probeCloud()]);
-  const value = { local, cloud };
-  if (local !== null && cloud !== null) reachCache = { at: Date.now(), value };
+  const value: SourceReach = { local, cloud: cloud.ok, ...(cloud.why ? { cloudWhy: cloud.why } : {}) };
+  if (local !== null && cloud.ok !== null) reachCache = { at: Date.now(), value };
   return value;
 }
-
 /** Mark a row unreachable: not clickable, and it says why. */
 function markUnreachable(row: HTMLElement, why: string): void {
   row.classList.add("ws-unreachable");
@@ -798,7 +875,7 @@ function renderRoot(
   np.addEventListener("click", () => { if (!np.classList.contains("ws-unreachable")) pick({ kind: "cloud-new" }); });
   menu.appendChild(np);
   void probeSources().then((reach) => {
-    if (reach.cloud === false) markUnreachable(np, "Can't reach the cloud runtime right now");
+    if (reach.cloud === false) markUnreachable(np, reach.cloudWhy || "Can't reach the cloud runtime right now");
   });
 
   // ── Your existing cloud SPACES — pick one to open a session back INSIDE

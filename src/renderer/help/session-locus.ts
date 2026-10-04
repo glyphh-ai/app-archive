@@ -205,3 +205,91 @@ export function pickerSections(input: {
 export function sourceLocus(source: { kind: string } | null | undefined): Locus {
   return source?.kind === "local" ? "local" : "cloud";
 }
+
+// ── THE DEFAULT FOLDER ON THE WEB ────────────────────────────────────────
+
+/**
+ * The folder a NEW web session starts in when a desktop is attached (his
+ * report, 2026-10-04: "a new web session does not default to a folder, even
+ * though the desktop is connected and allowing a folder"). In order:
+ *   1. the stored pick, when it is still inside a granted folder;
+ *   2. the most recently used folder (newest first) inside a granted folder;
+ *   3. the first granted folder;
+ *   4. "" — nothing is granted, so there is no folder a turn could use.
+ * The answer is ALWAYS inside a grant: the chip names the folder the turn
+ * will actually run in, never one the relay would refuse.
+ */
+export function defaultWebFolder(input: {
+  machines: readonly GrantedMachine[];
+  /** Folders of this member's desktop sessions, newest first. */
+  recents: readonly string[];
+  stored?: string;
+}): string {
+  const granted = input.machines.flatMap((m) => m.folders ?? []).filter(Boolean);
+  if (!granted.length) return "";
+  if (input.stored && folderGranted(input.stored, granted)) return input.stored;
+  const recent = input.recents.find((f) => !!f && folderGranted(f, granted));
+  return recent ?? granted[0];
+}
+
+// ── THE PICKER'S ROWS: THE LAST FIVE, SEARCHABLE ─────────────────────────
+
+/** How many folders each section of the picker lists (his order,
+ *  2026-10-04: "only show the last maybe 5 of local or remote"). */
+export const PICKER_RECENT_MAX = 5;
+
+export interface PickerCloudRow { id: string; label: string; updatedAt: number }
+export interface PickerRows { desktop: string[]; cloud: PickerCloudRow[] }
+
+const samePath = (a: string, b: string): boolean => normPath(a) === normPath(b);
+
+/**
+ * The folders the picker lists: the current folder first, then the last
+ * used ones on that machine, de-duplicated and capped at PICKER_RECENT_MAX;
+ * on the web only folders inside a grant are offered (the relay refuses the
+ * rest). The cloud rows are the member's cloud folders newest first, the
+ * current one first, capped the same way.
+ */
+export function pickerRecent(input: {
+  surface: "desktop" | "web";
+  current: string;
+  /** Newest first. */
+  recents: readonly string[];
+  granted: readonly string[];
+  spaces: readonly PickerCloudRow[];
+  currentSpace?: string;
+}): PickerRows {
+  const desktop: string[] = [];
+  for (const f of [input.current, ...input.recents]) {
+    if (!f) continue;
+    if (input.surface === "web" && !folderGranted(f, input.granted)) continue;
+    if (desktop.some((d) => samePath(d, f))) continue;
+    desktop.push(f);
+    if (desktop.length >= PICKER_RECENT_MAX) break;
+  }
+  const sorted = [...input.spaces].sort((a, b) => {
+    if (input.currentSpace) {
+      if (a.id === input.currentSpace) return -1;
+      if (b.id === input.currentSpace) return 1;
+    }
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
+  const cloud: PickerCloudRow[] = [];
+  for (const sp of sorted) {
+    if (cloud.some((c) => c.id === sp.id)) continue;
+    cloud.push(sp);
+    if (cloud.length >= PICKER_RECENT_MAX) break;
+  }
+  return { desktop, cloud };
+}
+
+/** The picker's search: a substring over the folder's path and over a cloud
+ *  row's label — case-insensitive, like the recents search. Empty = all. */
+export function filterPickerRows(rows: PickerRows, query: string): PickerRows {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return {
+    desktop: rows.desktop.filter((f) => f.toLowerCase().includes(q)),
+    cloud: rows.cloud.filter((c) => `${c.label} ${c.id}`.toLowerCase().includes(q)),
+  };
+}

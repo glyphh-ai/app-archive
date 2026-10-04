@@ -16,7 +16,9 @@ import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
   type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike,
+  defaultWebFolder, type GrantedMachine,
 } from "./session-locus.js";
+import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
@@ -2944,6 +2946,38 @@ const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
  *  raw cloud constant, so the desktop's default stays the user's machine. */
 let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
+
+/** The folders this member's DESKTOP sessions ran in, newest first — the
+ *  recents the folder picker lists on the web ("the last 5") and the second
+ *  rung of the web's default folder (session-locus.ts defaultWebFolder). */
+function recentDesktopFolders(): string[] {
+  const out: string[] = [];
+  for (const s of railSessions) {
+    if ((s.locus ?? "local") !== "local" || !s.cwd) continue;
+    if (!out.includes(s.cwd)) out.push(s.cwd);
+  }
+  return out;
+}
+
+/**
+ * WEB: the default folder follows the desktop. A desktop that attaches or
+ * grants a folder AFTER boot, or a thread list that lands after the source
+ * resolved, re-resolves it here — on every rail refresh, and only while the
+ * DEFAULT is in play (the user has not picked a source of their own).
+ */
+function reconcileWebDefaultFolder(): void {
+  if (!onWebTarget()) return;
+  const machines = threadStore.attachedMachines();
+  if (!machines.length) return;
+  const folder = defaultWebFolder({ machines, recents: recentDesktopFolders() });
+  if (!folder) return;
+  const next: Source = { kind: "local", path: folder };
+  const inPlay = sameSource(pendingSource, resolvedDefaultSource);
+  resolvedDefaultSource = { ...next };
+  if (!inPlay || sameSource(pendingSource, next)) return;
+  pendingSource = { ...next };
+  repaintSourceUi();
+}
 const SOURCE_PREF = "workspaceSourceCode";
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
 let gitChip: ReturnType<typeof createGitChip> | null = null;
@@ -3434,6 +3468,7 @@ function initFolderLocusChips(): void {
         bornLocus,
         cloudScope: cloudBrowseScope(),
         onPickCloudDir: (rel) => setCloudDir(rel),
+        recentFolders: recentDesktopFolders,
       });
     }, true);
   }
@@ -5382,11 +5417,10 @@ function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_
     mark.innerHTML = LOCUS_SVG[o.key];
     row(o.name, locusFilter === o.key, mark, () => setLocusFilter(locusFilter === o.key ? "" : o.key));
   }
-  const r = anchor.getBoundingClientRect();
-  m.style.position = "fixed";
-  m.style.left = `${r.left}px`;
-  m.style.top = `${r.bottom + 4}px`;
-  document.body.appendChild(m);
+  // Placed by the one rule (menu-place.ts): below the funnel, hanging from
+  // its left edge, flipped to its right edge / above it when the viewport has
+  // no room there (his report, 2026-10-04: cut off with the agent on the right).
+  placeFixedMenu(anchor, m, { align: "left", side: "auto" });
   loopFilterMenu = m;
   const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
   document.addEventListener("mousedown", close, true);
@@ -5614,6 +5648,7 @@ async function loadRailSessions(): Promise<void> {
       };
     })
     .sort((a, b) => b.mtime - a.mtime);
+  reconcileWebDefaultFolder();
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   railCliSessions = await loadCliSessions();
   primeVendorMarks();
@@ -7013,10 +7048,17 @@ export function initCode(): void {
         local = { kind: "local", path: dir };
       } else {
         try {
-          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
+          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean; machines?: GrantedMachine[] }> } } }).glyphhSdk?.attach?.status?.();
           // THE DEFAULT PLACE (session-locus.ts): the attached desktop when
-          // there is one, the cloud when none is.
-          if (defaultLocus("web", !!st?.attached) === "local") local = { kind: "local", path: "" };
+          // there is one, the cloud when none is — AND THE DEFAULT FOLDER
+          // (his report, 2026-10-04: "a new web session does not default to a
+          // folder"): a folder that desktop granted, the last used one first,
+          // so the chip names the folder the turn will actually run in. A
+          // local source with no path ran nowhere the relay would allow while
+          // the chip showed the desktop's own cwd.
+          if (defaultLocus("web", !!st?.attached) === "local") {
+            local = { kind: "local", path: defaultWebFolder({ machines: st?.machines ?? [], recents: recentDesktopFolders() }) };
+          }
         } catch { /* stays cloud */ }
       }
       if (!local) return;

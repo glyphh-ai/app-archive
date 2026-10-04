@@ -21755,3 +21755,9 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 /* The turn's timing line under an answer (ready · first token · tok/s · total). */
 .code-msg-timing { font-size: 10.5px; color: var(--text-faint); margin: 4px 0 0 2px; font-variant-numeric: tabular-nums; }
 
+
+/* THE FOLDER PICKER'S SEARCH + LIST (his order, 2026-10-04: "it needs a
+   search… only show the last maybe 5 of local or remote"). The search stays
+   put under the head; the two sections scroll beneath it. */
+.ws-locus-drop .ws-locus-search { flex: 0 0 auto; margin: 0 0 6px; width: 100%; box-sizing: border-box; }
+.ws-locus-drop .ws-locus-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }

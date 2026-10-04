@@ -2,6 +2,8 @@
  * Shared utilities and types used across help sections.
  */
 
+import { placeFixedMenu } from "./menu-place.js";
+
 declare const Chart: any;
 
 // ── Utility functions ──────────────────────────────────────
@@ -54,26 +56,16 @@ export function cssVar(name: string): string {
 // ── Fixed popover placement ────────────────────────────────
 
 /**
- * Place a body-appended, position:fixed menu against its anchor: right-aligned
- * to the anchor but clamped inside the viewport, below the anchor but FLIPPED
- * ABOVE it when the bottom would clip (the drop-up case — anchors along the
- * collapsed bar always flip). Appends the menu to <body> if it isn't mounted,
- * and measures before showing so the first paint lands in place.
+ * Place a body-appended, position:fixed menu against its anchor — the ONE
+ * rule in menu-place.ts: right-aligned to the anchor, flipped to hang from
+ * its left edge when that runs off the viewport (his report, 2026-10-04: the
+ * recents dropdown cut off with the agent on the right), clamped inside
+ * either way; below the anchor, flipped above when the bottom would clip.
+ * Appends the menu to <body> if it isn't mounted, and measures before
+ * showing so the first paint lands in place.
  */
 export function placeDropup(anchor: HTMLElement, menu: HTMLElement): void {
-  const r = anchor.getBoundingClientRect();
-  menu.style.position = "fixed";
-  menu.style.visibility = "hidden";   // measure before showing
-  if (!menu.isConnected) document.body.appendChild(menu);
-  const mw = menu.offsetWidth;
-  const mh = menu.offsetHeight;
-  const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
-  const top = r.bottom + 6 + mh > window.innerHeight - 8
-    ? Math.max(8, r.top - mh - 6)
-    : r.bottom + 6;
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
-  menu.style.visibility = "";
+  placeFixedMenu(anchor, menu, { align: "right", side: "auto", gap: 6 });
 }
 
 // ── Drop-up detail pane ────────────────────────────────────
