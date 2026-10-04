@@ -489,23 +489,46 @@ contextBridge.exposeInMainWorld("glyphh", {
   dripsStop: () => ipcRenderer.invoke("drips-stop") as Promise<string>,
   dripsRunning: () => ipcRenderer.invoke("drips-running") as Promise<string[]>,
 
-  // Run-stream observer (the desktop transport behind attachToActiveRun): the
+  // ── THE CLOUD LANE (main/cloud-run.ts, 2026-10-04): a cloud session's turn
+  // runs on the member's ephemeral worker through main's SDK client, streamed
+  // back as frames; remote-run.ts wraps these into the same run handle the web
+  // consumes. Every event is keyed by chatId so one listener serves all panels.
+  cloudRunStart: (p: { chatId: string; threadId: string; prompt: string; mode: "work" | "code"; model?: string; loop?: string; permission?: "ask" | "plan" | "acceptEdits" | "auto"; effort?: string; images?: Array<{ mediaType: string; data: string }>; memory?: unknown; subdir?: string; repo?: string }) =>
+    ipcRenderer.invoke("glyphh-cloud-run-start", p) as Promise<{ ok: true; runId: string } | { ok: false; error: string }>,
+  cloudRunAnswer: (p: { runId: string; id: string; reply: { allow?: boolean; answers?: string[] } }) =>
+    ipcRenderer.invoke("glyphh-cloud-run-answer", p) as Promise<{ ok: boolean; error?: string }>,
+  cloudRunStop: (p: { runId?: string; chatId?: string }) =>
+    ipcRenderer.invoke("glyphh-cloud-run-stop", p) as Promise<{ ok: boolean; error?: string }>,
+  cloudRunPermission: (p: { runId: string; mode: "ask" | "plan" | "acceptEdits" | "auto" }) =>
+    ipcRenderer.invoke("glyphh-cloud-run-permission", p) as Promise<{ ok: boolean; error?: string }>,
+  onCloudRunFrame: (cb: (p: { chatId: string; runId: string; frame: unknown }) => void) => {
+    const l = (_e: unknown, p: { chatId: string; runId: string; frame: unknown }) => cb(p);
+    ipcRenderer.on("glyphh-cloud-run:frame", l);
+    return () => { ipcRenderer.removeListener("glyphh-cloud-run:frame", l); };
+  },
+  onCloudRunDone: (cb: (p: { chatId: string; runId: string } & ({ ok: true; result: { runId: string; stopped: boolean; text: string; error?: string } } | { ok: false; error: string })) => void) => {
+    const l = (_e: unknown, p: { chatId: string; runId: string } & ({ ok: true; result: { runId: string; stopped: boolean; text: string; error?: string } } | { ok: false; error: string })) => cb(p);
+    ipcRenderer.on("glyphh-cloud-run:done", l);
+    return () => { ipcRenderer.removeListener("glyphh-cloud-run:done", l); };
+  },
+  // Run observer (the desktop transport behind attachToActiveRun): a run in
+  // flight on the pod — this desktop's own, replayed, or the SDK's watch. The
   // renderer supplies its own subscription token, so pushed frames are
   // filterable from the very first event. Returns unsubscribe functions.
   runStreamAttach: (threadId: string, token: string) =>
-    ipcRenderer.invoke("run-stream-attach", threadId, token) as Promise<{ ok: boolean; error?: string }>,
-  runStreamStop: (token: string) => ipcRenderer.invoke("run-stream-stop", token) as Promise<{ ok: boolean }>,
+    ipcRenderer.invoke("glyphh-cloud-run-attach", { threadId, token, from: "0" }) as Promise<{ ok: boolean; running?: boolean; error?: string }>,
+  runStreamStop: (token: string) => ipcRenderer.invoke("glyphh-cloud-run-detach", { token }) as Promise<{ ok: boolean }>,
   /** Cross-surface stop of an observed run by its id. */
   harnessStopRun: (runId: string) => ipcRenderer.invoke("harness-stop-run", runId) as Promise<{ ok: boolean; error?: string }>,
   onRunStreamFrame: (cb: (p: { token: string; frame: unknown }) => void) => {
     const l = (_e: unknown, p: { token: string; frame: unknown }) => cb(p);
-    ipcRenderer.on("run-stream-frame", l);
-    return () => { ipcRenderer.removeListener("run-stream-frame", l); };
+    ipcRenderer.on("glyphh-cloud-run:observe", l);
+    return () => { ipcRenderer.removeListener("glyphh-cloud-run:observe", l); };
   },
   onRunStreamRun: (cb: (p: { token: string; runId: string }) => void) => {
     const l = (_e: unknown, p: { token: string; runId: string }) => cb(p);
-    ipcRenderer.on("run-stream-run", l);
-    return () => { ipcRenderer.removeListener("run-stream-run", l); };
+    ipcRenderer.on("glyphh-cloud-run:observe-run", l);
+    return () => { ipcRenderer.removeListener("glyphh-cloud-run:observe-run", l); };
   },
 
   // Session

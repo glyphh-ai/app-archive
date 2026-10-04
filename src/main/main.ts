@@ -84,6 +84,7 @@ import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-
 import { registerAgentStubs } from "./agent-stubs";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAgentLiveIpc } from "./agent-live";
+import { registerCloudRunIpc } from "./cloud-run";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -461,6 +462,7 @@ async function boot() {
     registerAgentIpc();
     registerRemoteControlIpc();
     registerAgentLiveIpc();
+    registerCloudRunIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {

@@ -577,9 +577,8 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // Lightweight git probe used by folder-bound app chrome (Agent app etc.)
   // to surface the current branch when the working folder is a git repo.
-  // The caller's existing cloud workspaces — the source chip's space browser.
-  ipcMain.handle("cloud-spaces-list", () => []);   // THE PURGE: cloud spaces are gone
-  ipcMain.handle("cloud-fs-browse", () => ({ ok: false, error: "cloud sessions are gone" }));
+  // (The cloud sections of the source chip — cloud-spaces-list, cloud-fs-browse —
+  //  are the cloud lane's, cloud-run.ts, since 2026-10-04.)
 
   ipcMain.handle("files:git-info", (_e, root: string) =>
     gitInfoForDir(root));

@@ -3,10 +3,12 @@
  * owner order 2026-09-10: "for now just dead end all those agent calls").
  *
  * The built-in agent engine, its pickers (models/loops), cloud memory,
- * connections, hosting, marketplace listings, and the run-stream observer are
- * gone from the main process. The renderer's chat shell still exists (it is
- * the future face of the CLI workpanel — the NORTH STAR is cli → glyphh
- * agent UX), so every surviving call site gets a SENTENCE back instead of a
+ * connections, hosting and marketplace listings are gone from the main
+ * process. (The run observer and the cross-surface stop came back as the
+ * cloud lane, cloud-run.ts, 2026-10-04.) The renderer's chat shell still
+ * exists (it is the future face of the CLI workpanel — the NORTH STAR is
+ * cli → glyphh agent UX), so every surviving call site gets a SENTENCE back
+ * instead of a
  * dead invoke: `{ ok: false, error: RETIRED }` in the envelope shape, or an
  * empty list where callers expect a bare array. One file, auditable, deleted
  * lane-by-lane as real replacements land (local registry in P3d, the CLI
@@ -30,7 +32,6 @@ const ENVELOPE = [
   "app-server-deploy", "app-server-deployments", "app-server-destroy", "app-servers-list",
   "app-version-set",
   "files:r2-diff",
-  "harness-stop-run",
   "hosting-deploy", "hosting-destroy", "hosting-status",
   "loop-apply-config", "loop-role-set",
   "marketing-link-create", "marketing-link-delete", "marketing-link-update", "marketing-links",
@@ -38,7 +39,6 @@ const ENVELOPE = [
   "gateway-metrics",
   "workspace-provider-keys", "workspace-provider-key-set", "workspace-provider-key-clear",
   "gateway-keys-list", "gateway-keys-create", "gateway-keys-revoke",
-  "run-stream-attach", "run-stream-stop",
   "apikeys-create",
   "apikeys-list",
   "apikeys-revoke",
