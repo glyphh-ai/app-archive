@@ -35,6 +35,9 @@ import {
 import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
 // DOM-free at import time; only running a recipe touches the document.
 import { runDripRecipe } from './drip-web-runner.js';
+// The CLI agent window on web: the command is computed HERE (the worker's pty
+// starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
+import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
@@ -1138,6 +1141,14 @@ export function buildContract(client, deps) {
     // the boot render is clean. P6 routes them over attach to a connected provider; until
     // then a user-triggered local ACTION surfaces "needs a machine" (not a boot read).
     recentsList: async () => EMPTY.list(),          // rail recents (local app/layout opens)
+
+    // ── The CLI agent window (his order, 2026-10-04) ───────────────────────────────
+    // The tiles exist on web too; an open yields the command the WORKER's terminal
+    // starts (POST /api/harness/pty { command }) — no gateway, no local MCP, the CLI
+    // signs in on its own in the worker. `missing` is never reported here (only
+    // the worker knows what it has installed).
+    cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    cliAgentOpen: async (id, overrides) => openWebCliAgent(id, overrides ?? {}),
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),
     localMcpStatus: async () => ({ running: false, port: null }),

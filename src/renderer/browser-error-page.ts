@@ -326,7 +326,7 @@ export function browserErrorPage(info: BrowserErrorInfo, p: ErrorPalette): strin
 // dropped, nobody is signed in. They used to render as two lines of grey text
 // with no mascot and no way back — same family of problem, so the same card.
 
-export type PanelStateKey = "desktop-offline" | "disconnected" | "signed-out" | "failed" | "streams-off";
+export type PanelStateKey = "desktop-offline" | "disconnected" | "signed-out" | "failed" | "streams-off" | "worker-unavailable";
 
 const PANEL_STATES: Record<PanelStateKey, { kind: Kind; badge: string }> = {
   "desktop-offline": {
@@ -359,6 +359,17 @@ const PANEL_STATES: Record<PanelStateKey, { kind: Kind; badge: string }> = {
       icon: "alert", mascot: "patch", mascotName: "Patch", tone: "bad",
       title: "Couldn't open the panel",
       detail: "Your desktop is connected but refused to open this page.",
+    },
+  },
+  // THE WORKER could not take this (the server answered 503 / 412 on
+  // POST /api/harness/pty): no cloud worker for the org right now, or the
+  // workspace is not ready. Honest, with a retry — never a dead rectangle.
+  "worker-unavailable": {
+    badge: "Unavailable",
+    kind: {
+      icon: "server", mascot: "patch", mascotName: "Patch", tone: "warn",
+      title: "No worker available",
+      detail: "This terminal runs on a cloud worker, and none could take it right now. Try again in a moment.",
     },
   },
   // STREAMED WEB PANELS are behind a flag (his order, 2026-10-04): off by

@@ -19,7 +19,7 @@
 import { formatMarkdown } from "./format-markdown.js";
 import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
-import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
+import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
@@ -9717,18 +9717,27 @@ async function init(): Promise<void> {
     t.term = undefined; t.fit = undefined; t.detach = undefined; t.ro = undefined;
   }
 
-  // ── WEB terminal transport (remote pty on the attached desktop) ──
+  // ── WEB terminal transport (the worker pty, or the attached desktop) ──
   /**
-   * Open the relayed shell for a web Terminal tab. Failure renders the SAME
-   * honest state card the streamed panel shows (desktop-offline / signed-out /
-   * failed / disconnected) into the terminal host, with a retry — never a
-   * dead black rectangle.
+   * Open the far shell for a web Terminal tab (his order, 2026-10-04): the
+   * session's CLOUD WORKER through /api/harness/pty by default; the user's
+   * attached DESKTOP over the relay when the current session is bound to a
+   * machine (window.wb.locus().local). A slotted first command — the CLI
+   * agent window's `claude` / `codex` line — is handed to the worker so the
+   * pty STARTS that program; a desktop shell gets it typed in after boot.
+   * Failure renders the SAME honest state card the streamed panel shows
+   * (worker-unavailable / desktop-offline / signed-out / failed /
+   * disconnected) into the terminal host, with a retry — never a dead black
+   * rectangle.
    */
   async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number): Promise<void> {
     const term = wbt.term;
     if (wbt.remote || !term) return;
+    const locus = (window as unknown as { wb?: { locus?: () => { local?: boolean } } }).wb?.locus?.();
+    const target: RemotePtyTarget = locus?.local ? "desktop" : "worker";
+    const command = wbt.initCmd;
     try {
-      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined }, {
+      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined, target, ...(command ? { command } : {}) }, {
         onData: (bytes) => term.write(bytes),
         // Leave the buffer up on exit so the user can read it (local parity).
         onExit: () => { wbt.remote = undefined; },
@@ -9741,10 +9750,11 @@ async function init(): Promise<void> {
       wbt.remote = remote;
       hostEl.querySelector(".ws-term-offline")?.remove();
       if (wbt.initCmd) {
-        // The layout's slotted first command — once, after the shell boots.
+        // The slotted first command — started by the worker's pty itself, or
+        // typed once after a desktop shell boots.
         const cmd = wbt.initCmd;
         wbt.initCmd = undefined;
-        setTimeout(() => wbt.remote?.write(`${cmd}\r`), 600);
+        if (!remote.startedCommand) setTimeout(() => wbt.remote?.write(`${cmd}\r`), 600);
       }
       // The layout may have settled while the open round-tripped.
       if (term.cols !== cols || term.rows !== rows) remote.resize(term.cols, term.rows);
@@ -9768,7 +9778,9 @@ async function init(): Promise<void> {
       retryAttrs: 'data-term-retry="1"',
       ...(state === "desktop-offline"
         ? { detail: "This terminal runs a shell on your desktop. Open the Glyphh desktop app and sign in, then try again." }
-        : detail ? { detail } : {}),
+        : state === "worker-unavailable"
+          ? { detail: "This terminal runs on your session's cloud worker, and none could take it right now (the server said so). Try again in a moment." }
+          : detail ? { detail } : {}),
     });
     overlay.querySelector<HTMLButtonElement>("[data-term-retry]")?.addEventListener("click", () => {
       overlay.remove();

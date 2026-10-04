@@ -37,10 +37,12 @@ const msg = (e) => (e instanceof Error ? e.message : String(e));
 
 // ── The session locus (fed by web-contract.js's session-cache write path) ────
 
-let locus = { chatId: '', cloud: false };
+let locus = { chatId: '', cloud: false, local: false, scope: '' };
 
-/** The current session's locus: which chat is current, and does it run in the
- *  cloud? (Same rule as code.ts: remote ⇔ source present and not "local".) */
+/** The current session's locus: which chat is current, does it run in the
+ *  cloud (same rule as code.ts: remote ⇔ source present and not "local"), and
+ *  is it BOUND TO A MACHINE (`local`: a local source — the web terminal then
+ *  rides the desktop relay instead of the worker pty). */
 export const wbLocus = () => ({ ...locus });
 
 /**
@@ -53,11 +55,12 @@ export function noteSessionsSnapshot(chats, currentId) {
   const id = String(currentId || '');
   const c = Array.isArray(chats) ? chats.find((x) => x && x.id === id) : null;
   const cloud = !!(c && c.source && c.source.kind !== 'local');
+  const local = !!(c && c.source && c.source.kind === 'local');
   // A cloud-space session re-enters an EXISTING workspace: the fs scope is
   // the space's original thread id (remote-run threads the run identically).
   const scope = cloud ? String((c.source && c.source.space) || id) : '';
-  if (id === locus.chatId && cloud === locus.cloud && scope === locus.scope) return;
-  locus = { chatId: id, cloud, scope };
+  if (id === locus.chatId && cloud === locus.cloud && local === locus.local && scope === locus.scope) return;
+  locus = { chatId: id, cloud, local, scope };
   try {
     window.dispatchEvent(new CustomEvent('glyphh:wb-locus-changed', { detail: { ...locus } }));
   } catch { /* bare test stubs — the selector reads wbLocus() lazily anyway */ }
@@ -308,6 +311,10 @@ export function createWbSelector({ relay, pod, isCloud = () => locus.cloud }) {
     onFileChanged: (cb) => subscribe(subs.file, cb),
     onGitChanged: (cb) => subscribe(subs.git, cb),
     onCwdChanged: (cb) => subscribe(subs.cwd, cb),
+    /** The current session's locus (web only) — the Terminal panel picks its
+     *  transport by it: a machine-bound session → the desktop relay, anything
+     *  else → the worker pty (remote-terminal.ts). */
+    locus: () => wbLocus(),
   };
 
   // Everything else routes to the ACTIVE transport at call time; both

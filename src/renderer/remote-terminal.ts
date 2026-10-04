@@ -1,29 +1,36 @@
 /**
- * remote-terminal.ts — the WEB Terminal panel's pty, running on the user's
- * ATTACHED DESKTOP over the panel relay.
+ * remote-terminal.ts — the WEB Terminal panel's pty. Two transports, picked
+ * by the session's locus (his order, 2026-10-04):
  *
- * On desktop a Terminal slot drives node-pty over local `wb-term:*` IPC. On
- * web there is no machine, so this module is the drop-in transport: it opens
- * a shell ON the desktop via the relay's `pty.open`, pipes output pushes
- * (`{type:"data", bytes:<base64 utf-8>}` on the ptyId channel) back to xterm,
- * and sends keystrokes/resizes as `pty.input`/`pty.resize`. `dispose()` sends
- * `pty.close`. The server additionally sweeps our ptys if this page dies
- * without closing, and the desktop kills them if its attach socket drops —
- * no orphaned shells from any direction.
+ *   WORKER (the default on web): a shell on the session's CLOUD WORKER through
+ *     the server's front door — `POST /api/harness/pty {cwd?, cols, rows,
+ *     command?}` → `{ptyId, wsPath}`, then one WebSocket per terminal at
+ *     `wss://<api>/api/harness/pty/<ptyId>?token=<session token>` carrying
+ *     JSON frames both ways: `{type:"data", data}` / `{type:"resize", cols,
+ *     rows}` / `{type:"close"}` (pty-frames.ts is the codec). `command` makes
+ *     the pty start that program instead of the login shell — the CLI agent
+ *     window (claude / codex / …) on web. The worker's workspace is the cwd.
  *
- * One SHARED relay socket serves every terminal on the page (refcounted;
- * closed when the last pty goes) — unlike the streamed panel, which owns a
- * socket per panel, a workbench full of terminal tabs shouldn't hold N
- * sockets. Same envelope, same helper (relay-socket.ts).
+ *   DESKTOP (a machine-bound session): a shell on the user's ATTACHED DESKTOP
+ *     over the panel relay — `pty.open`, output pushes (`{type:"data",
+ *     bytes:<base64 utf-8>}` on the ptyId channel), `pty.input`/`pty.resize`,
+ *     `pty.close` on dispose. One SHARED relay socket serves every desktop
+ *     terminal on the page (refcounted). Same envelope as the streamed panel
+ *     (relay-socket.ts).
  *
- * Failure is typed (RemotePtyError.state maps onto the panel state cards) so
- * the workbench can show the SAME honest "desktop not connected" card the
- * streamed panel shows, instead of a dead black rectangle.
+ * On desktop a Terminal slot drives node-pty over local `wb-term:*` IPC; this
+ * module is the web's drop-in for it. Failure is typed (RemotePtyError.state
+ * maps onto the panel state cards) so the workbench shows an honest card —
+ * desktop not connected, no worker available (503/412), signed out — instead
+ * of a dead black rectangle.
  */
 
 import { connectRelaySocket, relaySdk, type RelaySocket } from "./relay-socket.js";
+import { harnessRequest, harnessToken, harnessWsUrl, HarnessHttpError } from "./help/harness-api.js";
+import { decodePtyFrame, dataFrame, resizeFrame, closeFrame, ptyOpenBody } from "./pty-frames.js";
 
-export type RemotePtyFailure = "desktop-offline" | "signed-out" | "failed";
+export type RemotePtyFailure = "desktop-offline" | "worker-unavailable" | "signed-out" | "failed";
+export type RemotePtyTarget = "worker" | "desktop";
 
 export class RemotePtyError extends Error {
   readonly state: RemotePtyFailure;
@@ -48,6 +55,10 @@ export interface RemotePtyHandle {
   resize(cols: number, rows: number): void;
   /** Close the far shell + release the shared socket. Idempotent. */
   dispose(): void;
+  /** True when the far side STARTED `command` itself (the worker pty does);
+   *  false when the caller still has to type it in after the shell boots
+   *  (the desktop relay opens a plain shell). */
+  readonly startedCommand: boolean;
 }
 
 // ── the shared, refcounted relay socket ──────────────────────────────────────
@@ -91,16 +102,105 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+export interface RemotePtyOpenOpts {
+  cols: number;
+  rows: number;
+  /** A folder to start in — inside the worker's workspace, or on the machine. */
+  cwd?: string;
+  /** A program to start instead of the login shell (the CLI agent window). */
+  command?: string;
+  /** Which far side runs the shell. Default: the worker. */
+  target?: RemotePtyTarget;
+}
+
 /**
- * Open a shell on the attached desktop. Throws RemotePtyError with an honest
- * state when it can't: "signed-out" (no SDK/token), "desktop-offline" (no
- * machine attached — checked BEFORE opening any socket), "failed" (relay or
- * far side refused, e.g. the desktop's concurrent-pty cap).
+ * Open a shell on the far side. Throws RemotePtyError with an honest state
+ * when it can't: "signed-out" (no SDK/token), "worker-unavailable" (the
+ * server answered 503/412 — no worker for this session right now),
+ * "desktop-offline" (no machine attached — checked BEFORE opening any
+ * socket), "failed" (the far side refused, e.g. the desktop's concurrent-pty
+ * cap, or the socket never opened).
  */
-export async function openRemotePty(
-  opts: { cols: number; rows: number; cwd?: string },
-  hooks: RemotePtyHooks,
-): Promise<RemotePtyHandle> {
+export async function openRemotePty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Promise<RemotePtyHandle> {
+  return (opts.target ?? "worker") === "worker" ? openWorkerPty(opts, hooks) : openDesktopPty(opts, hooks);
+}
+
+// ── the worker pty (one socket per terminal, JSON frames) ───────────────────
+
+async function openWorkerPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Promise<RemotePtyHandle> {
+  const token = await harnessToken();
+  if (!token) throw new RemotePtyError("signed-out");
+
+  let ptyId: string;
+  let wsPath: string;
+  try {
+    const r = await harnessRequest<{ ptyId?: string; wsPath?: string }>("POST", "/pty", ptyOpenBody(opts));
+    if (!r || typeof r.ptyId !== "string" || !r.ptyId) throw new Error("POST /api/harness/pty returned no ptyId");
+    ptyId = r.ptyId;
+    // The server names the socket path; the documented default stands in.
+    wsPath = typeof r.wsPath === "string" && r.wsPath ? r.wsPath : `/pty/${encodeURIComponent(ptyId)}`;
+  } catch (err) {
+    if (err instanceof HarnessHttpError) {
+      if (err.httpStatus === 401 || err.httpStatus === 403) throw new RemotePtyError("signed-out", err.message);
+      if (err.httpStatus === 503 || err.httpStatus === 412) throw new RemotePtyError("worker-unavailable", err.message);
+    }
+    throw new RemotePtyError("failed", err instanceof Error ? err.message : String(err));
+  }
+  // A server wsPath may be absolute under /api/harness or the bare pty path.
+  const rel = wsPath.replace(/^\/api\/harness(?=\/)/, "");
+  const url = harnessWsUrl(rel, token);
+
+  const sock = await new Promise<WebSocket>((resolve, reject) => {
+    let ws: WebSocket;
+    try { ws = new WebSocket(url); }
+    catch (err) { reject(new RemotePtyError("failed", err instanceof Error ? err.message : String(err))); return; }
+    const onOpen = (): void => { cleanup(); resolve(ws); };
+    const onFail = (): void => { cleanup(); reject(new RemotePtyError("failed", "the worker's terminal socket did not open")); };
+    const cleanup = (): void => {
+      ws.removeEventListener("open", onOpen);
+      ws.removeEventListener("error", onFail);
+      ws.removeEventListener("close", onFail);
+    };
+    ws.addEventListener("open", onOpen);
+    ws.addEventListener("error", onFail);
+    ws.addEventListener("close", onFail);
+  });
+
+  const enc = new TextEncoder();
+  let done = false;
+  const finish = (sendClose: boolean): void => {
+    if (done) return;
+    done = true;
+    if (sendClose) { try { if (sock.readyState === WebSocket.OPEN) sock.send(closeFrame()); } catch { /* closing anyway */ } }
+    try { sock.close(); } catch { /* already closed */ }
+  };
+  sock.addEventListener("message", (ev) => {
+    const f = decodePtyFrame(typeof ev.data === "string" ? ev.data : "");
+    if (!f) return;
+    if (f.type === "data") {
+      try { hooks.onData(enc.encode(f.data)); } catch { /* corrupt frame — drop it, the stream continues */ }
+    } else if (f.type === "close") {
+      finish(false); // the far pty is already gone
+      hooks.onExit(typeof f.code === "number" ? f.code : 0);
+    }
+  });
+  sock.addEventListener("close", () => {
+    if (done) return;
+    finish(false); // socket gone — nothing to send close on
+    hooks.onDrop();
+  });
+
+  return {
+    write: (data) => { if (!done && sock.readyState === WebSocket.OPEN) sock.send(dataFrame(data)); },
+    resize: (cols, rows) => { if (!done && cols > 0 && rows > 0 && sock.readyState === WebSocket.OPEN) sock.send(resizeFrame(cols, rows)); },
+    dispose: () => finish(true),
+    startedCommand: !!opts.command,
+  };
+}
+
+// ── the desktop pty (the shared relay socket) ───────────────────────────────
+
+async function openDesktopPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Promise<RemotePtyHandle> {
   const client = relaySdk();
   if (!client) throw new RemotePtyError("signed-out");
 
@@ -165,5 +265,7 @@ export async function openRemotePty(
     write: (data) => { if (!done) sock.send("pty.input", { ptyId, data }); },
     resize: (cols, rows) => { if (!done && cols > 0 && rows > 0) sock.send("pty.resize", { ptyId, cols, rows }); },
     dispose: () => finish(true),
+    // The desktop opens a plain shell; the caller types the command after boot.
+    startedCommand: false,
   };
 }
