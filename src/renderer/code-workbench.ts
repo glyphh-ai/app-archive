@@ -49,6 +49,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
+import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -3262,9 +3263,13 @@ async function init(): Promise<void> {
         }
       }
     });
+    /** The page transition — the arrows, the dots, the keyboard and both
+     *  swipes all land here. Smooth unless the member asked for reduced
+     *  motion (then the page just appears). */
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
     const scrollToPage = (i: number, smooth = true): void => {
       pageIndex = Math.max(0, Math.min(i, Math.max(0, pagesEl.children.length - 1)));
-      pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth ? "smooth" : "auto" });
+      pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth && !reducedMotion?.matches ? "smooth" : "auto" });
       Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
       positionPageChrome();
     };
@@ -3275,6 +3280,75 @@ async function init(): Promise<void> {
         Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
         positionPageChrome();
       }
+    });
+    // ── SWIPE BETWEEN PAGES (his order, 2026-10-04), desktop and web, both
+    // landing on scrollToPage. The decider and the ownership rule live in
+    // help/wall-swipe.ts; this is only the wiring.
+    //  - TRACKPAD: wheel events with deltaX dominant accumulate into one page
+    //    per gesture (the inertial tail is swallowed, a pause starts a new
+    //    gesture, the cooldown keeps quick repeats to one page). The native
+    //    horizontal scroll of the carousel is taken over for those events so
+    //    a gesture never half-scrolls or skips a page; vertical wheel stays
+    //    the page's own (a tall page scrolls its grid).
+    //  - TOUCH / PEN: a horizontal drag over the tile area past SWIPE_DRAG_PX
+    //    moves one page and ends the gesture. A tile the native drag picked
+    //    first (dragIconKey set by wireIconDrag's dragstart) keeps its drag —
+    //    the swipe stands down. A mouse never swipes by dragging: its empty-
+    //    space drag is the multi-select band below, its tile drag is the
+    //    tile's. CSS `touch-action: pan-y` on .echo-pages leaves vertical
+    //    pans to the browser and hands horizontal ones here.
+    /** When the wall last paged by a swipe (either kind) — the shared cooldown. */
+    let lastSwipeAt = -Infinity;
+    const wheelState = wheelSwipeState();
+    pagesEl.addEventListener("wheel", (ev) => {
+      if (pagesEl.children.length < 2) return;
+      const dx = wheelDeltaPx(ev.deltaX, ev.deltaMode), dy = wheelDeltaPx(ev.deltaY, ev.deltaMode);
+      if (Math.abs(dx) <= Math.abs(dy)) return;   // vertical: the page's own scroll
+      ev.preventDefault();
+      const now = performance.now();
+      const step = wheelSwipeFeed(wheelState, dx, dy, now);
+      if (step === 0) return;
+      // The shared cooldown with the touch swipe (the feed's own cooldown
+      // covers two trackpad gestures).
+      if (now - lastSwipeAt < SWIPE_COOLDOWN_MS) return;
+      lastSwipeAt = now;
+      scrollToPage(pageIndex + step);
+    }, { passive: false });
+    pagesEl.addEventListener("pointerdown", (ev) => {
+      if (!isSwipePointer(ev.pointerType) || ev.button !== 0) return;
+      if (pagesEl.children.length < 2) return;
+      const id = ev.pointerId, sx = ev.clientX, sy = ev.clientY;
+      let paged = false;
+      const end = (): void => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        document.removeEventListener("pointercancel", up);
+      };
+      const move = (mv: PointerEvent): void => {
+        if (mv.pointerId !== id) return;
+        // A tile was picked (the native drag began): the tile's gesture.
+        if (dragIconKey != null) { end(); return; }
+        const step = swipeStep({
+          dx: sx - mv.clientX, dy: mv.clientY - sy, threshold: SWIPE_DRAG_PX,
+          sinceLast: Number.isFinite(lastSwipeAt) ? performance.now() - lastSwipeAt : undefined,
+        });
+        if (step === 0) return;
+        lastSwipeAt = performance.now();
+        paged = true;
+        scrollToPage(pageIndex + step);
+        document.removeEventListener("pointermove", move);   // one gesture = one page; the lift still clears the click
+      };
+      const up = (uv: PointerEvent): void => {
+        if (uv.pointerId !== id) return;
+        end();
+        if (!paged) return;
+        // The lift after a swipe is not a tap on whatever tile is under it.
+        suppressNextIconClick = true;
+        setTimeout(() => { suppressNextIconClick = false; }, 0);
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+      document.addEventListener("pointercancel", up);
     });
     /** All positionWall callers re-render the pages now. */
     const positionWall = (): void => renderPages();
@@ -3325,6 +3399,9 @@ async function init(): Promise<void> {
     let bandEl: HTMLDivElement | null = null;
     pagesEl.addEventListener("pointerdown", (ev) => {
       if (ev.button !== 0 || iconEditMode) return;
+      // A touch or pen drag is the SWIPE's (help/wall-swipe.ts) — the band
+      // and the lasso are mouse gestures (⇧ and the modifier launch are keys).
+      if (isSwipePointer(ev.pointerType)) return;
       const onIcon = !!(ev.target as HTMLElement).closest(".echo-app-btn");
       const lineMode = ev.shiftKey;
       if (onIcon && !lineMode) return;   // plain icon press — click/drag as before

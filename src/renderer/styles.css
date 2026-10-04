@@ -16892,6 +16892,10 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   overflow-x: auto; overflow-y: hidden;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  /* SWIPE (his order, 2026-10-04; help/wall-swipe.ts): a horizontal touch
+     drag is the wall's page swipe, so the browser must not pan the carousel
+     itself — vertical pans (a tall page's grid) and pinches stay native. */
+  touch-action: pan-y pinch-zoom;
 }
 .echo-pages::-webkit-scrollbar { display: none; }
 .echo-page {
