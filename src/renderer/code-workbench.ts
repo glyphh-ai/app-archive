@@ -5834,10 +5834,9 @@ async function init(): Promise<void> {
                 if (r && !r.ok && r.error) console.warn("[agents] workspace open:", r.error);
                 // NEVER a silent bare shell: a failed open still starts the CLI.
                 const cmd = (r?.ok && r.command) || arow?.command || aid;
-                const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
-                if (!t) return;
-                if (t.spawned) { setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
-                else t.initCmd = cmd;
+                // typeIntoTerminal: a web terminal writes through its remote pty
+                // handle (window.wb.termWrite is a no-op there).
+                typeIntoTerminal((target.toolSlot as TermSlot | undefined)?.terminals?.[0], cmd);
               }).catch(() => {
                 const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
                 if (t && !t.spawned) t.initCmd = arow?.command || aid;
@@ -6882,17 +6881,12 @@ async function init(): Promise<void> {
         setPendingAgentTermMeta({ id: a.id, name: t.name, ...(r?.cwd ? { cwd: r.cwd } : {}) });
         activateTile(entry);
         pendingParkedTerms = null;
-        if (parked && prompt) {
-          const tt = (entry.toolSlot as unknown as { terminals?: Array<{ ptyId?: string }> } | undefined)?.terminals?.[0];
-          if (tt?.ptyId) setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${prompt}\r`); }, 400);
-        }
+        // typeIntoTerminal: the desktop's local pty over wb-term IPC, or the WEB
+        // terminal's remote handle (the worker / relay pty — window.wb.termWrite
+        // is a no-op there, which used to drop the CLI's line on app.glyphh.ai).
+        if (parked && prompt) typeIntoTerminal((entry.toolSlot as TermSlot | undefined)?.terminals?.[0], prompt);
         if (parked) return;
-        const finish = (cmd: string): void => {
-          const tt = (entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
-          if (!tt) return;
-          if (tt.spawned) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
-          else tt.initCmd = cmd;
-        };
+        const finish = (cmd: string): void => { typeIntoTerminal((entry.toolSlot as TermSlot | undefined)?.terminals?.[0], cmd); };
         // "last" with nothing parked: the CLI resumes ITS last conversation.
         const wantResume = mode === "last";
         if (wantResume || prompt || opts?.resumeId || opts?.cwd) {

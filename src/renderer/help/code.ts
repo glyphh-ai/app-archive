@@ -6398,13 +6398,21 @@ export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean 
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __wbOpenEchoHome?: () => void };
   w.__initCodeWorkbench?.();
   let tries = 0;
+  // The workbench's init is ASYNC and, on web, slow — its first awaits are
+  // relay round trips (wb.getCwd → attach status over HTTP), well past the 40
+  // animation frames this used to wait. A boot that gave up left the main
+  // area EMPTY (his report, 2026-10-04: the rail painted, nothing else). The
+  // boot open now waits on a timer for as long as the solo panel's mount does
+  // (home.ts: 600 × 50 ms); a user's chord keeps the short wait.
+  const limit = opts.boot ? 600 : 40;
   const go = (): void => {
     // BOOT raises the surface WITHOUT the shadow toggle — a restored layout
     // must come back seated, not with the launcher lifted over it (the
     // toggle is for the user's chord/button, where toggling back is obvious).
     const fn = opts.boot ? (w.__wbOpenEchoHome ?? w.__wbToggleAppSwitcher) : w.__wbToggleAppSwitcher;
     if (fn) fn();
-    else if (tries++ < 40) requestAnimationFrame(go);
+    else if (tries++ < limit) { if (opts.boot) setTimeout(go, 50); else requestAnimationFrame(go); }
+    else console.warn("[code] the workbench never came up — nothing raised the command center");
   };
   go();
 }

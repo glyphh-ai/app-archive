@@ -3,6 +3,7 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid, closeHelp } from "./shared.js";
+import { paintDesktopOnly } from "./web-surface.js";
 
 // ── Drips ─────────────────────────────────────────────────
 
@@ -96,6 +97,9 @@ function parseRecipeIntoBuilder(recipe: string) {
 }
 
 async function loadDrips() {
+  // The drips engine is the desktop app's (its nav row is hidden on web, and
+  // a stale deep link lands on General); a section open still paints honestly.
+  if (paintDesktopOnly(dripsListEl, "Drips run on your desktop", "Open Glyphh Desktop to create and play them.", [dripsToolbar, dripsHead ?? null, dripEditor])) return;
   dripEditor.classList.add("hidden");
   dripFormError.classList.add("hidden");
 

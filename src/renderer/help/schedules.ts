@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
+import { paintDesktopOnly } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
@@ -182,6 +183,12 @@ let pendingOpen: string | null = null;
 export function openScheduleOnLoad(id: string): void { pendingOpen = String(id || "") || null; }
 
 export async function loadSchedulesPage(): Promise<void> {
+  // THE DESKTOP'S CLOCK (its headless daemon) runs schedules; a browser tab
+  // has none. On web the page is the one card that says so — never a load
+  // of `schedulesList`, which the web bridge does not serve (the first
+  // schedules crash on app.glyphh.ai, 2026-10-04).
+  if (paintDesktopOnly(el("schedules-list"), "Schedules run on your desktop", "Open Glyphh Desktop to manage them — its clock runs every schedule, and the runs land there.",
+    [el("schedules-head"), el("schedules-toolbar"), el("schedules-chart")?.parentElement ?? null, el("schedules-recent")?.parentElement ?? null])) return;
   wire();
   const [r, rr, t, s, a] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),

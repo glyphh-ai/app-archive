@@ -1,4 +1,5 @@
 import { escapeHtml } from "./shared.js";
+import { hostHas } from "./web-surface.js";
 /**
  * code-source-chip.ts — the WORKSPACE-SOURCE chip (ported from the platform's
  * RuntimeLocationChip), reimplemented in vanilla TS. It sits ABOVE the Code and
@@ -738,8 +739,9 @@ type DesktopGit = {
   gitCloneInto?: (repo: string, dir: string) => Promise<{ ok: boolean; error?: string }>;
 };
 const desktopGit = (): DesktopGit | null => {
-  const g = (window as unknown as { glyphh?: DesktopGit }).glyphh;
-  return g?.gitCloneInto ? g : null;
+  // hostHas, not typeof: the web bridge fabricates a function for any name.
+  if (!hostHas("gitCloneInto")) return null;
+  return (window as unknown as { glyphh?: DesktopGit }).glyphh ?? null;
 };
 
 // ── Cloud → GitHub repo picker ───────────────────────────────────────────

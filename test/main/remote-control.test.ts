@@ -15,6 +15,7 @@ vi.mock("../../src/main/attach-handlers.js", () => ({ gitStateOf: (d: string) =>
 vi.mock("../../src/main/glyphh-client.js", () => ({ getClient: () => ({}) }));
 vi.mock("../../src/main/broadcast.js", () => ({ broadcast: () => undefined }));
 vi.mock("../../src/main/stores/preferences-db.js", () => ({ getPreference: () => null, setPreference: () => undefined, loadPreferences: async () => undefined }));
+vi.mock("../../src/main/relay-pty.js", () => ({ killAllRelayPtys: () => undefined }));
 
 const { inGranted, remoteTable } = await import("../../src/main/remote-control.js");
 
@@ -35,9 +36,31 @@ describe("the desktop's remote door", () => {
   it("serves the remote-safe methods and nothing else", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
-      "fs.gitInfo", "fs.list", "fs.mkdir", "relay.ping",
+      "fs.gitInfo", "fs.list", "fs.mkdir",
+      "pty.close", "pty.input", "pty.open", "pty.resize",
+      "relay.ping",
       "sessions.delete", "sessions.get", "sessions.list", "sessions.put",
     ]);
+  });
+
+  it("opens a web terminal only inside a granted folder (the first grant by default)", async () => {
+    const t = table();
+    await expect(t["pty.open"]!({ cols: 80, rows: 24, cwd: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
+    await expect(t["pty.open"]!({ cols: 80, rows: 24, cwd: "/etc" })).rejects.toThrow(/not one this machine granted/);
+    expect(calls).toEqual([]);
+    await t["pty.open"]!({ cols: 80, rows: 24 });
+    await t["pty.open"]!({ cols: 80, rows: 24, cwd: join(granted, "repo") });
+    expect(calls).toEqual([
+      { m: "pty.open", p: { cols: 80, rows: 24, cwd: granted } },
+      { m: "pty.open", p: { cols: 80, rows: 24, cwd: join(granted, "repo") } },
+    ]);
+    // No grant at all → no shell, ever.
+    const bare = remoteTable(() => [], async (m, p) => { calls.push({ m, p }); return {}; });
+    await expect(bare["pty.open"]!({ cols: 80, rows: 24 })).rejects.toThrow(/not one this machine granted/);
+    // Input/resize/close name a pty this door opened — straight through.
+    await t["pty.input"]!({ ptyId: "pty-1", data: "ls\r" });
+    await t["pty.close"]!({ ptyId: "pty-1" });
+    expect(calls.slice(2).map((c) => c.m)).toEqual(["pty.input", "pty.close"]);
   });
 
   it("keeps every path inside a granted folder", () => {

@@ -6,6 +6,7 @@ import {
   paginate, renderPaginationBar, confirmAction, promptAction, clearInvalid, escapeHtml,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
+import { hostHas } from "./web-surface.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { toolViewIcon } from "./layouts.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
@@ -1355,10 +1356,17 @@ function initApps() {
   });
   const loadBundles = async (): Promise<void> => {
     if (!addBundle) return;
+    const glyphhOpt = addSource?.querySelector<HTMLOptionElement>('option[value="glyphh"]');
+    // Installed app BUNDLES are the desktop's folders (skills-fs.ts); the web
+    // bridge serves no skillsList, so the "Glyphh app" source is not offered.
+    if (!hostHas("skillsList")) {
+      if (glyphhOpt) { glyphhOpt.disabled = true; glyphhOpt.hidden = true; }
+      addBundle.innerHTML = `<option value="">Installed apps live on your desktop</option>`;
+      return;
+    }
     const r = await window.glyphh.skillsList("app").catch(() => ({ ok: false, data: [] as Array<{ id: string; name: string }> }));
     const rows = (r.ok && Array.isArray(r.data) ? r.data : []) as Array<{ id: string; name: string }>;
     addBundle.innerHTML = rows.length ? rows.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("") : `<option value="">No apps installed yet</option>`;
-    const glyphhOpt = addSource?.querySelector<HTMLOptionElement>('option[value="glyphh"]');
     if (glyphhOpt) glyphhOpt.disabled = rows.length === 0;
   };
 

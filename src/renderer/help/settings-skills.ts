@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
+import { paintDesktopOnly } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
@@ -389,6 +390,11 @@ async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
 
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
+  // THE FOLDERS ON THE MACHINE (~/.glyphh/skills, main/skills-fs.ts): a browser
+  // tab has none, and the web bridge serves no skillsList. The page is the one
+  // card that says so (shared library items live under Build → Library).
+  if (paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
+    Array.from(el("skills-list-view")?.querySelectorAll<HTMLElement>(".skills-head, .skills-tabs") ?? []))) { el("skill-detail-view")?.classList.add("hidden"); el("skills-list-view")?.classList.remove("hidden"); return; }
   wire();
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");

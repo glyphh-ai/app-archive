@@ -3,6 +3,7 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
+import { keepIfHost } from "./web-surface.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
@@ -250,11 +251,15 @@ const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSe
 const layoutFolderInput = document.getElementById("layout-folder-input") as HTMLInputElement | null;
 const layoutFolderPickBtn = document.getElementById("layout-folder-pick") as HTMLButtonElement | null;
 const layoutFolderClearBtn = document.getElementById("layout-folder-clear") as HTMLButtonElement | null;
-layoutFolderPickBtn?.addEventListener("click", () => {
-  void window.glyphh.layoutsPickFolder().then((dir) => {
-    if (dir && layoutFolderInput) layoutFolderInput.value = dir;
+// The OS folder picker is the desktop's (main's dialog); hidden where the host
+// can't open one — the input stays typeable.
+if (keepIfHost(layoutFolderPickBtn, "layoutsPickFolder")) {
+  layoutFolderPickBtn?.addEventListener("click", () => {
+    void window.glyphh.layoutsPickFolder().then((dir) => {
+      if (dir && layoutFolderInput) layoutFolderInput.value = dir;
+    });
   });
-});
+}
 layoutFolderClearBtn?.addEventListener("click", () => {
   if (layoutFolderInput) layoutFolderInput.value = "";
 });
@@ -656,7 +661,7 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   const fin = folder.querySelector("input") as HTMLInputElement;
   fin.value = cfg.folder ?? "";
   const [pick, clear] = Array.from(folder.querySelectorAll("button"));
-  pick.addEventListener("click", () => { void window.glyphh.layoutsPickFolder().then((dir) => { if (dir) { fin.value = dir; setCellValue(i, "folder", dir); } }); });
+  if (keepIfHost(pick, "layoutsPickFolder")) pick.addEventListener("click", () => { void window.glyphh.layoutsPickFolder().then((dir) => { if (dir) { fin.value = dir; setCellValue(i, "folder", dir); } }); });
   clear.addEventListener("click", () => { fin.value = ""; setCellValue(i, "folder", ""); });
   fields.appendChild(folder);
   fields.appendChild(model);

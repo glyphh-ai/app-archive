@@ -34,9 +34,18 @@
 import { randomUUID } from "node:crypto";
 import type * as pty from "node-pty";
 import { spawnShellPty } from "./wb-terminal.js";
-import { registerRelayHandler } from "./relay-client.js";
-import { pushLocal as pushToAttach } from "./relay-client.js";
+import { registerRelayHandler, pushLocal } from "./relay-client.js";
+import { pushToAttach as pushUp } from "./attach-host.js";
 import { getWorkingDirectory } from "./working-directory.js";
+
+/** A relay pty's frames go UP the attach socket (the web terminal that opened
+ *  it, through remote-control.ts's door) and onto the local push bus. The
+ *  attach push drops while the socket is down; the pty itself is killed by
+ *  remote-control.ts when the door closes, so nothing buffers forever. */
+function pushToAttach(channel: string, data: unknown): void {
+  pushUp(channel, data);
+  pushLocal(channel, data);
+}
 
 interface RelayPty {
   proc: pty.IPty;

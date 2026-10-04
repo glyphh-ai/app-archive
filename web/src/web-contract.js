@@ -1218,5 +1218,153 @@ export function buildContract(client, deps) {
     getWorkingDirRecents: async () => EMPTY.list(),
     localMcpStatus: async () => ({ running: false, port: null }),
     localMcpTokensList: async () => EMPTY.list(),
+
+    // ── The preload's STRING properties ────────────────────────────────────────────
+    // preload.ts exposes these as plain strings; the Proxy would otherwise answer
+    // each with a FUNCTION (truthy, so `x || fallback` kept the function and a link
+    // became "function () {...}"). The web's platform is this origin's /platform.
+    apiUrl,
+    serverUrl: apiUrl,
+    platformUrl: typeof location !== 'undefined' && location.origin ? `${location.origin}/platform` : 'https://platform.glyphh.ai',
+    discordInvite: 'https://discord.gg/P3yynv4v9',
+
+    // ── Custom MCP connections: the WRITE side (connections.ts) ────────────────────
+    // main/mcp-connections.ts keeps a local cache + dials the server itself; on web
+    // the SERVER is the only copy, so each is the SDK call main makes, in main's
+    // {ok, …} shapes. Tools come from the server's probe of the endpoint.
+    mcpConnectionsCreate: async (fields) => {
+      try {
+        const name = String(fields?.name ?? '').trim();
+        const url = String(fields?.url ?? '').trim();
+        if (!name || !url) return { ok: false, error: 'name and server URL (or command) are required' };
+        const headers = fields?.headers && typeof fields.headers === 'object' ? fields.headers : {};
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'mcp';
+        const created = await client.connections.personalMcpCreate({ slug, name, url, ...(Object.keys(headers).length ? { headers } : {}) });
+        const finalSlug = created?.connection?.slug ?? slug;
+        let toolCount = 0;
+        try { toolCount = (await client.connections.mcpTools(finalSlug)).length; } catch { /* the detail view reports reachability */ }
+        return { ok: true, connection: { slug: finalSlug, name }, toolCount };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mcpConnectionsUpdate: async (slug, fields) => {
+      try {
+        const patch = {};
+        if (fields?.name !== undefined) patch.name = String(fields.name);
+        if (fields?.url !== undefined && String(fields.url).trim()) patch.url = String(fields.url).trim();
+        if (fields?.enabled !== undefined) patch.enabled = fields.enabled !== false;
+        if (Array.isArray(fields?.hiddenTools)) patch.hiddenTools = fields.hiddenTools.map(String);
+        if (fields?.headers && typeof fields.headers === 'object' && Object.keys(fields.headers).length) patch.headers = fields.headers;
+        const r = await client.connections.personalMcpUpdate(String(slug), patch);
+        return { ok: true, connection: r?.connection ?? { slug: String(slug), ...patch } };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mcpConnectionsDelete: async (slug) => {
+      try { await client.connections.personalMcpRemove(String(slug)); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    // The desktop DIALS the endpoint itself; a browser cannot. The server's org
+    // probe answers for an org server; a personal one reads from the member's
+    // RESOLVED tool set (the server already probed it when it was enabled).
+    mcpConnectionsTools: async (slug) => {
+      const key = String(slug);
+      try {
+        const tools = await client.connections.mcpTools(key);
+        return { ok: true, tools: (tools ?? []).map((t) => ({ name: t.name, description: t.description ?? '', hidden: !!t.hidden })) };
+      } catch (orgErr) {
+        try {
+          const { connections } = await client.connections.resolvedTools();
+          const c = (connections ?? []).find((x) => x.slug === key);
+          if (!c) return { ok: false, error: orgErr?.message ?? String(orgErr), tools: [] };
+          const granted = new Set((c.tools ?? []).map((t) => t.name));
+          return { ok: true, tools: (c.availableTools ?? c.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? '', hidden: !granted.has(t.name) })) };
+        } catch (err) { return { ok: false, error: err?.message ?? String(err), tools: [] }; }
+      }
+    },
+    // The org catalog died with the server — main's answer, verbatim.
+    mcpConnectionsInstall: async () => ({ ok: false, error: 'the org catalog is retired — add servers directly with + Custom MCP' }),
+
+    // ── Connector discovery (settings-connections.ts) — main/connectors.ts's shapes ─
+    connectorsGetPopular: async () => {
+      try {
+        const { apps } = await client.connections.popular(6);
+        return (apps ?? []).map((a) => ({ id: a.id, name: a.name, description: a.description ?? '', icon: a.icon ?? undefined, categories: a.categories ?? [], installs: a.installs ?? 0 }));
+      } catch { return []; }
+    },
+    connectorsGetCategories: async () => {
+      try {
+        const { categories } = await client.connections.categories();
+        return (categories ?? []).map((c) => ({ name: c.name, count: c.count, apps: (c.apps ?? []).map((a) => ({ id: a.id, name: a.name, description: a.description ?? '', icon: a.icon ?? undefined, categories: a.categories ?? [] })) }));
+      } catch { return []; }
+    },
+
+    // ── Library agents: the WRITE side (settings-agents.ts) ───────────────────────
+    libraryAgentCreate: lib((input) => client.agents.create(input)),
+    libraryAgentUpdate: lib((ref, patch) => client.agents.update(ref, patch)),
+    libraryAgentDelete: lib((ref) => client.agents.remove(ref).then(() => true)),
+
+    // ── Desktop releases (Settings → Download) — main/account-ipc.ts's shapes ─────
+    releasesList: async () => {
+      try { return { ok: true, releases: await client.releases.list() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    releasesAssetUrl: async (tag, name) => {
+      try { return { ok: true, url: (await client.releases.assetUrl(String(tag || ''), String(name || ''))).url }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+
+    // ── Artifacts (files.ts): the server's file list; a peek is the opening text ──
+    filesList: async () => { try { return await client.files.list(); } catch { return []; } },
+    filesPeek: async (id) => {
+      try {
+        const f = await client.files.get(id);
+        if (!f?.downloadUrl) return '';
+        const res = await fetch(f.downloadUrl);
+        if (!res.ok) return '';
+        return (await res.text()).slice(0, 600);
+      } catch { return ''; }
+    },
+
+    // ── The workbench's UI state (help/ui-state.ts) ───────────────────────────────
+    // THE DESKTOP keeps it in ~/.glyphh/workspaces/*/state.json (main/workspace-
+    // state.ts). A browser tab has no disk: the map rides the member's SERVER
+    // prefs under the key ui-state.ts already migrates FROM (`workbenchUiState`),
+    // so a web arrangement survives a reload and the desktop can seed from it.
+    // Server prefs are small: the map is trimmed oldest-first (by its `at` write
+    // stamp) to WS_STATE_BUDGET before a save, as the old server store was.
+    wsStateLoad: async () => {
+      try {
+        const raw = (await prefsCache.get())?.[WS_STATE_PREF];
+        const map = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return map && typeof map === 'object' ? map : {};
+      } catch { return {}; }
+    },
+    wsStateSave: async (snapshot) => {
+      try {
+        const r = await prefsCache.set(WS_STATE_PREF, JSON.stringify(trimWsState(snapshot)));
+        return !!r?.ok;
+      } catch { return false; }
+    },
   };
+}
+
+/** The server pref the workbench's UI-state map rides on web (and the legacy
+ *  seed ui-state.ts reads on the desktop's first file-store load). */
+export const WS_STATE_PREF = 'workbenchUiState';
+/** Bytes of JSON the map may take in the prefs record. */
+export const WS_STATE_BUDGET = 28 * 1024;
+
+/** Keep the newest entries (by `at`) that fit the budget; drop the rest. Pure. */
+export function trimWsState(snapshot, budget = WS_STATE_BUDGET) {
+  const entries = Object.entries(snapshot && typeof snapshot === 'object' ? snapshot : {})
+    .filter(([, e]) => e && typeof e === 'object' && typeof e.v === 'string')
+    .sort((a, b) => (Number(b[1].at) || 0) - (Number(a[1].at) || 0));
+  const out = {};
+  let size = 2;
+  for (const [k, e] of entries) {
+    const cost = JSON.stringify({ [k]: e }).length;
+    if (size + cost > budget) continue;
+    out[k] = { v: e.v, at: Number(e.at) || 0 };
+    size += cost;
+  }
+  return out;
 }

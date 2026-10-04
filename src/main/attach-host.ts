@@ -41,9 +41,9 @@ export function startAttach(opts: AttachStartOptions): void {
     folders: opts.folders,
     onRefused: (reason) => { stopAttach(); opts.onRefused(reason); },
   });
-  // Only a relayed run's frames go up (attach-run.ts pushToAttach). The local
-  // bus (ptys, fs watchers) stays on this machine: no shell or watcher is
-  // reachable remotely, so none of their output has anywhere to go.
+  // A relayed run's frames (attach-run.ts) and a web terminal's pty output
+  // (relay-pty.ts, through remote-control.ts's pty.* door) go up; the fs
+  // watchers stay on the local bus — nothing reaches them remotely.
   console.info("[attach] host started", { server: SERVER_URL });
 }
 
