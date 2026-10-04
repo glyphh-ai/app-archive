@@ -151,6 +151,49 @@ export function buildContract(client, deps) {
     catch (err) { return libError(err); }
   };
 
+  /** THE ATTACHED DESKTOPS' answer to one read-only relay method — every
+   *  machine the member has remote control on answers (desktop-sessions.ts
+   *  reads the chats the same way); `field` names the list in a reply. No
+   *  attach client, nothing attached, a machine that fails to answer → `[]`,
+   *  never a throw, so the SDK read beside it still lands. */
+  const desktopRead = async (method, field) => {
+    const attach = client.attach;
+    if (!attach || typeof attach.status !== 'function') return [];
+    try {
+      const st = await attach.status();
+      const machines = Array.isArray(st?.machines) ? st.machines : [];
+      const lists = await Promise.all(machines.map((m) =>
+        attach.dispatch(method, {}, { machineId: m.id })
+          .then((r) => (Array.isArray(r?.[field]) ? r[field] : []))
+          .catch(() => [])));
+      return lists.flat();
+    } catch { return []; }
+  };
+
+  // WORKSPACES AND APP TABS LIVE ON THE DESKTOP (his report, 2026-10-04:
+  // "none of my workspaces, app tabs, etc. are showing on the web"). The purge
+  // of 2026-09-10 made the files the truth — ~/.glyphh/workspaces/<id>/
+  // workspace.json (layout-manager.ts), ~/.glyphh/apps/<slug>/tab.json
+  // (apps-store.ts) — and the desktop stopped writing the server libraries,
+  // so the SDK reads alone answered an empty wall. Each list is now what the
+  // member's attached machines hold (layouts.list / panelApps.list over the
+  // relay, the desktop's own IPC rows untouched) in front of whatever the
+  // server library still carries; a row the desktop has wins its name/slug.
+  const layoutsList = async () => {
+    const [desk, srv] = await Promise.all([
+      desktopRead('layouts.list', 'layouts'),
+      read(() => client.layouts.list(), toLegacyLayouts, EMPTY.list)(),
+    ]);
+    return mergeRows(desk, srv, (l) => l.name);
+  };
+  const panelAppsList = async () => {
+    const [desk, srv] = await Promise.all([
+      desktopRead('panelApps.list', 'apps'),
+      read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list)(),
+    ]);
+    return mergeRows(desk, srv, (a) => a.slug || a.id);
+  };
+
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
   const LOOP_SELECTIONS_KEY = 'glyphh.loopSelections';
@@ -707,45 +750,15 @@ export function buildContract(client, deps) {
     libraryAgentTaskAdd: lib((ref, input) => client.agents.addTask(ref, input)),
     libraryAgentTaskRuns: lib((ref, taskId) => client.agents.taskRuns(ref, taskId)),
 
-    // ── Library grids (LibraryClient: layouts / drips) ────────────────────────────
-    layoutsList: read(() => client.layouts.list(), toLegacyLayouts, EMPTY.list),
-    // CREATE/EDIT/DELETE workspaces on web (his rule, 2026-08-20: the web has
-    // the SAME tooling as the desktop minus the file-system tools). Mirrors
-    // the desktop layout-manager's server body exactly — one record shape,
-    // every surface reads it.
-    layoutsSaveGrid: async (grid) => {
-      try {
-        const body = {
-          name: grid.name,
-          cols: grid.cols,
-          rows: grid.rows,
-          cells: (grid.cells || []).map((c) => ({
-            panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
-            sticky: c.sticky, ...(c.config ? { config: c.config } : {}),
-          })),
-          folderMode: grid.folderMode ?? 'single',
-          target: grid.target ?? 'glyphh',
-          ...(grid.loop ? { loop: grid.loop } : {}),
-          ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
-          ...(grid.sessionMode && grid.sessionMode !== 'keep' ? { sessionMode: grid.sessionMode } : {}),
-          ...(grid.folder ? { folder: grid.folder } : {}),
-          ...(grid.space === 'chat' || grid.space === 'cowork' || grid.space === 'code' ? { space: grid.space } : {}),
-        };
-        const existing = (await client.layouts.list()).find((it) => it.name === grid.name);
-        await client.layouts.save({ name: grid.name, data: body, ...(existing ? { id: existing.id } : {}) });
-        return true;
-      } catch (err) {
-        return { error: err?.message || String(err) };
-      }
-    },
-    layoutsDelete: async (name) => {
-      try {
-        const hit = (await client.layouts.list()).find((it) => it.name === name);
-        if (!hit) return false;
-        await client.layouts.delete(hit.id);
-        return true;
-      } catch { return false; }
-    },
+    // ── Library grids (layouts / drips) ───────────────────────────────────────────
+    // Workspaces: the attached desktops' rows, then the server library (see
+    // layoutsList above). WRITES STAY ON THE DESKTOP for now: the server
+    // library the old web save wrote is one the desktop never reads, so a
+    // workspace made here was a phantom no machine ever opened. The Workspaces
+    // page shows the refusal on its form (layouts.ts).
+    layoutsList,
+    layoutsSaveGrid: async () => ({ error: DESKTOP_ONLY.workspaces }),
+    layoutsDelete: async () => ({ error: DESKTOP_ONLY.workspaces }),
     dripsList: read(() => client.drips.list(), toLegacyDrips, EMPTY.list),
     // The standard effects are code, not a cloud read — same catalog as the
     // desktop IPC (one-shots then loops, 'timme' hidden). Fresh objects so a
@@ -767,7 +780,7 @@ export function buildContract(client, deps) {
       // (his report, 2026-08-20). Resolve by slug, id, or name.
       if (!a.url && !a.prodUrl && !a.glyphh) {
         try {
-          const rows = toLegacyPanelApps(await client.apps.mine());
+          const rows = await panelAppsList();
           const key = String(a.slug || a.name || '').toLowerCase();
           const hit = rows.find((r) =>
             (r.slug || '').toLowerCase() === key
@@ -791,10 +804,16 @@ export function buildContract(client, deps) {
       return { ok: false, error: 'this app needs the desktop app' };
     },
 
-    // The LAUNCHER list: every app the org owns or installed (the copied 25
-    // defaults live here) — NOT apps.deployed(), which is only hosted deploys
-    // and is empty for a fresh org (that read backs the dashboard count).
-    panelAppsList: read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list),
+    // The LAUNCHER list: the attached desktops' app tabs (the member's real
+    // rows), then every app the org owns or installed server-side — NOT
+    // apps.deployed(), which is only hosted deploys and is empty for a fresh
+    // org (that read backs the dashboard count). See panelAppsList above.
+    panelAppsList,
+    // A tab is made, changed or deleted on the desktop (the Tabs page shows
+    // this on its form, apps.ts) — the local apps store is the only truth.
+    panelAppsCreate: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
+    panelAppsUpdate: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
+    panelAppsDelete: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
 
     // ── App config vars (write-only secrets) — SDK apps.secrets surface.
     // The desktop's `appReadable` flag is a LOCAL concept; the cloud store
@@ -1345,6 +1364,26 @@ export function buildContract(client, deps) {
       } catch { return false; }
     },
   };
+}
+
+/** What a write to a desktop-held library answers on web — the form line the
+ *  Workspaces / Tabs pages show (layouts.ts, apps.ts). */
+export const DESKTOP_ONLY = {
+  workspaces: 'Workspaces are kept on your desktop. Create, change or delete this one in the Glyphh desktop app — it shows here while that machine has remote control on.',
+  tabs: 'App tabs are kept on your desktop. Add, change or delete this one in the Glyphh desktop app — it shows here while that machine has remote control on.',
+};
+
+/** The attached desktops' rows first, then the server's — one row per key, the
+ *  first to carry it winning (two machines with the same tab list it once; a
+ *  name the desktop has beats the server's). Pure. */
+export function mergeRows(desktop, server, key) {
+  const seen = new Set();
+  return [...(desktop ?? []), ...(server ?? [])].filter((r) => {
+    const k = key(r);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 /** The server pref the workbench's UI-state map rides on web (and the legacy

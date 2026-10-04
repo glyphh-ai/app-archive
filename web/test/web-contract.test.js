@@ -13,7 +13,7 @@
  * regression guard for the blank-screen class of bug.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildContract, EMPTY, toLoopModels, trimWsState } from '../src/web-contract.js';
+import { buildContract, DESKTOP_ONLY, EMPTY, mergeRows, toLoopModels, trimWsState } from '../src/web-contract.js';
 
 /** A fake SDK client whose domain methods resolve canned SDK shapes (the AUTHED path). */
 function authedClient() {
@@ -322,5 +322,93 @@ describe('the sweep shims (2026-10-04)', () => {
     const big = { old: { v: 'o'.repeat(20_000), at: 1 }, mid: { v: 'm'.repeat(20_000), at: 2 }, newest: { v: 'n', at: 3 } };
     expect(Object.keys(trimWsState(big, 28 * 1024)).sort()).toEqual(['mid', 'newest']);
     expect(trimWsState(null)).toEqual({});
+  });
+});
+
+// ── The Customize libraries live on the DESKTOP (his report, 2026-10-04: "none of my
+// workspaces, app tabs, etc. are showing on the web"): the lists are what the attached
+// machines answer over the relay (layouts.list / panelApps.list), in front of the
+// server library the desktop no longer writes; a write is refused with the line the
+// Workspaces / Tabs pages show.
+describe('buildContract — workspaces and app tabs read the attached desktops', () => {
+  const DESK_LAYOUT = { name: 'Research', cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: 'glyphh', loop: 'glyphh', modelSelections: { default: 'm' }, sessionMode: 'new', folder: '/Users/me/code', space: 'code', splits: [{ panelId: 'tool:coding', col: 0, row: 0, colSpan: 1, rowSpan: 1 }] };
+  const DESK_TAB = { id: 'crm', orgId: '', createdBy: '', name: 'CRM (desktop)', slug: 'crm', system: false, url: 'https://crm.local', isBrowser: true, execPath: null, appArchetype: 'web', launchConfig: { forceWeb: true }, access: 'members', owned: true, latestVersion: null, version: '', secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null, listing: null, mcp: null, commands: {}, createdAt: '', updatedAt: '' };
+  const STUDIO_TAB = { ...DESK_TAB, id: 'mail', slug: 'mail', name: 'Mail' };
+  /** An attach client with two machines; `answers[machineId][method]` is a reply or an Error. */
+  const attachFor = (answers) => ({
+    status: vi.fn(async () => ({ attached: true, machines: [{ id: 'm1', name: 'MacBook' }, { id: 'm2', name: 'Studio' }] })),
+    dispatch: vi.fn(async (method, _params, opts) => {
+      const a = answers[opts?.machineId]?.[method];
+      if (a instanceof Error) throw a;
+      return a ?? {};
+    }),
+  });
+  const withDesktops = (client, answers) => ({ ...client, attach: attachFor(answers) });
+
+  it('layoutsList: the desktops\' rows first (the layouts-list shape untouched), the server\'s after, a name the desktop has wins', async () => {
+    const attach = attachFor({
+      m1: { 'layouts.list': { layouts: [DESK_LAYOUT, { ...DESK_LAYOUT, name: 'Grid', cols: 9 }] } },
+      m2: { 'layouts.list': new Error('machine went away') },
+    });
+    const c = buildContract({ ...authedClient(), attach }, deps);
+    const rows = await c.layoutsList();
+    expect(rows.map((l) => l.name)).toEqual(['Research', 'Grid']);
+    expect(rows[0]).toEqual(DESK_LAYOUT);
+    expect(rows[1].cols).toBe(9);                       // the desktop's "Grid", not the server's (cols 2)
+    expect(attach.dispatch).toHaveBeenCalledWith('layouts.list', {}, { machineId: 'm1' });
+    expect(attach.dispatch).toHaveBeenCalledWith('layouts.list', {}, { machineId: 'm2' });
+  });
+
+  it('layoutsList: the server library still shows behind the desktops (a name the desktops lack)', async () => {
+    const c = buildContract(withDesktops(authedClient(), { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
+    const rows = await c.layoutsList();
+    expect(rows.map((l) => l.name)).toEqual(['Research', 'Grid']);
+    expect(Array.isArray(rows[1].splits)).toBe(true);   // the server row still goes through toLegacyLayouts
+  });
+
+  it('layoutsList: a 401 on the server read leaves the desktops\' rows standing; a dead attach leaves the server\'s', async () => {
+    const offline = buildContract(withDesktops(rejectingClient(), { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
+    expect((await offline.layoutsList()).map((l) => l.name)).toEqual(['Research']);
+    const noAttach = buildContract({ ...authedClient(), attach: { status: async () => { throw new Error('offline'); }, dispatch: async () => ({}) } }, deps);
+    expect((await noAttach.layoutsList()).map((l) => l.name)).toEqual(['Grid']);
+    // No attach client at all (an SDK without the resource) → the server read alone, no throw.
+    expect((await buildContract(authedClient(), deps).layoutsList()).map((l) => l.name)).toEqual(['Grid']);
+  });
+
+  it('panelAppsList: every machine\'s tabs as the desktop hands them, then the server\'s apps the desktops lack', async () => {
+    const c = buildContract(withDesktops(authedClient(), {
+      m1: { 'panelApps.list': { apps: [DESK_TAB] } },
+      m2: { 'panelApps.list': { apps: [STUDIO_TAB, { ...DESK_TAB, name: 'CRM (studio)' }] } },
+    }), deps);
+    const rows = await c.panelAppsList();
+    expect(rows.map((a) => a.name)).toEqual(['CRM (desktop)', 'Mail']);  // the server's 'crm' and the second machine's 'crm' fold into the first
+    expect(rows[0]).toEqual(DESK_TAB);                                  // launchConfig and all — the desktop's own row
+  });
+
+  it('panelAppsList: the server\'s apps alone when nothing is attached (the old read, unchanged)', async () => {
+    const c = buildContract(withDesktops(authedClient(), {}), deps);
+    expect((await c.panelAppsList()).map((a) => a.slug)).toEqual(['crm']);
+    expect((await c.panelAppsList())[0]).toMatchObject({ name: 'CRM', isBrowser: true, mcp: null });
+  });
+
+  it('a write to either library is refused with the line the page shows; the SDK is never asked to write', async () => {
+    const client = authedClient();
+    client.layouts.save = vi.fn(); client.layouts.delete = vi.fn();
+    const c = buildContract(withDesktops(client, { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
+    expect(await c.layoutsSaveGrid({ name: 'Research', cols: 1, rows: 1, cells: [] })).toEqual({ error: DESKTOP_ONLY.workspaces });
+    expect(await c.layoutsDelete('Research')).toEqual({ error: DESKTOP_ONLY.workspaces });
+    expect(await c.panelAppsCreate({ name: 'X', slug: 'x', isBrowser: true, url: 'https://x' })).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
+    expect(await c.panelAppsUpdate('crm', { name: 'Y' })).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
+    expect(await c.panelAppsDelete('crm')).toEqual({ ok: false, error: DESKTOP_ONLY.tabs });
+    expect(client.layouts.save).not.toHaveBeenCalled();
+    expect(client.layouts.delete).not.toHaveBeenCalled();
+  });
+
+  it('mergeRows: desktop rows first, server rows only for keys no desktop row carries', () => {
+    const key = (r) => r.k;
+    expect(mergeRows([{ k: 'a', from: 'desk' }, { k: 'b', from: 'desk' }], [{ k: 'b', from: 'srv' }, { k: 'c', from: 'srv' }], key))
+      .toEqual([{ k: 'a', from: 'desk' }, { k: 'b', from: 'desk' }, { k: 'c', from: 'srv' }]);
+    expect(mergeRows([], [{ k: 'c' }], key)).toEqual([{ k: 'c' }]);
+    expect(mergeRows(undefined, undefined, key)).toEqual([]);
   });
 });
