@@ -9,6 +9,7 @@ import {
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
 import { hostHas, keepIfHost, copyText } from "./web-surface.js";
+import { DOCK_ENABLED_PREF, DOCK_ENABLED_CHANGED_EVENT, dockEnabledFrom } from "./dock-band.js";
 import {
   STREAMED_PANELS_PREF, STREAMED_PANELS_WARNING, STREAMED_PANELS_CHANGED_EVENT,
   OPEN_STREAMED_PANELS_SETTING_EVENT, nextFlagStep, flagSwitchChecked, flagWarningShown, type FlagStep, type FlagAction,
@@ -397,6 +398,19 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
+  // SHOW THE DOCK (his order, 2026-10-04) — pref `dockEnabled`, default on,
+  // one store for desktop and web. The wall re-reads on the document event
+  // (this document) and on main's preference-changed broadcast (every other
+  // desktop document, help/dock-band.ts); the write settles before the event
+  // so a re-read never sees the old value.
+  {
+    const t = document.getElementById("toggle-show-dock") as HTMLInputElement | null;
+    t?.addEventListener("change", () => {
+      void Promise.resolve(window.glyphh.setPreference(DOCK_ENABLED_PREF, t.checked)).then(() => {
+        document.dispatchEvent(new CustomEvent(DOCK_ENABLED_CHANGED_EVENT, { detail: { enabled: t.checked } }));
+      });
+    });
+  }
   // Dock auto-hide (default ON) — the echo surface re-reads on the event.
   {
     const t = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
@@ -708,6 +722,9 @@ async function loadSettings() {
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 
+  // Show the dock — defaults ON (anything but an explicit off, help/dock-band.ts).
+  const showDock = document.getElementById("toggle-show-dock") as HTMLInputElement | null;
+  if (showDock) showDock.checked = dockEnabledFrom(await window.glyphh.getPreference(DOCK_ENABLED_PREF, true));
   // Dock auto-hide — defaults ON; zoom defaults 20%.
   const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
   if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;

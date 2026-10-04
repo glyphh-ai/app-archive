@@ -387,6 +387,19 @@
                 </div>
 
                 <h3 class="settings-subheading">Dock</h3>
+                <!-- SHOW THE DOCK (his order, 2026-10-04): pref `dockEnabled`,
+                     default on, shared by desktop and web. Off removes the dock
+                     entirely (not merely hidden while panels are open); the
+                     rows below it govern a dock that is shown. help/settings.ts
+                     + help/dock-band.ts. -->
+                <label class="settings-toggle set-pref-row" id="show-dock-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Show the dock</div>
+                    <div class="set-pref-desc">The row of shortcuts at the top of the command center. Off removes it; New session, Settings, the command center and Close all stay in the sidebar and on the keyboard.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-show-dock" />
+                  <span class="toggle-switch"></span>
+                </label>
                 <label class="settings-toggle set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Hide the dock</div>
