@@ -2,7 +2,8 @@
  * spend-banner — what the money banner above the composer says (his order,
  * 2026-09-29: "anytime the user is out of money or as they approach their team
  * or org limit there should be a message that shows above the input… within
- * 75% of their limit"; and a brand-new org sees the Choose a plan card). Pure,
+ * 75% of their limit"). A Free org sees no banner for being Free (his order,
+ * 2026-10-04: Free runs the free-plan models); only its budget speaks. Pure,
  * so the rule is tested apart from the panel that draws it (help/code.ts).
  */
 
@@ -15,18 +16,17 @@ const usd = (v: number): string => `$${v.toLocaleString("en-US", { minimumFracti
 /** Which banner this is, for a dismissal (his order, 2026-09-29: "the warning
  *  above should be dismissable"). A dismissed banner stays down until it says
  *  something new: a warning that becomes "used all of it", or another budget. */
-export function bannerKey(kind: "plan" | "out" | "warn", s: SpendState | null): string {
+export function bannerKey(kind: "out" | "warn", s: SpendState | null): string {
   const t = s?.tightest;
   return t ? `${kind}:${t.scope}:${t.limitUsd}` : kind;
 }
 
-/** Nothing, a warning, out of money, or no plan. `refused`: a request was just
- *  turned away on this budget (what is left cannot pay for one), so it reads
- *  as out even short of 100% (his report, 2026-09-29: "that request says it is
- *  out of funds but the screen still says the user has funds"). */
-export function spendBanner(s: SpendState | null, refused = false): { kind: "plan" | "out" | "warn"; title: string; body: string } | null {
+/** Nothing, a warning, or out of money. `refused`: a request was just turned
+ *  away on this budget (what is left cannot pay for one), so it reads as out
+ *  even short of 100% (his report, 2026-09-29: "that request says it is out of
+ *  funds but the screen still says the user has funds"). */
+export function spendBanner(s: SpendState | null, refused = false): { kind: "out" | "warn"; title: string; body: string } | null {
   if (!s?.ok) return null;
-  if (!s.hasPlan) return { kind: "plan", title: "", body: "" };
   const t = s.tightest;
   if (!t || (t.pct < WARN_PCT && !refused)) return null;
   const figures = `${usd(t.spentUsd)} of ${usd(t.limitUsd)} this month`;

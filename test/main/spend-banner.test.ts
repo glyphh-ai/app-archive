@@ -5,8 +5,13 @@ const state = (over: Partial<SpendState>): SpendState => ({ ok: true, hasPlan: t
 const org = (spent: number, limit: number) => ({ scope: "org" as const, label: "your organization's balance", limitUsd: limit, spentUsd: spent, pct: Math.round((1000 * spent) / limit) / 10 });
 
 describe("the money banner above the composer (his order, 2026-09-29)", () => {
-  it("a brand-new org with no plan gets the Choose a plan card, never a model error", () => {
-    expect(spendBanner(state({ hasPlan: false, plan: "none" }))?.kind).toBe("plan");
+  it("a Free org sees no banner for being Free (his order, 2026-10-04: Free runs the free-plan models)", () => {
+    expect(spendBanner(state({ hasPlan: false, plan: "none" }))).toBeNull();
+  });
+
+  it("a Free org's budget still speaks", () => {
+    expect(spendBanner(state({ hasPlan: false, plan: "none", tightest: org(45, 60) }))?.kind).toBe("warn");
+    expect(spendBanner(state({ hasPlan: false, plan: "none", tightest: org(60, 60) }))?.kind).toBe("out");
   });
 
   it("says nothing under 75% of the nearest budget", () => {

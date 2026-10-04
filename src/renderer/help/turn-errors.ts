@@ -29,8 +29,10 @@ function modelNamed(raw: string): string {
 export function turnError(text: string): TurnError | null {
   const raw = String(text ?? "").replace(/^⚠\s*/, "").trim();
   if (!/^⚠/.test(String(text ?? "").trim())) return null;
+  // The gateway's 402 on Free (his order, 2026-10-04): Free runs the free-plan
+  // models, so this only reaches a turn that named one off that list.
   if (/needs a plan to use models/i.test(raw)) {
-    return { kind: "plan", title: "Choose a plan to start using models", body: "Everything else works without one. Every plan runs every model; Solo is $20 a month.", action: "billing", raw };
+    return { kind: "plan", title: "That model isn't on the Free plan", body: "Free runs the free-plan models. Every paid plan runs every model; an org admin can choose one on Billing.", action: "billing", raw };
   }
   // The engine's NO_MODEL_MESSAGE, and the words it used before (old transcripts).
   if (/Choose a model in the model picker below|Pick a model for the Glyphh loop/i.test(raw)) {

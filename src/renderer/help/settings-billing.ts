@@ -13,8 +13,8 @@
  * upgrade/downgrade semantics are code, ported from the platform's
  * lib/billing/hooks.js changePlan(): no subscription → hosted checkout;
  * live subscription → confirm, then an in-app change-plan (Stripe prorates),
- * except cancelling, which lives in the Stripe portal and leaves the org with
- * no plan (there is no free plan, his order 2026-09-29). Every call goes
+ * except cancelling, which lives in the Stripe portal and leaves the org on
+ * Free (the free-plan models only, his order 2026-10-04). Every call goes
  * through settings-api.ts — SDK on web, main-process SDK over IPC on desktop.
  *
  * Everything Stripe does is asynchronous on its side: funding and card
@@ -225,9 +225,9 @@ function paintSeats(): void {
  */
 function paintPlan(): void {
   const current = plans.find((p) => p.tier === (sub?.tier || "none"));
-  // NO FREE PLAN (his order, 2026-09-29): an org with none can do anything but
-  // call a model, and this is where it chooses one.
-  setText("billing-plan-name", current?.displayName || (!sub?.tier || sub.tier === "none" ? "No plan — choose one below to use models" : sub.tier));
+  // FREE (his order, 2026-10-04): an org with no paid plan runs the free-plan
+  // models only, and this is where it chooses a plan for every model.
+  setText("billing-plan-name", current?.displayName || (!sub?.tier || sub.tier === "none" ? "Free — choose a plan below to use every model" : sub.tier));
   const bits: string[] = [];
   // The plan's budget — its price, dollar for dollar.
   if (current) bits.push(`${fmtUsd(current.poolUsdPerMonth || 0)} / month Budget`);

@@ -528,7 +528,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Fires in every panel when a preference is changed anywhere — lets forms
   // (e.g. Settings → Agent Defaults) reflect a change made elsewhere live.
   /** The server's model list or the org's defaults moved (main/model-watch.ts). */
-  onModelsChanged: (cb: (c: { models: { ok: boolean; source: string; models: Array<{ id: string; name: string; providerSlug: string }> }; defaultModel: string; gatewayOn: boolean; connectionsOn: boolean }) => void) => {
+  onModelsChanged: (cb: (c: { models: { ok: boolean; source: string; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean }> }; defaultModel: string; gatewayOn: boolean; connectionsOn: boolean }) => void) => {
     const h = (_e: unknown, c: Parameters<typeof cb>[0]) => cb(c);
     ipcRenderer.on("models:changed", h);
     return () => { ipcRenderer.removeListener("models:changed", h); };
@@ -1116,7 +1116,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** THE licensing read (SDK client.plans) — one place, every surface. */
   /** THE MODELS the agent can run — the org's own list, asked of the server
    *  (the loop id is vestigial: there is one loop). */
-  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>,
+  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean }>; error?: string }>,
   planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; defaultModel?: string }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,

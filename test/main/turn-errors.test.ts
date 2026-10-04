@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import { memberLine, turnError } from "../../src/renderer/help/turn-errors";
 
 describe("a failed turn is a card (his reports, 2026-09-29)", () => {
-  it("no plan", () => {
-    expect(turnError("⚠ Your organization needs a plan to use models. An org admin chooses one on Billing.")).toMatchObject({ kind: "plan", action: "billing" });
+  it("a model off the Free plan (the gateway's 402, his order 2026-10-04) is the plan card", () => {
+    expect(turnError("⚠ gateway 402: Your organization needs a plan to use models. An org admin chooses one on Billing."))
+      .toMatchObject({ kind: "plan", title: "That model isn't on the Free plan", action: "billing" });
+    expect(turnError("⚠ Your organization needs a plan to use models. An org admin chooses one on Billing.")?.kind).toBe("plan");
   });
 
   it("no model is a door to the picker, not a riddle", () => {

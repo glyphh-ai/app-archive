@@ -22,7 +22,15 @@ import { ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
 import { gatewayCreds } from "./gateway-token";
 
-export interface LoopModel { id: string; name: string; providerSlug: string }
+export interface LoopModel {
+  id: string;
+  name: string;
+  providerSlug: string;
+  /** The model takes an effort (the composer's dial); absent on an older server = yes. */
+  reasoning?: boolean;
+  /** On the Free plan's list (the server's flag; nothing in the app shows it). */
+  freePlan?: boolean;
+}
 export interface LoopModelsResult {
   ok: boolean;
   source: "gateway" | "none";
@@ -72,10 +80,14 @@ export async function listLoopModels(force = false): Promise<LoopModelsResult> {
     // endpoint publishes the public name and applies the TEAM's list — the same
     // list the member's key is authorized against.
     const creds = await gatewayCreds().catch(() => null);
-    const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean }>;
+    const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean; reasoning?: boolean; freePlan?: boolean }>;
     const models = dedupeByName(rows
       .filter((m) => m.modality === "chat")
-      .map((m) => ({ id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug })))
+      .map((m): LoopModel => ({
+        id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug,
+        ...(typeof m.reasoning === "boolean" ? { reasoning: m.reasoning } : {}),
+        ...(typeof m.freePlan === "boolean" ? { freePlan: m.freePlan } : {}),
+      })))
       .sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
     value = { ok: true, source: "gateway", baseUrl: creds?.baseUrl ?? null, models };
   } catch (err) {

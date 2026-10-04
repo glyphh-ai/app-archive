@@ -2418,10 +2418,13 @@ function turnErrorCardEl(text: string): HTMLElement {
   return card;
 }
 
+/** THE GATEWAY'S 402 ON FREE (his order, 2026-10-04): a Free org runs the
+ *  free-plan models, so this card only shows when a turn named one that is
+ *  not on the Free plan. */
 function planCardEl(canManage: boolean | null = null): HTMLElement {
-  return moneyCardEl("plan", "Choose a plan to start using models",
-    "Everything else works without one. Every plan runs every model; Solo is $20 a month.",
-    canManage, "Choose a plan", "Contact your organization admin to choose one.");
+  return moneyCardEl("plan", "That model isn't on the Free plan",
+    "Free runs the free-plan models. Every paid plan runs every model; Solo is $20 a month.",
+    canManage, "Choose a plan", "Contact your organization admin to choose a plan.");
 }
 
 // ── THE MONEY BANNER, above the composer (his order, 2026-09-29: "anytime the
@@ -2448,10 +2451,8 @@ function paintSpendBanner(): void {
   host.hidden = !b || key === dismissedBanner;
   if (!b || !spend || host.hidden) return;
   const orgScope = !spend.tightest || spend.tightest.scope === "org";
-  const card = b.kind === "plan"
-    ? planCardEl(spend.canManage)
-    : moneyCardEl(b.kind, b.title, b.body, orgScope ? spend.canManage : false, "Open Billing",
-        "Contact your organization admin.");
+  const card = moneyCardEl(b.kind, b.title, b.body, orgScope ? spend.canManage : false, "Open Billing",
+    "Contact your organization admin.");
   const close = document.createElement("button");
   close.type = "button";
   close.className = "code-money-close";

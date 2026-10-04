@@ -22,7 +22,7 @@ import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-con
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { bareModel, connectionsAvailable, NO_PLAN_MESSAGE, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
+import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
@@ -349,15 +349,9 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   //          beats pouring a large file into every turn of the conversation.
   //   WORK — the content, inlined: that belt has no read tools, so a path would
   //          be a promise it cannot keep.
-  // NO PLAN, NO MODEL CALL (his report, 2026-09-29: a brand-new user got "Pick
-  // a model…" instead of the Choose a plan card). Asked before the model: with
-  // no plan there is no model to resolve, and that error explains nothing.
-  if (!orgHasPlan()) {
-    const runId = `${p.chatId}:${Date.now()}`;
-    emit({ type: "error", error: NO_PLAN_MESSAGE, runId } as Parameters<typeof emit>[0]);
-    emit({ type: "done", stopped: true, runId } as Parameters<typeof emit>[0]);
-    return { runId };
-  }
+  // A FREE ORG RUNS TOO (his order, 2026-10-04): the server lists only the
+  // free-plan models for it, and the gateway refuses any other with a 402 the
+  // panel draws as the plan card. Nothing is judged here before the model.
   // Something installed or removed since the last turn: every chat rebuilds its belt.
   if (libraryChanged()) loop.invalidateTools();
   const atts = validAttachments(p.attachments);

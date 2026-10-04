@@ -30,13 +30,9 @@ export function orgModelState(): { gatewayOn: boolean; defaultModel: string; con
   return { gatewayOn, defaultModel: requiredModel, connectionsOn, hasPlan };
 }
 
-/** The server's own no-plan refusal (custom_callbacks.NO_PLAN), word for word:
- *  the panel matches it to draw the Choose a plan card. */
-export const NO_PLAN_MESSAGE = "Free runs your own CLI and connections. Your organization needs a plan to use models: an org admin chooses Solo, Basic or Pro on Billing.";
-
-/** DOES THE ORG HAVE A PLAN? (his order, 2026-09-29: no plan, no model calls,
- *  and the person is shown "choose a plan", never a model error). Absent on an
- *  older server = yes, so the gateway's own refusal still stands behind it. */
+/** DOES THE ORG HAVE A PAID PLAN? A Free org runs the free-plan models (his
+ *  order, 2026-10-04); what still needs a plan is the CLI gateway pass-through
+ *  (cli-agents.ts). Absent on an older server = yes. */
 export function orgHasPlan(): boolean { return hasPlan; }
 
 /** The model a turn runs on when it named none: the org's default with the

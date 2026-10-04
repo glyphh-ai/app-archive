@@ -1256,23 +1256,23 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
   }
 }
 
-interface CatalogModel { id: string; name: string; providerSlug: string; active: boolean }
-let modelCatalog: CatalogModel[] | null = null;
+interface AgentModelRow { id: string; name: string; providerSlug: string }
+let agentModels: Promise<AgentModelRow[]> | null = null;
 
 /**
- * THE MODEL LIST FOLLOWS THE LOOP (his report, 2026-09-17: "the model dropdown
- * never changes"). It was asking loop-roles, whose choices are AGENTS, not
- * models, so it always came back with nothing and kept the one default entry.
- * The org's model catalog is the list, narrowed to what the chosen loop runs.
+ * THE SAME LIST AS EVERY OTHER PICKER (his order, 2026-10-04): the models this
+ * member's team runs on the gateway, as main's loop-models.ts answers them —
+ * server-filtered, so a Free org sees its free-plan models and nothing it
+ * cannot run. It used to read the whole org catalog, which named models the
+ * turn would then be refused on.
  */
 async function fillModelChoices(sel: HTMLSelectElement, chosen: string): Promise<void> {
-  if (!modelCatalog) {
-    const all = await (window.glyphh as unknown as { catalogModels?: () => Promise<CatalogModel[]> }).catalogModels?.().catch(() => []);
-    modelCatalog = Array.isArray(all) ? all : [];
+  if (!agentModels) {
+    agentModels = Promise.resolve(api().loopModels?.("glyphh"))
+      .then((r) => (r?.ok && Array.isArray(r.models) ? r.models : []))
+      .catch(() => []);
   }
-  const models = modelCatalog
-    .filter((m) => m.active !== false)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const models = [...await agentModels].sort((a, b) => a.name.localeCompare(b.name));
   const options = [`<option value="">Model: default</option>`];
   // A model the agent already names survives even when the catalog moved on.
   if (chosen && !models.some((m) => m.id === chosen)) options.push(`<option value="${escapeHtml(chosen)}" selected>${escapeHtml(chosen)}</option>`);

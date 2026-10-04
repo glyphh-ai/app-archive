@@ -480,7 +480,7 @@ declare global {
       platformPanelUrl: (next?: string) => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
-      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>;
+      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean }>; error?: string }>;
       planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;
       libraryAgentsList: () => Promise<LibEnvelope>;
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
