@@ -27,6 +27,8 @@ import {
   isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
   layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId,
 } from '../../src/shared/member-library';
+import { mergeAppRows } from '../../src/shared/app-instances';
+import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
 export const NEEDS_DESKTOP = 'This runs on your desktop. Open the Glyphh desktop app for it — the record itself is here, synced from the server.';
@@ -64,6 +66,9 @@ export function buildMemberLibrary(client, deps = {}) {
   const listRows = async (kind) => {
     try { return await lib().list(kind); } catch { return []; }
   };
+  // APPS LIVE IN THE CLOUD (his decision, 2026-10-04): the instances this
+  // member may open join the tab list and the Apps page (app-instances-web.js).
+  const appInstances = deps.appInstances ?? buildAppInstancesWeb(client, { now, document: deps.document, secure: deps.secure });
 
   // ── Workspaces ────────────────────────────────────────────────────────────
   const layoutsList = async () => {
@@ -99,10 +104,20 @@ export function buildMemberLibrary(client, deps = {}) {
 
   // ── App tabs ──────────────────────────────────────────────────────────────
   const panelAppsList = async () => {
-    const [srv, desk] = await Promise.all([listRows('tab'), desktopRead('panelApps.list', 'apps')]);
-    const server = srv.filter((r) => isTabRow(r.data)).map((r) => tabRowOf({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
+    const [srv, desk, instances] = await Promise.all([listRows('tab'), desktopRead('panelApps.list', 'apps'), appInstances.listInstances()]);
+    const tabs = srv.filter((r) => isTabRow(r.data)).map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
+    // THE LIST = INSTANCES: the server's tabs, every instance no tab names yet,
+    // an app from before the cloud once — then the attached desktops' rows behind.
+    const server = mergeAppRows(instances, tabs);
     return mergeServerFirst(server, desk ?? [], (a) => a.slug || a.id);
   };
+  /** A Glyphh-app panel on the web: the instance's UI through this origin's proxy. */
+  const glyphhAppPreviewOpen = async (slug) => {
+    let rows = [];
+    try { rows = await panelAppsList(); } catch { rows = []; }
+    return appInstances.previewOpen(slug, rows);
+  };
+  const glyphhAppPreviewClear = async () => ({ ok: true });
   const tabInputOf = (o) => ({
     ...(o.name !== undefined ? { name: String(o.name) } : {}),
     ...(o.url !== undefined && o.url !== null ? { url: String(o.url) } : {}),
@@ -146,7 +161,8 @@ export function buildMemberLibrary(client, deps = {}) {
   // ── Skills and tasks ──────────────────────────────────────────────────────
   const BUNDLE_KINDS = { skill: 'skill', task: 'task' };
   const skillsList = async (kind) => {
-    const kinds = [...new Set((Array.isArray(kind) ? kind : [kind ?? 'skill']).map((k) => BUNDLE_KINDS[k]).filter(Boolean))];
+    const asked = Array.isArray(kind) ? kind : [kind ?? 'skill'];
+    const kinds = [...new Set(asked.map((k) => BUNDLE_KINDS[k]).filter(Boolean))];
     const rows = [];
     for (const k of kinds) {
       for (const r of await listRows(k)) {
@@ -154,6 +170,8 @@ export function buildMemberLibrary(client, deps = {}) {
         rows.push(bundleRowOf(k, r.id, r.data, r.updatedAt, Array.isArray(r.data.files) ? r.data.files.length : (r.fileCount ?? 0)));
       }
     }
+    // Settings → Apps on the web = the cloud instances (no folders here).
+    if (asked.includes('app')) rows.push(...await appInstances.cards());
     return ok(rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
   };
   const bundleItem = async (pageId) => {
@@ -164,6 +182,7 @@ export function buildMemberLibrary(client, deps = {}) {
   };
   const skillGet = async (pageId) => {
     try {
+      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.detail(pageId));
       const { ref, item } = await bundleItem(pageId);
       const data = item.data ?? {};
       const files = (item.files ?? []).map((f) => ({ path: f.path, size: f.size }));
@@ -245,6 +264,7 @@ export function buildMemberLibrary(client, deps = {}) {
   };
   const skillDelete = async (pageId) => {
     try {
+      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.remove(pageId));
       const ref = bundleOfPageId(String(pageId));
       if (!ref) return { ok: false, error: NEEDS_DESKTOP };
       await lib().remove(ref.kind, ref.id, { updatedAt: now() });
@@ -384,16 +404,23 @@ export function buildMemberLibrary(client, deps = {}) {
   const needsDesktop = async () => ({ ok: false, error: NEEDS_DESKTOP });
   const emptyList = async () => ok([]);
 
+  /** An instance's card opens as its tab; anything else needs the desktop's folder. */
+  const skillTab = async (pageId) => {
+    if (!appInstances.isInstanceCardId(String(pageId))) return { ok: false, error: NEEDS_DESKTOP };
+    try { return ok(await appInstances.tab(pageId)); } catch (err) { return fail(err); }
+  };
+
   return {
     layoutsList, layoutsSaveGrid, layoutsDelete,
     panelAppsList, panelAppsCreate, panelAppsUpdate, panelAppsDelete,
+    glyphhAppPreviewOpen, glyphhAppPreviewClear, skillTab,
     skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled,
     // A bundle's own agents (agents/*.md) are read off the folder on the desktop; the record carries none.
     skillAgents: emptyList,
     skillAgentSet: needsDesktop,
     // What touches the machine: its folders, its dialogs, its tabs.
     skillReveal: needsDesktop, skillImport: needsDesktop, skillReplace: needsDesktop, skillDownload: needsDesktop,
-    skillAdopt: needsDesktop, skillTab: needsDesktop, skillImage: needsDesktop,
+    skillAdopt: needsDesktop, skillImage: needsDesktop,
     skillsHome: async () => ({ ok: false, error: NEEDS_DESKTOP }),
     libraryAgentsList, libraryAgentGet, libraryAgentCreate, libraryAgentUpdate, libraryAgentDelete,
     // An agent's schedules are rows on the desktop's clock.

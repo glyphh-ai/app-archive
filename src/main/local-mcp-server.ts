@@ -644,15 +644,15 @@ function buildMcpServer(): McpServer {
   // ── Installed Glyphh apps — discover / invoke / deploy ─
   mcp.tool(
     "app_list_tools",
-    "List the MCP tools exposed by the user's installed Glyphh apps. Returns [{ app (slug), name, tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
+    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances and their own. Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
     {},
     async () => via("apps.listTools", {}),
   );
   mcp.tool(
     "app_call_tool",
-    "Invoke a tool exposed by an installed Glyphh app. Pass the app slug + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs headlessly on the user's machine.",
+    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user.",
     {
-      app: z.string().describe("App slug — from app_list_tools"),
+      app: z.string().describe("App key — from app_list_tools"),
       tool: z.string().describe("Tool name — from app_list_tools"),
       args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments matching the tool's inputSchema"),
     },
@@ -660,7 +660,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "app_install",
-    "IMPORT an existing .glyphh bundle (a zip you were handed or built) as an APP on the user's machine, so its tools become available. This is not the way to author something new: use skill_save with the type the user asked for. `intent` must be the literal \"app\", which is your statement that the user asked for a work panel with a face — if they asked for a skill or a task, stop and use skill_save. Re-installing the same slug updates it in place. To show it, call panels_open with its slug; NEVER open its index.html as a file:// URL, because the glyphh bridge only exists when the app opens through its slug.",
+    "IMPORT an existing .glyphh bundle (a zip you were handed or built) as an APP IN THE CLOUD — an instance in the user's organization (an org admin installs it for every member, anyone else a personal one), so its tools become available on every surface. This is not the way to author something new: use skill_save with the type the user asked for. `intent` must be the literal \"app\", which is your statement that the user asked for a work panel with a face — if they asked for a skill or a task, stop and use skill_save. Re-installing the same slug updates the instance in place. To show it, call panels_open with its slug; NEVER open its index.html as a file:// URL, because the glyphh bridge only exists when the app opens through its slug.",
     {
       bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string"),
       intent: z.literal("app").describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),

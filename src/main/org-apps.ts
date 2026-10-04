@@ -15,6 +15,8 @@ import { APPS_DIR, type LocalAppRow } from "./apps-store.js";
 import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
 import { appCache } from "./glyphh-client.js";
 import { tabRowOf } from "../shared/member-library.js";
+import { mergeAppRows } from "../shared/app-instances.js";
+import { listInstances } from "./app-instances.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
 export interface OrgAppRow {
@@ -123,8 +125,7 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
  *  the icon the row carries off this machine (app-icon-file.ts): a Glyphh app's
  *  icon file (bundle folder, tab folder, or beside an installed .glyphh entry)
  *  and a URL tab's favicon URL. */
-function toRow(app: LocalAppRow): OrgAppRow {
-  const row = tabRowOf(app) as OrgAppRow;
+function toRow(app: LocalAppRow, row: OrgAppRow = tabRowOf(app) as OrgAppRow): OrgAppRow {
   const bundleDir = typeof app.config?.bundleDir === "string" ? app.config.bundleDir : null;
   const iconDataUrl = iconDataUrlForDirs([
     bundleDir,
@@ -139,7 +140,16 @@ function toRow(app: LocalAppRow): OrgAppRow {
  *  render and the click that follows share one request. */
 export function fetchOrgApps(): Promise<OrgAppRow[]> {
   return appCache.cached(CACHE_KEY, async () => {
-    const rows = (await appsStore.mine()).map(toRow);
+    // THE LIST = INSTANCES (his decision, 2026-10-04): the member's tab rows,
+    // every cloud instance they may open that no row names yet, and an app
+    // from before the cloud once (shared/app-instances.ts mergeAppRows). A
+    // row's local icon still rides from this machine when it has one.
+    const [tabs, instances] = await Promise.all([appsStore.mine(), listInstances()]);
+    const local = new Map(tabs.map((t) => [t.slug.toLowerCase(), t] as const));
+    const rows = mergeAppRows(instances, tabs).map((row) => {
+      const tab = local.get(row.slug.toLowerCase());
+      return tab ? toRow(tab, row as OrgAppRow) : (row as OrgAppRow);
+    });
     // A user row that took the "glyphh" slug IS the built-in: keep its real
     // id (layouts/recents reference it), normalize its archetype, pin first.
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");

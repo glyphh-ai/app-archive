@@ -754,6 +754,12 @@ export function buildContract(client, deps) {
     skillDownload: library.skillDownload,
     skillAdopt: library.skillAdopt,
     skillTab: library.skillTab,
+    // APPS LIVE IN THE CLOUD (2026-10-04): a Glyphh-app panel loads the
+    // instance's UI through this origin's /app-host proxy; moving a desktop's
+    // local app up is the desktop's job.
+    glyphhAppPreviewOpen: library.glyphhAppPreviewOpen,
+    glyphhAppPreviewClear: library.glyphhAppPreviewClear,
+    skillMoveToCloud: async () => ({ ok: false, error: NEEDS_DESKTOP }),
     skillImage: library.skillImage,
     skillsHome: library.skillsHome,
     libraryAgentsList: library.libraryAgentsList,

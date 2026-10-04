@@ -1210,6 +1210,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
   skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>,
+  // An app card whose tab still runs from a folder here → an org instance (apps live in the cloud, 2026-10-04).
+  skillMoveToCloud: (id: string) => ipcRenderer.invoke("skill-move-to-cloud", id) as Promise<{ ok: boolean; data?: { name?: string; instance?: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,
   skillAdopt: (id: string) => ipcRenderer.invoke("skill-adopt", id) as Promise<LibEnvelope>,
   skillReplace: (id: string) => ipcRenderer.invoke("skill-replace", id) as Promise<LibEnvelope>,

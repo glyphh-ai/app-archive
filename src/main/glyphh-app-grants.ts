@@ -14,6 +14,9 @@ export interface AppGrant {
   /** Connector app slugs (Pipedream) this app declared — the connector.*
    *  capabilities can only reach these. */
   connectors: Set<string>;
+  /** A CLOUD panel: the instance key its `glyphh.call` is forwarded to
+   *  (app-instances.ts callInstanceBridge); caps are the pod's to enforce. */
+  instance?: string;
 }
 
 const grants = new Map<number, AppGrant>();
@@ -23,9 +26,10 @@ export function grantAppCaps(
   slug: string,
   name: string,
   caps: Iterable<string>,
-  connectors: Iterable<string> = []
+  connectors: Iterable<string> = [],
+  instance?: string
 ): void {
-  grants.set(webContentsId, { slug, name, caps: new Set(caps), connectors: new Set(connectors) });
+  grants.set(webContentsId, { slug, name, caps: new Set(caps), connectors: new Set(connectors), ...(instance ? { instance } : {}) });
 }
 
 export function revokeAppCaps(webContentsId: number): void {

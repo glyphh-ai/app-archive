@@ -7,16 +7,25 @@
  *                     window?: { width, height }, description? }
  *   index.html (+ assets)   self-contained UI
  *
- * Install: extract to ~/.glyphh/custom-apps/<slug>/ and create a NORMAL saved-app
- * row on the server (isBrowser:false, appArchetype:"glyphh-app", execPath →
- * the entry html, launchConfig → { capabilities, window }). Riding the
- * saved-app rails means the app shows on the Apps page, in the command
- * overlay, works with .dip and layouts — installed like any other app.
+ * INSTALL = AN ORG INSTANCE (his decision, 2026-10-04: "all apps are
+ * installed in the cloud"). The bundle is validated here, then goes to the
+ * server as an app instance (app-instances.ts: create → R2 → ready) and a
+ * `tab` library row names the instance, so it reaches every surface. Nothing
+ * is unzipped into ~/.glyphh any more and no worker starts on this machine.
  *
- * Run: each app opens in its own BrowserWindow with a minimal preload that
- * exposes ONLY `glyphh.call(method, args)`. The main process enforces the
- * manifest's capability list per-window — an app can never call a capability
- * it didn't declare at install time.
+ * Run: the panel's <webview> loads the server's proxy
+ * (`/app-host/<key>/ui/index.html`, the session cookie set on its partition)
+ * and the preload's `glyphh.call(method, args)` goes through main to the
+ * instance's /call as the member — the pod enforces the manifest's
+ * capabilities. The loop's app tools ride the same instance (/invoke).
+ *
+ * THE LOCAL HOST (below: extract into custom-apps/, a hidden worker, per-app
+ * SQLite/cron, the capability table) stays in the file behind
+ * `GLYPHH_LOCAL_APPS=1` for a rollback and is not started otherwise. A tab
+ * from before the cloud (its entry a file here) shows once with "Move to the
+ * cloud" (moveLocalAppToCloud); its folder is never deleted.
+ *
+ * The local host's own contract, kept for the rollback:
  *
  * v2 adds the headless side: a `worker` script (hidden sandboxed window, see
  * glyphh-app-worker.ts) whose named handlers back MCP tools and cron firings,
@@ -62,6 +71,11 @@ import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 import { writeAppCard } from "./skills-fs.js";
 import { rowOwnedByBundle, payloadDirOf, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { onUserChange } from "./user-scope.js";
+import { SERVER_URL } from "./glyphh-client.js";
+import {
+  callInstanceBridge, callInstanceTool, ensureInstanceTab, findInstance, installBundleAsInstance, instanceKeyOfRow, instancePanelUrl,
+  listInstanceTools, localAppsEnabled, sessionBearer, type AppInstanceSummary,
+} from "./app-instances.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -419,7 +433,7 @@ function bundleIconSvg(zip: AdmZip): string | null {
  * Install a .glyphh glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
  */
-export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[]; slug?: string; tools?: Array<{ name: string; description: string }> }> {
+export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[]; slug?: string; tools?: Array<{ name: string; description: string }>; instance?: string }> {
   let zip: AdmZip;
   try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .glyphh bundle" }; }
   const entry = zip.getEntry("manifest.json");
@@ -470,6 +484,9 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const remote = lintRemoteAssets(textEntries);
   if (remote.length) return { ok: false, error: `Bundle references remote assets (bundle them at build time): ${remote[0]}` };
 
+  if (!localAppsEnabled()) return installBundleInCloud(zipPath, zip, manifest);
+
+  // THE LOCAL HOST (GLYPHH_LOCAL_APPS=1 only).
   // Install lands in the app's org-scoped local home apps/<author-org>/<slug>.
   // The author's org rides in the bundle (publisherOrgId, Phase 3); a legacy
   // bundle without it installs under THIS user's org. If the org can't be
@@ -586,6 +603,87 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     slug: manifest.slug,
     tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" })),
   };
+}
+
+/** The cloud install: the validated bundle becomes (or updates) an instance,
+ *  its tab row names the instance, its library card is written. The answer
+ *  is the same shape the local install gave, plus the instance key. */
+async function installBundleInCloud(zipPath: string, zip: AdmZip, manifest: GlyphhAppManifest): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[]; slug?: string; tools?: Array<{ name: string; description: string }>; instance?: string }> {
+  let inst: AppInstanceSummary;
+  const updated = !!(await findInstance(manifest.slug));
+  try {
+    inst = await installBundleAsInstance(fs.readFileSync(zipPath), manifest);
+  } catch (err) {
+    return { ok: false, error: `cloud install failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  try {
+    const iconSvg = bundleIconSvg(zip);
+    const iconUrl = iconSvg && iconSvg.length < 64_000 ? `data:image/svg+xml;base64,${Buffer.from(iconSvg).toString("base64")}` : undefined;
+    await ensureInstanceTab(inst, { ...manifest, ...(iconUrl ? { iconUrl } : {}) });
+    invalidateOrgApps();
+    broadcast("panel-apps-changed");
+  } catch (err) {
+    return { ok: false, error: `installed in the cloud, but its tab could not be written: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  // THE LIBRARY CARD (his report, 2026-09-17): the app is a skill of type app
+  // on Settings → Build and in every CLI mirror. Its bundle is the instance.
+  try {
+    writeAppCard({
+      slug: manifest.slug, name: manifest.name, description: manifest.description || "",
+      bundleDir: instancePanelUrl(inst.key), entry: manifest.entry, connectors: manifest.connectors ?? [],
+      tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description })),
+      iconSvg: bundleIconSvg(zip),
+    });
+  } catch (err) {
+    console.warn(`[glyphh-app] "${manifest.slug}" installed without a library card:`, err instanceof Error ? err.message : err);
+  }
+  return {
+    ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [], slug: manifest.slug, instance: inst.key,
+    tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" })),
+  };
+}
+
+/** MOVE TO THE CLOUD: a tab from before (its entry a file on this machine)
+ *  is zipped from its folder and installed as an instance; the tab is
+ *  retargeted at the instance and the folder stays where it is (hidden, not
+ *  deleted). A folder without manifest.json (a skills-home bundle: app.json +
+ *  ui/) gets one written into the zip from what its row declares. */
+export async function moveLocalAppToCloud(slug: string): Promise<{ ok: boolean; name?: string; instance?: string; error?: string }> {
+  const key = String(slug || "").toLowerCase().trim();
+  const row = appsStore.readRow(key);
+  if (!row || row.kind !== "glyphh") return { ok: false, error: `"${slug}" is not a Glyphh app tab on this machine` };
+  if (instanceKeyOfRow(row)) return { ok: false, error: `${row.name} is already in the cloud` };
+  if (!row.nativeRef) return { ok: false, error: `${row.name} has no local bundle to move` };
+  const cfg = (row.config ?? {}) as { bundleDir?: unknown; capabilities?: unknown; connectors?: unknown; tools?: unknown; window?: unknown; worker?: unknown; release?: unknown };
+  const dir = typeof cfg.bundleDir === "string" && cfg.bundleDir ? cfg.bundleDir : path.dirname(row.nativeRef);
+  if (!fs.existsSync(dir)) return { ok: false, error: `${row.name}'s bundle folder is gone: ${dir}` };
+  const zip = new AdmZip();
+  zip.addLocalFolder(dir, "", (p) => !/(^|[\\/])(\.glyphh-|node_modules|\.git)/.test(p));
+  if (!zip.getEntry("manifest.json")) {
+    const entry = path.relative(dir, row.nativeRef).split(path.sep).join("/");
+    const synthesized: GlyphhAppManifest = {
+      manifestVersion: 2, kind: "glyphh-app", name: row.name, slug: key, entry,
+      capabilities: Array.isArray(cfg.capabilities) ? cfg.capabilities.map(String) : [],
+      connectors: Array.isArray(cfg.connectors) ? cfg.connectors.map(String) : [],
+      tools: Array.isArray(cfg.tools) ? (cfg.tools as GlyphhAppTool[]).filter((t) => t && typeof t.name === "string" && (typeof t.capability === "string") !== (typeof t.handler === "string")) : [],
+      ...(cfg.window && typeof cfg.window === "object" ? { window: cfg.window as { width?: number; height?: number } } : {}),
+      ...(typeof cfg.worker === "string" ? { worker: cfg.worker } : {}),
+      description: row.description,
+    };
+    zip.addFile("manifest.json", Buffer.from(JSON.stringify(synthesized, null, 2)));
+  }
+  const tmp = path.join(os.tmpdir(), `glyphh-move-${process.pid}-${key}.glyphh`);
+  try {
+    zip.writeZip(tmp);
+    const r = await installGlyphhAppBundle(tmp);
+    if (!r.ok) return { ok: false, error: r.error };
+    stopAppWorker(key);
+    return { ok: true, name: r.name, instance: r.instance };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+  }
 }
 
 // ── run ─────────────────────────────────────────────────────
@@ -871,11 +969,19 @@ function withAppApiKey(app: AppRow, args: Record<string, unknown>): Record<strin
 
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
 export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
+  // THE CLOUD FIRST: every instance this member may open, by key. The rows on
+  // this machine answer only while the local host is switched on.
+  const cloud = (await listInstanceTools().catch(() => [])).map((r) => ({
+    app: r.app, name: r.name,
+    tools: r.tools.filter((t) => !hiddenAppTools(r.app).has(t.name)),
+  })).filter((r) => r.tools.length > 0);
+  if (!localAppsEnabled()) return cloud;
+  const cloudSlugs = new Set(cloud.map((r) => r.app.split("~", 1)[0]));
   // The shared row types launchConfig loosely; AppRow narrows it to the
   // Glyphh-app keys this module reads.
   const apps = await fetchOrgApps().catch(() => []) as AppRow[];
-  return apps
-    .filter((a) => isGlyphhAppRow(a))
+  const local = apps
+    .filter((a) => isGlyphhAppRow(a) && !instanceKeyOfRow(a) && !cloudSlugs.has(a.slug))
     .map((a) => {
       const hidden = hiddenAppTools(a.slug);
       return {
@@ -885,12 +991,20 @@ export async function listInstalledAppTools(): Promise<Array<{ app: string; name
       };
     })
     .filter((a) => a.tools.length > 0);
+  return [...cloud, ...local];
 }
 
 /** Run an installed app's declared MCP tool headlessly (for app_call_tool).
  *  Capability tools pass straight through to the host; handler tools run the
  *  app's own logic in its worker. */
 export async function callAppTool(appSlug: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
+  // An instance answers first — by key, by slug, or the member's personal one.
+  const inst = await findInstance(appSlug);
+  if (inst) {
+    if (hiddenAppTools(inst.key).has(toolName)) throw new Error(`tool "${toolName}" is set to Never for this app`);
+    return callInstanceTool(inst.key, toolName, args || {});
+  }
+  if (!localAppsEnabled()) throw new Error(`unknown app: ${appSlug} — not installed in the cloud (an app from before the cloud is moved from Settings → Build → Apps → Move to the cloud)`);
   const app = await findAppRow(appSlug);
   if (!app) throw new Error(`unknown app: ${appSlug}`);
   const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);
@@ -924,6 +1038,25 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
   const declared = app.launchConfig?.capabilities || [];
   if (!tool.capability || !declared.includes(tool.capability)) throw new Error(`tool "${toolName}" uses undeclared capability`);
   return runCapability(app.slug, app.name, tool.capability, args || {}, new Set(app.launchConfig?.connectors || []));
+}
+
+/** The session cookie the server's /app-host proxy honors, set on the panel
+ *  guest's partition for the API origin and the proxy path only — so the
+ *  webview can load the instance's `ui/*`. Re-set on every open (the bearer
+ *  rotates). False when signed out. */
+async function grantPanelSession(ses: Electron.Session): Promise<boolean> {
+  const token = await sessionBearer();
+  if (!token) return false;
+  try {
+    await ses.cookies.set({
+      url: SERVER_URL, name: "glyphh_session", value: token, path: "/app-host",
+      secure: SERVER_URL.startsWith("https:"), httpOnly: true, sameSite: "strict",
+    });
+    return true;
+  } catch (err) {
+    console.warn("[glyphh-app] panel session cookie:", err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 // ── IPC ─────────────────────────────────────────────────────
@@ -1097,34 +1230,44 @@ export function registerGlyphhAppHost(): void {
   if (registered) return;
   registered = true;
 
-  syncAppLibs();
-  // Harden the sessions that host installed-app UI pages (standalone window =
-  // default session; in-app preview = persist:yo) with the app CSP.
-  hardenAppSession(session.defaultSession);
-  hardenAppSession(session.fromPartition("persist:yo"));
-  // Relocate any legacy flat installs into the org-scoped layout (best-effort,
-  // post-auth). Legacy apps keep working either way — custom-apps stays covered.
-  void migrateCustomAppsToOrgScoped();
   // Cards for apps installed before the installer wrote them. Boot may be
   // pre-auth, so this also runs the moment a user signs in.
   void repairAppCards();
   onUserChange(() => { void repairAppCards(); });
 
-  initAppServices({
-    resolveApp: async (slug) => {
-      const row = await findAppRow(slug);
-      return row ? workerSpecFromRow(row) : null;
-    },
-    openApp: (slug) => {
-      // Workbench panel beside the agent — OS app windows are retired.
-      // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
-      void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
-    },
-  });
+  // THE LOCAL HOST IS NOT STARTED (his decision, 2026-10-04): no shared libs
+  // synced, no legacy relocation, no cron armed, no worker. GLYPHH_LOCAL_APPS=1
+  // brings all of it back for a rollback.
+  if (localAppsEnabled()) {
+    syncAppLibs();
+    // Harden the sessions that host installed-app UI pages (standalone window =
+    // default session; in-app preview = persist:yo) with the app CSP.
+    hardenAppSession(session.defaultSession);
+    hardenAppSession(session.fromPartition("persist:yo"));
+    // Relocate any legacy flat installs into the org-scoped layout (best-effort,
+    // post-auth). Legacy apps keep working either way — custom-apps stays covered.
+    void migrateCustomAppsToOrgScoped();
+    initAppServices({
+      resolveApp: async (slug) => {
+        const row = await findAppRow(slug);
+        return row ? workerSpecFromRow(row) : null;
+      },
+      openApp: (slug) => {
+        // Workbench panel beside the agent — OS app windows are retired.
+        // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
+        void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
+      },
+    });
+  } else {
+    console.warn("[glyphh-app] local app host off — apps run in the cloud (GLYPHH_LOCAL_APPS=1 restores it)");
+  }
 
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
     const grant = getAppGrant(event.sender.id);
     const m = String(method || "");
+    // A CLOUD panel: the instance's machine answers `glyphh.call` as the
+    // member and enforces the manifest's capabilities itself.
+    if (grant?.instance) return callInstanceBridge(grant.instance, m, args ?? {});
     if (!grant || !grant.caps.has(m)) {
       return { ok: false, error: `capability not granted: ${m}` };
     }
@@ -1143,6 +1286,26 @@ export function registerGlyphhAppHost(): void {
   ipcMain.handle("glyphh-app:preview-open", async (event, previewWcId: unknown, slug: unknown) => {
     const row = await findAppRow(String(slug || ""));
     if (!row) return { ok: false, error: `unknown app: ${slug}` };
+    // THE FARM: a tab that names an instance loads the server's proxy. The
+    // guest's partition gets the session cookie the proxy honors for `ui/*`;
+    // the page's `glyphh.call` is the preload's (contextBridge, read-only —
+    // the pod's injected shim cannot replace it) and rides main → /call.
+    const instanceKey = instanceKeyOfRow(row);
+    if (instanceKey) {
+      const guest = typeof previewWcId === "number" ? webContents.fromId(previewWcId) : undefined;
+      if (!guest || guest.hostWebContents !== event.sender) return { ok: false, error: "invalid preview target" };
+      const granted = await grantPanelSession(guest.session);
+      if (!granted) return { ok: false, error: "sign in to open this app" };
+      grantAppCaps(guest.id, row.slug, row.name, [], [], instanceKey);
+      if (!previewRevokeWired.has(guest.id)) {
+        previewRevokeWired.add(guest.id);
+        guest.once("destroyed", () => { revokeAppCaps(guest.id); previewRevokeWired.delete(guest.id); });
+      }
+      return { ok: true, fileUrl: instancePanelUrl(instanceKey), hosted: true };
+    }
+    if (!localAppsEnabled()) {
+      return { ok: false, error: `${row.name} is installed on this machine only. Move it to the cloud from Settings → Build → Apps (its folder stays).` };
+    }
     const entryPath = String(row.execPath || "");
     if (!entryPath || !fs.existsSync(entryPath)) {
       // The LOCAL bundle is per-machine; R2/hosting is the source of record.

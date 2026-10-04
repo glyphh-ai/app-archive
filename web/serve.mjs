@@ -20,6 +20,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveRoute, isNestedShellRoute } from './serve-routes.mjs';
 import { WEB_ICON_ROUTE, webIconResponse } from './webicon.mjs';
+import { isAppHostPath, proxyAppHost } from './app-host-proxy.mjs';
 
 // ── Env (web/.env) ────────────────────────────────────────────────────────────
 // A tiny dependency-free .env parse of the CLIENT-SAFE web config. These are
@@ -150,7 +151,14 @@ function securityHeaders(res, isHttps) {
 
 const exists = async (f) => { try { await access(f); return true; } catch { return false; } };
 
+// APPS LIVE IN THE CLOUD (his decision, 2026-10-04): a Glyphh-app panel is an
+// iframe of `/app-host/<key>/ui/index.html` on THIS origin, forwarded to the
+// API's instance proxy with the panel cookie turned into the bearer
+// (app-host-proxy.mjs). Same API the SDK talks to; always on.
+const APP_HOST_API = ENV.GLYPHH_SERVER_URL || 'https://api.glyphh.ai';
+
 const server = http.createServer(async (req, res) => {
+  if (isAppHostPath(new URL(req.url, 'http://x').pathname)) return proxyAppHost(req, res, APP_HOST_API);
   // DEV tunnel: forward API + harness through this origin before anything else.
   if (PROXY) {
     const rp = new URL(req.url, 'http://x').pathname;

@@ -7700,19 +7700,36 @@ async function init(): Promise<void> {
   /**
    * WEB drop-in for a GLYPHH-app rail slot. The native path's <webview> is an
    * inert unknown element in a real browser — it rendered NOTHING, not even
-   * its failure page. A deployed app renders as a plain iframe (no desktop
-   * needed, same as the Echo card); an undeployed one gets the state card.
+   * its failure page. An app INSTALLED IN THE CLOUD (his decision, 2026-10-04)
+   * renders as a plain iframe of its instance's UI through this origin's
+   * /app-host proxy — the bridge's glyphhAppPreviewOpen answers the URL, the
+   * same door the desktop's panel knocks on; a hosted URL renders the same
+   * way; an app that lives only on a desktop gets the state card.
    */
   function mountGlyphhAppWebView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
-    if (slot.url) {
+    const frameOf = (url: string): HTMLIFrameElement => {
       const frame = document.createElement("iframe");
       // Same sandbox gate as the echo-card mount (app-runtime spec).
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
-      frame.src = slot.url;
+      frame.src = url;
       frame.style.cssText = "flex:1 1 auto;min-height:0;width:100%;border:0;background:var(--bg-2)";
-      holder.appendChild(frame);
+      return frame;
+    };
+    const open = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string) => Promise<{ ok: boolean; fileUrl?: string; error?: string }> } }).glyphh?.glyphhAppPreviewOpen;
+    if (slot.url) {
+      holder.appendChild(frameOf(slot.url));
+    } else if (typeof open === "function") {
+      const wait = document.createElement("div");
+      wait.style.cssText = "flex:1 1 auto;display:flex;align-items:center;justify-content:center;color:var(--text-2);font:13px system-ui,sans-serif";
+      wait.textContent = `Opening ${slot.name}…`;
+      holder.appendChild(wait);
+      void open(slot.slug).then((res) => {
+        if (!holder.isConnected) return;
+        wait.remove();
+        holder.appendChild(res?.ok && res.fileUrl ? frameOf(res.fileUrl) : mountGlyphhAppWebState(slot.name));
+      }).catch(() => { if (holder.isConnected) { wait.remove(); holder.appendChild(mountGlyphhAppWebState(slot.name)); } });
     } else {
       holder.appendChild(mountGlyphhAppWebState(slot.name));
     }
