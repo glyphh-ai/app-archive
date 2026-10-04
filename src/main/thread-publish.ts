@@ -131,12 +131,18 @@ export function createThreadPublisher(deps: PublishDeps) {
       if (last.applied) {
         st.metaSig = sig;
         st.publishedAt = clock;
-        if (batch) { st.syncedUpTo = batch.length; report?.[shrank ? "replaced" : "indexed"].push(id); }
+        // A fresh PUT carried the FIRST messages (the rest append below); a
+        // shrink replaced the transcript with its TAIL — the server now holds
+        // everything this side has, so nothing is appended after it (re-sending
+        // the tail from `batch.length` was the duplication, 2026-10-04).
+        if (batch) { st.syncedUpTo = shrank ? messages.length : batch.length; report?.[shrank ? "replaced" : "indexed"].push(id); }
         else report?.indexed.push(id);
       } else {
         // The server holds a strictly newer copy of this thread (another
-        // surface wrote it): its clock is the floor for the next write.
+        // surface wrote it): its clock is the floor for the next write, and
+        // what it already counts is NOT appended again from zero.
         st.publishedAt = Math.max(st.publishedAt, last.thread?.updatedAt ?? 0);
+        st.syncedUpTo = Math.max(st.syncedUpTo, Math.min(messages.length, last.thread?.messageCount ?? 0));
         log(`thread ${id}: index refused as stale (server at ${last.thread?.updatedAt ?? "?"}) — retried after the next save`);
       }
       states[id] = st;
@@ -173,7 +179,20 @@ export function createThreadPublisher(deps: PublishDeps) {
     return last;
   }
 
-  async function publishAll(): Promise<PublishReport> {
+  // ONE PASS AT A TIME: a save's pass and a renderer-driven publishThread used
+  // to run together, each reading syncedUpTo 0 and each appending the whole
+  // transcript, then overwriting the other's advance in the state file.
+  let chain: Promise<unknown> = Promise.resolve();
+  const serial = <T>(fn: () => Promise<T>): Promise<T> => {
+    const next = chain.then(fn, fn);
+    chain = next.catch(() => undefined);
+    return next;
+  };
+
+  function publishAll(): Promise<PublishReport> { return serial(publishAllNow); }
+  function publishThread(id: string): Promise<PushThreadResult | null> { return serial(() => publishThreadNow(id)); }
+
+  async function publishAllNow(): Promise<PublishReport> {
     const report: PublishReport = { indexed: [], appended: {}, replaced: [], skipped: [] };
     const states = deps.state.read();
     try {
@@ -192,7 +211,7 @@ export function createThreadPublisher(deps: PublishDeps) {
     return report;
   }
 
-  async function publishThread(id: string): Promise<PushThreadResult | null> {
+  async function publishThreadNow(id: string): Promise<PushThreadResult | null> {
     const c = deps.chats().find((x) => x.id === id);
     if (!c) return null;
     const states = deps.state.read();
@@ -261,6 +280,21 @@ async function runPublish(): Promise<void> {
 }
 
 /** The chat store was written: publish what moved, soon (debounced; one pass at a time). */
+/** The chat store was repaired on load (chat-store-repair.ts): each thread's
+ *  OLD length becomes its syncedUpTo, so the next pass sees a shrink and
+ *  replaces the server's polluted transcript with the real one. */
+export function noteThreadsRepaired(repaired: Record<string, number>): void {
+  const ids = Object.keys(repaired);
+  if (!ids.length) return;
+  const states = fileState.read();
+  for (const id of ids) {
+    const st = states[id] ?? { syncedUpTo: 0, metaSig: "", publishedAt: 0 };
+    states[id] = { ...st, syncedUpTo: Math.max(st.syncedUpTo, repaired[id]) };
+  }
+  fileState.write(states);
+  console.warn("[threads] repaired on load", JSON.stringify(repaired));
+}
+
 export function noteThreadsSaved(): void {
   if (debounce) clearTimeout(debounce);
   debounce = setTimeout(() => {

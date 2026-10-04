@@ -31,6 +31,7 @@
  */
 
 import { harnessRequest, HarnessHttpError } from "./harness-api.js";
+import { threadLocus } from "./thread-locus.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
 
@@ -205,6 +206,14 @@ function webTransport(): Transport {
  *  main-process client over IPC. Order matters: on web `window.glyphh` is a
  *  Proxy that fabricates a function for ANY name, so the surface marker is
  *  checked first. */
+/** On the DESKTOP a LOCAL thread belongs to main: its file is the truth and
+ *  main's publisher mirrors it to the server (thread-publish.ts). This store
+ *  neither pushes such a thread nor pulls the server's copy over it — doing
+ *  both while main appended was the loop that doubled every thread on every
+ *  pass (his report, 2026-10-04). Cloud threads and the web keep the LWW rule. */
+const ownedByMain = (c: ThreadChat): boolean =>
+  !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ && threadLocus(c) === "local";
+
 function transport(): Transport | null {
   if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return webTransport();
   const g = window.glyphh as unknown as DesktopThreadsIpc;
@@ -364,6 +373,10 @@ async function reconcile(): Promise<void> {
       chatsRef.push(adopted);
       snapshot.set(m.id, projection(adopted)); // stub is "synced" — an empty-body save must never push over the server's messages
       changed = true;
+    } else if (ownedByMain(local)) {
+      // Main's file is the truth and main publishes it: never adopt, never push.
+      pending.delete(m.id);
+      snapshot.set(m.id, projection(local));
     } else {
       const localStamp = stampOf(local);
       if (m.updatedAt > localStamp) {
@@ -406,6 +419,7 @@ async function reconcile(): Promise<void> {
   for (const c of chatsRef) {
     if (serverById.has(c.id) || deleted[c.id] !== undefined) continue;
     if (serverList.length && serverSeen.has(c.id)) remoteGone.push(c.id); // deleted elsewhere → drop
+    else if (ownedByMain(c)) snapshot.set(c.id, projection(c));           // main publishes it
     else { pending.add(c.id); snapshot.set(c.id, projection(c)); } // never synced → push
   }
   for (const id of remoteGone) {
@@ -427,7 +441,7 @@ async function pushOne(id: string): Promise<boolean> {
   const t = transport();
   if (!t) return false;
   const c = chatsRef.find((x) => x.id === id);
-  if (!c || deleted[id] !== undefined) { pending.delete(id); saveMeta(); return true; }
+  if (!c || deleted[id] !== undefined || ownedByMain(c)) { pending.delete(id); saveMeta(); return true; }
   const body: PushBody = {
     title: c.title,
     mode: modeOf(c),

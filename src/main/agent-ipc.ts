@@ -30,7 +30,8 @@ import { startLocalMcpServer } from "./local-mcp-server.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
 // here publishes the index + the new messages (thread-publish.ts).
-import { noteThreadsSaved, noteThreadDeleted, threadsList, threadsGet, threadsPush, threadsDelete } from "./thread-publish.js";
+import { noteThreadsSaved, noteThreadDeleted, noteThreadsRepaired, threadsList, threadsGet, threadsPush, threadsDelete } from "./thread-publish.js";
+import { repairChatStore } from "./chat-store-repair.js";
 import type { PushThreadInput } from "@glyphh/sdk";
 import {
   compactGlyphhLoop, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
@@ -47,7 +48,7 @@ const STORE_DIR = (): string => userScopedDir();
 const sessionsFile = (): string => path.join(STORE_DIR(), "agent-sessions.json");
 const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
-interface StoredMessage { role?: string; text?: string }
+interface StoredMessage { role?: string; text?: string; at?: number }
 interface StoredChat { id?: string; updatedAt?: number; messages?: StoredMessage[] }
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null; /** Ids the saver deleted — dropped from the merge. */ deleted?: string[] }
 
@@ -92,9 +93,23 @@ function adoptLegacySessions(): void {
   } catch { /* best-effort: the legacy chats simply stay where they were */ }
 }
 
+/** A store the sync loop bloated (2026-10-04) is repaired once on load, before
+ *  any of it crosses IPC, and the publisher is told to replace those threads
+ *  on the server. */
+let repairedFile = "";
 function loadSessionsFile(): SessionsSnapshot {
   adoptLegacySessions();
-  return readSnapshot(sessionsFile());
+  const snap = readSnapshot(sessionsFile());
+  if (repairedFile === sessionsFile()) return snap;
+  repairedFile = sessionsFile();
+  const r = repairChatStore(snap.chats as StoredChat[]);
+  if (!Object.keys(r.repaired).length) return snap;
+  try {
+    writeFileSync(sessionsFile(), JSON.stringify({ chats: r.chats, currentId: snap.currentId }), "utf-8");
+    try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* announced by the watcher then */ }
+  } catch { /* the in-memory copy is repaired either way */ }
+  noteThreadsRepaired(r.repaired);
+  return { ...snap, chats: r.chats };
 }
 
 /** ANOTHER WRITER (the glyphh terminal, 2026-09-21): watch the store and tell
@@ -212,7 +227,7 @@ export function appendStoredMessage(chatId: string, msg: { role: "user" | "assis
   const msgs = Array.isArray(chat.messages) ? chat.messages : (chat.messages = []);
   const last = msgs[msgs.length - 1];
   if (last && last.role === msg.role && String(last.text ?? "").trim() === text) return;
-  msgs.push({ role: msg.role, text });
+  msgs.push({ role: msg.role, text, at: Date.now() });
   chat.updatedAt = Date.now();
   saveSessionsFile({ chats, currentId: snap.currentId });
 }

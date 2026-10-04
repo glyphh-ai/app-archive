@@ -156,6 +156,47 @@ describe("the transcript", () => {
   });
 });
 
+describe("the loop that doubled every thread (2026-10-04)", () => {
+  it("an index push the server refuses as stale adopts the server's message count: the transcript is NOT re-appended from zero", async () => {
+    const { api, threads } = fakeSessions();
+    threads.set("c1", { updatedAt: 50_000, messages: Array.from({ length: 6 }, (_, i) => ({ role: "user", text: `m${i}` })), title: "Thread c1", mode: "code", source: null });
+    const c = chat("c1", 6);
+    const state = memState({ c1: { syncedUpTo: 0, metaSig: "", publishedAt: 1 } });
+    const pub = createThreadPublisher({ api, chats: () => [c], state });
+    await pub.publishAll();
+    expect(api.appendMessages).not.toHaveBeenCalled();
+    expect(threads.get("c1")!.messages).toHaveLength(6);
+    expect(state.get().c1.syncedUpTo).toBe(6);
+  });
+  it("a shrink to a transcript longer than one batch lands the tail and appends nothing after it", async () => {
+    const { api, threads } = fakeSessions();
+    const c = chat("c1", 4);
+    const state = memState();
+    const pub = createThreadPublisher({ api, chats: () => [c], state });
+    await pub.publishAll();
+    // Compacted, yet still 700 messages long: the last 500 replace the server copy.
+    c.messages = Array.from({ length: 700 }, (_, i) => ({ role: "assistant", text: `k${i}` }));
+    state.get().c1.syncedUpTo = 900;
+    c.updatedAt = 9_000;
+    await pub.publishAll();
+    expect(threads.get("c1")!.messages).toHaveLength(500);
+    expect(threads.get("c1")!.messages[0].text).toBe("k200");
+    expect(api.appendMessages).not.toHaveBeenCalled();
+    expect(state.get().c1.syncedUpTo).toBe(700);
+  });
+  it("publishThread and publishAll never run at once: two passes started together append the transcript once", async () => {
+    const { api, threads } = fakeSessions();
+    const c = chat("c1", 3);
+    const state = memState();
+    const pub = createThreadPublisher({ api, chats: () => [c], state });
+    await pub.publishAll();
+    c.messages.push({ role: "user", text: "m3" }); c.updatedAt = 5_000;
+    await Promise.all([pub.publishThread("c1"), pub.publishAll(), pub.publishThread("c1")]);
+    expect(threads.get("c1")!.messages.map((m) => m.text)).toEqual(["m0", "m1", "m2", "m3"]);
+    expect(state.get().c1.syncedUpTo).toBe(4);
+  });
+});
+
 describe("what is not the publisher's", () => {
   it("a cloud thread is skipped (the renderer's thread-store pushes its index; the pod holds its transcript)", async () => {
     const { api } = fakeSessions();
