@@ -19,12 +19,15 @@
  * Every clock is the WRITER'S `Date.now()` (epoch ms): workspaces carry it as a
  * number; tabs and agents already stamp an ISO `updatedAt` on save and project
  * it with `Date.parse` (millisecond-exact both ways); the folder kinds take the
- * newest file mtime, or the clock recorded at the last sync when nothing moved.
+ * newest file mtime, or the clock recorded at the last sync when nothing moved;
+ * drips and schedules (SQLite rows on the desktop, 2026-10-04: "anything that
+ * could be local before is now a db row with cloud storage") stamp `updated_ms`
+ * on every save, and a row written before the stamp takes its SQL datetime.
  *
  * No electron, no fs: the web bundle imports this file.
  */
 
-export type MemberLibraryKind = "workspace" | "tab" | "skill" | "agent" | "task";
+export type MemberLibraryKind = "workspace" | "tab" | "skill" | "agent" | "task" | "drip" | "schedule";
 
 /** A row as the server lists it. `deletedAt` arrives as a number (epoch ms) on
  *  the `since` page and as an ISO string on an item read; the SDK's reconcile
@@ -497,6 +500,100 @@ export function mergeServerFirst<T>(server: readonly T[], relay: readonly T[], k
     out.push(row);
   }
   return out;
+}
+
+// ── Drips ────────────────────────────────────────────────────────────────────
+
+/** The `data` of a drip record: the preset, nothing of the machine that plays
+ *  it (the overlay windows, what is running now). */
+export interface DripDataLike { name: string; recipe: string }
+
+/** The preset's id: its name, lowercased and trimmed — the `.drip save` command
+ *  and the Drips page both lowercase names, so one preset has one id. */
+export const dripId = (name: string): string => String(name ?? "").trim().toLowerCase();
+
+export function dripRecordOf(name: string, recipe: string): DripDataLike {
+  return { name: dripId(name), recipe: String(recipe ?? "").trim().split(/\s+/).join(" ") };
+}
+
+export function isDripData(v: unknown): v is DripDataLike {
+  const d = v as DripDataLike | null;
+  return !!d && typeof d === "object" && typeof d.name === "string" && typeof d.recipe === "string";
+}
+
+/** A SQL `datetime('now')` ("YYYY-MM-DD HH:MM:SS", UTC) or an ISO stamp as epoch
+ *  ms — the clock of a row written before `updated_ms` existed. 0 when unreadable. */
+export function sqlClock(stamp: string | null | undefined): number {
+  const s = String(stamp ?? "").trim();
+  if (!s) return 0;
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s) ? `${s.replace(" ", "T")}Z` : s;
+  return Date.parse(iso) || 0;
+}
+
+/** The LWW clock of a stamped SQLite row: its `updated_ms`, else its SQL datetime. */
+export const rowClock = (updatedMs: number | null | undefined, stamp: string | null | undefined): number =>
+  (typeof updatedMs === "number" && updatedMs > 0 ? Math.floor(updatedMs) : sqlClock(stamp));
+
+// ── Schedules ────────────────────────────────────────────────────────────────
+
+/** The `data` of a schedule record — what puts a task or a skill on a clock.
+ *  The runs, and whether a job is armed right now, are the machine's: they
+ *  never ride. */
+export interface ScheduleDataLike {
+  name: string;
+  /** Five fields. */
+  cron: string;
+  kind: "task" | "skill";
+  /** The task bundle's slug, or the skill's. */
+  target: string;
+  /** The agent a SKILL reads through (a task fills its own slots). */
+  agentId: string | null;
+  /** The agent that OWNS this schedule (an Agents-page task), else null. */
+  ownerAgentId: string | null;
+  /** Arguments handed to the target. */
+  args: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export interface ScheduleInputLike {
+  name?: string | null; cron: string; kind?: string | null; target: string;
+  agentId?: string | null; ownerAgentId?: string | null; args?: unknown; enabled?: boolean | null;
+}
+
+/** Does this read as a cron line at all (five fields of cron characters)? The
+ *  desktop's clock validates for real (node-cron); the web checks the shape so
+ *  a typo never lands as a record nothing can arm. */
+export const isCronShape = (cron: string): boolean => /^(?:[\d*,/#?LW-]+\s+){4}[\d*,/#?LW-]+$/i.test(String(cron ?? "").trim());
+
+export function buildScheduleData(input: ScheduleInputLike, existing: ScheduleDataLike | null = null): ScheduleDataLike {
+  const target = String(input.target ?? existing?.target ?? "").trim();
+  const args = input.args === undefined ? existing?.args ?? {} : input.args;
+  return {
+    name: String(input.name ?? "").trim() || existing?.name || target,
+    cron: String(input.cron ?? existing?.cron ?? "").trim().split(/\s+/).join(" "),
+    kind: (input.kind ?? existing?.kind) === "skill" ? "skill" : "task",
+    target,
+    agentId: input.agentId === undefined ? existing?.agentId ?? null : (input.agentId ? String(input.agentId) : null),
+    ownerAgentId: input.ownerAgentId === undefined ? existing?.ownerAgentId ?? null : (input.ownerAgentId ? String(input.ownerAgentId) : null),
+    args: args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : {},
+    enabled: input.enabled === undefined || input.enabled === null ? existing?.enabled ?? true : !!input.enabled,
+  };
+}
+
+export function isScheduleData(v: unknown): v is ScheduleDataLike {
+  const d = v as ScheduleDataLike | null;
+  return !!d && typeof d === "object" && typeof d.cron === "string" && typeof d.target === "string" && (d.kind === "task" || d.kind === "skill");
+}
+
+/** The row the Schedules page reads (the `schedules-list` IPC's shape) from a
+ *  record: the machine's run columns are null until its clock reports. */
+export function scheduleViewOf(id: string, data: ScheduleDataLike, updatedAt: number, agentName: string | null = null): Record<string, unknown> {
+  return {
+    id, name: data.name, kind: data.kind, target: data.target, cron: data.cron, enabled: data.enabled,
+    agentId: data.agentId, agentName: agentName ?? data.agentId, ownerAgentId: data.ownerAgentId,
+    args: JSON.stringify(data.args ?? {}), createdAt: new Date(updatedAt).toISOString(), updatedAt,
+    lastRunAt: null, lastStatus: null, lastError: null,
+  };
 }
 
 // ── Threads ──────────────────────────────────────────────────────────────────

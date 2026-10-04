@@ -6,8 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  agentClock, buildAgentRow, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, filesClock, filesSignature,
-  isGridLayout, layoutRowOf, mergeServerFirst, mergeTabLocal, normalizeRemoteRow, tabClock, tabRecordOf, tabRowOf, threadLocus,
+  agentClock, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
+  filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
+  normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
   workspaceClock, workspaceId, type GridLayoutLike, type TabRowLike,
 } from "../../src/shared/member-library.js";
 
@@ -106,5 +107,51 @@ describe("thread locus", () => {
     expect(threadLocus({ messages: [{ role: "user" }] })).toBe("local");
     expect(threadLocus({ messages: [], messageCount: 4 })).toBe("cloud");
     expect(threadLocus({})).toBe("local");
+  });
+});
+
+describe("drips (2026-10-04: a preset is a db row with cloud storage)", () => {
+  it("the id is the lowercased name; the record is { name, recipe } with the recipe's spacing normalised", () => {
+    expect(dripId("  Party Time ")).toBe("party time");
+    expect(dripRecordOf("Party", "  3   confetti\tfireworks ")).toEqual({ name: "party", recipe: "3 confetti fireworks" });
+    expect(isDripData({ name: "p", recipe: "x" })).toBe(true);
+    expect(isDripData("confetti")).toBe(false);
+    expect(isDripData({ name: "p" })).toBe(false);
+  });
+  it("a SQLite row's clock is its updated_ms, else its SQL datetime (UTC) or ISO stamp, else 0", () => {
+    expect(sqlClock("2026-10-04 10:00:00")).toBe(Date.parse("2026-10-04T10:00:00Z"));
+    expect(sqlClock("2026-10-04T10:00:00.250Z")).toBe(Date.parse("2026-10-04T10:00:00.250Z"));
+    expect(sqlClock("")).toBe(0);
+    expect(sqlClock(null)).toBe(0);
+    expect(rowClock(1_234.9, "2026-10-04 10:00:00")).toBe(1_234);
+    expect(rowClock(null, "2026-10-04 10:00:00")).toBe(Date.parse("2026-10-04T10:00:00Z"));
+    expect(rowClock(0, null)).toBe(0);
+  });
+});
+
+describe("schedules (the record both surfaces build)", () => {
+  it("buildScheduleData fills the shape from an input, keeping what an edit leaves unnamed; the name falls back to the target", () => {
+    expect(buildScheduleData({ cron: " 0 9  * * 1-5 ", target: "digest" })).toEqual({ name: "digest", cron: "0 9 * * 1-5", kind: "task", target: "digest", agentId: null, ownerAgentId: null, args: {}, enabled: true });
+    const cur = buildScheduleData({ name: "Brief", cron: "30 8 * * *", kind: "skill", target: "brief", agentId: "a", ownerAgentId: "bot", args: { n: 1 }, enabled: false });
+    expect(buildScheduleData({ cron: "0 8 * * *", target: "brief", enabled: null }, cur)).toEqual({ ...cur, cron: "0 8 * * *" });
+    expect(buildScheduleData({ cron: cur.cron, target: cur.target, agentId: null, args: "junk" }, cur)).toMatchObject({ agentId: null, args: {} });
+    expect(buildScheduleData({ cron: "0 8 * * *", target: "brief", kind: "loop" })).toMatchObject({ kind: "task" });
+  });
+  it("isScheduleData / isCronShape guard what the server hands back and what the web types in", () => {
+    expect(isScheduleData({ cron: "0 9 * * *", target: "x", kind: "task" })).toBe(true);
+    expect(isScheduleData({ cron: "0 9 * * *", target: "x", kind: "loop" })).toBe(false);
+    expect(isScheduleData(null)).toBe(false);
+    expect(isCronShape("0 9 * * 1-5")).toBe(true);
+    expect(isCronShape("*/15 * * * *")).toBe(true);
+    expect(isCronShape("weekdays at 9am")).toBe(false);
+    expect(isCronShape("0 9 * *")).toBe(false);
+  });
+  it("scheduleViewOf is the Schedules page's row: the record's fields, args as JSON, the machine's run columns null", () => {
+    const data = buildScheduleData({ name: "Digest", cron: "0 9 * * *", target: "digest", args: { n: 1 } });
+    expect(scheduleViewOf("s1", data, 5_000, "Ada")).toEqual({
+      id: "s1", name: "Digest", kind: "task", target: "digest", cron: "0 9 * * *", enabled: true, agentId: null, agentName: "Ada", ownerAgentId: null,
+      args: '{"n":1}', createdAt: new Date(5_000).toISOString(), updatedAt: 5_000, lastRunAt: null, lastStatus: null, lastError: null,
+    });
+    expect(scheduleViewOf("s1", { ...data, agentId: "a" }, 5_000).agentName).toBe("a");
   });
 });
