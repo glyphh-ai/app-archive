@@ -355,6 +355,9 @@ declare global {
       remoteControlAddFolder?: () => Promise<RemoteControlView>;
       remoteControlRemoveFolder?: (folder: string) => Promise<RemoteControlView>;
       onRemoteControlChanged?: (cb: (v: RemoteControlView) => void) => () => void;
+      attachDevicesList?: () => Promise<{ source: "devices" | "status"; allowed?: boolean; devices: Array<Record<string, unknown>>; blocked: Array<Record<string, unknown>> }>;
+      attachDeviceDisconnect?: (machineId: string) => Promise<{ disconnected: boolean; device?: string; hours?: number }>;
+      attachDeviceAllow?: (device: string) => Promise<{ allowed: boolean }>;
       onPreferenceChanged: (cb: (key: string, value: unknown) => void) => void;
       onboardingComplete: () => Promise<void>;
 

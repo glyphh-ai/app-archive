@@ -62,6 +62,29 @@ const key = (): string => `remoteControl:${hostname()}`;
 let refused: string | undefined;
 let running = false;
 
+/** The server's words when the org's admin turned remote control off. */
+export const ORG_OFF = "remote control is off for your organization";
+
+/**
+ * WHAT A 4403 MEANS HERE (his order, 2026-10-04). The server refuses this
+ * host for good in two cases, and the SDK's attach host has already stopped
+ * reconnecting by the time `onRefused` runs:
+ *   · the ORG turned remote control off — the setting stays as it was (when
+ *     the admin allows it again, the next boot or toggle attaches);
+ *   · a DISCONNECT FROM THE WEB (Settings → Devices → Disconnect, or an
+ *     unknown refusal) — this device's switch goes OFF, so the page says what
+ *     the server said and "turn remote control on" is the way back.
+ * Pure: the new setting and the line the Remote control page shows.
+ */
+export function afterRefusal(reason: string, setting: RemoteControlSetting): { setting: RemoteControlSetting; refused: string } {
+  const why = (reason || "").trim();
+  if (why === ORG_OFF) return { setting, refused: why };
+  return {
+    setting: { ...setting, enabled: false },
+    refused: why ? `${why} (disconnected from the web — turn remote control on to attach again)` : "disconnected from the web — turn remote control on to attach again",
+  };
+}
+
 function readSetting(): RemoteControlSetting {
   const v = getPreference(key(), null) as Partial<RemoteControlSetting> | null;
   return {
@@ -166,7 +189,14 @@ async function start(): Promise<void> {
   m.startAttach({
     handlers: () => (remoteOn(readSetting()) ? remoteTable(() => readSetting().folders) : {}),
     folders: () => (remoteOn(readSetting()) ? readSetting().folders : []),
-    onRefused: (reason) => { running = false; refused = reason; changed(); },
+    onRefused: (reason) => {
+      running = false;
+      const r = afterRefusal(reason, readSetting());
+      writeSetting(r.setting);
+      refused = r.refused;
+      killAllRelayPtys();
+      changed();
+    },
   });
   running = true;
   changed();
@@ -223,4 +253,55 @@ export function registerRemoteControlIpc(): void {
     const cur = readSetting();
     return apply({ ...cur, folders: cur.folders.filter((f) => f !== folder) });
   });
+  // SETTINGS → DEVICES (his order, 2026-10-04): the member's attached
+  // machines and the ones disconnected from the web, through the main
+  // process's SDK client (the renderer holds no client on the desktop).
+  ipcMain.handle("attach-devices:list", () => listAttachedDevices());
+  ipcMain.handle("attach-devices:disconnect", (_e, machineId: string) => disconnectAttachedDevice(machineId));
+  ipcMain.handle("attach-devices:allow", (_e, device: string) => allowAttachedDevice(device));
+}
+
+// ── Settings → Devices (the server's /api/attach/devices) ───────────────────
+//
+//   GET  /api/attach/devices                     → { allowed, devices: [{ id, app, version, name, since,
+//                                                   capabilities, folders, inst, device, remote }],
+//                                                   blocked: [{ device, app, name, disconnectedAt }] }
+//   POST /api/attach/devices/{machineId}/disconnect → { disconnected, device, hours }
+//   POST /api/attach/devices/{device}/allow         → { allowed }   (`device` = the STABLE key, not the machine id)
+//
+// A server without the routes yet (404) answers with attach.status's machines
+// instead, so the page lists what it can. Pure shapes; the renderer's
+// settings-devices.ts normalizes both answers.
+
+export interface AttachDevicesAnswer {
+  source: "devices" | "status";
+  allowed?: boolean;
+  devices: Array<Record<string, unknown>>;
+  blocked: Array<Record<string, unknown>>;
+}
+
+const notFound = (err: unknown): boolean => Number((err as { httpStatus?: unknown } | null)?.httpStatus) === 404;
+
+export async function listAttachedDevices(): Promise<AttachDevicesAnswer> {
+  const client = getClient();
+  try {
+    const r = await client.http.get<{ allowed?: boolean; devices?: Array<Record<string, unknown>>; blocked?: Array<Record<string, unknown>> }>("/api/attach/devices");
+    return { source: "devices", ...(typeof r?.allowed === "boolean" ? { allowed: r.allowed } : {}), devices: Array.isArray(r?.devices) ? r.devices : [], blocked: Array.isArray(r?.blocked) ? r.blocked : [] };
+  } catch (err) {
+    if (!notFound(err)) throw err;
+    const st = await client.attach.status();
+    return { source: "status", ...(typeof st?.allowed === "boolean" ? { allowed: st.allowed } : {}), devices: (st?.machines ?? []) as unknown as Array<Record<string, unknown>>, blocked: [] };
+  }
+}
+
+export async function disconnectAttachedDevice(machineId: string): Promise<{ disconnected: boolean; device?: string; hours?: number }> {
+  const id = String(machineId || "").trim();
+  if (!id) throw new Error("a machine id is required");
+  return getClient().http.post<{ disconnected: boolean; device?: string; hours?: number }>(`/api/attach/devices/${encodeURIComponent(id)}/disconnect`);
+}
+
+export async function allowAttachedDevice(device: string): Promise<{ allowed: boolean }> {
+  const id = String(device || "").trim();
+  if (!id) throw new Error("a device key is required");
+  return getClient().http.post<{ allowed: boolean }>(`/api/attach/devices/${encodeURIComponent(id)}/allow`);
 }
