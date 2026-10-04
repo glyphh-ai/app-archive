@@ -21,6 +21,7 @@ import { formatMarkdown } from "./format-markdown.js";
 import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
+import { podCliCommand, terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
@@ -145,8 +146,9 @@ interface WbTerminal {
   /** Persistent host-size observer — keeps the xterm filling its container no
    *  matter when/how the host grows (solo windows, layout settle, resizes). */
   ro?: ResizeObserver;
-  /** WEB target only: the pty running on the ATTACHED DESKTOP over the relay
-   *  (remote-terminal.ts). Desktop keeps using local wb-term IPC (unset). */
+  /** A FAR pty (remote-terminal.ts): a cloud session's shell on its worker
+   *  (both surfaces), or the attached desktop's over the relay (web). Unset
+   *  on a local shell — the desktop's own node-pty over wb-term IPC. */
   remote?: RemotePtyHandle;
 }
 interface TermSlot {
@@ -160,9 +162,11 @@ interface TermSlot {
   /** Set ONLY by openAgentCliCard: this terminal is a CLI AGENT, and its tab
    *  row becomes the agent header. Plain terminals never carry it. */
   agent?: { id: string; name: string };
-  /** WEB ONLY: which far side runs this slot's shell. A CLI session resumed
-   *  off the attached desktop's own stores runs THERE (his order, 2026-10-04),
-   *  whatever the current session's locus; absent = the session's locus. */
+  /** Which far side runs this slot's shell, when pinned: a CLI session
+   *  resumed off the machine's own stores runs on the MACHINE ("desktop" —
+   *  the local pty on the desktop surface, the relay on the web), a cloud
+   *  session's CLI tile on its WORKER; absent = the session's locus
+   *  (help/terminal-target.ts is the rule). */
   target?: RemotePtyTarget;
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
@@ -6961,6 +6965,34 @@ async function init(): Promise<void> {
     const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
       const a = t.cliAgent;
       if (!a) return;
+      // A CLOUD SESSION'S CLI runs on its WORKER (his order, 2026-10-04): the
+      // pod's pty starts the bare binary, riding the gateway the server
+      // configured for it — main's machine line (a local `cd`, the local MCP
+      // server, env files) has nothing to do there. A session picked from the
+      // MACHINE's own CLI stores (resumeId) still runs on the machine.
+      const far = opts?.resumeId ? null : terminalTransportFor();
+      if (far?.kind === "remote" && far.target === "worker") {
+        const row = cliAgentRows.find((x) => x.id === a.id);
+        const mode = opts?.fresh ? "new" : row?.session ?? "keep";
+        const cmd = podCliCommand(a.id, { ...(mode === "last" ? { resume: true } : {}), ...(prompt ? { prompt } : {}) });
+        if (!cmd) { console.warn("[agents] open: the cloud worker carries no", a.id); return; }
+        const key = `agent::agent:${a.id}`;
+        const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
+        entry.keepTermsAlive = mode !== "new";
+        const parked = mode !== "new" ? parkedTerms.get(key) : undefined;
+        if (mode === "new") {
+          const stale = parkedTerms.get(key);
+          if (stale) { parkedTerms.delete(key); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
+        }
+        if (parked) { parkedTerms.delete(key); pendingParkedTerms = parked; }
+        setPendingAgentTermMeta({ id: a.id, name: t.name, target: "worker" });
+        activateTile(entry);
+        pendingParkedTerms = null;
+        const first = (entry.toolSlot as TermSlot | undefined)?.terminals?.[0];
+        if (parked) { if (prompt) typeIntoTerminal(first, prompt); return; }
+        typeIntoTerminal(first, cmd);
+        return;
+      }
       const appLight = appIsLight();
       void yoApi?.cliAgentOpen?.(a.id, { light: appLight, ...(opts?.cwd ? { cwd: opts.cwd } : {}) }).then((r) => {
         // Possibly not installed: the dialog says so; the terminal opens anyway.
@@ -9551,6 +9583,18 @@ async function init(): Promise<void> {
     pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
   }
 
+  /** Where THIS slot's shell runs: the live session's source + id, this
+   *  surface, and the slot's own pin, through the one pure rule. */
+  function terminalTransportFor(slot?: TermSlot): TerminalTransport {
+    const w = window as unknown as { __glyphhActiveSource?: () => { kind: string; space?: string; dir?: string } | null; __glyphhCurrentChatId?: () => string | null };
+    return terminalTransport({
+      surface: isWebTarget() ? "web" : "desktop",
+      source: w.__glyphhActiveSource?.() ?? null,
+      chatId: w.__glyphhCurrentChatId?.() ?? null,
+      ...(slot?.target ? { slotTarget: slot.target } : {}),
+    });
+  }
+
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
     if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
       slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
@@ -9558,17 +9602,15 @@ async function init(): Promise<void> {
       if (pendingAgentTermMeta.target) slot.target = pendingAgentTermMeta.target;
       pendingAgentTermMeta = null;
     }
-    // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
-    // pod has no pty surface. Say so honestly instead of opening a local shell
-    // that silently works on the WRONG filesystem.
-    const src = (window as unknown as { __glyphhActiveSource?: () => { kind?: string } | null }).__glyphhActiveSource?.();
+    // A CLOUD session's terminal is the pod's pty in the thread's workspace
+    // (his report, 2026-10-04: "What happened to my terminals in the cloud?"
+    // — the tile used to say terminals were machine-local and stop); a local
+    // session's is the machine's. help/terminal-target.ts decides; the tabs,
+    // the resize and the dispose paths are the same either way.
+    const transport = terminalTransportFor(slot);
     // NEVER SILENT (his report, 2026-09-21: a black card and nothing to go on):
-    // one line per render says which terminal, which source, and what it did.
-    console.warn("[wb-term] render", JSON.stringify({ agent: slot.agent?.id ?? null, source: src?.kind ?? null, terms: slot.terminals.length, active: slot.activeIdx, spawned: !!slot.terminals[slot.activeIdx]?.spawned }));
-    if (src && src.kind && src.kind !== "local") {
-      body.innerHTML = `<div class="ws-term-cloud-note">Terminal isn't available for cloud sessions — ask the agent to run commands in its workspace instead.</div>`;
-      return;
-    }
+    // one line per render says which terminal, which far side, and what it did.
+    console.warn("[wb-term] render", JSON.stringify({ agent: slot.agent?.id ?? null, transport: transport.kind === "local" ? "local" : transport.target, scope: transport.kind === "remote" && transport.target === "worker" ? transport.scope : undefined, terms: slot.terminals.length, active: slot.activeIdx, spawned: !!slot.terminals[slot.activeIdx]?.spawned }));
     body.innerHTML = `
       <div class="ws-terminal">
         <div class="ws-terminal-tabs"></div>
@@ -9642,8 +9684,10 @@ async function init(): Promise<void> {
       (window as unknown as { __wbRetargetAgentCard?: (slot: TermSlot, id: string, name: string) => void }).__wbRetargetAgentCard?.(slot, agentId, slot.agent.name);
     }
     if (r?.cwd) slot.cwd = r.cwd;
-    // WEB: the resumed session is the attached desktop's — run there.
-    if (isWebTarget()) slot.target = "desktop";
+    // The resumed session lives in the MACHINE's own stores — its shell runs
+    // there (the local pty here; the attached desktop's over the relay on web),
+    // whatever the current session's locus.
+    slot.target = "desktop";
     const old = slot.terminals[slot.activeIdx];
     if (old) { try { killTerminal(old); } catch { /* already gone */ } }
     slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };
@@ -9779,10 +9823,11 @@ async function init(): Promise<void> {
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
         const spawnCwd = slot.cwd || cwd || "";
-        console.warn("[wb-term] spawn", JSON.stringify({ ptyId: wbt.ptyId, cols, rows, cwd: spawnCwd, own: !!slot.cwd, initCmd: !!wbt.initCmd }));
-        if (isWebTarget()) {
-          // WEB: window.wb is a no-op — the shell runs on the user's ATTACHED
-          // DESKTOP over the pty relay instead (remote-terminal.ts).
+        const transport = terminalTransportFor(slot);
+        console.warn("[wb-term] spawn", JSON.stringify({ ptyId: wbt.ptyId, cols, rows, cwd: spawnCwd, own: !!slot.cwd, initCmd: !!wbt.initCmd, transport: transport.kind === "local" ? "local" : transport.target }));
+        if (transport.kind === "remote") {
+          // A cloud session's worker (both surfaces), or the attached desktop
+          // over the relay (web) — remote-terminal.ts.
           void spawnRemoteTerm(wbt, hostEl, cols, rows, slot, spawnCwd);
         } else {
           // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
@@ -9884,30 +9929,32 @@ async function init(): Promise<void> {
 
   // ── WEB terminal transport (the worker pty, or the attached desktop) ──
   /**
-   * Open the far shell for a web Terminal tab (his order, 2026-10-04): the
-   * session's CLOUD WORKER through /api/harness/pty by default; the user's
-   * attached DESKTOP over the relay when the current session is bound to a
-   * machine (window.wb.locus().local). A slotted first command — the CLI
-   * agent window's `claude` / `codex` line — is handed to the worker so the
-   * pty STARTS that program; a desktop shell gets it typed in after boot.
-   * Failure renders the SAME honest state card the streamed panel shows
-   * (worker-unavailable / desktop-offline / signed-out / failed /
+   * Open the far shell for a Terminal tab (his orders, 2026-10-04): a CLOUD
+   * session's WORKER through /api/harness/pty — on the desktop and the web —
+   * in the thread's workspace; the user's attached DESKTOP over the relay
+   * when the web views a machine-bound session. help/terminal-target.ts is
+   * the rule; a slot's own pin (a resumed CLI session) wins. A slotted first
+   * command — the CLI agent window's `claude` / `codex` line — is handed to
+   * the worker so the pty STARTS that program; a desktop shell gets it typed
+   * in after boot. Failure renders the SAME honest state card the streamed
+   * panel shows (worker-unavailable / desktop-offline / signed-out / failed /
    * disconnected) into the terminal host, with a retry — never a dead black
    * rectangle.
    */
   async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number, slot?: TermSlot, spawnCwd?: string): Promise<void> {
     const term = wbt.term;
     if (wbt.remote || !term) return;
-    const locus = (window as unknown as { wb?: { locus?: () => { local?: boolean; cloud?: boolean; scope?: string; chatId?: string } } }).wb?.locus?.();
-    // The slot's own target first (a CLI session resumed off the desktop),
-    // else the current session's locus.
-    const target: RemotePtyTarget = slot?.target ?? (locus?.local ? "desktop" : "worker");
-    // The slot's own folder (a session's) beats the workbench's; the desktop
-    // side must have granted it (remote-terminal.ts falls back to the first grant).
-    const cwd = spawnCwd || slot?.cwd || "";
-    // The worker shell runs in the CURRENT cloud session's workspace (its fs
-    // scope — the space's id for a re-entered space, else the thread id).
-    const scope = locus?.cloud ? (locus.scope || locus.chatId || "") : "";
+    const transport = terminalTransportFor(slot);
+    const target: RemotePtyTarget = transport.kind === "remote" ? transport.target : "desktop";
+    // The worker shell runs INSIDE the session's workspace (`scope` names it;
+    // the pod clamps `cwd` under its root) — the folder the session picked,
+    // never a machine path. A desktop shell: the slot's own folder (a
+    // session's) beats the workbench's; the desktop side must have granted
+    // it (remote-terminal.ts falls back to the first grant).
+    const cwd = transport.kind === "remote" && transport.target === "worker"
+      ? (transport.cwd || "")
+      : (spawnCwd || slot?.cwd || "");
+    const scope = transport.kind === "remote" && transport.target === "worker" ? transport.scope : "";
     const command = wbt.initCmd;
     try {
       const remote = await openRemotePty({ cols, rows, ...(cwd ? { cwd } : {}), target, ...(scope ? { scope } : {}), ...(command ? { command } : {}) }, {
@@ -9916,10 +9963,10 @@ async function init(): Promise<void> {
         onExit: () => { wbt.remote = undefined; },
         onDrop: () => {
           wbt.remote = undefined;
-          showRemoteTermState(wbt, hostEl, "disconnected");
+          showRemoteTermState(wbt, hostEl, "disconnected", undefined, slot, spawnCwd);
         },
         // The worker's own failure (`{type:"error"}`) — the state card says it.
-        onError: (detail) => showRemoteTermState(wbt, hostEl, "failed", detail),
+        onError: (detail) => showRemoteTermState(wbt, hostEl, "failed", detail, slot, spawnCwd),
       });
       if (wbt.term !== term) { remote.dispose(); return; } // tab killed while connecting
       wbt.remote = remote;
@@ -9935,11 +9982,13 @@ async function init(): Promise<void> {
       if (term.cols !== cols || term.rows !== rows) remote.resize(term.cols, term.rows);
     } catch (err) {
       const state: PanelStateKey = err instanceof RemotePtyError ? err.state : "failed";
-      showRemoteTermState(wbt, hostEl, state, err instanceof Error && !(err instanceof RemotePtyError) ? err.message : undefined);
+      showRemoteTermState(wbt, hostEl, state, err instanceof Error && !(err instanceof RemotePtyError) ? err.message : undefined, slot, spawnCwd);
     }
   }
-  /** The panel-state card (mascot + badge + Try again) over the terminal host. */
-  function showRemoteTermState(wbt: WbTerminal, host: HTMLElement, state: PanelStateKey, detail?: string): void {
+  /** The panel-state card (mascot + badge + Try again) over the terminal host
+   *  — the ONLY note a terminal shows, and only at a true dead end: signed out,
+   *  no worker, no desktop, the socket gone. One sentence per RemotePtyError kind. */
+  function showRemoteTermState(wbt: WbTerminal, host: HTMLElement, state: PanelStateKey, detail?: string, slot?: TermSlot, spawnCwd?: string): void {
     // The slot may have re-rendered since spawn (DnD reorder moves the xterm
     // element into a NEW host) — follow the live element, not the stale ref.
     const hostEl = (wbt.term?.element?.closest(".ws-terminal-host") as HTMLElement | null) ?? host;
@@ -9955,14 +10004,16 @@ async function init(): Promise<void> {
         ? { detail: "This terminal runs a shell on your desktop. Open the Glyphh desktop app and sign in, then try again." }
         : state === "worker-unavailable"
           ? { detail: "This terminal runs on your session's cloud worker, and none could take it right now (the server said so). Try again in a moment." }
-          : detail ? { detail } : {}),
+          : state === "signed-out"
+            ? { detail: "You are signed out, so no shell can open for this session. Sign in, then try again." }
+            : detail ? { detail } : {}),
     });
     overlay.querySelector<HTMLButtonElement>("[data-term-retry]")?.addEventListener("click", () => {
       overlay.remove();
       const term = wbt.term;
       if (!term || wbt.remote) return;
       try { wbt.fit?.fit(); } catch { /* noop */ }
-      void spawnRemoteTerm(wbt, hostEl, term.cols, term.rows);
+      void spawnRemoteTerm(wbt, hostEl, term.cols, term.rows, slot, spawnCwd);
     });
     hostEl.appendChild(overlay);
   }

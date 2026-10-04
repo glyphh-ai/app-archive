@@ -27,6 +27,10 @@
  *   cloud-spaces-list            → the member's cloud folders (fs/spaces)
  *   cloud-fs-browse              (scope, dir?) → the folders inside one workspace
  *   harness-stop-run             (runId) → the cross-surface stop
+ *   glyphh-harness-token         → the session's current access token (the
+ *     cloud TERMINAL's bearer: the renderer opens the pod's pty itself over
+ *     /api/harness/pty, remote-terminal.ts, with the token main holds); null
+ *     when signed out. NEVER logged.
  *
  * THE RAIL SEES A CLOUD RUN LIKE A LOCAL ONE: the lane drives the same live
  * ledger glyphh-loop.ts drives (agent-live.ts) — working from the moment the
@@ -109,6 +113,8 @@ export interface CloudLaneClient {
     fsList(opts: { dir?: string; scope?: string }): Promise<{ entries: CloudFsEntry[]; error?: string }>;
     stopRun(runId: string): Promise<void>;
   };
+  /** The session bearer (the SDK's TokenProvider: refreshes ahead of expiry; throws signed out). */
+  token(): Promise<string>;
   runStream: {
     activeRun(threadId: string): Promise<string | null>;
     attach(threadId: string, opts?: { from?: string }): {
@@ -358,6 +364,15 @@ export function createCloudLane(deps: CloudLaneDeps) {
     } catch (err) { log(`cloud folder not browsed: ${errorText(err)}`); return null; }
   }
 
+  /** The session's access token for the renderer's own harness calls (the
+   *  cloud terminal). The SDK refreshes it when it is about to expire; a
+   *  signed-out desktop, or a refresh the server refused, answers null. */
+  async function token(): Promise<string | null> {
+    if (!deps.signedIn()) return null;
+    try { return (await deps.client().token()) || null; }
+    catch { return null; } // the reason is the SDK's to surface (onSignedOut); never the token's text
+  }
+
   /** The cross-surface stop by run id — an observed run this desktop did not launch. */
   async function stopRun(runId: string): Promise<{ ok: boolean; error?: string }> {
     if (!runId) return { ok: false, error: "runId is required" };
@@ -369,7 +384,7 @@ export function createCloudLane(deps: CloudLaneDeps) {
   }
 
   return {
-    start, answer, stop, setPermission, attach, detach, spaces, fsBrowse, stopRun,
+    start, answer, stop, setPermission, attach, detach, spaces, fsBrowse, stopRun, token,
     /** Is a cloud turn running on the chat? */
     has: (chatId: string): boolean => byChat.has(chatId),
   };
@@ -400,4 +415,6 @@ export function registerCloudRunIpc(): void {
   ipcMain.handle("cloud-fs-browse", (_e, scope: string, dir?: string) => live().fsBrowse(String(scope ?? ""), dir ? String(dir) : undefined));
   // The cross-surface stop remote-run.ts fires at an observed run's id.
   ipcMain.handle("harness-stop-run", (_e, runId: string) => live().stopRun(String(runId ?? "")));
+  // The cloud terminal's bearer (help/harness-api.ts falls back to it on the desktop).
+  ipcMain.handle("glyphh-harness-token", () => live().token());
 }

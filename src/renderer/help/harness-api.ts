@@ -1,6 +1,7 @@
 /**
  * harness-api.ts — the renderer's plain HTTP/WS door to the server's harness
- * front door (`/api/harness/*`) on the WEB target.
+ * front door (`/api/harness/*`) — on the WEB target, and on the DESKTOP for
+ * the cloud terminal (the pod's pty).
  *
  * The SDK's HarnessClient (window.glyphhSdk.harnessViaApi()) owns the RUN
  * transport (frames, answers, stops) and the workspace fs. The routes added
@@ -39,17 +40,37 @@ export class HarnessHttpError extends Error {
   }
 }
 
-/** The API origin the web target boots against (the bridge stamps it). */
+/** The two doors to the bearer and the origin: the WEB's SDK handle (the
+ *  bridge stamps `__GLYPHH_API_URL__`), else the DESKTOP's preload bridge —
+ *  its renderer never holds the SDK; main does (glyphh-client.ts), and
+ *  `glyphh-harness-token` hands the current session token over (cloud-run.ts). */
+interface HarnessDoors {
+  __GLYPHH_API_URL__?: string;
+  glyphhSdk?: { token?: () => Promise<string | null> };
+  glyphh?: { apiUrl?: string; serverUrl?: string; harnessToken?: () => Promise<string | null> };
+}
+const doors = (): HarnessDoors => (typeof window === "undefined" ? {} : (window as unknown as HarnessDoors));
+
+/** The API origin this surface talks to: the web bridge's stamp, else the
+ *  desktop's SERVER_URL as preload carries it. */
 export function harnessApiUrl(): string {
-  const w = window as unknown as { __GLYPHH_API_URL__?: string };
-  return (w.__GLYPHH_API_URL__ || "https://api.glyphh.ai").replace(/\/+$/, "");
+  const w = doors();
+  return (w.__GLYPHH_API_URL__ || w.glyphh?.apiUrl || w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/+$/, "");
 }
 
-/** The session bearer, from the SDK handle; null when signed out / no SDK. */
+/** The session bearer: the SDK handle on the web, main's token store on the
+ *  desktop; null when signed out / neither door exists. Never logged. */
 export async function harnessToken(): Promise<string | null> {
-  const sdk = (window as unknown as { glyphhSdk?: { token?: () => Promise<string | null> } }).glyphhSdk;
-  if (typeof sdk?.token !== "function") return null;
-  try { return (await sdk.token()) || null; } catch { return null; }
+  const w = doors();
+  const sdk = w.glyphhSdk;
+  if (typeof sdk?.token === "function") {
+    try { return (await sdk.token()) || null; } catch { return null; }
+  }
+  const bridge = w.glyphh;
+  if (typeof bridge?.harnessToken === "function") {
+    try { return (await bridge.harnessToken()) || null; } catch { return null; }
+  }
+  return null;
 }
 
 /** `wss://…/api/harness<path>?token=…` — a browser cannot set WS headers, so
