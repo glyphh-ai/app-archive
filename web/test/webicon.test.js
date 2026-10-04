@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   WEB_ICON_URLS, WEB_ICON_ROUTE, isAllowedIconUrl, webIconProxyPath, webIconResponse,
   WEB_ICON_MAX_AGE, WEB_ICON_TTL_MS, WEB_ICON_MAX_BYTES,
+  isPlainHost, faviconUrlForHost, faviconUrlForPage, faviconHostOf,
 } from '../webicon.mjs';
 import { CLI_MARK_URLS } from '../../src/renderer/help/cli-marks.ts';
 
@@ -39,6 +40,73 @@ describe('the allowlist', () => {
     expect(webIconProxyPath(CLAUDE)).toBe(`${WEB_ICON_ROUTE}?u=${encodeURIComponent(CLAUDE)}`);
     expect(WEB_ICON_ROUTE).toBe('/webicon');
     expect(webIconProxyPath('https://api.glyphh.ai/icons/app.png')).toBe(null);
+  });
+});
+
+// The second allowance: every app tab's favicon through the same proxy (his
+// report, 2026-10-04 — Reddit, Gmail, Slack, Zoom all on their letters).
+describe('the favicon rule', () => {
+  const FAV = (h) => `https://www.google.com/s2/favicons?domain=${h}&sz=64`;
+  it('admits a plain hostname: lowercase labels, digits, inner hyphens, two labels or more', () => {
+    for (const h of ['reddit.com', 'mail.google.com', 'a-b.co.uk', 'x1.example', 'monday.com', 'us02web.zoom.us']) {
+      expect(isPlainHost(h), h).toBe(true);
+      expect(isAllowedIconUrl(FAV(h)), h).toBe(true);
+      expect(faviconHostOf(FAV(h)), h).toBe(h);
+      expect(webIconProxyPath(FAV(h)), h).toBe(`${WEB_ICON_ROUTE}?u=${encodeURIComponent(FAV(h))}`);
+    }
+  });
+  it('rejects userinfo, a port, a path, an IP, a single label, casing, encoding and bad hyphens', () => {
+    for (const h of [
+      'user@reddit.com', 'reddit.com:443', 'reddit.com/x', '10.0.0.1', 'localhost', 'Reddit.com',
+      'reddit%2ecom', '-reddit.com', 'reddit-.com', 'reddit..com', 'reddit.com.', '', 'reddit.123',
+      'a'.repeat(64) + '.com', 'a.' + 'b'.repeat(250) + '.com',
+    ]) {
+      expect(isPlainHost(h), h).toBe(false);
+      expect(isAllowedIconUrl(FAV(h)), h).toBe(false);
+      expect(faviconHostOf(FAV(h)), h).toBe(null);
+      expect(faviconUrlForHost(h), h).toBe(null);
+    }
+  });
+  it('admits ONLY the exact favicon-service shape — no other size, parameter order, host or scheme', () => {
+    for (const u of [
+      'https://www.google.com/s2/favicons?domain=reddit.com&sz=32',
+      'https://www.google.com/s2/favicons?sz=64&domain=reddit.com',
+      'https://www.google.com/s2/favicons?domain=reddit.com&sz=64&x=1',
+      'https://www.google.com/s2/favicons?domain=reddit.com',
+      'http://www.google.com/s2/favicons?domain=reddit.com&sz=64',
+      'https://google.com/s2/favicons?domain=reddit.com&sz=64',
+      'https://www.google.com/s2/favicons?domain=&sz=64',
+      'https://www.google.com/s2/favicons?domain=reddit.com&sz=64#f',
+      'https://evil.example/s2/favicons?domain=reddit.com&sz=64',
+    ]) {
+      expect(isAllowedIconUrl(u), u).toBe(false);
+      expect(webIconProxyPath(u), u).toBe(null);
+    }
+  });
+  it('builds the URL from a page URL by hostname, lowercased, http(s) only', () => {
+    expect(faviconUrlForPage('https://www.reddit.com/r/all')).toBe(FAV('www.reddit.com'));
+    expect(faviconUrlForPage('http://Monday.com')).toBe(FAV('monday.com'));
+    expect(faviconUrlForPage('https://user:pw@slack.com:8443/x')).toBe(FAV('slack.com'));
+    expect(faviconUrlForPage('yo://home')).toBe(null);
+    expect(faviconUrlForPage('file:///Users/me/app/index.html')).toBe(null);
+    expect(faviconUrlForPage('http://localhost:3000')).toBe(null);
+    expect(faviconUrlForPage('https://127.0.0.1')).toBe(null);
+    expect(faviconUrlForPage('not a url')).toBe(null);
+    expect(faviconUrlForPage(null)).toBe(null);
+    expect(faviconUrlForPage(undefined)).toBe(null);
+  });
+  it('is fetched by the proxy like a listed mark — same cache, same cap', async () => {
+    const fetchImpl = fakeFetch(new Uint8Array([9, 9]), 'image/png');
+    const cache = new Map();
+    const r = await webIconResponse(FAV('reddit.com'), { fetchImpl, cache });
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toBe('image/png');
+    expect(fetchImpl.mock.calls[0][0]).toBe(FAV('reddit.com'));
+    await webIconResponse(FAV('reddit.com'), { fetchImpl, cache });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const r2 = await webIconResponse(FAV('user@reddit.com'), { fetchImpl, cache });
+    expect(r2.status).toBe(404);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 

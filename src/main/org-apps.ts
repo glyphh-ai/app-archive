@@ -9,8 +9,10 @@
  * and see identical data.
  */
 
+import * as path from "node:path";
 import * as appsStore from "./apps-store.js";
-import type { LocalAppRow } from "./apps-store.js";
+import { APPS_DIR, type LocalAppRow } from "./apps-store.js";
+import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
 import { appCache } from "./glyphh-client.js";
 import { tabRowOf } from "../shared/member-library.js";
 
@@ -41,6 +43,13 @@ export interface OrgAppRow {
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
   iconUrl: string | null;
+  /** A local icon file (≤ 24 KB) as a data URL — the art the web can show
+   *  for an app whose icon lives in a folder on this machine (app-icon-file.ts).
+   *  Absent when there is none or it is bigger. */
+  iconDataUrl?: string;
+  /** For a URL tab: the favicon URL the desktop fetches for it, carried so the
+   *  web asks its own /webicon proxy for the same mark. Absent otherwise. */
+  faviconUrl?: string;
   /** The FULL marketplace listing (copy, media, rating, listed state). Carried
    *  through so the app-detail Marketplace tab reads back what a save stored —
    *  without it the read-back blanks every field but the title. */
@@ -110,8 +119,21 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
 }));
 
 /** The tab row in the renderer's shape — ONE projection (shared/member-library.ts
- *  tabRowOf), the same the web applies to the server's record of the tab. */
-const toRow = (app: LocalAppRow): OrgAppRow => tabRowOf(app) as OrgAppRow;
+ *  tabRowOf), the same the web applies to the server's record of the tab — plus
+ *  the icon the row carries off this machine (app-icon-file.ts): a Glyphh app's
+ *  icon file (bundle folder, tab folder, or beside an installed .glyphh entry)
+ *  and a URL tab's favicon URL. */
+function toRow(app: LocalAppRow): OrgAppRow {
+  const row = tabRowOf(app) as OrgAppRow;
+  const bundleDir = typeof app.config?.bundleDir === "string" ? app.config.bundleDir : null;
+  const iconDataUrl = iconDataUrlForDirs([
+    bundleDir,
+    path.join(APPS_DIR(), app.slug),
+    app.kind === "glyphh" && app.nativeRef ? path.dirname(app.nativeRef) : null,
+  ]);
+  const faviconUrl = app.kind === "web" ? faviconUrlFor(app.prodUrl) : "";
+  return { ...(iconDataUrl ? { iconDataUrl } : {}), ...(faviconUrl ? { faviconUrl } : {}), ...row };
+}
 
 /** The org's apps in the renderer's shape, short-TTL cached so the palette
  *  render and the click that follows share one request. */

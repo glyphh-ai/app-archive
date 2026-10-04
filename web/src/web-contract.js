@@ -39,6 +39,7 @@ import { runDripRecipe } from './drip-web-runner.js';
 // starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
 import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
 import { webIconProxyPath } from '../webicon.mjs';
+import { iconForRow } from './web-icons.js';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
@@ -1272,6 +1273,7 @@ export function buildContract(client, deps) {
         return await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result || "")); r.onerror = () => resolve(""); r.readAsDataURL(blob); });
       } catch { return ""; }
     },
+    iconForRow, // an app row's tile src on the web (web-icons.js): its carried bytes, else its favicon via /webicon
     cliAgentOpen: async (id, overrides) => openWebCliAgent(id, overrides ?? {}),
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),
