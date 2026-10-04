@@ -2100,7 +2100,11 @@ function byTouchDesc(a: CodeChat, b: CodeChat): number { return touchedAtOf(b) -
  *  cloud — a session born before the source chip existed has no `source`. */
 function locusKey(c: CodeChat): string {
   const src = c.source;
-  if (src && src.kind === "local") return `local:${src.path || c.workdir || ""}`;
+  // ONE "Cloud" group (his report, 2026-10-04: every cloud session carries its
+  // own folder called "workspace", and a heading per folder made a hundred
+  // "WORKSPACE" labels with one thread under each). Only a desktop session
+  // groups by its folder.
+  if (src && src.kind === "local" && (src as { locus?: string }).locus !== "cloud") return `local:${src.path || c.workdir || ""}`;
   return "cloud";
 }
 
@@ -5693,15 +5697,21 @@ function sessSections(items: RailSession[]): SessGroup[] {
   if (pinned.length) out.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
   const byKey = new Map<string, SessGroup>();
   for (const c of rest) {
-    const key = c.cwd || "";
+    // Cloud sessions share ONE group: each has its own folder named "workspace",
+    // so a heading per folder said nothing (his report, 2026-10-04).
+    const key = (c.locus ?? "local") === "cloud" ? "\u0000cloud" : (c.cwd || "");
     let g = byKey.get(key);
     if (!g) {
-      g = key ? { label: sessFolderName(key), title: key, rows: [] } : { label: "Local", title: "On this machine", rows: [] };
+      g = key === "\u0000cloud"
+        ? { label: "Cloud", title: "Runs in the cloud", rows: [] }
+        : key ? { label: sessFolderName(key), title: key, rows: [] } : { label: "Local", title: "On this machine", rows: [] };
       byKey.set(key, g);
     }
     g.rows.push(c);
   }
-  return [...out, ...byKey.values()];
+  const groups = [...byKey.values()];
+  const cloud = groups.filter((g) => g.label === "Cloud");
+  return [...out, ...cloud, ...groups.filter((g) => g.label !== "Cloud")];
 }
 
 function sessSectionHead(label: string, title: string): HTMLDivElement {
@@ -5913,8 +5923,10 @@ function renderRailSessions(): void {
       const dot = idle ? document.createElement("span") : sessDot(sess.id);
       if (idle) {
         dot.className = "code-sess-ic";
-        dot.innerHTML = sess.origin === "cli" ? SESS_CLI_SVG : SESS_LOCAL_SVG;
-        dot.title = sess.origin === "cli" ? "CLI" : "Desktop";
+        // The one place glyph a row wears: a CLI, the cloud, or this desktop.
+        const cloud = (sess.locus ?? "local") === "cloud";
+        dot.innerHTML = sess.origin === "cli" ? SESS_CLI_SVG : cloud ? LOCUS_SVG.cloud : SESS_LOCAL_SVG;
+        dot.title = sess.origin === "cli" ? "CLI" : cloud ? LOCUS_TITLE.cloud : "Desktop";
       }
       dot.classList.toggle("pinned", sessPinned(sess.id));
       dot.title = `${dot.title} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
@@ -5932,7 +5944,10 @@ function renderRailSessions(): void {
       // WHERE IT RUNS (his rule, 2026-10-04): the rail lists the desktop's
       // threads and the cloud's side by side, each wearing its locus — the
       // same element the recents dropdown wears (sessLocusEl).
-      row.append(dot, markEl, label, sessLocusEl(sess), menuBtn);
+      // The leading glyph already says where it runs; a trailing one only
+      // when the row is locked (the lock and its grant card).
+      if (sess.locked) row.append(dot, markEl, label, sessLocusEl(sess), menuBtn);
+      else row.append(dot, markEl, label, menuBtn);
       if (sess.locked) row.classList.add("locked");
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
