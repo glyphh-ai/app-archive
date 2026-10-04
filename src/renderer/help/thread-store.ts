@@ -1,11 +1,15 @@
 /**
- * thread-store.ts — ONE session store over the SERVER THREADS SURFACE
- * (`client.sessions.threads/thread/pushThread/deleteThread`), on both surfaces.
+ * thread-store.ts — ONE session store over the SERVER THREADS SURFACE, on both
+ * surfaces (the harness thread routes on web, main's IPC on desktop).
  *
  * The server is the source of truth; the surface's existing local persistence
  * is the OFFLINE CACHE (write-through):
- *   • web      — server calls go through the SDK handle (window.glyphhSdk);
- *                the cache is web-contract.js's per-user localStorage entry.
+ *   • web      — CLOUD threads live in the server's harness thread store
+ *                (`/api/harness/threads[/:id]`, help/harness-api.ts); a thread
+ *                bound to an attached DESKTOP lives on that machine and is
+ *                read/written over the relay (`sessions.*`, as the mobile app
+ *                does — web/src/desktop-sessions.ts). The cache is
+ *                web-contract.js's per-user localStorage entry.
  *   • desktop  — server calls go through four thin IPC methods (threadsList/
  *                Get/Push/Delete → the MAIN-process SDK client, per the
  *                architecture law); the cache is main's sessions.json file.
@@ -25,6 +29,8 @@
  * handle's thread shapes are mirrored structurally below (remote-run.ts's
  * discipline).
  */
+
+import { harnessRequest, HarnessHttpError } from "./harness-api.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
 
@@ -58,16 +64,8 @@ interface Transport {
   del(id: string): Promise<void>;
 }
 
-// ── Transport (per surface, SDK only) ─────────────────────────────────────
+// ── Transport (per surface) ───────────────────────────────────────────────
 
-interface SdkSessionsHandle {
-  sessions?: {
-    threads?: () => Promise<ThreadMeta[]>;
-    thread?: (id: string) => Promise<ThreadFull>;
-    pushThread?: (id: string, body: PushBody) => Promise<PushResult>;
-    deleteThread?: (id: string) => Promise<void>;
-  };
-}
 interface DesktopThreadsIpc {
   threadsList?: () => Promise<ThreadMeta[]>;
   threadsGet?: (id: string) => Promise<ThreadFull>;
@@ -75,22 +73,117 @@ interface DesktopThreadsIpc {
   threadsDelete?: (id: string) => Promise<void>;
 }
 
-/** Web target → the SDK handle directly; desktop → the main-process client
- *  over IPC. Order matters: on web `window.glyphh` is a Proxy that fabricates
- *  a function for ANY name, so the SDK handle must be checked first. */
+/** The SDK attach surface (window.glyphhSdk.attach) — the member's machines
+ *  with remote control on, each answering `sessions.*` over the relay. Mirrors
+ *  web/src/desktop-sessions.ts (the mobile app's copy of the same lane). */
+interface AttachMachine { id: string; name?: string; app?: string }
+interface AttachSurface {
+  status(): Promise<{ allowed?: boolean; attached?: boolean; machines?: AttachMachine[] }>;
+  dispatch<T>(method: string, params?: Record<string, unknown>, opts?: { machineId?: string }): Promise<T>;
+}
+const attachSurface = (): AttachSurface | null =>
+  (window as unknown as { glyphhSdk?: { attach?: AttachSurface } }).glyphhSdk?.attach ?? null;
+
+/** Which MACHINE each desktop-relay thread lives on (from the last list()). A
+ *  machine's id changes on every reconnect, so this is refreshed per list. */
+const desktopHome = new Map<string, string>();
+const isDesktopThread = (id: string): boolean => {
+  if (desktopHome.has(id)) return true;
+  const c = chatsRef.find((x) => x.id === id);
+  const src = c?.source as { kind?: string; machineId?: string } | undefined;
+  return !!src && src.kind === "local" && !!src.machineId;
+};
+const desktopOpts = (id: string): { machineId?: string } => {
+  const m = desktopHome.get(id);
+  if (m) return { machineId: m };
+  const src = chatsRef.find((x) => x.id === id)?.source as { machineId?: string } | undefined;
+  return src?.machineId ? { machineId: src.machineId } : {};
+};
+
+/**
+ * WEB: the server's harness thread store for CLOUD threads
+ * (`/api/harness/threads[/:id]`, LWW on updatedAt — help/harness-api.ts lists
+ * the routes), plus the member's attached DESKTOPS for machine-bound threads
+ * (`sessions.list/get/put/delete` over the relay — the machine owns those
+ * threads and writes a relayed turn's messages itself). One Transport, routed
+ * per thread by where it lives.
+ */
+function webTransport(): Transport {
+  const desktopList = async (): Promise<ThreadMeta[]> => {
+    const a = attachSurface();
+    if (!a) return [];
+    const st = await a.status().catch(() => null);
+    const machines = st?.attached ? (st.machines ?? []) : [];
+    const lists = await Promise.all(machines.map(async (m) => {
+      const r = await a.dispatch<{ sessions?: ThreadMeta[] }>("sessions.list", {}, { machineId: m.id }).catch(() => null);
+      return (r?.sessions ?? []).map((t) => ({
+        ...t,
+        source: { ...((t.source as object | null) ?? {}), kind: "local", machineId: m.id, machineName: m.name || m.app || "" },
+      }));
+    }));
+    const all = lists.flat();
+    desktopHome.clear();
+    for (const t of all) {
+      const mid = (t.source as { machineId?: string }).machineId;
+      if (mid) desktopHome.set(t.id, mid);
+    }
+    return all;
+  };
+  return {
+    list: async () => {
+      // The harness answer is the one that can be OFFLINE (reconcile's
+      // cache-only mode); a machine that is off simply lists nothing.
+      const cloud = await harnessRequest<ThreadMeta[]>("GET", "/threads");
+      const desktop = await desktopList();
+      return [...(Array.isArray(cloud) ? cloud : []), ...desktop];
+    },
+    get: async (id) => {
+      if (isDesktopThread(id)) {
+        const a = attachSurface();
+        if (!a) throw new HarnessHttpError(503, "no attached desktop");
+        const r = await a.dispatch<{ session?: ThreadFull }>("sessions.get", { id }, desktopOpts(id));
+        if (!r?.session) throw new HarnessHttpError(404, "thread not on the desktop");
+        return { ...r.session, messages: r.session.messages ?? [] };
+      }
+      return harnessRequest<ThreadFull>("GET", `/threads/${encodeURIComponent(id)}`);
+    },
+    push: async (id, body) => {
+      if (isDesktopThread(id)) {
+        const a = attachSurface();
+        if (!a) throw new HarnessHttpError(503, "no attached desktop");
+        // Title / type only: the machine's own store holds the messages.
+        await a.dispatch("sessions.put", {
+          id,
+          ...(body.title ? { title: body.title } : {}),
+          ...(body.mode ? { mode: body.mode } : {}),
+        }, desktopOpts(id));
+        const c = chatsRef.find((x) => x.id === id);
+        return {
+          applied: true,
+          thread: { id, title: body.title ?? c?.title ?? "", mode: body.mode ?? "", source: body.source ?? null, createdAt: c?.createdAt ?? body.updatedAt, updatedAt: body.updatedAt, messageCount: body.messages?.length ?? c?.messages.length ?? 0 },
+        };
+      }
+      return harnessRequest<PushResult>("PUT", `/threads/${encodeURIComponent(id)}`, body);
+    },
+    del: async (id) => {
+      if (isDesktopThread(id)) {
+        const a = attachSurface();
+        if (!a) throw new HarnessHttpError(503, "no attached desktop");
+        await a.dispatch("sessions.delete", { id }, desktopOpts(id));
+        desktopHome.delete(id);
+        return;
+      }
+      await harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`);
+    },
+  };
+}
+
+/** Web target → the harness + desktop-relay transport; desktop → the
+ *  main-process client over IPC. Order matters: on web `window.glyphh` is a
+ *  Proxy that fabricates a function for ANY name, so the surface marker is
+ *  checked first. */
 function transport(): Transport | null {
-  const sdk = (window as unknown as { glyphhSdk?: SdkSessionsHandle }).glyphhSdk;
-  const s = sdk?.sessions;
-  if (s?.threads && s.thread && s.pushThread && s.deleteThread) {
-    return {
-      list: () => s.threads!(),
-      get: (id) => s.thread!(id),
-      push: (id, body) => s.pushThread!(id, body),
-      del: (id) => s.deleteThread!(id),
-    };
-  }
-  const web = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-  if (web) return null; // web with no SDK handle yet — cache-only until boot finishes
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return webTransport();
   const g = window.glyphh as unknown as DesktopThreadsIpc;
   if (typeof g?.threadsList === "function") {
     return {

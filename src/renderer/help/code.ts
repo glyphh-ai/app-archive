@@ -1616,9 +1616,21 @@ function localFileUrl(p: string): string {
  * the chip shows AND what the run sends, and `setThreadFolder()` is the only
  * way a thread's folder changes — both fields together.
  */
+/**
+ * A CLOUD source needs NO folder (his order, 2026-10-04: the worker's workspace
+ * IS the folder): threadFolder() is "" for it and that is a complete answer —
+ * the turn runs in the workspace root (or the chip's picked sub-folder, which
+ * rides the run as `subdir`, not as a workdir). Only a LOCAL (machine) source
+ * can lack a folder it needs, and only the DESKTOP's local run path asks for
+ * one (main's NO_WORKDIR gate in `launch` below); a cloud turn never reaches it.
+ */
 function threadFolder(c: CodeChat | null | undefined = current()): string {
   if (c) return c.workdir || (c.source?.kind === "local" ? c.source.path || "" : "");
   return pendingWorkdir || (pendingSource.kind === "local" ? pendingSource.path || "" : "");
+}
+/** Does this source run without a folder of its own? Every non-local source. */
+function sourceNeedsNoFolder(src: Source | undefined): boolean {
+  return !!src && src.kind !== "local";
 }
 function setThreadFolder(dir: string): void {
   if (!dir) return;
@@ -4285,12 +4297,20 @@ function send(): void {
   // short, spoken-style answer. Prepended to the model prompt only — never to
   // the message shown in the thread (already pushed clean above).
   const steer = briefSteer();
-  const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
+  // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
+  // the server's /api/harness, or the member's own desktop over the relay —
+  // the SDK's one `run()` routes on the source). The gate is the SDK handle's
+  // `run`, which remote-run needs; nothing else on web may fall into
+  // window.glyphh.glyphhRun (a method the web bridge does not implement).
+  const webAlwaysRemote = onWebTarget() && typeof (window as unknown as { glyphhSdk?: { run?: unknown } }).glyphhSdk?.run === "function";
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
   // THE TURN RUNS IN THE THREAD'S FOLDER, and says so every time (his rule,
   // 2026-09-29: "sandboxed to that folder"). A thread born before its folder
-  // resolved asks main for this panel's folder once and keeps it.
+  // resolved asks main for this panel's folder once and keeps it. DESKTOP
+  // ONLY from here: this is main's local run, and its NO_WORKDIR gate is the
+  // machine's — a cloud source (sourceNeedsNoFolder) left above.
   const withFolder = async (): Promise<string> => {
+    if (sourceNeedsNoFolder(src)) return "";   // the worker's workspace is the folder
     const have = threadFolder(c);
     if (have) { if (!c.workdir) { c.workdir = have; void saveStore(); } return have; }
     const live = await (window as unknown as { wb?: { getCwd?: () => Promise<string | null> } }).wb?.getCwd?.().catch(() => null);
@@ -4438,7 +4458,9 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     // The permission mode is the SESSION's mode (per-session), so the pod's
     // own default (`auto`) never overrides a session left in Ask; a mid-run
     // flip is pushed separately via setRemotePermission.
-    { rotor: GLYPHH_LOOP, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
+    // The effort dial rides every turn on a model that takes one (his order,
+    // 2026-10-04) — cloud turns included (SDK RunTurnOptions.effort).
+    { rotor: GLYPHH_LOOP, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, ...(modelTakesEffort() ? { effort: currentEffort() } : {}), signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the

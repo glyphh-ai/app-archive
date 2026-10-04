@@ -79,7 +79,9 @@ export function sourceLabel(source: Source, sessionId?: string | null, machineNa
   if (source.kind === "local") {
     // The MACHINE'S NAME only — the folder chip beside it owns the folder.
     // Cloud labels are reserved for remote runs.
-    return machineName || (isWeb() ? "Desktop" : "This machine");
+    // On web a local source exists only while attach.status listed a machine
+    // (code.ts's default resolution), so this reads "My desktop" there.
+    return machineName || (isWeb() ? "My desktop" : "This machine");
   }
   const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo)
     : source.kind === "cloud-space" ? (source.label || `space ${shortId(source.space)}`)

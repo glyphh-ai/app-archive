@@ -431,7 +431,7 @@ export async function runRemoteTurn(
   prompt: string,
   save: () => void,
   callbacks: RemoteRunCallbacks = {},
-  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
+  opts: { rotor?: unknown; model?: string; permission?: RemotePermission; effort?: string; signal?: AbortSignal; images?: Array<{ mediaType: string; data: string }>; memory?: RemoteMemoryPolicy } = {},
 ): Promise<RemoteRunOutcome> {
   void save; // callers keep it in the signature; nothing binds a pod per session now
   const client = sdk() as unknown as { run?: (o: unknown) => HarnessRunHandle };
@@ -480,6 +480,9 @@ export async function runRemoteTurn(
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
+      // The composer's effort dial rides a cloud turn too (SDK RunTurnOptions.effort,
+      // 2026-10-04); a desktop-relay turn keeps the machine's own setting.
+      ...(opts.effort && !isLocal ? { effort: opts.effort } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
