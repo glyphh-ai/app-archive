@@ -3,6 +3,7 @@
  */
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
+import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
@@ -856,7 +857,9 @@ const settingsSubAlias = (sub: string): string => {
   // remembered homeLastSub) lands on General instead.
   // Drips is a desktop-machine feature (no web); MCP shows EVERYWHERE (his
   // order, 2026-08-25). General/Voice/Appearance hide only on the platform.
-  if (target === "drips" && document.documentElement.classList.contains("glyphh-web")) {
+  // Every DESKTOP-ONLY sub (web-surface.ts DESKTOP_ONLY_SUBS: schedules, the
+  // skill/plugin/task folders, drips, remote control) lands on General on web.
+  if (onWeb() && DESKTOP_ONLY_SUBS.has(target)) {
     return document.body.classList.contains("platform-shell") ? "dash" : "general";
   }
   if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "org-general";
@@ -1068,6 +1071,7 @@ function parkSettingsSection(section: string): void {
 // ── Init ─────────────────────────────────────────────────
 
 export function initHelp() {
+  hideDesktopOnlySubs();   // web: the desktop's own settings rows never show
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
   // The workbench bundle can't import help modules — it calls this bridge

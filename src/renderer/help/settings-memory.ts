@@ -8,6 +8,7 @@
  * what this page shows is what the bridge does.
  */
 import { loadEmbeddingsSettings } from "./settings-agent.js";
+import { keepIfHost } from "./web-surface.js";
 import { planGates, invalidatePlanGates } from "./plan-gate.js";
 import { confirmAction } from "./shared.js";
 import { toastOk } from "./toast.js";
@@ -65,6 +66,11 @@ export async function loadMemorySettings(): Promise<void> {
   }
 
   await loadEmbeddingsSettings();
+
+  // THIS MACHINE's store (turn chunks, the curator's pages, the clear): the web
+  // bridge serves none of these — the rows hide instead of reading "Nothing yet".
+  keepIfHost(el("memory-clear-btn")?.closest(".set-pref-row") ?? el("memory-clear-btn"), "memoryStats", "memoryClear");
+  keepIfHost(el("memory-curate-btn")?.closest(".set-pref-row") ?? el("memory-curate-btn"), "memoryCurateNow");
 
   await renderMemoryBrowser();
   const curate = el<HTMLButtonElement>("memory-curate-btn");

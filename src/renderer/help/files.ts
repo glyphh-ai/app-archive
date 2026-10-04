@@ -15,6 +15,7 @@
  */
 
 import { escapeHtml, relativeTime, promptAction, confirmAction } from "./shared.js";
+import { hostHas } from "./web-surface.js";
 import { ROW_MENU_ICONS, openRowMenu, type RowMenuItem } from "./lib-editor.js";
 import { closeSettingsModal } from "./navigation.js";
 
@@ -117,7 +118,9 @@ function showError(msg: string | null): void {
 function menuFor(a: FileArtifact): HTMLElement {
   const items = (): RowMenuItem[] => [
     { icon: ROW_MENU_ICONS.view, label: "Open", onClick: () => { void openArtifact(a.id); } },
-    { icon: ROW_MENU_ICONS.edit, label: "Rename", onClick: () => { void renameArtifact(a); } },
+    // Rename is the desktop's local-artifact IPC; the server has no rename, so
+    // the row is not offered where the host can't serve it.
+    ...(hostHas("filesRename") ? [{ icon: ROW_MENU_ICONS.edit, label: "Rename", onClick: () => { void renameArtifact(a); } }] : []),
     { icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => { void deleteArtifact(a); } },
   ];
   const btn = document.createElement("button");

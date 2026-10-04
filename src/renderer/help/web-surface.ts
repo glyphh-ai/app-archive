@@ -53,3 +53,37 @@ export async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; }
   catch { return false; }
 }
+
+/** Settings sub-pages that are the DESKTOP's own (its clock, its skill folders,
+ *  its drips engine): on web their nav rows + panels hide, a stale deep link
+ *  lands on General, and a loader that still runs paints `desktopOnlyCard`. */
+export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["schedules", "skills", "plugins", "tasks", "drips", "remote"]);
+
+/** Hide every desktop-only settings row + panel on web (idempotent; the
+ *  settings DOM is static in home.html, so this runs once at init). */
+export function hideDesktopOnlySubs(): void {
+  if (!onWeb()) return;
+  for (const sub of DESKTOP_ONLY_SUBS) {
+    document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"], .settings-panel[data-sub="${sub}"]`)
+      .forEach((n) => n.classList.add("hidden"));
+  }
+}
+
+const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c] as string));
+
+/** The state card a desktop-only page paints on web instead of loading — the
+ *  repo's `.crud-empty` empty state, with the one line that says where the
+ *  feature lives ("Schedules run on your desktop; open Glyphh Desktop to
+ *  manage them"). Returns the markup; the caller owns the host. */
+export function desktopOnlyCard(title: string, body: string): string {
+  return `<div class="crud-empty ws-desktop-only"><strong>${esc(title)}</strong><br>${esc(body)}</div>`;
+}
+
+/** Paint `desktopOnlyCard` into `host` (and hide `alsoHide`) when on web.
+ *  Returns true when it did — the caller's loader stops there. */
+export function paintDesktopOnly(host: HTMLElement | null, title: string, body: string, alsoHide: Array<HTMLElement | null> = []): boolean {
+  if (!onWeb()) return false;
+  if (host) host.innerHTML = desktopOnlyCard(title, body);
+  for (const el of alsoHide) el?.classList.add("hidden");
+  return true;
+}
