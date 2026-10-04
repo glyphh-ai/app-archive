@@ -51,10 +51,12 @@ describe('pty frames', () => {
     expect(ptyOpenBody({ cols: 100, rows: 30, cwd: 'src', command: 'claude', scope: 'c123' })).toEqual({ cols: 100, rows: 30, cwd: 'src', command: 'claude', scope: 'c123' });
     expect(ptyOpenBody({ cols: 100, rows: 30, cwd: '', command: '', scope: '' })).toEqual({ cols: 100, rows: 30 });
   });
-  it('splitProgram: one program name for the wire, the rest typed after ready', () => {
+  it('splitProgram: a bare program name rides the wire; a line with arguments is typed whole into the shell', () => {
     expect(splitProgram('claude')).toEqual({ program: 'claude', rest: '' });
-    expect(splitProgram("claude --resume 'abc'")).toEqual({ program: 'claude', rest: "--resume 'abc'" });
-    expect(splitProgram('codex -c check_for_update_on_startup=false')).toEqual({ program: 'codex', rest: '-c check_for_update_on_startup=false' });
+    expect(splitProgram('cursor-agent')).toEqual({ program: 'cursor-agent', rest: '' });
+    // Flags typed AFTER a started program land in its prompt — so they never are.
+    expect(splitProgram("claude --resume 'abc'")).toEqual({ program: '', rest: "claude --resume 'abc'" });
+    expect(splitProgram('codex -c check_for_update_on_startup=false')).toEqual({ program: '', rest: 'codex -c check_for_update_on_startup=false' });
     expect(splitProgram("cd 'src' && claude")).toEqual({ program: '', rest: "cd 'src' && claude" });
     expect(splitProgram('')).toEqual({ program: '', rest: '' });
   });

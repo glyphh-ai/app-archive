@@ -237,7 +237,12 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
       } catch { return 'desktop-offline'; }
     },
 
-    // Local pty bridge — web terminals ride remote-terminal.ts, never wb.
+    // Local pty bridge — web terminals never ride wb: src/renderer/remote-
+    // terminal.ts owns both far shells (the worker pty over /api/harness/pty,
+    // the attached DESKTOP's over the /ws/panel relay socket: pty.open /
+    // pty.input / pty.resize / pty.close + the ptyId push channel, admitted by
+    // the desktop's remote-control.ts door). code-workbench.ts types into a
+    // web terminal through that handle (typeIntoTerminal), so these stay no-ops.
     termSpawn: noop,
     termWrite: noop,
     termResize: noop,

@@ -24,6 +24,7 @@ import { hostname } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { dispatchRelayMethod } from "./relay-client.js";
+import { killAllRelayPtys } from "./relay-pty.js";
 import { gitStateOf } from "./attach-handlers.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
@@ -40,11 +41,14 @@ export interface RemoteControlView extends RemoteControlSetting {
   refused?: string;
 }
 
-/** Everything a phone may call — the server's REMOTE_METHODS, no more. */
+/** Everything a phone may call — the server's REMOTE_METHODS, no more. The
+ *  web terminal's pty.input/resize/close name a pty this door opened (relay-
+ *  pty.ts keys them by id); only pty.open takes a path, guarded below. */
 const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete",
   "agent.answer", "agent.stop", "agent.permission", "agent.frames",
+  "pty.input", "pty.resize", "pty.close",
 ] as const;
 
 const key = (): string => `remoteControl:${hostname()}`;
@@ -115,6 +119,14 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
     return { path: dir, parent: roots.includes(dir) || !inGranted(up, folders()) ? null : up, entries };
   };
   table["fs.gitInfo"] = async (p) => gitStateOf(guard(str(p, "path")));
+  // A WEB TERMINAL on this machine (his order, 2026-10-04: a CLI tile on
+  // app.glyphh.ai opens the desktop's shell for a desktop-bound session). The
+  // shell starts inside a granted folder — the one asked for, else the first
+  // grant — exactly the rule a turn's workdir follows; no grant, no shell.
+  table["pty.open"] = async (p) => {
+    const cwd = str(p, "cwd") || folders()[0] || "";
+    return dispatch("pty.open", { ...(p as object), cwd: guard(cwd) });
+  };
   table["fs.mkdir"] = async (p) => {
     const name = str(p, "name").trim();
     if (!name || name.includes("/") || name.includes("\\") || name === "." || name === "..") throw new Error("a folder name, not a path");
@@ -158,6 +170,8 @@ async function stop(): Promise<void> {
   running = false;
   const m = await import("./attach-host.js");
   m.stopAttach();
+  // The door closed: every shell the web opened through it dies with it.
+  killAllRelayPtys();
   changed();
 }
 

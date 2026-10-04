@@ -105,9 +105,11 @@ export function ptyOpenBody(opts: { cols: number; rows: number; cwd?: string; co
 export function splitProgram(line: string): { program: string; rest: string } {
   const t = String(line || "").trim();
   if (!t) return { program: "", rest: "" };
-  // A leading `cd '…' &&` belongs to the typed part: the pty starts in cwd.
-  if (/^cd\s/.test(t)) return { program: "", rest: t };
-  const m = /^([A-Za-z0-9_.-]+)(\s.*)?$/s.exec(t);
-  if (!m) return { program: "", rest: t };
-  return { program: m[1]!, rest: (m[2] || "").trim() };
+  // ONE BARE PROGRAM NAME starts directly (`claude`, `codex`). Anything with
+  // arguments — flags, a prompt, a leading `cd '…' &&` — is a SHELL line: the
+  // pty opens the login shell and the whole line is typed after `ready`.
+  // (Starting the program and typing its flags afterwards fed `--continue`
+  // into the running CLI's prompt — the resume/prompt opens never worked.)
+  if (/^[A-Za-z0-9_.-]+$/.test(t)) return { program: t, rest: "" };
+  return { program: "", rest: t };
 }
