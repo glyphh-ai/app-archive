@@ -2,20 +2,21 @@
  * panel-stream.ts — the WEB renderer's streamed-panel component.
  *
  * On the desktop an app panel is a native <webview>. On the WEB, a <webview>
- * does nothing (it is Electron-only), so when the user is on web AND their
- * desktop is attached, this component is the drop-in replacement: it opens a
- * page ON the desktop (over the attach relay) and renders it here — a canvas of
- * relayed JPEG frames (phase 1) or a WebRTC <video> track (phase 2), with full
- * mouse/keyboard/wheel/resize input sent back. When the desktop is NOT attached
- * it renders an honest "connect your desktop to view this live" state instead of
- * a dead rectangle.
+ * does nothing (it is Electron-only), so this component is the drop-in
+ * replacement: it opens a page on a far source over the server's panel relay
+ * and renders it here — a canvas of relayed JPEG frames (phase 1) or a WebRTC
+ * <video> track (phase 2), with full mouse/keyboard/wheel/resize input sent
+ * back — and shows an honest state card instead of a dead rectangle when it
+ * cannot.
  *
- * SOURCE-AGNOSTIC: this component talks ONLY to the relay's panel.* surface and
- * the frame/nav/webrtc push shapes. It has no idea whether the frames originate
- * on the user's desktop or (later) a session pod — the same component renders
- * either, because the desktop and a pod satisfy the identical PanelSource
- * contract on the far side (see src/main/panel-source.ts). Nothing here changes
- * when a pod source lands.
+ * TWO SOURCES, ONE WIRE (help/panel-locus.ts). On the web the page renders on
+ * a CLOUD browser worker — a machine of the workers farm running rrotor's
+ * panel mode, acquired by the server for the member's first cloud panel (his
+ * order, 2026-10-04: no tunnel into a person's machine). On the desktop it
+ * renders on the member's own attached machine (src/main/panel-host.ts). This
+ * component talks ONLY to the relay's panel.* surface and the frame/nav/webrtc
+ * push shapes; the locus rides `panel.open` and decides the connect copy and
+ * which dead-end card to show, nothing else.
  *
  * Transport selection (phase 2): the component ALWAYS starts on the JPEG canvas
  * (it works everywhere), sends `hello{webrtc:true}`, and if the desktop answers
@@ -32,6 +33,10 @@ import { connectRelaySocket, relaySdk, machineDetached, type RelaySocket } from 
 // Keyboard + clipboard capture rides the shared hidden-proxy module (the
 // mobile tray mounts the same one) — see panel-kb.ts for the why.
 import { mountPanelKb, modBits } from "./panel-kb.js";
+// Where the page renders — cloud on the web, the member's desktop on the
+// desktop — and the copy + dead-end cards that follow from it.
+import { pickPanelLocus, panelNeedsDesktop, panelOpenParams, panelDeadCard, PANEL_CONNECT_COPY, type PanelLocus, type PanelDeadCause } from "./help/panel-locus.js";
+import { onWeb } from "./help/web-surface.js";
 
 // ── wire shapes (mirror src/main/panel-host.ts + panel-webrtc.ts) ────────────
 
@@ -51,6 +56,9 @@ export interface StreamedPanelOptions {
   webrtc?: boolean;
   /** Top-frame navigation on the far side (drives the caller's address bar). */
   onNav?: (url: string, title: string) => void;
+  /** Where the page renders. Default: cloud on the web, desktop on the desktop
+   *  (help/panel-locus.ts pickPanelLocus). */
+  locus?: PanelLocus;
 }
 
 export interface StreamedPanelHandle {
@@ -58,6 +66,8 @@ export interface StreamedPanelHandle {
   readonly el: HTMLElement;
   /** Which transport is currently carrying video. */
   transport(): "webrtc" | "screencast";
+  /** Where the page renders. */
+  locus(): PanelLocus;
   /** Drive the far page: address-bar navigation + history + reload. */
   navigate(url: string): void;
   back(): void;
@@ -99,6 +109,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   root.append(canvas, video, overlay);
 
   const ctx = canvas.getContext("2d");
+  const locus = pickPanelLocus({ web: onWeb(), requested: opts.locus });
   let relay: RelaySocket | null = null;
   let panelId: string | null = null;
   let disposed = false;
@@ -291,18 +302,21 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     video.style.display = "none"; video.srcObject = null; canvas.style.pointerEvents = "";
 
     const client = relaySdk();
-    if (!client) { setOverlay(offlineHtml("signed-out")); return; }
-    setOverlay(`<div>Connecting to your desktop…</div>`);
+    if (!client) { setOverlay(deadHtml("signed-out")); return; }
+    setOverlay(`<div>${PANEL_CONNECT_COPY[locus]}</div>`);
 
-    // Honest offline state: check attach BEFORE opening a socket.
-    let attached = false;
-    try { attached = (await client.attach.status()).attached; } catch { attached = false; }
-    if (disposed || gen !== bootGen) return;
-    if (!attached) { setOverlay(offlineHtml("desktop-offline")); return; }
+    // Honest offline state: a DESKTOP panel checks attach BEFORE opening a
+    // socket. A cloud panel has no desktop in the path and never asks.
+    if (panelNeedsDesktop(locus)) {
+      let attached = false;
+      try { attached = (await client.attach.status()).attached; } catch { attached = false; }
+      if (disposed || gen !== bootGen) return;
+      if (!attached) { setOverlay(deadHtml("desktop-offline")); return; }
+    }
 
     const token = await client.token().catch(() => null);
     if (disposed || gen !== bootGen) return;
-    if (!token) { setOverlay(offlineHtml("signed-out")); return; }
+    if (!token) { setOverlay(deadHtml("signed-out")); return; }
 
     await connect(token, gen);
   }
@@ -312,7 +326,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     try {
       sock = await connectRelaySocket(token);
     } catch {
-      if (!disposed && gen === bootGen) setOverlay(offlineHtml("disconnected"));
+      if (!disposed && gen === bootGen) setOverlay(deadHtml("connect-failed"));
       return;
     }
     if (disposed || gen !== bootGen) { try { sock.close(); } catch { /* noop */ } return; }
@@ -324,7 +338,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
     // again — which re-runs boot() once the desktop is back.
     sock.onClose((info) => {
       if (disposed || relay !== sock) return;
-      setOverlay(offlineHtml("disconnected", machineDetached(info) ? "Your desktop detached from the server. When it is attached again, try again." : undefined));
+      setOverlay(deadHtml(machineDetached(info) ? "machine-detached" : "dropped"));
     });
     // Filter to OUR panel's channel — panelId isn't known until panel.open
     // returns, so match at delivery time rather than subscribing per-channel.
@@ -340,7 +354,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
       // sock.call, not the shared call(): if a newer boot has already swapped
       // `relay`, this superseded open must ride (and die with) ITS socket.
-      const r = (await sock.call("panel.open", { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 })) as { panelId: string };
+      const r = (await sock.call("panel.open", panelOpenParams(locus, { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 }))) as { panelId: string };
       if (disposed || gen !== bootGen) { sock.send("panel.close", { panelId: r.panelId }); return; }
       panelId = r.panelId;
       // Layout may have settled while the socket/open round-tripped — sync
@@ -353,17 +367,19 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
       kb.focus();
       void startWebrtc();
     } catch (err) {
-      if (!disposed && gen === bootGen) setOverlay(offlineHtml("failed", (err as Error).message || undefined));
+      if (!disposed && gen === bootGen) setOverlay(deadHtml("open-failed", (err as Error).message || undefined));
     }
   }
 
   /**
    * A dead-end state as the same card the Browser panel shows for a failed
-   * page — mascot, badge, themed. `data-panel-retry` is what makes it a way
-   * back rather than a notice: setOverlay wires it to another boot().
+   * page — mascot, badge, themed — picked for this panel's locus (a cloud
+   * panel never shows a desktop card). `data-panel-retry` is what makes it a
+   * way back rather than a notice: setOverlay wires it to another boot().
    */
-  function offlineHtml(state: PanelStateKey, detail?: string): string {
-    return panelStateFragment(state, { detail, retryAttrs: 'data-panel-retry="1"' });
+  function deadHtml(cause: PanelDeadCause, detail?: string): string {
+    const card = panelDeadCard(locus, cause, detail);
+    return panelStateFragment(card.state as PanelStateKey, { detail: card.detail, retryAttrs: 'data-panel-retry="1"' });
   }
 
   void boot();
@@ -390,6 +406,7 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   return {
     el: root,
     transport: () => transport,
+    locus: () => locus,
     navigate: (url: string) => navCall("url", url),
     back: () => navCall("back"),
     forward: () => navCall("forward"),
