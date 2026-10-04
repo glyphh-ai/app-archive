@@ -326,7 +326,7 @@ export function browserErrorPage(info: BrowserErrorInfo, p: ErrorPalette): strin
 // dropped, nobody is signed in. They used to render as two lines of grey text
 // with no mascot and no way back — same family of problem, so the same card.
 
-export type PanelStateKey = "desktop-offline" | "disconnected" | "signed-out" | "failed";
+export type PanelStateKey = "desktop-offline" | "disconnected" | "signed-out" | "failed" | "streams-off";
 
 const PANEL_STATES: Record<PanelStateKey, { kind: Kind; badge: string }> = {
   "desktop-offline": {
@@ -361,6 +361,17 @@ const PANEL_STATES: Record<PanelStateKey, { kind: Kind; badge: string }> = {
       detail: "Your desktop is connected but refused to open this page.",
     },
   },
+  // STREAMED WEB PANELS are behind a flag (his order, 2026-10-04): off by
+  // default, so a URL app or the Browser on the web shows this card with a
+  // link to the setting instead of trying to stream.
+  "streams-off": {
+    badge: "Off",
+    kind: {
+      icon: "frame", mascot: "post", mascotName: "Post", tone: "warn",
+      title: "Streamed panels are off",
+      detail: "This panel would stream a real browser from a worker to this page — an experimental, metered feature that is off by default.",
+    },
+  },
 };
 
 /**
@@ -383,6 +394,9 @@ export interface PanelStateOpts {
   detail?: string;
   /** Renders a retry button carrying these attributes (for a click handler). */
   retryAttrs?: string;
+  /** A differently-worded action button (wins over retryAttrs) — e.g. the
+   *  streams-off card's "Open settings". `attrs` lands on the <button>. */
+  action?: { label: string; attrs: string };
   /** Shrink the card for a small panel. 1 = the full-page size. */
   scale?: number;
 }
@@ -402,6 +416,6 @@ export function panelStateFragment(
   return errorCard({
     kind,
     badge: base.badge,
-    action: opts.retryAttrs ? { label: "Try again", attrs: opts.retryAttrs } : undefined,
+    action: opts.action ?? (opts.retryAttrs ? { label: "Try again", attrs: opts.retryAttrs } : undefined),
   }, p, opts.scale ?? 1);
 }

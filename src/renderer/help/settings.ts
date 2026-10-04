@@ -9,6 +9,10 @@ import {
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
 import { hostHas, keepIfHost, copyText } from "./web-surface.js";
+import {
+  STREAMED_PANELS_PREF, STREAMED_PANELS_WARNING, STREAMED_PANELS_CHANGED_EVENT,
+  OPEN_STREAMED_PANELS_SETTING_EVENT, nextFlagStep, flagSwitchChecked, flagWarningShown, type FlagStep, type FlagAction,
+} from "./streamed-panels-flag.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
 import { accountApi, fmtUsd } from "./settings-api.js";
@@ -124,6 +128,53 @@ function initSettings() {
     });
   }
 
+
+  // STREAMED WEB PANELS — the two-click flag (help/streamed-panels-flag.ts).
+  // Shared pref, web and desktop. On = warning + "Turn on"; off = immediate.
+  // Standard components only (an inline .settings-warn + action buttons), no
+  // native confirm (memory law).
+  {
+    const sw = document.getElementById("toggle-streamed-panels") as HTMLInputElement | null;
+    const warn = document.getElementById("streamed-panels-warn");
+    const warnText = document.getElementById("streamed-panels-warn-text");
+    const confirmBtn = document.getElementById("streamed-panels-confirm");
+    const cancelBtn = document.getElementById("streamed-panels-cancel");
+    if (sw && warn && warnText) {
+      warnText.textContent = STREAMED_PANELS_WARNING;
+      let step: FlagStep = "off";
+      const paint = (): void => {
+        sw.checked = flagSwitchChecked(step);
+        warn.classList.toggle("hidden", !flagWarningShown(step));
+      };
+      const move = (action: FlagAction): void => {
+        const r = nextFlagStep(step, action);
+        step = r.step;
+        if (r.persist !== undefined) {
+          void window.glyphh.setPreference(STREAMED_PANELS_PREF, r.persist);
+          // The panels in THIS document follow at once (the main-process
+          // broadcast reaches the other documents on desktop).
+          document.dispatchEvent(new CustomEvent(STREAMED_PANELS_CHANGED_EVENT, { detail: { on: r.persist } }));
+        }
+        paint();
+      };
+      void window.glyphh.getPreference(STREAMED_PANELS_PREF, false).then((v) => { step = v ? "on" : "off"; paint(); }).catch(paint);
+      sw.addEventListener("change", () => move(sw.checked ? "toggle-on" : "toggle-off"));
+      confirmBtn?.addEventListener("click", () => move("confirm"));
+      cancelBtn?.addEventListener("click", () => move("cancel"));
+      // A panel's "Open settings" link lands HERE: Settings → General, the row
+      // scrolled into view and the switch focused.
+      document.addEventListener(OPEN_STREAMED_PANELS_SETTING_EVENT, () => {
+        (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
+        const row = document.getElementById("streamed-panels-row");
+        setTimeout(() => {
+          row?.scrollIntoView({ block: "center", behavior: "smooth" });
+          row?.classList.add("set-pref-focus");
+          sw.focus({ preventScroll: true });
+          setTimeout(() => row?.classList.remove("set-pref-focus"), 1800);
+        }, 60);
+      });
+    }
+  }
 
   // Agent defaults — the model a new session opens with, from the org's own
   // allowed list (help/settings-agent.ts).

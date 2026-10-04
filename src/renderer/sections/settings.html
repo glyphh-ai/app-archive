@@ -122,6 +122,26 @@
                   <input type="checkbox" id="toggle-background-mode" />
                   <span class="toggle-switch"></span>
                 </label>
+                <!-- STREAMED WEB PANELS (his order, 2026-10-04): a URL app panel or
+                     the Browser on the web is a page rendered on a worker and
+                     streamed to the tab. Experimental, so OFF by default and a
+                     two-click switch: on asks first (the warning below + "Turn on"),
+                     off is immediate. help/settings.ts + help/streamed-panels-flag.ts. -->
+                <label class="settings-toggle set-pref-row" id="streamed-panels-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Streamed web panels</div>
+                    <div class="set-pref-desc">On the web, URL apps and the Browser open as a page streamed from a worker. Off, those panels show a card instead.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-streamed-panels" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="settings-warn hidden" id="streamed-panels-warn" role="alert">
+                  <div id="streamed-panels-warn-text"></div>
+                  <div class="settings-actions">
+                    <button type="button" class="action-btn primary" id="streamed-panels-confirm">Turn on</button>
+                    <button type="button" class="action-btn" id="streamed-panels-cancel">Cancel</button>
+                  </div>
+                </div>
 
                 <!-- The row grammar (his spec, 2026-08-24): title left with its
                      description UNDER it, the value control aligned to the

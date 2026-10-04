@@ -6743,6 +6743,15 @@ select.settings-input {
   background: color-mix(in srgb, var(--warning) 12%, transparent);
 }
 
+/* A settings row a panel's "Open settings" link pointed at — a short outline
+   flash so the eye lands on the switch (help/settings.ts). */
+.set-pref-row.set-pref-focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+  border-radius: 10px;
+  transition: outline-color .3s;
+}
+
 .settings-subheading {
   font-size: 15px;
   font-weight: 600;

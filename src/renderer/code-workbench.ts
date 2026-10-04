@@ -26,6 +26,7 @@ import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.j
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 import { hostHas } from "./help/web-surface.js";
+import { STREAMED_PANELS_PREF, STREAMED_PANELS_OFF_WHY, STREAMED_PANELS_CHANGED_EVENT, OPEN_STREAMED_PANELS_SETTING_EVENT } from "./help/streamed-panels-flag.js";
 
 /** Forget every server-side memory family a workspace owns — geometry snapshot,
  *  per-space session binding, Echo cell state. Deleting a workspace from the
@@ -333,6 +334,43 @@ const IS_SOLO_WINDOW = typeof window !== "undefined"
  *  the Terminal tool. The solo shell seats the one agent it was opened for; the
  *  web build (no webview) keeps the in-document agent. */
 const AGENT_INSTANCED = !IS_SOLO_WINDOW && !IS_WEB_TARGET;
+
+// ── STREAMED WEB PANELS, behind a flag (his order, 2026-10-04) ──────────────
+// On the web a URL app panel or the Browser can only be a page rendered on a
+// worker and streamed here (panel-stream.ts) — experimental and metered, so
+// OFF by default. The pref `streamedPanels` (Settings → General, shared with
+// desktop) gates every mountStreamedPanel call in this file: off → the
+// "Streamed panels are off" card with a link to the setting; on → the stream
+// (and its own honest offline cards). Read once at boot, followed live from
+// the settings row (same document) and the main-process broadcast (desktop).
+let streamedPanelsOn = false;
+(() => {
+  if (typeof window === "undefined") return;
+  type PrefApi = { getPreference?: (k: string, d: unknown) => Promise<unknown>; onPreferenceChanged?: (cb: (key: string, value: unknown) => void) => unknown };
+  const g = (window as unknown as { glyphh?: PrefApi }).glyphh;
+  try { void g?.getPreference?.(STREAMED_PANELS_PREF, false).then((v) => { streamedPanelsOn = !!v; }).catch(() => {}); } catch { /* no bridge yet */ }
+  try { g?.onPreferenceChanged?.((key, value) => { if (key === STREAMED_PANELS_PREF) streamedPanelsOn = !!value; }); } catch { /* web: a no-op subscription */ }
+  document.addEventListener(STREAMED_PANELS_CHANGED_EVENT, (ev) => {
+    streamedPanelsOn = !!(ev as CustomEvent<{ on?: boolean }>).detail?.on;
+  });
+})();
+/** The card a streamed panel shows while the flag is off: one line of why and
+ *  an "Open settings" link that lands on Settings → General with the switch
+ *  focused (help/settings.ts listens). Fills its host (flex column). */
+function streamsOffCard(): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "ws-streams-off";
+  el.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
+  el.innerHTML = panelStateFragment("streams-off", {
+    detail: STREAMED_PANELS_OFF_WHY,
+    action: { label: "Open settings", attrs: 'data-open-streams-setting="1"' },
+  });
+  el.querySelector<HTMLButtonElement>("[data-open-streams-setting]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    document.dispatchEvent(new CustomEvent(OPEN_STREAMED_PANELS_SETTING_EVENT));
+  });
+  return el;
+}
 /** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
 function openNewTabForm(): void {
   (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
@@ -4766,7 +4804,6 @@ async function init(): Promise<void> {
 
           if (key === "platform") { void openPlatformPanel(); return; }
           if (key === "newtab") { openNewTabForm(); return; }
-          if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
@@ -6025,6 +6062,8 @@ async function init(): Promise<void> {
           }
           return;
         }
+        // Behind the flag: off → the card, no stream is opened.
+        if (!streamedPanelsOn) { body.appendChild(streamsOffCard()); return; }
         const url = t.url || "https://www.google.com";
         const navTarget = new EventTarget();
         const streamed = mountStreamedPanel({
@@ -6603,16 +6642,10 @@ async function init(): Promise<void> {
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
-      // APP-WEB (his rule, 2026-08-25): a webview can't render in a browser
-      // tab, so a non-glyphh app opens ITS OWN tab; glyphh apps stay in-app.
-      if (IS_WEB_TARGET && t.kind === "app" && !t.glyphh && t.url) {
-        window.open(t.url, "_blank", "noopener");
-        return;
-      }
-      if (IS_WEB_TARGET && t.navKey === "preview") {
-        window.open(browserHome(), "_blank", "noopener");
-        return;
-      }
+      // APP-WEB: a URL app and the Browser open IN-APP on the web too (his
+      // order, 2026-10-04) — a streamed panel behind the `streamedPanels`
+      // flag, the "Streamed panels are off" card otherwise (mountAppIntoCard /
+      // the preview tool). The old "open its own browser tab" detour is gone.
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
@@ -6901,8 +6934,8 @@ async function init(): Promise<void> {
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
         if (key === "browser") {
-          // Web: no webview — a fresh browser tab is the Browser.
-          if (IS_WEB_TARGET) { window.open(app.url || browserHome(), "_blank", "noopener"); return; }
+          // Web too: the Browser tool renders a streamed page (behind the
+          // flag) or the streams-off card — never a detour to a new tab.
           if (app.url) ctl.openPreviewUrl(app.url);
           else void getOrOpenTool("preview");
           return;
@@ -7508,6 +7541,16 @@ async function init(): Promise<void> {
   function mountStreamedAppView(slot: AppSlot): AppView {
     const holder = document.createElement("div");
     holder.className = "ws-app-holder entering";
+    // Behind the flag (his order, 2026-10-04): off → the "Streamed panels are
+    // off" card in the same holder, so the slot keeps its place on the rail.
+    if (!streamedPanelsOn) {
+      holder.appendChild(streamsOffCard());
+      ensureAppLayer().appendChild(holder);
+      requestAnimationFrame(() => requestAnimationFrame(() => holder.classList.remove("entering")));
+      const off: AppView = { holder, webview: document.createElement("div") as WebviewEl, slug: slot.slug };
+      appViews.set(slot.id, off);
+      return off;
+    }
     // The SAME chrome as the native app panel (back/fwd/reload/urlbar) —
     // buildAppChrome is webview-shaped, so a thin adapter maps its verbs onto
     // the streamed panel and re-emits far-side navs as did-navigate events.
@@ -9016,7 +9059,10 @@ async function init(): Promise<void> {
         let streamed: StreamedPanelHandle | null = null;
         const openUrl = (u: string): void => {
           streamed?.dispose();
+          streamed = null;
           (holder as HTMLElement).innerHTML = "";
+          // Behind the flag: the Browser on the web is a streamed page too.
+          if (!streamedPanelsOn) { (holder as HTMLElement).appendChild(streamsOffCard()); t.url = u; return; }
           streamed = mountStreamedPanel({
             url: u,
             onNav: (nu, title) => {
