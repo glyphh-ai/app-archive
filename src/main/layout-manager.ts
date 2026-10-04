@@ -92,6 +92,42 @@ export interface GridLayout {
   space?: "chat" | "cowork" | "code";
 }
 
+/** The row the Workspaces page, the wall and the attach socket read — the
+ *  `layouts-list` IPC's shape, projected in ONE place so app.glyphh.ai (which
+ *  reads a workspace off the desktop over the relay) sees exactly what the
+ *  desktop's own renderer sees. */
+export interface LayoutRow {
+  name: string;
+  cols: number;
+  rows: number;
+  colWidths: number[];
+  rowHeights: number[];
+  target: "glyphh" | "desktop";
+  loop: string | null;
+  modelSelections: Record<string, string>;
+  sessionMode: "keep" | "new" | "last";
+  folder: string | null;
+  space: "chat" | "cowork" | "code" | null;
+  splits: GridCell[];
+}
+
+export function toLayoutRow(l: GridLayout): LayoutRow {
+  return {
+    name: l.name,
+    cols: l.cols,
+    rows: l.rows,
+    colWidths: l.colWidths,
+    rowHeights: l.rowHeights,
+    target: l.target ?? "glyphh",
+    loop: l.loop ?? null,
+    modelSelections: l.modelSelections ?? {},
+    sessionMode: l.sessionMode ?? "keep",
+    folder: l.folder ?? null,
+    space: l.space ?? null,
+    splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
+  };
+}
+
 /** Every workspace on disk, flattened to the spec shape. */
 export async function fetchServerLayouts(): Promise<ServerLayout[]> {
   const out: ServerLayout[] = [];
@@ -235,4 +271,11 @@ export class LayoutManager {
       })),
     };
   }
+}
+
+/** The one LayoutManager the app runs: main.ts takes it on start, the attach
+ *  socket's layouts.* read through the same instance (attach-handlers.ts). */
+let shared: LayoutManager | null = null;
+export function getLayoutManager(): LayoutManager {
+  return (shared ??= new LayoutManager());
 }

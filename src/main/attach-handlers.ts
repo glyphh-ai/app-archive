@@ -16,10 +16,21 @@
  *   sessions.get  {id}         → one chat's last 200 messages
  *   sessions.put  {id, title?, mode?, workdir?} → create a chat / patch its metadata
  *   sessions.delete {id}       → delete one chat
+ *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
+ *   layouts.get  {name}        → one workspace by name
+ *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
  *
  * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
  * live on this machine only (the chat store in agent-ipc.ts), so the phone
  * lists and opens them over the attach socket.
+ *
+ * layouts.* and panelApps.list are app.glyphh.ai's view of the Customize
+ * libraries (his report, 2026-10-04: "none of my workspaces, app tabs, etc.
+ * are showing on the web"). Since the purge of 2026-09-10 a workspace is a
+ * folder under ~/.glyphh/workspaces and an app tab a folder under
+ * ~/.glyphh/apps — files on this machine, never written to the server — so
+ * the web reads them here, the way it reads the chats. READS ONLY: a change
+ * is made on the desktop (the web's shims say so when a write is attempted).
  *
  * loops.run / skills.run / agents.run are gone with the scheduler they ran on
  * (2026-09-21); tasks are programs the desktop runs, and the MCP tools that
@@ -33,6 +44,8 @@ import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
 import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, type RelayChat } from "./agent-ipc.js";
+import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
+import { fetchOrgApps } from "./org-apps.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -98,6 +111,22 @@ export function installAttachHandlers(): void {
     if (!id) throw new Error("sessions.delete requires { id }");
     return { deleted: deleteStoredChat(id) };
   });
+
+  // The Customize libraries, read-only — the same rows the desktop's own
+  // layouts-list / panel-apps-list IPC hand the renderer.
+  registerRelayHandler("layouts.list", async () => ({
+    layouts: (await getLayoutManager().refreshAndList()).map(toLayoutRow),
+  }));
+
+  registerRelayHandler("layouts.get", async (params) => {
+    const name = str(params, "name");
+    if (!name) throw new Error("layouts.get requires { name }");
+    const hit = (await getLayoutManager().refreshAndList()).find((l) => l.name === name);
+    if (!hit) throw new Error(`no workspace "${name}" on this machine`);
+    return { layout: toLayoutRow(hit) };
+  });
+
+  registerRelayHandler("panelApps.list", async () => ({ apps: await fetchOrgApps() }));
 
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();

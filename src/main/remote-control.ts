@@ -43,10 +43,13 @@ export interface RemoteControlView extends RemoteControlSetting {
 
 /** Everything a phone may call — the server's REMOTE_METHODS, no more. The
  *  web terminal's pty.input/resize/close name a pty this door opened (relay-
- *  pty.ts keys them by id); only pty.open takes a path, guarded below. */
+ *  pty.ts keys them by id); only pty.open takes a path, guarded below.
+ *  layouts.list/get and panelApps.list are the Customize libraries app.glyphh.ai
+ *  reads off this machine (attach-handlers.ts) — reads, no path, no write. */
 const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete",
+  "layouts.list", "layouts.get", "panelApps.list",
   "agent.answer", "agent.stop", "agent.permission", "agent.frames",
   "pty.input", "pty.resize", "pty.close",
 ] as const;

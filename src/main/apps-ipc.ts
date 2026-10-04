@@ -123,7 +123,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
 
 }
 
-import type { LayoutManager } from "./layout-manager";
+import { toLayoutRow, type LayoutManager } from "./layout-manager";
 
 interface AppsIpcDeps {
   layoutManager: LayoutManager;
@@ -148,26 +148,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
-  // IPC: layouts CRUD
-  // Server-authoritative (yo-server /api/layouts) — refresh the local cache
-  // from the server before listing so the Layouts tab shows server truth.
-  ipcMain.handle("layouts-list", async () => {
-    const rows = (await layoutManager.refreshAndList()).map((l) => ({
-      name: l.name,
-      cols: l.cols,
-      rows: l.rows,
-      colWidths: l.colWidths,
-      rowHeights: l.rowHeights,
-      target: (l as { target?: "glyphh" | "desktop" }).target ?? "glyphh",
-      loop: (l as { loop?: string }).loop ?? null,
-      modelSelections: (l as { modelSelections?: Record<string, string> }).modelSelections ?? {},
-      sessionMode: (l as { sessionMode?: "keep" | "new" | "last" }).sessionMode ?? "keep",
-      folder: (l as { folder?: string }).folder ?? null,
-      space: (l as { space?: "chat" | "cowork" | "code" }).space ?? null,
-      splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
-    }));
-    return rows;
-  });
+  // IPC: layouts CRUD — the files under ~/.glyphh/workspaces are the truth;
+  // every list re-scans them. The row is layout-manager's ONE projection,
+  // shared with the attach socket's layouts.list (what app.glyphh.ai reads).
+  ipcMain.handle("layouts-list", async () => (await layoutManager.refreshAndList()).map(toLayoutRow));
   ipcMain.handle("layouts-save", async (_e, name: string, panelIds: string[]) => {
     const existing = layoutManager.listLayouts().find(l => l.name === name);
     if (!existing) {

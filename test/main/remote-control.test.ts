@@ -37,9 +37,23 @@ describe("the desktop's remote door", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
       "fs.gitInfo", "fs.list", "fs.mkdir",
+      "layouts.get", "layouts.list",
+      "panelApps.list",
       "pty.close", "pty.input", "pty.open", "pty.resize",
       "relay.ping",
       "sessions.delete", "sessions.get", "sessions.list", "sessions.put",
+    ]);
+  });
+
+  it("passes the Customize library reads straight through — no path to guard", async () => {
+    const t = table();
+    expect(await t["layouts.list"]!({})).toEqual({ ok: "layouts.list" });
+    expect(await t["layouts.get"]!({ name: "Research" })).toEqual({ ok: "layouts.get" });
+    expect(await t["panelApps.list"]!({})).toEqual({ ok: "panelApps.list" });
+    expect(calls).toEqual([
+      { m: "layouts.list", p: {} },
+      { m: "layouts.get", p: { name: "Research" } },
+      { m: "panelApps.list", p: {} },
     ]);
   });
 

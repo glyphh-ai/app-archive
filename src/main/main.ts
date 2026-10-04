@@ -43,7 +43,7 @@ import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setOrgChangeObserver, setReauthHandler, PLATFORM_URL } from "./auth";
-import { LayoutManager } from "./layout-manager";
+import { getLayoutManager, type LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { clearPreferences, getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
 import { getLocalDb } from "./local-db";
@@ -418,7 +418,8 @@ async function boot() {
   ipcMain.on("wb:rpa-register", (e, slug: string, wcId: number) => { if (!fromAgentPanel(e)) registerRpaTarget(String(slug), Number(wcId)); });
   ipcMain.on("wb:rpa-unregister", (e, slug: string) => { if (!fromAgentPanel(e)) unregisterRpaTarget(String(slug)); });
 
-  layoutManager = new LayoutManager();
+  // The shared instance: the attach socket's layouts.* read through it too.
+  layoutManager = getLayoutManager();
   commandParser = new CommandParser();
   // Drips are BACK (his order, 2026-09-10) — presets in local SQLite, the
   // overlays untouched. The manager parents windowed effects to mainWindow
