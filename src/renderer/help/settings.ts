@@ -8,6 +8,7 @@ import {
   clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
+import { hostHas, keepIfHost, copyText } from "./web-surface.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
 import { accountApi, fmtUsd } from "./settings-api.js";
@@ -112,9 +113,11 @@ function initSettings() {
   });
 
   // Keep-running-in-the-background — applies immediately (tray + login item),
-  // no relaunch needed.
+  // no relaunch needed. DESKTOP ONLY: a browser tab has no tray and no login
+  // item, so on web (where the bridge serves no setBackgroundMode) the whole
+  // row is hidden rather than left as a switch that does nothing.
   const bgToggle = document.getElementById("toggle-background-mode") as HTMLInputElement | null;
-  if (bgToggle) {
+  if (bgToggle && keepIfHost(bgToggle.closest(".settings-toggle"), "getBackgroundMode", "setBackgroundMode")) {
     void window.glyphh.getBackgroundMode?.().then((on) => { bgToggle.checked = !!on; }).catch(() => {});
     bgToggle.addEventListener("change", () => {
       void window.glyphh.setBackgroundMode?.(bgToggle.checked).then((on) => { bgToggle.checked = !!on; }).catch(() => {});
@@ -239,10 +242,10 @@ function initSettings() {
   }
 
   // The local MCP server runs ON THIS MACHINE (127.0.0.1) — a browser tab has
-  // no machine to run it on, and the web bridge has no localMcp* IPC (the
-  // toggle threw). Keep the whole section hidden on web.
-  const mcpOnWeb = typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web");
-  if (localMcpSection && localMcpToggle && !mcpOnWeb) {
+  // no machine to run it on, and the web bridge serves no localMcpSetEnabled
+  // (the toggle threw). Keep the whole section hidden wherever the host can't
+  // run it (hostHas — the Proxy on web answers every name, typeof can't tell).
+  if (localMcpSection && localMcpToggle && hostHas("localMcpSetEnabled")) {
     localMcpSection.classList.remove("hidden");
     void (async () => {
       const enabled = (await window.glyphh.getPreference("localMcpEnabled", true)) !== false;
@@ -294,7 +297,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-copy-token")?.addEventListener("click", () => {
       const val = localMcpNewTokenValue?.textContent || "";
-      window.glyphh.copyToClipboard(val);
+      void copyText(val);
       const btn = document.getElementById("local-mcp-copy-token") as HTMLButtonElement;
       btn.textContent = "Copied";
       setTimeout(() => { btn.textContent = "Copy"; }, 2000);
@@ -302,7 +305,7 @@ function initSettings() {
 
     document.getElementById("local-mcp-copy-config")?.addEventListener("click", () => {
       const val = localMcpConfigEl?.textContent || "";
-      window.glyphh.copyToClipboard(val);
+      void copyText(val);
       const btn = document.getElementById("local-mcp-copy-config") as HTMLButtonElement;
       btn.textContent = "Copied";
       setTimeout(() => { btn.textContent = "Copy"; }, 2000);
@@ -561,10 +564,21 @@ function initSettings() {
     }
   }
 
-  // Relaunch button
+  // Relaunch button — the desktop restarts itself; a browser tab reloads.
   document.getElementById("settings-relaunch-btn")?.addEventListener("click", () => {
-    window.glyphh.relaunch();
+    if (hostHas("relaunch")) window.glyphh.relaunch();
+    else window.location.reload();
   });
+
+  // REMOTE CONTROL is this COMPUTER's switch (main/remote-control.ts): the
+  // desktop app attaching itself to the relay. A browser tab is not a machine
+  // — on web the bridge serves no remoteControlGet, so the page and its nav
+  // entry are hidden (the mobile/web side of remote control is the source
+  // chip's "Connected machines" list, not a setting).
+  if (!hostHas("remoteControlGet")) {
+    document.querySelectorAll<HTMLElement>('.settings-nav-item[data-sub="remote"], .settings-panel[data-sub="remote"]')
+      .forEach((n) => n.classList.add("hidden"));
+  }
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
 

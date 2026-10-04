@@ -25,6 +25,7 @@ import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from ".
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
+import { hostHas } from "./help/web-surface.js";
 
 /** Forget every server-side memory family a workspace owns — geometry snapshot,
  *  per-space session binding, Echo cell state. Deleting a workspace from the
@@ -9494,7 +9495,10 @@ async function init(): Promise<void> {
       });
     const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
       (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
-    tabsEl.append(title, spacer, drips, recents, fresh, dev);
+    // The Recents menu lists the CLIs' OWN session stores on this MACHINE
+    // (main's cliSessionsList). A worker-hosted CLI on web keeps its sessions in
+    // the worker; nothing here can list them, so the button is not offered.
+    tabsEl.append(title, spacer, drips, ...(hostHas("cliSessionsList") ? [recents] : []), fresh, dev);
   }
 
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {

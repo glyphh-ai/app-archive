@@ -9,6 +9,8 @@
  * MODEL a new session opens on, from the list their organization allows.
  */
 
+import { onWeb } from "./web-surface.js";
+
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
 
@@ -50,6 +52,11 @@ export async function loadCliGatewaySetting(): Promise<void> {
   const box = el<HTMLInputElement>("toggle-cli-gateway");
   const desc = el("cli-gateway-desc");
   if (!box) return;
+  // WEB: the CLIs run in the worker's terminal and sign in on their own there
+  // (his order, 2026-10-04) — the gateway env is written by the DESKTOP main
+  // process at open time (cli-agents.ts), which a browser tab has no part of.
+  // The switch would persist a pref nothing on web reads: hide the row.
+  if (onWeb()) { el("cli-gateway-row")?.classList.add("hidden"); return; }
   const g = window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; hasPlan?: boolean; gatewayDefault?: boolean }> };
   const r = await g.cliAgentsList?.().catch(() => null);
   const paid = r?.hasPlan !== false;

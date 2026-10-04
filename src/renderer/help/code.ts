@@ -32,6 +32,7 @@ import { sessionDisplayTitle } from "./session-title.js";
 import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
+import { hostHas } from "./web-surface.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -3759,12 +3760,17 @@ function wireComposerAttachments(): void {
       void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
     });
     addFolder.classList.add("plus-folder-only");
-    menu.append(
-      mkItem("Attach files…", "Images and documents ride the next message", () => {
-        void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
-      }),
-      addFolder,
-    );
+    // The OS file/folder pickers are the DESKTOP's (main's dialogs over the
+    // real filesystem). On web the bridge serves no glyphhPickAttachments, so
+    // the two rows are not offered at all — paste and drag-drop still work.
+    if (hostHas("glyphhPickAttachments")) {
+      menu.append(
+        mkItem("Attach files…", "Images and documents ride the next message", () => {
+          void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
+        }),
+        addFolder,
+      );
+    }
     // WORK and CODE run inside a working folder — the + is where you set it,
     // right from the landing or the thread (Chat has no folder concept; CSS
     // hides these under data-session-space="chat").
@@ -3778,8 +3784,14 @@ function wireComposerAttachments(): void {
       void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
     });
     newItem.classList.add("plus-folder-only");
-    menu.append(sep, curItem, newItem);
+    // These two open the DESKTOP's OS folder picker (wb.pickCwd → main). On web
+    // there is no such dialog (the bridge serves no pickWorkingDir): the thread's
+    // folder is the source chip's folder browser (a cloud workspace folder, or an
+    // attached machine's over the relay), so the rows are not offered.
+    const osFolderPicker = hostHas("pickWorkingDir");
+    if (osFolderPicker) menu.append(sep, curItem, newItem);
     const paintPlusFolder = (): void => {
+      if (!osFolderPicker) return;
       void wb()?.getCwdExplicit?.().then((dir) => {
         const name = dir ? String(dir).split("/").filter(Boolean).pop() : null;
         (curItem.querySelector("span") as HTMLElement).textContent = name ? `Working folder: ${name}` : "Working folder: not set";

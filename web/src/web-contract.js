@@ -240,8 +240,10 @@ export function buildContract(client, deps) {
     setPreference: (key, value) => prefsCache.set(key, value),
     getTheme: async () => (await prefsCache.get()).theme ?? 'dark',
     setTheme: (theme) => prefsCache.set('theme', theme),
-    getBackgroundMode: async () => (await prefsCache.get()).backgroundMode ?? false,
-    setBackgroundMode: (enabled) => prefsCache.set('backgroundMode', !!enabled),
+    // getBackgroundMode/setBackgroundMode are deliberately NOT here: "keep
+    // running in the background" is the desktop's tray + login item, which a
+    // browser tab cannot do — so `glyphhWeb.has('setBackgroundMode')` is false
+    // and Settings → General hides the row (help/settings.ts).
 
     // ── Glyphh Office · Slides (OfficeSlidesClient) ──────────────────────────────
     // Same wire shapes as the desktop preload, so the Slides panel (wb-gpoint)

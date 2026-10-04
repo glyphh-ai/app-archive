@@ -142,6 +142,13 @@ if (typeof window !== 'undefined') {
   window.glyphhWeb = {
     /** Instant, cookie-backed auth presence check (see isAuthedSync). */
     isAuthed: isAuthedSync,
+    /** FEATURE DETECTION FOR THE WEB BRIDGE. `window.glyphh` is a Proxy that
+     *  fabricates a function for ANY name, so `typeof window.glyphh.x` can never
+     *  say whether `x` is really implemented here. `has(name)` can: true only
+     *  for a method the contract (web-contract.js) actually serves on web. The
+     *  renderer uses it (help/web-surface.ts hostHas) to HIDE desktop-only
+     *  controls instead of letting them no-op. */
+    has: (name) => typeof name === 'string' && name in KNOWN,
   };
 
   // ── LOUD errors ────────────────────────────────────────────────────────────

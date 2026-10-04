@@ -65,6 +65,30 @@ beforeEach(async () => {
   glyphh = window.glyphh;
 });
 
+describe('window.glyphhWeb.has — feature detection the Proxy cannot give', () => {
+  it('is true only for names the web contract serves', () => {
+    const has = window.glyphhWeb.has;
+    expect(has('getPreference')).toBe(true);
+    expect(has('setPreference')).toBe(true);
+    expect(has('glyphhSessionsLoad')).toBe(true);
+    // Desktop-only methods: the Proxy still answers them with a function...
+    expect(typeof glyphh.setBackgroundMode).toBe('function');
+    expect(typeof glyphh.windowClose).toBe('function');
+    expect(typeof glyphh.glyphhPickAttachments).toBe('function');
+    // ...but has() says the truth, so the renderer hides those controls.
+    expect(has('setBackgroundMode')).toBe(false);
+    expect(has('getBackgroundMode')).toBe(false);
+    expect(has('windowClose')).toBe(false);
+    expect(has('glyphhPickAttachments')).toBe(false);
+    expect(has('pickWorkingDir')).toBe(false);
+    expect(has('localMcpSetEnabled')).toBe(false);
+    expect(has('remoteControlGet')).toBe(false);
+    expect(has('cliSessionsList')).toBe(false);
+    expect(has('relaunch')).toBe(false);
+    expect(has(42)).toBe(false);
+  });
+});
+
 describe('bridge KNOWN wiring', () => {
   it('connectionsList → connections.resolvedTools, adapted to legacy rows', async () => {
     const out = await glyphh.connectionsList();

@@ -12,6 +12,7 @@ import { initSearchClears } from "./search-clear.js";
 // bundle reaches it through: imported here so it exists from the first paint.
 import "./help/toast.js";
 import { installAutofillGuard } from "./autofill-guard.js";
+import { hostHas } from "./help/web-surface.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
 // Here we re-fetch the authoritative value from main and keep localStorage in sync.
@@ -42,9 +43,15 @@ window.glyphh.refreshAuth?.().catch(() => {});
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the
 // window controls and the command button (page-top, left of which sits the
 // rail toggle wired by code.ts).
-document.getElementById("panel-btn-close")?.addEventListener("click", () => window.glyphh.windowClose());
-document.getElementById("panel-btn-minimize")?.addEventListener("click", () => window.glyphh.windowMinimize());
-document.getElementById("panel-btn-maximize")?.addEventListener("click", () => window.glyphh.windowMaximize());
+// A browser tab has no window to close/minimize/maximize: on web the bridge
+// serves none of these, so the controls are REMOVED (the .glyphh-web CSS hides
+// them too — this is the belt to that suspenders, keyed off what the host has).
+for (const [id, method] of [["panel-btn-close", "windowClose"], ["panel-btn-minimize", "windowMinimize"], ["panel-btn-maximize", "windowMaximize"]] as const) {
+  const btn = document.getElementById(id);
+  if (!btn) continue;
+  if (!hostHas(method)) { btn.remove(); continue; }
+  btn.addEventListener("click", () => void (window.glyphh as unknown as Record<string, () => unknown>)[method]());
+}
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
 // ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
