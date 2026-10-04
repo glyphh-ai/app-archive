@@ -22,6 +22,8 @@ import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { podCliCommand, terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
+import { panelFsRoute, type PanelFsRoute } from "./help/panel-fs-route.js";
+import { createCloudWb, createWbRouter, type CloudFsLaneApi } from "./help/wb-cloud.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
@@ -705,8 +707,29 @@ async function init(): Promise<void> {
     console.error("[code-workbench] window.wb bridge missing — preload not loaded; workdir controls and rails are dead.");
     return;
   }
+  // THE PANELS FOLLOW THE SESSION'S LOCUS, NOT THE SURFACE (his report,
+  // 2026-10-04: "the workpanels like files, diff etc. are not adjusting to the
+  // cloud directories"). Files / Diff / Editor / the git chip read and write
+  // through `wb`: on the desktop a ROUTER (help/wb-cloud.ts) that answers a
+  // cloud session from main's cloud lane (its worker workspace, scoped to the
+  // session) and a local session from the untouched window.wb (this disk);
+  // on the web window.wb IS already that router (web/src/wb-pod.js). The
+  // machine-only surfaces — terminals, the folder/file pickers, setCwd —
+  // stay on window.wb below. help/panel-fs-route.ts is the one rule.
+  const sessionRoute = (): PanelFsRoute => {
+    const w = window as unknown as { __glyphhActiveSource?: () => { kind: string; space?: string; dir?: string } | null; __glyphhCurrentChatId?: () => string | null };
+    return panelFsRoute({ surface: isWebTarget() ? "web" : "desktop", source: w.__glyphhActiveSource?.() ?? null, chatId: w.__glyphhCurrentChatId?.() ?? null });
+  };
+  const wb: WbApi = isWebTarget()
+    ? window.wb
+    : createWbRouter<WbApi>({
+      local: window.wb,
+      cloud: createCloudWb({ lane: (window as unknown as { glyphh: CloudFsLaneApi }).glyphh, getScope: () => { const r = sessionRoute(); return r.route === "cloud" ? r.scope : ""; } }) as unknown as WbApi,
+      route: sessionRoute,
+    });
 
-  let cwd = await window.wb.getCwd().catch(() => "");
+
+  let cwd = await wb.getCwd().catch(() => "");
 
   // Default address-bar visibility for app panels — a roaming pref set in
   // Settings → Appearance. New app slots inherit it; the per-panel header
@@ -753,7 +776,7 @@ async function init(): Promise<void> {
     };
     if (!dir) { setBranch(null); return; }
     try {
-      const info = await window.wb.gitInfo(dir);
+      const info = await wb.gitInfo(dir);
       setBranch(info.isRepo && info.branch ? info.branch : null);
     } catch {
       setBranch(null);
@@ -1505,14 +1528,14 @@ async function init(): Promise<void> {
       return;
     }
     if (OFFICE_EXTS.has(ext)) {
-      const conv = await window.wb.convertPreview(file.path).catch(() => null);
+      const conv = await wb.convertPreview(file.path).catch(() => null);
       if (conv?.pdfPath) { openPreviewUrl(fileUrl(conv.pdfPath)); return; }
-      void window.wb.previewNative(file.path);
+      void wb.previewNative(file.path);
       return;
     }
-    const res = await window.wb.readFile(file.path);
+    const res = await wb.readFile(file.path);
     // Text the editor can't hold (the 1MB cap) still deserves a viewer.
-    if (res.error && /too large/i.test(res.error)) { void window.wb.previewNative(file.path); return; }
+    if (res.error && /too large/i.test(res.error)) { void wb.previewNative(file.path); return; }
     openFileInMonaco({ name: file.name, path: file.path }, res.error ? `// error: ${res.error}` : res.content);
   }
 
@@ -4411,7 +4434,7 @@ async function init(): Promise<void> {
         // An unsaved tab comes back as it was typed; a clean one re-reads its file.
         void Promise.all(m.tabs.filter((t) => !t.dirty).map(async (t) => {
           try {
-            const r = await window.wb.readFile(t.path);
+            const r = await wb.readFile(t.path);
             t.content = r.error ? `// error: ${r.error}` : r.content;
           } catch { /* file gone — the tab shows empty */ }
         })).then(() => rerenderToolBody(entry));
@@ -8027,7 +8050,7 @@ async function init(): Promise<void> {
     if (!body.isConnected) return false;
     if (state === "ok") {
       // The far side just became reachable — the boot-time cwd may predate it.
-      if (!cwd) cwd = (await window.wb.getCwd().catch(() => "")) || "";
+      if (!cwd) cwd = (await wb.getCwd().catch(() => "")) || "";
       return true;
     }
     body.innerHTML = "";
@@ -8094,7 +8117,7 @@ async function init(): Promise<void> {
       if (slot.root) startCreate(treeEl, slot.root, slot.root, "dir", null);
     });
     if (!slot.root) {
-      const res = await window.wb.listDir(cwd);
+      const res = await wb.listDir(cwd);
       slot.root = {
         name: basename(cwd), path: cwd, kind: "dir", depth: -1, open: true, loaded: true,
         children: res.entries.map((e) => ({ ...e, depth: 0 })),
@@ -8111,7 +8134,7 @@ async function init(): Promise<void> {
       const q = searchInput.value.trim();
       const seq = ++searchSeq;
       if (!q) { if (slot.root) renderTreeRows(treeEl, slot.root); return; }
-      void window.wb.searchFiles(cwd, q).then((res) => {
+      void wb.searchFiles(cwd, q).then((res) => {
         if (seq !== searchSeq || !slot.root) return; // stale response / slot gone
         treeEl.innerHTML = "";
         const hits = res.entries ?? [];
@@ -8150,7 +8173,7 @@ async function init(): Promise<void> {
   /** Re-list a dir node from disk, KEEPING each surviving child's expanded
    *  subtree (matched by path) so a create/delete doesn't collapse the tree. */
   async function refreshDirNode(node: TreeNode): Promise<void> {
-    const res = await window.wb.listDir(node.path);
+    const res = await wb.listDir(node.path);
     const old = new Map((node.children ?? []).map((c) => [c.path, c]));
     node.children = res.entries.map((e) => old.get(e.path) ?? { ...e, depth: node.depth + 1 });
     node.loaded = true;
@@ -8194,13 +8217,13 @@ async function init(): Promise<void> {
         const target = `${dir.path}/${name}`;
         if (kind === "file") {
           // writeFile OVERWRITES — never let "create" truncate an existing file.
-          const existing = await window.wb.readFile(target);
+          const existing = await wb.readFile(target);
           if (!existing.error || /too large/i.test(existing.error)) {
             void appConfirm({ title: `${name} already exists`, body: "Pick a different name.", confirmLabel: "OK" });
             return;
           }
         }
-        const res = kind === "file" ? await window.wb.writeFile(target, "") : await window.wb.mkdir(target);
+        const res = kind === "file" ? await wb.writeFile(target, "") : await wb.mkdir(target);
         if (!res.ok) { void appConfirm({ title: `Couldn't create ${name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
         dir.open = true;
         await refreshDirNode(dir);
@@ -8236,7 +8259,7 @@ async function init(): Promise<void> {
     row.addEventListener("click", async () => {
       if (node.kind === "dir") {
         if (!node.loaded) {
-          const res = await window.wb.listDir(node.path);
+          const res = await wb.listDir(node.path);
           node.children = res.entries.map((e) => ({ ...e, depth: node.depth + 1 }));
           node.loaded = true;
         }
@@ -8264,7 +8287,7 @@ async function init(): Promise<void> {
         if (!commit || !name || name === node.name || /[\\/]/.test(name)) return;
         void (async () => {
           const newPath = node.path.slice(0, node.path.length - node.name.length) + name;
-          const res = await window.wb.renamePath(node.path, newPath);
+          const res = await wb.renamePath(node.path, newPath);
           if (!res.ok) { void appConfirm({ title: `Couldn't rename ${node.name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
           await refreshDirNode(findParentDir(root, node));
           renderTreeRows(treeEl, root);
@@ -8316,7 +8339,7 @@ async function init(): Promise<void> {
             danger: true,
           });
           if (!ok) return;
-          const res = await window.wb.deletePath(node.path);
+          const res = await wb.deletePath(node.path);
           if (!res.ok) { void appConfirm({ title: `Couldn't delete ${node.name}`, body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
           await refreshDirNode(findParentDir(root, node));
           renderTreeRows(treeEl, root);
@@ -8375,7 +8398,7 @@ async function init(): Promise<void> {
       const editor = (host as unknown as { __editor?: { getValue: () => string } }).__editor;
       if (!tab || !tab.dirty || !editor) return;
       const value = editor.getValue();
-      const res = await window.wb.writeFile(tab.path, value);
+      const res = await wb.writeFile(tab.path, value);
       if (!(res as { error?: string })?.error) {
         tab.content = value;
         tab.dirty = false;
@@ -8401,7 +8424,7 @@ async function init(): Promise<void> {
       flushEditorModel();
       for (const t of slot.tabs) {
         if (!t.dirty) continue;
-        const res = await window.wb.writeFile(t.path, t.content);
+        const res = await wb.writeFile(t.path, t.content);
         if (!(res as { error?: string })?.error) t.dirty = false;
       }
       paintSave();
@@ -8907,7 +8930,7 @@ async function init(): Promise<void> {
     async function refresh(): Promise<void> {
       const seq = ++refreshSeq;
       if (!painted) summary.textContent = "loading…";
-      const git = await (cwd ? window.wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }));
+      const git = await (cwd ? wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }));
       if (seq !== refreshSeq || !body.isConnected) return; // superseded / slot gone
       painted = true;
       lastGit = git;
@@ -9061,7 +9084,7 @@ async function init(): Promise<void> {
       activePath = planFilePath();
       pathEl.textContent = activePath;
       setSave("saved");
-      const res = await window.wb.readFile(activePath);
+      const res = await wb.readFile(activePath);
       const text = res.error ? "" : (res.content || "");
       suppressChange = true;
       const w = window as unknown as { monaco: any };
@@ -9076,7 +9099,7 @@ async function init(): Promise<void> {
       const m = editor.getModel();
       if (!m) return;
       setSave("saving");
-      const res = await window.wb.writeFile(activePath, m.getValue());
+      const res = await wb.writeFile(activePath, m.getValue());
       setSave(res.ok ? "saved" : "error");
       if (!res.ok && res.error) saveStateEl.title = res.error;
     }
@@ -9099,13 +9122,13 @@ async function init(): Promise<void> {
       const sep = root.includes("\\") ? "\\" : "/";
       return abs === `${root}${sep}plan.md` || (!!base && abs.endsWith(`${sep}${base}${sep}plan.md`));
     }
-    const unsubscribeWatch = window.wb.onFileChanged(async (abs: string) => {
+    const unsubscribeWatch = wb.onFileChanged(async (abs: string) => {
       if (!cwd) return;
       if (!isPlanPath(abs)) return;
       if (saveStateEl.classList.contains("plan-dirty")) return;
       activePath = planFilePath();
       pathEl.textContent = activePath;
-      const res = await window.wb.readFile(activePath);
+      const res = await wb.readFile(activePath);
       if (res.error) return;
       const m = editor?.getModel?.();
       if (!m) return;
@@ -10251,7 +10274,7 @@ async function init(): Promise<void> {
     const name = path.split(/[\\/]/).pop() || path;
     if (mode === "browse") { openPreviewUrl(fileUrl(path)); return; }
     if (mode === "edit") {
-      void window.wb.readFile(path).then((res) => {
+      void wb.readFile(path).then((res) => {
         openFileInMonaco({ name, path }, res.error ? `// error: ${res.error}` : res.content);
       });
       return;
@@ -10824,7 +10847,7 @@ async function init(): Promise<void> {
   };
 
   let lastCwd = cwd;
-  window.wb.onCwdChanged((dir) => {
+  wb.onCwdChanged((dir) => {
     const next = dir || "";
     if (next === lastCwd) return;
     // Persist the current rails to the OLD folder's key before switching
@@ -10923,7 +10946,7 @@ async function init(): Promise<void> {
     }, FS_REFRESH_DEBOUNCE_MS);
   }
 
-  window.wb.onFileChanged(async (abs) => {
+  wb.onFileChanged(async (abs) => {
     if (!cwd || !abs.startsWith(cwd)) return;
     // Monaco viewer tabs — re-read any matching, non-dirty tab and fold the
     // new content into the live editor via the panel's reload hook (cursor +
@@ -10932,7 +10955,7 @@ async function init(): Promise<void> {
       const mslot = slot as MonacoSlot;
       const tab = mslot.tabs.find((t) => t.path === abs);
       if (!tab || tab.dirty) continue; // never clobber unsaved edits
-      const res = await window.wb.readFile(abs);
+      const res = await wb.readFile(abs);
       if (res.error) continue;   // transient read race (rename/rewrite) — keep what's shown
       const hook = (body as HTMLElement & { __wbMonacoReload?: (abs: string, content: string) => void }).__wbMonacoReload;
       if (hook) hook(abs, res.content);
@@ -10945,7 +10968,7 @@ async function init(): Promise<void> {
   });
   // Git state moved without a worktree write (commit, stage, checkout) — the
   // diff is stale even though no watched file changed.
-  window.wb.onGitChanged?.(() => {
+  wb.onGitChanged?.(() => {
     if (liveFsPanelsOf("diff").length) scheduleDiffRefresh();
   });
 }

@@ -85,6 +85,7 @@ import { registerAgentStubs } from "./agent-stubs";
 import { registerAgentIpc } from "./agent-ipc";
 import { registerAgentLiveIpc } from "./agent-live";
 import { registerCloudRunIpc } from "./cloud-run";
+import { registerCloudFsIpc } from "./cloud-fs";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -463,6 +464,8 @@ async function boot() {
     registerRemoteControlIpc();
     registerAgentLiveIpc();
     registerCloudRunIpc();
+    // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
+    registerCloudFsIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {

@@ -41,6 +41,8 @@ import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas } from "./web-surface.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
+import { panelFsRoute } from "./panel-fs-route.js";
+import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
@@ -1699,8 +1701,24 @@ function syncSpaceAttrs(): void {
   document.body.dataset.railSpace = typeTab;
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
+  announceWbLocus();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
+/** THE PANELS FOLLOW THE SESSION (his report, 2026-10-04): the workbench's
+ *  Files / Diff / Editor route by the current session's locus (help/
+ *  panel-fs-route.ts, help/wb-cloud.ts). On the desktop nothing else tells
+ *  the workbench a session switched a cloud thread in or out — a local
+ *  session's folder rides setCwd, a cloud one has no folder here — so every
+ *  switch announces its route once, on a real change. The web's selector is
+ *  fed the same event by web-contract.js on its own session-store path. */
+let lastWbLocusKey = "";
+function announceWbLocus(): void {
+  if (onWebTarget()) return;
+  const key = routeKey(panelFsRoute({ surface: "desktop", source: activeSource(), chatId: currentId }));
+  if (key === lastWbLocusKey) return;
+  lastWbLocusKey = key;
+  try { window.dispatchEvent(new CustomEvent(WB_LOCUS_EVENT, { detail: { key } })); } catch { /* bare stubs */ }
+}
 // The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
 // pod yet — quiet empty state) apart from a desktop source that's offline.
 (window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
@@ -3153,13 +3171,8 @@ function paintGitState(): void {
   const label = document.getElementById(onHome ? "dash-wd-branch" : "code-workdir-branch");
   if (!wrap || !label) return;
   const hide = (): void => { (wrap as HTMLElement).style.display = "none"; };
-  if (src.kind !== "local") { hide(); return; }
   const seq = ++gitStateSeq;
-  // The DESKTOP's local source carries no path — the machine's own working
-  // directory is the folder in play there, so fall back to it.
-  const dirOf = async (): Promise<string> => src.path
-    || (await (wb() as unknown as { getCwdExplicit?: () => Promise<string | null> })?.getCwdExplicit?.().catch(() => null)) || "";
-  void dirOf().then((dir) => (dir ? gitStateFor(dir) : null)).then((git) => {
+  const paint = (git: { isRepo: boolean; branch?: string } | null): void => {
     if (seq !== gitStateSeq) return;   // a newer pick landed while we asked
     if (!git) { hide(); return; }
     (wrap as HTMLElement).style.display = "";
@@ -3168,7 +3181,27 @@ function paintGitState(): void {
     wrap.setAttribute("title", git.isRepo
       ? `Git repository${git.branch ? ` on ${git.branch}` : ""}`
       : "No git repository in this folder yet");
-  });
+  };
+  // A CLOUD session's git state is its WORKER workspace's (his report,
+  // 2026-10-04) — asked over the cloud lane, scoped to the session; this
+  // disk's folder is never the answer. The web's wb (wb-pod.js) is already
+  // that lane; the desktop reaches main's. Nothing to ask → hidden, as before.
+  const route = panelFsRoute({ surface: onWebTarget() ? "web" : "desktop", source: src, chatId: currentId });
+  if (route.route === "cloud") {
+    const g = (window as unknown as { glyphh?: { cloudGitInfo?: (scope: string) => Promise<{ isRepo: boolean; branch?: string }> } }).glyphh;
+    const ask = onWebTarget()
+      ? (wb() as unknown as { gitInfo?: (root: string) => Promise<{ isRepo: boolean; branch?: string }> })?.gitInfo?.("")
+      : g?.cloudGitInfo?.(route.scope);
+    if (!ask) { hide(); return; }
+    void ask.then((r) => paint(r && r.isRepo ? { isRepo: true, ...(r.branch ? { branch: r.branch } : {}) } : null), () => paint(null));
+    return;
+  }
+  if (src.kind !== "local") { hide(); return; }
+  // The DESKTOP's local source carries no path — the machine's own working
+  // directory is the folder in play there, so fall back to it.
+  const dirOf = async (): Promise<string> => src.path
+    || (await (wb() as unknown as { getCwdExplicit?: () => Promise<string | null> })?.getCwdExplicit?.().catch(() => null)) || "";
+  void dirOf().then((dir) => (dir ? gitStateFor(dir) : null)).then(paint);
 }
 
 

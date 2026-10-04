@@ -193,7 +193,27 @@ export function buildContract(client, deps) {
     catch { return {}; }
   };
 
+  // THE CLOUD FS/GIT LANE (desktop: main/cloud-fs.ts over IPC; here the SDK's
+  // harness client answers directly — the same calls web/src/wb-pod.js makes).
+  // Every failure rides IN the shape, as on the desktop; a scope is required.
+  const pod = () => {
+    if (typeof client?.harnessViaApi !== 'function') throw new Error('no cloud runtime transport');
+    return client.harnessViaApi();
+  };
+  const laneErr = (e) => (e instanceof Error ? e.message : String(e));
+  const lane = (run, onError) => async (scope, ...rest) => {
+    if (!scope) return onError('no cloud session');
+    try { return await run(pod(), String(scope), ...rest); } catch (e) { return onError(laneErr(e)); }
+  };
   return {
+    cloudFsInfo: lane(async (hc, scope) => { const r = await hc.fsInfo({ scope }); return { root: String(r?.root || ''), isRepo: !!r?.isRepo, ...(r?.branch ? { branch: String(r.branch) } : {}) }; }, (error) => ({ root: '', isRepo: false, error })),
+    cloudFsList: lane((hc, scope, dir) => hc.fsList({ scope, ...(dir ? { dir: String(dir) } : {}) }), (error) => ({ entries: [], error })),
+    cloudFsRead: lane((hc, scope, path) => hc.fsRead({ scope, path: String(path ?? '') }), (error) => ({ content: '', error })),
+    cloudFsWrite: lane((hc, scope, path, content) => hc.fsWrite({ scope, path: String(path ?? ''), content: typeof content === 'string' ? content : '' }), (error) => ({ ok: false, error })),
+    cloudFsSearch: lane((hc, scope, query) => hc.fsSearch({ scope, query: String(query ?? '') }), (error) => ({ entries: [], error })),
+    cloudFsEvents: lane((hc, scope, from) => hc.fsEvents({ scope, from: typeof from === 'number' ? from : -1 }), (error) => ({ seq: -1, events: [], error })),
+    cloudGitInfo: lane(async (hc, scope) => { const r = await hc.fsInfo({ scope }); return { isRepo: !!r?.isRepo, ...(r?.branch ? { branch: String(r.branch) } : {}) }; }, (error) => ({ isRepo: false, error })),
+    cloudGitDiff: lane((hc, scope) => hc.fsDiff({ scope }), (error) => ({ text: '', error })),
     // ── Auth / account ────────────────────────────────────────────────────────
     isAuthenticated: () => isAuthenticated(),
     logout: () => { prefsCache.clear(); return signOut(); },

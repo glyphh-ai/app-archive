@@ -931,6 +931,25 @@ contextBridge.exposeInMainWorld("glyphh", {
   apiUrl: process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai",
   cloudSpacesList: () =>
     ipcRenderer.invoke("cloud-spaces-list") as Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }>,
+  // THE CLOUD FS/GIT LANE (main/cloud-fs.ts): a cloud session's Files / Diff /
+  // Editor read and write its worker workspace, keyed by the session's scope
+  // (help/panel-fs-route.ts). A local session never calls these.
+  cloudFsInfo: (scope: string) =>
+    ipcRenderer.invoke("cloud-fs-info", scope) as Promise<{ root: string; isRepo?: boolean; branch?: string; error?: string }>,
+  cloudFsList: (scope: string, dir?: string) =>
+    ipcRenderer.invoke("cloud-fs-list", scope, dir) as Promise<{ entries: Array<{ name: string; path: string; kind: string }>; error?: string }>,
+  cloudFsRead: (scope: string, path: string) =>
+    ipcRenderer.invoke("cloud-fs-read", scope, path) as Promise<{ content: string; error?: string }>,
+  cloudFsWrite: (scope: string, path: string, content: string) =>
+    ipcRenderer.invoke("cloud-fs-write", scope, path, content) as Promise<{ ok: boolean; error?: string }>,
+  cloudFsSearch: (scope: string, query: string) =>
+    ipcRenderer.invoke("cloud-fs-search", scope, query) as Promise<{ entries: Array<{ name: string; rel: string; path: string; kind: string }>; truncated?: boolean; error?: string }>,
+  cloudFsEvents: (scope: string, from?: number) =>
+    ipcRenderer.invoke("cloud-fs-events", scope, from) as Promise<{ seq: number; root?: string; events: Array<{ type: string; path?: string }>; error?: string }>,
+  cloudGitInfo: (scope: string) =>
+    ipcRenderer.invoke("cloud-git-info", scope) as Promise<{ isRepo: boolean; branch?: string; error?: string }>,
+  cloudGitDiff: (scope: string) =>
+    ipcRenderer.invoke("cloud-git-diff", scope) as Promise<{ text: string; error?: string }>,
   orgInvitesList: () => ipcRenderer.invoke("org-invites-list") as Promise<Array<{ id: string; email: string; role: string; invitedByEmail: string | null; createdAt: string; expiresAt: string }>>,
   orgInviteRevoke: (id: string) => ipcRenderer.invoke("org-invite-revoke", id) as Promise<{ ok: boolean; error?: string }>,
   billingConfig: () =>
