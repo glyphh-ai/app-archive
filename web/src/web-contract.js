@@ -27,7 +27,7 @@ import {
   libEnvelope, libError,
   toLegacyConnections, toLegacyConnectionTools, toLegacyConnectorApps,
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
-  toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
+  toLegacyDrips, toAccountInfo,
   toDashboardData, emptyDashboardData,
 } from './glyphh-core.js';
 // STANDARD drip effects ship with the product — the same shared catalog +
@@ -43,6 +43,10 @@ import { webIconProxyPath } from '../webicon.mjs';
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
 import { noteSessionsSnapshot } from './wb-pod.js';
+// THE MEMBER LIBRARY (his rule, 2026-10-04: database-as-truth): workspaces,
+// tabs, skills, agents and tasks read the server FIRST and write to it; the
+// desktop pulls what the web wrote on its next sync (member-library-web.js).
+import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 
 /**
  * The canonical EMPTY shape per contract type — the value a cloud read resolves to
@@ -170,29 +174,15 @@ export function buildContract(client, deps) {
     } catch { return []; }
   };
 
-  // WORKSPACES AND APP TABS LIVE ON THE DESKTOP (his report, 2026-10-04:
-  // "none of my workspaces, app tabs, etc. are showing on the web"). The purge
-  // of 2026-09-10 made the files the truth — ~/.glyphh/workspaces/<id>/
-  // workspace.json (layout-manager.ts), ~/.glyphh/apps/<slug>/tab.json
-  // (apps-store.ts) — and the desktop stopped writing the server libraries,
-  // so the SDK reads alone answered an empty wall. Each list is now what the
-  // member's attached machines hold (layouts.list / panelApps.list over the
-  // relay, the desktop's own IPC rows untouched) in front of whatever the
-  // server library still carries; a row the desktop has wins its name/slug.
-  const layoutsList = async () => {
-    const [desk, srv] = await Promise.all([
-      desktopRead('layouts.list', 'layouts'),
-      read(() => client.layouts.list(), toLegacyLayouts, EMPTY.list)(),
-    ]);
-    return mergeRows(desk, srv, (l) => l.name);
-  };
-  const panelAppsList = async () => {
-    const [desk, srv] = await Promise.all([
-      desktopRead('panelApps.list', 'apps'),
-      read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list)(),
-    ]);
-    return mergeRows(desk, srv, (a) => a.slug || a.id);
-  };
+  // THE MEMBER LIBRARY — THE SERVER FIRST (his rule, 2026-10-04: database-
+  // as-truth). A workspace or tab the desktop wrote is on the server from its
+  // next sync; a web-only member who never installed the desktop has their
+  // library there from day one. The rows an attached desktop still holds
+  // (layouts.list / panelApps.list over the relay) fill in behind the
+  // server's — one row per name/slug, the server winning a tie — so a machine
+  // that has not synced yet still shows what it has.
+  const library = buildMemberLibrary(client, { desktopRead });
+  const { layoutsList, panelAppsList } = library;
 
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
@@ -741,24 +731,73 @@ export function buildContract(client, deps) {
       }
     },
 
-    // ── Skills / Agents (library {ok,data} envelope) ──────────────────────────────
+    // ── The shared (org) library's skills — the legacy surface, untouched ─────
     librarySkillsList: lib(() => client.skills.list()),
     librarySkillGet: lib((ref) => client.skills.get(ref)),
-    libraryAgentsList: lib(() => client.agents.list()),
-    libraryAgentGet: lib((ref) => client.agents.get(ref)),
-    libraryAgentTasks: lib((ref) => client.agents.tasks(ref)),
-    libraryAgentTaskAdd: lib((ref, input) => client.agents.addTask(ref, input)),
-    libraryAgentTaskRuns: lib((ref, taskId) => client.agents.taskRuns(ref, taskId)),
+
+    // ── THE MEMBER LIBRARY (member-library-web.js): skills, tasks and agents
+    // read from and written to the server; what needs the machine (a run, a
+    // schedule, a folder dialog) answers NEEDS_DESKTOP per action. ──
+    skillsList: library.skillsList,
+    skillGet: library.skillGet,
+    skillFileRead: library.skillFileRead,
+    skillFileWrite: library.skillFileWrite,
+    skillCreate: library.skillCreate,
+    skillDelete: library.skillDelete,
+    skillSetEnabled: library.skillSetEnabled,
+    skillAgents: library.skillAgents,
+    skillAgentSet: library.skillAgentSet,
+    skillReveal: library.skillReveal,
+    skillImport: library.skillImport,
+    skillReplace: library.skillReplace,
+    skillDownload: library.skillDownload,
+    skillAdopt: library.skillAdopt,
+    skillTab: library.skillTab,
+    skillImage: library.skillImage,
+    skillsHome: library.skillsHome,
+    libraryAgentsList: library.libraryAgentsList,
+    libraryAgentGet: library.libraryAgentGet,
+    libraryAgentTasks: library.libraryAgentTasks,
+    libraryAgentTaskAdd: library.libraryAgentTaskAdd,
+    libraryAgentTaskUpdate: library.libraryAgentTaskUpdate,
+    libraryAgentTaskRunNow: library.libraryAgentTaskRunNow,
+    libraryAgentTaskRuns: library.libraryAgentTaskRuns,
+    libraryAgentTaskRunning: library.libraryAgentTaskRunning,
+    tasksSpecs: library.tasksSpecs,
+    taskSpec: library.taskSpec,
+    taskSlotSet: library.taskSlotSet,
+    taskRun: library.taskRun,
+    taskRuns: library.taskRuns,
+    taskRunGet: library.taskRunGet,
+    taskRunCancel: library.taskRunCancel,
+    skillsDiscover: library.skillsDiscover,
+    skillUpdates: library.skillUpdates,
+    skillShares: library.skillShares,
+    skillStandings: library.skillStandings,
+    skillVersions: library.skillVersions,
+    hubCategories: library.hubCategories,
+    skillInstall: library.skillInstall,
+    skillUpdate: library.skillUpdate,
+    skillHubFiles: library.skillHubFiles,
+    skillCategoriesSet: library.skillCategoriesSet,
+    skillPublish: library.skillPublish,
+    skillWithdraw: library.skillWithdraw,
+    skillVersionFiles: library.skillVersionFiles,
+    schedulesList: library.schedulesList,
+    scheduleRecentRuns: library.scheduleRecentRuns,
+    scheduleRuns: library.scheduleRuns,
+    scheduleSave: library.scheduleSave,
+    scheduleDelete: library.scheduleDelete,
+    scheduleSetEnabled: library.scheduleSetEnabled,
+    scheduleRunNow: library.scheduleRunNow,
 
     // ── Library grids (layouts / drips) ───────────────────────────────────────────
-    // Workspaces: the attached desktops' rows, then the server library (see
-    // layoutsList above). WRITES STAY ON THE DESKTOP for now: the server
-    // library the old web save wrote is one the desktop never reads, so a
-    // workspace made here was a phantom no machine ever opened. The Workspaces
-    // page shows the refusal on its form (layouts.ts).
+    // Workspaces: the server's records first, then an attached desktop's (see
+    // layoutsList above). A save or delete WRITES THE SERVER at this client's
+    // clock; the desktop pulls it on its next sync (main/library-sync.ts).
     layoutsList,
-    layoutsSaveGrid: async () => ({ error: DESKTOP_ONLY.workspaces }),
-    layoutsDelete: async () => ({ error: DESKTOP_ONLY.workspaces }),
+    layoutsSaveGrid: library.layoutsSaveGrid,
+    layoutsDelete: library.layoutsDelete,
     dripsList: read(() => client.drips.list(), toLegacyDrips, EMPTY.list),
     // The standard effects are code, not a cloud read — same catalog as the
     // desktop IPC (one-shots then loops, 'timme' hidden). Fresh objects so a
@@ -809,11 +848,12 @@ export function buildContract(client, deps) {
     // apps.deployed(), which is only hosted deploys and is empty for a fresh
     // org (that read backs the dashboard count). See panelAppsList above.
     panelAppsList,
-    // A tab is made, changed or deleted on the desktop (the Tabs page shows
-    // this on its form, apps.ts) — the local apps store is the only truth.
-    panelAppsCreate: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
-    panelAppsUpdate: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
-    panelAppsDelete: async () => ({ ok: false, error: DESKTOP_ONLY.tabs }),
+    // A tab made, changed or deleted here WRITES THE SERVER record (its
+    // config vars never ride — they stay on the machine that set them); the
+    // desktop pulls the row on its next sync.
+    panelAppsCreate: library.panelAppsCreate,
+    panelAppsUpdate: library.panelAppsUpdate,
+    panelAppsDelete: library.panelAppsDelete,
 
     // ── App config vars (write-only secrets) — SDK apps.secrets surface.
     // The desktop's `appReadable` flag is a LOCAL concept; the cloud store
@@ -1317,9 +1357,9 @@ export function buildContract(client, deps) {
     },
 
     // ── Library agents: the WRITE side (settings-agents.ts) ───────────────────────
-    libraryAgentCreate: lib((input) => client.agents.create(input)),
-    libraryAgentUpdate: lib((ref, patch) => client.agents.update(ref, patch)),
-    libraryAgentDelete: lib((ref) => client.agents.remove(ref).then(() => true)),
+    libraryAgentCreate: library.libraryAgentCreate,
+    libraryAgentUpdate: library.libraryAgentUpdate,
+    libraryAgentDelete: library.libraryAgentDelete,
 
     // ── Desktop releases (Settings → Download) — main/account-ipc.ts's shapes ─────
     releasesList: async () => {
@@ -1366,25 +1406,9 @@ export function buildContract(client, deps) {
   };
 }
 
-/** What a write to a desktop-held library answers on web — the form line the
- *  Workspaces / Tabs pages show (layouts.ts, apps.ts). */
-export const DESKTOP_ONLY = {
-  workspaces: 'Workspaces are kept on your desktop. Create, change or delete this one in the Glyphh desktop app — it shows here while that machine has remote control on.',
-  tabs: 'App tabs are kept on your desktop. Add, change or delete this one in the Glyphh desktop app — it shows here while that machine has remote control on.',
-};
-
-/** The attached desktops' rows first, then the server's — one row per key, the
- *  first to carry it winning (two machines with the same tab list it once; a
- *  name the desktop has beats the server's). Pure. */
-export function mergeRows(desktop, server, key) {
-  const seen = new Set();
-  return [...(desktop ?? []), ...(server ?? [])].filter((r) => {
-    const k = key(r);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
+/** What a machine-only action answers on web (member-library-web.js) — the
+ *  line the pages show per action (run a task now, a schedule, a folder dialog). */
+export { NEEDS_DESKTOP };
 
 /** The server pref the workbench's UI-state map rides on web (and the legacy
  *  seed ui-state.ts reads on the desktop's first file-store load). */

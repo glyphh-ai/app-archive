@@ -29,30 +29,17 @@ const ALLOWED = {
   },
   'src/renderer/help/apps.ts': {
     glyphhAppPreviewOpen: 'IS_WEB returns before the call (renderWebPreview); the read is res?.ok',
-    skillsList: 'loadBundles returns first unless hostHas("skillsList") — the Glyphh-app source is hidden on web',
   },
   'src/renderer/help/files.ts': {
     filesRename: 'the Rename row is offered only when hostHas("filesRename")',
   },
-  'src/renderer/help/schedules.ts': {
-    scheduleRunNow: 'loadSchedulesPage paints the desktop-only card on web; the editor/run buttons never mount',
-    scheduleRecentRuns: 'loadSchedulesPage paints the desktop-only card on web (paintDesktopOnly) before any read',
-    schedulesList: 'loadSchedulesPage paints the desktop-only card on web (paintDesktopOnly) before any read',
-    tasksSpecs: 'loadSchedulesPage paints the desktop-only card on web (paintDesktopOnly) before any read',
-    scheduleRuns: 'the schedule editor opens only from a loaded page (gated above)',
-    scheduleSave: 'the schedule editor opens only from a loaded page (gated above)',
-    scheduleDelete: 'the schedule editor opens only from a loaded page (gated above)',
-  },
-  'src/renderer/help/settings-skills.ts': {
-    __page: 'createLibraryPage().load paints the desktop-only card on web (paintDesktopOnly) before any read; every row/detail action hangs off that load',
-  },
+  // schedules.ts and settings-skills.ts: every name they read is SERVED on web
+  // since 2026-10-04 (member-library-web.js — the library from the server, the
+  // machine actions answering NEEDS_DESKTOP, the schedules honest empties).
   'src/renderer/help/settings.ts': {
     localMcpSetEnabled: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
-  },
-  'src/renderer/help/slash-menu.ts': {
-    skillsList: 'inside try/catch — a throw leaves the slash menu empty, never unhandled',
   },
   'src/renderer/onboarding.ts': {
     startDeviceLogin: "the desktop's device-login overlay; the web signs in through web/src/web-login.js",
@@ -62,11 +49,14 @@ const ALLOWED = {
 describe('the web bridge gate guard', () => {
   it('reads both contracts (preload.ts and web-contract.js)', () => {
     const p = preloadNames(), w = contractNames();
-    expect(p.has('schedulesList')).toBe(true);
-    expect(w.has('schedulesList')).toBe(false);
+    // localMcpSetPort is the desktop's loopback MCP server — never served on web.
+    expect(p.has('localMcpSetPort')).toBe(true);
+    expect(w.has('localMcpSetPort')).toBe(false);
     expect(w.has('loopModels')).toBe(true);
     expect(w.has('wsStateLoad')).toBe(true);
-    expect(unshimmedNames()).toContain('schedulesList');
+    // schedulesList IS served since 2026-10-04 (an honest empty list — the clock is the desktop's).
+    expect(w.has('schedulesList')).toBe(true);
+    expect(unshimmedNames()).toContain('localMcpSetPort');
   });
 
   it('every unguarded result read of an unshimmed name is a known, gated site', () => {
