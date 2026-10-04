@@ -13,15 +13,19 @@
  *               skillDelete / skillSetEnabled  (files through the presigned R2 URLs)
  *   agents      libraryAgentsList / libraryAgentGet / libraryAgentCreate / libraryAgentUpdate / libraryAgentDelete
  *   tasks       tasksSpecs / taskSpec / taskSlotSet
+ *   drips       dripsList / dripsSave / dripsDelete
+ *   schedules   schedulesList / scheduleSave / scheduleSetEnabled / scheduleDelete
  *
  * What still needs the machine answers so, per action (NEEDS_DESKTOP): running
- * a task now, an agent's schedules, revealing/importing/exporting a folder,
- * opening an app bundle as a tab. Pure over the injected client + fetch — the
- * tests drive it with fakes.
+ * a task or a schedule now, an agent's schedules, revealing/importing/exporting
+ * a folder, opening an app bundle as a tab; the runs (the desktop's clock,
+ * until the cloud clock exists) list empty. Pure over the injected client +
+ * fetch — the tests drive it with fakes.
  */
 import {
-  bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, buildAgentRow, buildTabRow, isAgentRow, isGridLayout, isTabRow,
-  layoutRowOf, mergeServerFirst, parseSkillMd, tabRecordOf, tabRowOf, workspaceId,
+  buildScheduleData, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, buildAgentRow, buildTabRow, dripId, dripRecordOf,
+  isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
+  layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId,
 } from '../../src/shared/member-library';
 
 /** The one line a machine-only action answers on web. */
@@ -316,6 +320,67 @@ export function buildMemberLibrary(client, deps = {}) {
     } catch (err) { return fail(err); }
   };
 
+  // ── Drips (the Drips page: `{ name, recipe }` rows, strings back) ─────────
+  const dripsList = async () => (await listRows('drip')).filter((r) => isDripData(r.data)).map((r) => dripRecordOf(r.id, r.data.recipe));
+  const dripsSave = async (name, recipe) => {
+    try {
+      const rec = dripRecordOf(name, recipe);
+      if (!rec.name) return 'a drip needs a name';
+      if (!rec.recipe) return 'a drip needs at least one effect';
+      const res = await lib().put('drip', rec.name, { data: rec, updatedAt: now() });
+      return res.applied ? `saved drip "${rec.name}" → ${rec.recipe}` : `failed to save drip "${rec.name}": ${STALE}`;
+    } catch (err) { return `failed to save drip "${dripId(name)}": ${err?.message ?? String(err)}`; }
+  };
+  const dripsDelete = async (name) => {
+    const id = dripId(name);
+    try { await lib().remove('drip', id, { updatedAt: now() }); return `deleted drip "${id}"`; }
+    catch (err) { return isNotFound(err) ? `no custom drip "${id}"` : `failed to delete drip "${id}": ${err?.message ?? String(err)}`; }
+  };
+
+  // ── Schedules (the Schedules page's rows; the runs are the desktop's) ─────
+  const agentNames = async () => {
+    try { return new Map((await lib().list('agent')).filter((r) => isAgentRow(r.data)).map((r) => [r.id, r.data.name])); }
+    catch { return new Map(); }
+  };
+  const schedulesList = async () => {
+    try {
+      const [rows, names] = await Promise.all([lib().list('schedule'), agentNames()]);
+      return ok(rows.filter((r) => isScheduleData(r.data))
+        .map((r) => scheduleViewOf(r.id, buildScheduleData(r.data), r.updatedAt, r.data.agentId ? names.get(r.data.agentId) ?? null : null))
+        .sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (err) { return fail(err); }
+  };
+  const readSchedule = async (id) => {
+    try { const item = await lib().get('schedule', String(id)); return isScheduleData(item.data) ? buildScheduleData(item.data) : null; }
+    catch (err) { if (isNotFound(err)) return null; throw err; }
+  };
+  const newScheduleId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const scheduleSave = async (input) => {
+    try {
+      const existing = input?.id ? await readSchedule(input.id) : null;
+      if (input?.id && !existing) return { ok: false, error: `schedule "${input.id}" not found` };
+      const data = buildScheduleData(input ?? {}, existing);
+      if (!isCronShape(data.cron)) return { ok: false, error: "that cron expression doesn't parse (five fields, e.g. 0 9 * * 1-5)" };
+      if (!data.target) return { ok: false, error: 'a schedule needs something to run' };
+      if (data.kind === 'skill' && !data.agentId) return { ok: false, error: 'a skill needs an agent to run through' };
+      const id = input?.id ? String(input.id) : newScheduleId();
+      const res = await lib().put('schedule', id, { data, updatedAt: now() });
+      return res.applied ? ok({ id }) : { ok: false, error: STALE };
+    } catch (err) { return fail(err); }
+  };
+  const scheduleSetEnabled = async (id, enabled) => {
+    try {
+      const existing = await readSchedule(id);
+      if (!existing) return ok({ updated: false });
+      const res = await lib().put('schedule', String(id), { data: { ...existing, enabled: !!enabled }, updatedAt: now() });
+      return res.applied ? ok({ updated: true }) : { ok: false, error: STALE };
+    } catch (err) { return fail(err); }
+  };
+  const scheduleDelete = async (id) => {
+    try { await lib().remove('schedule', String(id), { updatedAt: now() }); return ok({ deleted: true }); }
+    catch (err) { return isNotFound(err) ? ok({ deleted: true }) : fail(err); }
+  };
+
   const needsDesktop = async () => ({ ok: false, error: NEEDS_DESKTOP });
   const emptyList = async () => ok([]);
 
@@ -345,9 +410,11 @@ export function buildMemberLibrary(client, deps = {}) {
     hubCategories: emptyList,
     skillInstall: needsDesktop, skillUpdate: needsDesktop, skillHubFiles: needsDesktop, skillCategoriesSet: needsDesktop,
     skillPublish: needsDesktop, skillWithdraw: needsDesktop, skillVersionFiles: needsDesktop,
-    // Schedules are rows on the desktop's clock (schedules.ts paints its own card).
-    schedulesList: emptyList, scheduleRecentRuns: emptyList, scheduleRuns: emptyList,
-    scheduleSave: needsDesktop, scheduleDelete: needsDesktop, scheduleSetEnabled: needsDesktop,
+    dripsList, dripsSave, dripsDelete,
+    // The schedules are records here; the RUNS are the desktop's clock until
+    // the cloud clock exists (schedules.ts says so on the page).
+    schedulesList, scheduleSave, scheduleDelete, scheduleSetEnabled,
+    scheduleRecentRuns: emptyList, scheduleRuns: emptyList,
     scheduleRunNow: async () => ({ ok: false, error: NEEDS_DESKTOP }),
   };
 }

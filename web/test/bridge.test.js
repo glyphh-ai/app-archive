@@ -42,7 +42,6 @@ const fake = {
     taskRuns: vi.fn(async () => [{ id: 'r' }]),
   },
   layouts: { list: vi.fn(async () => [{ name: 'Grid', data: { cols: 2, rows: 1 } }]) },
-  drips: { list: vi.fn(async () => [{ name: 'd', data: 'confetti' }]) },
   apps: { deployed: vi.fn(async () => []), mine: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
   orgModels: { list: vi.fn(async () => [{ id: 'm1' }]), listCustom: vi.fn(async () => [{ id: 'c1' }]) },
   providers: {},
@@ -163,8 +162,15 @@ describe('bridge KNOWN wiring', () => {
     expect(Array.isArray(out[0].splits)).toBe(true);
   });
 
-  it('dripsList → drips.list, {name,recipe}', async () => {
-    expect(await glyphh.dripsList()).toEqual([{ name: 'd', recipe: 'confetti' }]);
+  it('dripsList → memberLibrary.list("drip"), {name,recipe}', async () => {
+    expect(await glyphh.dripsList()).toEqual([{ name: 'party', recipe: '3 confetti fireworks' }]);
+    expect(fake.memberLibrary.list).toHaveBeenCalledWith('drip');
+  });
+
+  it('schedulesList → memberLibrary.list("schedule"), the Schedules page rows with the machine columns null', async () => {
+    const out = await glyphh.schedulesList();
+    expect(fake.memberLibrary.list).toHaveBeenCalledWith('schedule');
+    expect(out).toMatchObject({ ok: true, data: [{ id: 's1', name: 'Morning digest', cron: '0 9 * * 1-5', kind: 'task', target: 'digest', enabled: true, lastRunAt: null }] });
   });
 
   it('panelAppsList → memberLibrary.list("tab"), SavedPanelApp defaults', async () => {

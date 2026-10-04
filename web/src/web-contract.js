@@ -27,14 +27,14 @@ import {
   libEnvelope, libError,
   toLegacyConnections, toLegacyConnectionTools, toLegacyConnectorApps,
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
-  toLegacyDrips, toAccountInfo,
+  toAccountInfo,
   toDashboardData, emptyDashboardData,
 } from './glyphh-core.js';
 // STANDARD drip effects ship with the product — the same shared catalog +
 // generators the desktop main process uses (electron-free by design).
 import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
 // DOM-free at import time; only running a recipe touches the document.
-import { runDripRecipe } from './drip-web-runner.js';
+import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // The CLI agent window on web: the command is computed HERE (the worker's pty
 // starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
 import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
@@ -784,6 +784,8 @@ export function buildContract(client, deps) {
     skillPublish: library.skillPublish,
     skillWithdraw: library.skillWithdraw,
     skillVersionFiles: library.skillVersionFiles,
+    // Schedules are records of the member library (2026-10-04); the runs and
+    // "run now" are the desktop's clock until the cloud clock exists.
     schedulesList: library.schedulesList,
     scheduleRecentRuns: library.scheduleRecentRuns,
     scheduleRuns: library.scheduleRuns,
@@ -799,14 +801,20 @@ export function buildContract(client, deps) {
     layoutsList,
     layoutsSaveGrid: library.layoutsSaveGrid,
     layoutsDelete: library.layoutsDelete,
-    dripsList: read(() => client.drips.list(), toLegacyDrips, EMPTY.list),
+    // Drip presets are member-library records too (2026-10-04): read and
+    // written on the server; the desktop's table follows on its next sync.
+    dripsList: library.dripsList,
+    dripsSave: library.dripsSave,
+    dripsDelete: library.dripsDelete,
     // The standard effects are code, not a cloud read — same catalog as the
     // desktop IPC (one-shots then loops, 'timme' hidden). Fresh objects so a
     // caller can never mutate the shared catalog.
     dripsBuiltinEffects: async () => BUILTIN_EFFECT_LIST.map((fx) => ({ ...fx })),
     // Drips RENDER HERE on web: the recipe plays in a sandboxed full-viewport
-    // iframe overlay (see drip-web-runner.js) — no machine needed.
+    // iframe overlay (see drip-web-runner.js) — no machine needed. Stop tears
+    // every overlay down (a looping effect must have its off switch here too).
     dripsPreview: async (recipe) => runDripRecipe(recipe),
+    dripsStop: async () => { stopAllDrips(); return 'stopped'; },
 
     // ── Apps (AppsClient) ─────────────────────────────────────────────────────────
     // WEB app launch (2026-08-03): panels can't host third-party sites in a

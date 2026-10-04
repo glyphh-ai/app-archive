@@ -150,3 +150,80 @@ describe('agents on web — the member library record', () => {
     expect(await lib.libraryAgentCreate({})).toMatchObject({ ok: false, error: /needs a name/ });
   });
 });
+
+describe('drips on web — the member library record (2026-10-04: a preset is a db row with cloud storage)', () => {
+  it('dripsList reads the server; dripsSave puts `{ name, recipe }` under the lowercased name; dripsDelete tombstones', async () => {
+    const api = fakeLibrary({ drip: [{ id: 'party', updatedAt: 1_000, data: { name: 'party', recipe: '3 confetti fireworks' } }, { id: 'junk', updatedAt: 1_000, data: 'not a drip' }] });
+    const lib = buildMemberLibrary({ memberLibrary: api }, { now: () => 5_000 });
+    expect(await lib.dripsList()).toEqual([{ name: 'party', recipe: '3 confetti fireworks' }]);
+    expect(await lib.dripsSave('  Aurora ', '-1  0.5 aurora')).toBe('saved drip "aurora" → -1 0.5 aurora');
+    expect(api.put).toHaveBeenCalledWith('drip', 'aurora', { data: { name: 'aurora', recipe: '-1 0.5 aurora' }, updatedAt: 5_000 });
+    expect((await lib.dripsList()).map((d) => d.name).sort()).toEqual(['aurora', 'party']);
+    expect(await lib.dripsSave('', 'x')).toMatch(/needs a name/);
+    expect(await lib.dripsSave('empty', '   ')).toMatch(/at least one effect/);
+    expect(await lib.dripsDelete('Party')).toBe('deleted drip "party"');
+    expect(api.remove).toHaveBeenCalledWith('drip', 'party', { updatedAt: 5_001 });
+    expect(await lib.dripsList()).toEqual([{ name: 'aurora', recipe: '-1 0.5 aurora' }]);
+    expect(await lib.dripsDelete('party')).toBe('no custom drip "party"');
+  });
+
+  it('a stale save is said in the status string, as the desktop manager would', async () => {
+    const api = fakeLibrary({ drip: [{ id: 'party', updatedAt: 9_000, data: { name: 'party', recipe: 'confetti' } }] });
+    const lib = buildMemberLibrary({ memberLibrary: api }, { now: () => 5_000 });
+    expect(await lib.dripsSave('party', 'hearts')).toMatch(/^failed to save drip "party": .*newer copy/);
+  });
+});
+
+describe('schedules on web — the record, with the runs left to the desktop clock', () => {
+  const seed = () => fakeLibrary({
+    schedule: [{ id: 's1', updatedAt: 1_000, data: { name: 'Digest', cron: '0 9 * * 1-5', kind: 'task', target: 'digest', agentId: null, ownerAgentId: null, args: { n: 1 }, enabled: true } },
+      { id: 's2', updatedAt: 2_000, data: { name: 'Brief', cron: '30 8 * * *', kind: 'skill', target: 'brief', agentId: 'a', ownerAgentId: null, args: {}, enabled: false } }],
+    agent: [{ id: 'a', updatedAt: 1_000, data: { id: 'a', slug: 'a', name: 'Ada', description: '', prompt: '', provider: '', model: '', skills: [], apps: [], live: true, guardrails: null, createdAt: '', updatedAt: '2026-10-01T00:00:00.000Z' } }],
+  });
+
+  it('schedulesList is the Schedules page shape: the agent named off the agent records, the run columns null', async () => {
+    const lib = buildMemberLibrary({ memberLibrary: seed() });
+    const r = await lib.schedulesList();
+    expect(r.ok).toBe(true);
+    expect(r.data).toEqual([
+      { id: 's2', name: 'Brief', kind: 'skill', target: 'brief', cron: '30 8 * * *', enabled: false, agentId: 'a', agentName: 'Ada', ownerAgentId: null, args: '{}', createdAt: new Date(2_000).toISOString(), updatedAt: 2_000, lastRunAt: null, lastStatus: null, lastError: null },
+      { id: 's1', name: 'Digest', kind: 'task', target: 'digest', cron: '0 9 * * 1-5', enabled: true, agentId: null, agentName: null, ownerAgentId: null, args: '{"n":1}', createdAt: new Date(1_000).toISOString(), updatedAt: 1_000, lastRunAt: null, lastStatus: null, lastError: null },
+    ]);
+    expect(await lib.scheduleRuns('s1')).toEqual({ ok: true, data: [] });
+    expect(await lib.scheduleRecentRuns()).toEqual({ ok: true, data: [] });
+    expect(await lib.scheduleRunNow('s1')).toEqual({ ok: false, error: NEEDS_DESKTOP });
+  });
+
+  it('scheduleSave puts a new record (its own id) or rewrites one; a bad cron, a missing target or a skill without an agent is refused before any put', async () => {
+    const api = seed();
+    const lib = buildMemberLibrary({ memberLibrary: api }, { now: () => 7_000 });
+    const made = await lib.scheduleSave({ name: 'Nightly', kind: 'task', target: 'backup', cron: '0 2 * * *', args: { deep: true } });
+    expect(made).toMatchObject({ ok: true, data: { id: expect.any(String) } });
+    const put = api.put.mock.calls.at(-1);
+    expect(put[0]).toBe('schedule');
+    expect(put[2]).toEqual({ data: { name: 'Nightly', cron: '0 2 * * *', kind: 'task', target: 'backup', agentId: null, ownerAgentId: null, args: { deep: true }, enabled: true }, updatedAt: 7_000 });
+    // An edit keeps what the patch does not name (the args, the owner).
+    expect(await lib.scheduleSave({ id: 's1', kind: 'task', target: 'digest', cron: '15 9 * * 1-5', enabled: false })).toEqual({ ok: true, data: { id: 's1' } });
+    expect(api.put.mock.calls.at(-1)[2]).toEqual({ data: { name: 'Digest', cron: '15 9 * * 1-5', kind: 'task', target: 'digest', agentId: null, ownerAgentId: null, args: { n: 1 }, enabled: false }, updatedAt: 7_001 });
+    const puts = api.put.mock.calls.length;
+    expect(await lib.scheduleSave({ kind: 'task', target: 'x', cron: 'every tuesday' })).toMatchObject({ ok: false, error: /cron/ });
+    expect(await lib.scheduleSave({ kind: 'task', target: '', cron: '0 9 * * *' })).toMatchObject({ ok: false, error: /something to run/ });
+    expect(await lib.scheduleSave({ kind: 'skill', target: 'brief', cron: '0 9 * * *' })).toMatchObject({ ok: false, error: /agent/ });
+    expect(await lib.scheduleSave({ id: 'nope', kind: 'task', target: 'x', cron: '0 9 * * *' })).toMatchObject({ ok: false, error: /not found/ });
+    expect(api.put.mock.calls.length).toBe(puts);
+  });
+
+  it('scheduleSetEnabled re-puts the record with the flag; scheduleDelete tombstones at this clock; a stale write is said', async () => {
+    const api = seed();
+    const lib = buildMemberLibrary({ memberLibrary: api }, { now: () => 7_000 });
+    expect(await lib.scheduleSetEnabled('s2', true)).toEqual({ ok: true, data: { updated: true } });
+    expect(api.put.mock.calls.at(-1)[2]).toMatchObject({ data: { name: 'Brief', enabled: true, agentId: 'a' }, updatedAt: 7_000 });
+    expect(await lib.scheduleSetEnabled('ghost', true)).toEqual({ ok: true, data: { updated: false } });
+    expect(await lib.scheduleDelete('s1')).toEqual({ ok: true, data: { deleted: true } });
+    expect(api.remove).toHaveBeenCalledWith('schedule', 's1', { updatedAt: 7_001 });
+    expect((await lib.schedulesList()).data.map((s) => s.id)).toEqual(['s2']);
+    expect(await lib.scheduleDelete('s1')).toEqual({ ok: true, data: { deleted: true } });   // already gone: fine
+    const stale = buildMemberLibrary({ memberLibrary: seed() }, { now: () => 500 });
+    expect(await stale.scheduleSetEnabled('s2', true)).toMatchObject({ ok: false, error: /newer copy/ });
+  });
+});

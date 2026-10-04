@@ -48,7 +48,6 @@ function authedClient() {
     skills: { list: vi.fn(async () => [{ id: 's' }]), get: vi.fn(async () => ({ id: 's' })) },
     agents: { list: vi.fn(async () => [{ id: 'a' }]), get: vi.fn(async () => ({ id: 'a' })), tasks: vi.fn(async () => [{ id: 't' }]), taskRuns: vi.fn(async () => [{ id: 'r' }]) },
     layouts: { list: vi.fn(async () => [{ name: 'Grid', data: { cols: 2, rows: 1, cells: [{ panelId: 'p', col: 0, row: 0, colSpan: 1, rowSpan: 1 }] } }]) },
-    drips: { list: vi.fn(async () => [{ name: 'd', data: 'confetti' }]) },
     apps: { deployed: vi.fn(async () => []), mine: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
     orgModels: { list: vi.fn(async () => [{ id: 'm1' }]), listCustom: vi.fn(async () => [{ id: 'c1' }]) },
     catalog: { providers: vi.fn(async () => [{ slug: 'anthropic' }]) },
@@ -63,7 +62,7 @@ function rejectingClient() {
   return {
     me: boom,
     org: rej, billing: rej, usage: rej, profile: rej, connections: rej, loops: rej,
-    skills: rej, agents: rej, layouts: rej, drips: rej, apps: rej, orgModels: rej,
+    skills: rej, agents: rej, layouts: rej, apps: rej, orgModels: rej,
     catalog: rej, support: rej,
     memberLibrary: { list: boom, get: boom, put: boom, remove: boom, files: boom },
   };
