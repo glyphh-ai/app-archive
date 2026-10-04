@@ -47,12 +47,14 @@ function fakeClient(h = fakeHandle()) {
   const runs: unknown[] = [];
   const fs = { spaces: vi.fn(async () => ({ spaces: [{ id: "t1", updatedAt: 5, top: ["src"] }] })), info: vi.fn(async () => ({ root: "/ws" })), list: vi.fn(async (o: { dir?: string }) => ({ entries: [{ name: "src", path: `${o.dir}/src`, kind: "dir" }, { name: "a.ts", path: `${o.dir}/a.ts`, kind: "file" }] })), stopRun: vi.fn(async () => undefined) };
   const stream = { activeRun: vi.fn(async (): Promise<string | null> => { throw new Error("404 not found"); }), attach: vi.fn() };
+  const token = vi.fn(async () => "sess-token");
   const client: CloudLaneClient = {
     run: (opts) => { runs.push(opts); return h.handle; },
     harnessViaApi: () => ({ fsSpaces: fs.spaces, fsInfo: fs.info, fsList: fs.list, stopRun: fs.stopRun }),
+    token,
     runStream: stream,
   };
-  return { client, runs, fs, stream, h };
+  return { client, runs, fs, stream, h, token };
 }
 
 function fakeLedger() {
@@ -272,5 +274,31 @@ describe("the picker's cloud sections", () => {
     expect(await lane.fsBrowse("")).toBeNull();
     fs.info.mockRejectedValueOnce(new Error("down"));
     expect(await lane.fsBrowse("space-9")).toBeNull();
+  });
+});
+
+describe("the cloud terminal's bearer (glyphh-harness-token)", () => {
+  it("hands the SDK's current session token to the renderer", async () => {
+    const { client, token } = fakeClient();
+    const { live } = fakeLedger();
+    const lane = createCloudLane({ client: () => client, signedIn: () => true, live, noteDelta: () => undefined });
+    expect(await lane.token()).toBe("sess-token");
+    expect(token).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers null signed out, without asking the SDK", async () => {
+    const { client, token } = fakeClient();
+    const { live } = fakeLedger();
+    const lane = createCloudLane({ client: () => client, signedIn: () => false, live, noteDelta: () => undefined });
+    expect(await lane.token()).toBeNull();
+    expect(token).not.toHaveBeenCalled();
+  });
+
+  it("answers null when the SDK refuses (a refresh the server rejected)", async () => {
+    const { client, token } = fakeClient();
+    token.mockRejectedValueOnce(new Error("not authenticated"));
+    const { live } = fakeLedger();
+    const lane = createCloudLane({ client: () => client, signedIn: () => true, live, noteDelta: () => undefined });
+    expect(await lane.token()).toBeNull();
   });
 });

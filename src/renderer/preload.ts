@@ -520,6 +520,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   runStreamStop: (token: string) => ipcRenderer.invoke("glyphh-cloud-run-detach", { token }) as Promise<{ ok: boolean }>,
   /** Cross-surface stop of an observed run by its id. */
   harnessStopRun: (runId: string) => ipcRenderer.invoke("harness-stop-run", runId) as Promise<{ ok: boolean; error?: string }>,
+  /** The session's current access token for the renderer's OWN harness calls
+   *  (the cloud terminal's pty, help/harness-api.ts); null when signed out. */
+  harnessToken: () => ipcRenderer.invoke("glyphh-harness-token") as Promise<string | null>,
   onRunStreamFrame: (cb: (p: { token: string; frame: unknown }) => void) => {
     const l = (_e: unknown, p: { token: string; frame: unknown }) => cb(p);
     ipcRenderer.on("glyphh-cloud-run:observe", l);

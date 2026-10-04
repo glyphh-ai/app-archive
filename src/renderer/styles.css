@@ -18696,10 +18696,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   font: inherit; font-size: 12px; outline: none;
 }
 /* Drive drag-and-drop: the dragged card dims; a hovered folder target rings. */
-.ws-term-cloud-note {
-  display: flex; align-items: center; justify-content: center; height: 100%;
-  padding: 24px; text-align: center; color: var(--text-3); font-size: 13px;
-}
 .gdrive-dragging { opacity: 0.45; }
 .gdrive-droptarget { box-shadow: 0 0 0 2px var(--accent) !important; border-radius: 10px; }
 

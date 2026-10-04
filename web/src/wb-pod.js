@@ -311,10 +311,6 @@ export function createWbSelector({ relay, pod, isCloud = () => locus.cloud }) {
     onFileChanged: (cb) => subscribe(subs.file, cb),
     onGitChanged: (cb) => subscribe(subs.git, cb),
     onCwdChanged: (cb) => subscribe(subs.cwd, cb),
-    /** The current session's locus (web only) — the Terminal panel picks its
-     *  transport by it: a machine-bound session → the desktop relay, anything
-     *  else → the worker pty (remote-terminal.ts). */
-    locus: () => wbLocus(),
   };
 
   // Everything else routes to the ACTIVE transport at call time; both
