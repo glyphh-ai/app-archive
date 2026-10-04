@@ -32,6 +32,7 @@
 
 import { harnessRequest, HarnessHttpError } from "./harness-api.js";
 import { threadLocus } from "./thread-locus.js";
+import { boundMessages } from "./bound-messages.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
 
@@ -544,6 +545,9 @@ export function remove(id: string): void {
 export async function ensureMessages(id: string): Promise<boolean> {
   const c = chatsRef.find((x) => x.id === id);
   if (!c || c.messages.length > 0 || !(typeof c.messageCount === "number" && c.messageCount > 0)) return false;
+  // A desktop-local thread's transcript is main's file; empty here means
+  // empty. The server's copy is a mirror and is never read back into it.
+  if (ownedByMain(c)) return false;
   if (bodyInflight.has(id)) return false;
   const failed = bodyFailedAt.get(id);
   if (failed !== undefined && Date.now() - failed < BODY_RETRY_MS) return false;
@@ -552,7 +556,7 @@ export async function ensureMessages(id: string): Promise<boolean> {
   bodyInflight.add(id);
   try {
     const full = await t.get(id);
-    c.messages = full.messages;
+    c.messages = boundMessages(full.messages);
     c.title = full.title;
     c.updatedAt = full.updatedAt;
     c.messageCount = full.messages.length;

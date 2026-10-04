@@ -31,7 +31,7 @@ import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
 // here publishes the index + the new messages (thread-publish.ts).
 import { noteThreadsSaved, noteThreadDeleted, noteThreadsRepaired, threadsList, threadsGet, threadsPush, threadsDelete } from "./thread-publish.js";
-import { repairChatStore } from "./chat-store-repair.js";
+import { repairChatStore, mergeChats } from "./chat-store-repair.js";
 import type { PushThreadInput } from "@glyphh/sdk";
 import {
   compactGlyphhLoop, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
@@ -136,17 +136,8 @@ function saveSessionsFile(snap: SessionsSnapshot, from?: WebContents): void {
     // newer updatedAt wins, and a chat only one panel knows about survives.
     const have = readSnapshot(sessionsFile()).chats as StoredChat[];
     const incoming = snap.chats as StoredChat[];
-    const byId = new Map<string, StoredChat>();
-    for (const c of have) if (c && typeof c.id === "string") byId.set(c.id, c);
-    for (const c of incoming) {
-      if (!c || typeof c.id !== "string") continue;
-      const cur = byId.get(c.id);
-      if (!cur || (c.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) byId.set(c.id, c);
-    }
     const gone = new Set(snap.deleted ?? []);
-    const order = [...incoming.map((c) => c?.id).filter((x): x is string => typeof x === "string"), ...have.map((c) => c?.id).filter((x): x is string => typeof x === "string")];
-    const seen = new Set<string>();
-    const chats = order.filter((id) => (gone.has(id) ? false : seen.has(id) ? false : (seen.add(id), true))).map((id) => byId.get(id)!);
+    const chats = mergeChats(have, incoming, gone);
     writeFileSync(sessionsFile(), JSON.stringify({ chats, currentId: snap.currentId }), "utf-8");
     try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* the watcher will just announce it */ }
     watchSessionsFile();

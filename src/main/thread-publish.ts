@@ -37,6 +37,7 @@ import { isAuthenticated } from "./auth.js";
 import { getClient } from "./glyphh-client.js";
 import { listStoredChats, type RelayChat } from "./agent-ipc.js";
 import { threadLocus } from "../shared/member-library.js";
+import { boundMessages } from "./chat-store-repair.js";
 
 // ── The injectable core ──────────────────────────────────────────────────────
 
@@ -317,15 +318,19 @@ export function publishThreadsNow(): Promise<void> { return runPublish(); }
 export async function fetchTranscript(url: string, fetchImpl: (u: string) => Promise<{ ok: boolean; status: number; text(): Promise<string> }> = fetch): Promise<SessionThreadMessage[]> {
   const res = await fetchImpl(url);
   if (!res.ok) throw new Error(`transcript: HTTP ${res.status}`);
-  const text = await res.text();
+  const whole = await res.text();
+  // A polluted transcript can run to hundreds of megabytes: only the tail is
+  // read (the first partial line after the cut is dropped as torn).
+  const text = whole.length > TRANSCRIPT_TAIL_CHARS ? whole.slice(-TRANSCRIPT_TAIL_CHARS) : whole;
   const out: SessionThreadMessage[] = [];
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
     try { const m = JSON.parse(t) as SessionThreadMessage; if (m && typeof m.role === "string") out.push(m); } catch { /* a torn line */ }
   }
-  return out;
+  return boundMessages(out);
 }
+const TRANSCRIPT_TAIL_CHARS = 8_000_000;
 
 // ── The renderer's thread channels (preload threadsList/Get/Push/Delete —
 //    thread-store.ts's desktop transport; agent-ipc.ts registers them) ───────

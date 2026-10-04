@@ -27,3 +27,30 @@ describe("repairChatStore — a transcript appended to itself collapses to its r
     expect(r.repaired).toEqual({});
   });
 });
+
+import { mergeChats, boundMessages, MAX_THREAD_MESSAGES } from "../../src/main/chat-store-repair.js";
+
+describe("mergeChats — a saver's stub never erases a stored transcript, and every transcript is bounded", () => {
+  const have = [{ id: "a", updatedAt: 10, messages: [m("user", "hi", 1), m("assistant", "hey", 2)] }, { id: "b", updatedAt: 5, messages: [m("user", "b", 1)] }];
+  it("a newer row with no messages keeps the stored messages; a newer row with messages replaces them", () => {
+    const out = mergeChats(have, [{ id: "a", updatedAt: 99, messages: [] }, { id: "b", updatedAt: 9, messages: [m("user", "b2", 3)] }]);
+    expect(out.find((c) => c.id === "a")!.messages).toHaveLength(2);
+    expect(out.find((c) => c.id === "a")!.updatedAt).toBe(99);
+    expect(out.find((c) => c.id === "b")!.messages).toEqual([m("user", "b2", 3)]);
+  });
+  it("an older row loses; a deleted id is dropped; a chat only the store knows survives; the saver's order leads", () => {
+    const out = mergeChats(have, [{ id: "b", updatedAt: 1, messages: [] }, { id: "c", updatedAt: 7, messages: [] }], new Set(["a"]));
+    expect(out.map((c) => c.id)).toEqual(["b", "c"]);
+    expect(out[0].messages).toHaveLength(1);
+  });
+  it("a looped transcript collapses and a long one keeps its tail within the cap", () => {
+    const turn = [m("user", "x", 1), m("assistant", "y", 2)];
+    const looped = Array.from({ length: 50 }, () => turn).flat();
+    expect(boundMessages(looped)).toEqual(turn);
+    const long = Array.from({ length: MAX_THREAD_MESSAGES + 10 }, (_, i) => m("user", `n${i}`, i));
+    const b = boundMessages(long);
+    expect(b).toHaveLength(MAX_THREAD_MESSAGES);
+    expect(b[0]).toEqual(m("user", "n10", 10));
+    expect(mergeChats([], [{ id: "z", updatedAt: 1, messages: looped }])[0].messages).toEqual(turn);
+  });
+});
