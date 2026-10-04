@@ -30,6 +30,7 @@ import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 import { frameTargets } from "./attach-run-frames.js";
 import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
+import { lendSplit } from "./mcp-lend.js";
 
 export type { LoopPermission };
 
@@ -53,21 +54,6 @@ export interface LoopRunPayload {
   space?: "work" | "code";
 }
 
-/** THE DESKTOP'S OWN CONNECTOR TOOLS — the local server's half of the
- *  connections lane. They reach the same Pipedream accounts the gateway's
- *  lookup pair does, so the org's connections gate has to close over them too
- *  (his order, 2026-09-29: "fully gate the pipedream lane"). */
-const CONNECTION_TOOLS = new Set([
-  "connector_tools", "connector_call",
-  "connections_list_tools", "connections_call_tool",
-]);
-
-/** The servers this desktop lends a run: the app's own local MCP (glyphh_*
- *  tools) and the gateway's connection tools (mcp_tool_search / mcp_tool_call).
- *
- *  WITH THE CONNECTIONS LANE OFF neither half is lent: not the gateway's
- *  remote MCP, and not the local server's connector tools. The run then has
- *  the desktop's own hands and nothing that bills through Pipedream. */
 /**
  * THE FIXED BELTS (his order, 2026-09-29: "this list of tools can get massive
  * with connections also. So how should we handle this for scale?").
@@ -85,15 +71,6 @@ const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> =
   work: new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]),
   code: new Set(["panels_open", "panels_list", "panels_close", "rpa_screenshot", "settings_open", "skill_get"]),
 };
-
-/** Host tools the loop never sees: diagnostics, and the list/call pairs the
- *  catalog now stands in for (each app tool and connection tool is its own
- *  entry; connected accounts go through the gateway's search). External MCP
- *  clients still get them — this is the loop's view only. */
-const LOOP_HIDDEN: ReadonlySet<string> = new Set([
-  "relay_ping", "app_list_tools", "app_call_tool",
-  "connector_tools", "connector_call", "connections_list_tools", "connections_call_tool",
-]);
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
@@ -168,25 +145,29 @@ function libraryChanged(): boolean {
   return !first;
 }
 
+/** The servers this desktop lends a run: the app's own local MCP (this
+ *  machine's windows, folders and loopback apps) and the gateway's /mcp (the
+ *  member's library, the cloud clock, the app instances on the farm, the
+ *  connected accounts' lookup pair). The names collide by design and
+ *  mcp-lend.ts says who answers which; with the connections lane off neither
+ *  side lends anything that bills through Pipedream. */
 async function mcpServers(): Promise<LoopMcpServer[]> {
   const out: LoopMcpServer[] = [];
   const connections = connectionsAvailable();
-  try {
-    await startLocalMcpServer().catch(() => undefined);
-    const { port } = localMcpStatus();
-    if (port) {
-      const token = localMcpGenToken("glyphh-loop", 365).token;
-      out.push({
-        name: "glyphh-app", url: `http://127.0.0.1:${port}/mcp`,
-        headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE,
-        allow: (t: string) => !LOOP_HIDDEN.has(t) && (connections || !CONNECTION_TOOLS.has(t)),
-      });
-    }
-  } catch (err) {
+  const local = await startLocalMcpServer().then(() => localMcpStatus().port).catch((err) => {
     console.warn("[glyphh-loop] local MCP unavailable:", err instanceof Error ? err.message : err);
+    return 0;
+  });
+  const creds = await mcpCreds().catch(() => null);
+  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set([...CORE.work, ...CORE.code]) });
+  if (local > 0) {
+    const token = localMcpGenToken("glyphh-loop", 365).token;
+    out.push({
+      name: "glyphh-app", url: `http://127.0.0.1:${local}/mcp`,
+      headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE, allow: split.local,
+    });
   }
-  const creds = connections ? await mcpCreds() : null;
-  if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection" });
+  if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection", allow: split.gateway });
   if (!connections) console.warn("[glyphh-loop] connections lane off for this org — no connector tools lent");
   return out;
 }

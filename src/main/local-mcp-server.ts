@@ -28,7 +28,6 @@ import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
 import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, scheduleForTask } from "./local-library.js";
-import { openSettingsPage } from "./app-resolver.js";
 import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -394,10 +393,7 @@ function buildMcpServer(): McpServer {
     "settings_open",
     "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, schedules, tabs, workspaces, drips, models, members, billing, general, appearance, mcp.",
     { page: z.string().describe("Which page: skills | connections | plugins | tasks | schedules | tabs | layouts | drips | general | appearance | mcp | models | members | billing") },
-    async ({ page }) => {
-      try { openSettingsPage(page); return text({ page, opened: true }); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
+    async ({ page }) => via("settings.open", { page }),
   );
 
   mcp.tool(

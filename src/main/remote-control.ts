@@ -50,6 +50,11 @@ const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
   "layouts.list", "layouts.get", "panelApps.list",
+  // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
+  // other's panels through the relay). panels_* / layouts_open / settings_open
+  // on the gateway's /mcp dispatch these to this machine; they are the SAME
+  // registry handlers the local MCP's tools call, so one open is one open.
+  "panels.open", "panels.list", "panels.switch", "panels.close", "layouts.open", "settings.open",
   "agent.answer", "agent.stop", "agent.permission", "agent.frames",
   "pty.input", "pty.resize", "pty.close",
   // A STREAMED PANEL on this machine for the web (panel-host.ts): the panel

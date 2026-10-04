@@ -18,7 +18,7 @@
 
 import { registerRelayHandler } from "./relay-client.js";
 import { installAgentRelayHandlers } from "./agent-tools.js";
-import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
+import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp, openSettingsPage } from "./app-resolver.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { panelGoto, panelIsLive } from "./rpa.js";
 import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
@@ -162,6 +162,16 @@ export function installRelayHandlers(deps: Deps): void {
     const name = String(p?.name || "").trim();
     if (!name) throw new Error("layouts.open requires { name }");
     return openLayoutByName(name);
+  });
+
+  // ── Settings — one door for the local MCP's settings_open AND the gateway's
+  //    (server mcp_windows.py over the attach relay), so a page the cloud opens
+  //    is the page the local tool opens.
+  registerRelayHandler("settings.open", async (params) => {
+    const page = String((params as { page?: unknown } | null)?.page ?? "").trim();
+    if (!page) throw new Error("settings.open requires { page }");
+    openSettingsPage(page);
+    return { page, opened: true };
   });
 
   // ── Local MCP servers are retired — custom MCP connections execute

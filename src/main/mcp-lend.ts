@@ -1,0 +1,77 @@
+/**
+ * mcp-lend.ts — WHICH DOOR ANSWERS WHICH NAME when the desktop's loop lends
+ * two MCP servers that carry the same tool names (his order, 2026-10-04: the
+ * cloud gets the same tools as the desktop; the local server must win for the
+ * window tools and the gateway's for the rest).
+ *
+ * The local server (local-mcp-server.ts) is this machine: its windows, its
+ * folders, its loopback apps. The gateway's /mcp (server glyphh/docs/glyphh-
+ * mcp.md) is the member's cloud reach: the library the desktop syncs from,
+ * the cloud clock, the app instances on the farm, the connected accounts.
+ * The SDK keeps the first belt tool of a name and files everything else into
+ * the catalog unchecked, so both sides are filtered HERE, once, and a name is
+ * lent by exactly one server. Pure, no electron.
+ */
+
+/** The desktop's windows: the local server answers; the gateway's copies
+ *  would only relay back to this very machine. */
+export const WINDOW_TOOLS: ReadonlySet<string> = new Set([
+  "relay_ping", "panels_open", "panels_list", "panels_switch", "panels_close", "layouts_open", "settings_open",
+]);
+
+/** The member's cloud reach: the gateway answers, from the library, the
+ *  clock and the app instances, wherever the loop runs. */
+export const CLOUD_TOOLS: ReadonlySet<string> = new Set([
+  "skills_list", "skill_get", "skill_save", "skill_run", "skill_enable", "skill_delete", "skill_retype",
+  "tasks_list", "task_get", "task_run", "task_runs",
+  "schedules_list", "schedule_save", "schedule_run", "schedule_delete", "agents_list",
+  "app_list_tools", "app_call_tool", "app_install",
+]);
+
+/** The gateway's connections lane: the lookup pair the loop drives connected
+ *  accounts through, and the account tools beside it. Off with the org's lane. */
+export const GATEWAY_CONNECTION_TOOLS: ReadonlySet<string> = new Set([
+  "glyphh_connections", "glyphh_connect", "glyphh_disconnect", "mcp_tool_search", "mcp_tool_call",
+]);
+
+/** THE DESKTOP'S OWN CONNECTOR TOOLS — the local server's half of the
+ *  connections lane. They reach the same Pipedream accounts the gateway's
+ *  lookup pair does, so the org's connections gate has to close over them too
+ *  (his order, 2026-09-29: "fully gate the pipedream lane"). */
+export const LOCAL_CONNECTION_TOOLS: ReadonlySet<string> = new Set([
+  "connector_tools", "connector_call", "connections_list_tools", "connections_call_tool",
+]);
+
+/** Host tools the loop never sees: diagnostics, and the list/call pairs the
+ *  catalog now stands in for (each app tool and connection tool is its own
+ *  entry; connected accounts go through the gateway's search). External MCP
+ *  clients still get them — this is the loop's view only. */
+export const LOOP_HIDDEN: ReadonlySet<string> = new Set([
+  "relay_ping", "app_list_tools", "app_call_tool",
+  "connector_tools", "connector_call", "connections_list_tools", "connections_call_tool",
+]);
+
+export interface LendState {
+  /** The loopback local MCP server is up and lent. */
+  localUp: boolean;
+  /** The gateway's /mcp is lent (a signed-in member with a key). */
+  gatewayUp: boolean;
+  /** The org's connections lane is on. */
+  connections: boolean;
+  /** The local server's fixed belt (every space): a belt tool must stay local,
+   *  because only a local tool rides the belt at all. */
+  belt: ReadonlySet<string>;
+}
+
+/** The two `allow` filters, one per server. */
+export function lendSplit(s: LendState): { local: (tool: string) => boolean; gateway: (tool: string) => boolean } {
+  return {
+    local: (t) =>
+      !LOOP_HIDDEN.has(t)
+      && (s.connections || !LOCAL_CONNECTION_TOOLS.has(t))
+      && !(s.gatewayUp && CLOUD_TOOLS.has(t) && !s.belt.has(t)),
+    gateway: (t) =>
+      !(s.localUp && (WINDOW_TOOLS.has(t) || s.belt.has(t)))
+      && (s.connections || !GATEWAY_CONNECTION_TOOLS.has(t)),
+  };
+}
