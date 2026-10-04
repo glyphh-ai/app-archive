@@ -47,9 +47,6 @@ const ENVELOPE = [
   "app-source-restore",
   "app-traffic",
   "org-domains-traffic",
-  "glyphh-threads-delete",
-  "glyphh-threads-get",
-  "glyphh-threads-push",
   "library-admin-queue",
   "library-admin-review",
   "library-loop-create",
@@ -105,10 +102,9 @@ const ENVELOPE = [
   "mkt-uninstall",
 ] as const;
 
-/** Channels whose callers destructure a bare array. */
-const EMPTY_LIST = [
-  "glyphh-threads-list",
-] as const;
+/** Channels whose callers destructure a bare array. (The thread channels
+ *  left this list on 2026-10-04 — thread-publish.ts serves them.) */
+const EMPTY_LIST = [] as const;
 
 export function registerAgentStubs(): void {
   for (const ch of ENVELOPE) {

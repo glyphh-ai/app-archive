@@ -21156,6 +21156,10 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 
 .loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
 .code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
+/* The locus badge beside a rail session (2026-10-04): local = this machine, cloud = the server's worker. */
+.code-sess-locus { flex: none; margin-left: auto; padding: 0 5px; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 9px; line-height: 14px; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 3px; color: var(--text-3); }
+.code-sess-locus-cloud { color: var(--accent, var(--text)); border-color: currentColor; }
+.code-history-item:hover .code-sess-locus { color: var(--text); }
 .code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
 /* The Glyphh mascot is a tall figure, not a square favicon — at favicon size it
    read as a speck (his eye, 2026-09-21). It gets the whole row height and no plate rounding. */
