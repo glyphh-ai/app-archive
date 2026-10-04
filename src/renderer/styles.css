@@ -1593,10 +1593,6 @@ body.account-locked #dl-btn-wrap {
    machine to run it on, so the whole tab hides on web, not just the local-MCP
    section inside it. Stale deep links fall back to General (navigation.ts
    settingsSubAlias). */
-/* Drips is likewise a desktop-app surface — hidden on web the same way, with
-   the same stale-deep-link fallback to General (settingsSubAlias). */
-.glyphh-web .settings-nav > .settings-nav-item[data-sub="drips"],
-.glyphh-web .settings-panel[data-sub="drips"] { display: none !important; }
 /* Account leaves the WEB rail (his rule, 2026-08-25) — it opens from the
    user popup instead; the PANEL stays (only the nav item hides), centered
    like the Dashboard. */
