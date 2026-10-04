@@ -21171,10 +21171,21 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 
 .loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
 .code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
-/* The locus badge beside a rail session (2026-10-04): local = this machine, cloud = the server's worker. */
-.code-sess-locus { flex: none; margin-left: auto; padding: 0 5px; font-family: var(--font-mono, "JetBrains Mono", monospace); font-size: 9px; line-height: 14px; letter-spacing: 0.04em; text-transform: uppercase; border: 1px solid var(--border, rgba(127,127,127,0.35)); border-radius: 3px; color: var(--text-3); }
-.code-sess-locus-cloud { color: var(--accent, var(--text)); border-color: currentColor; }
-.code-history-item:hover .code-sess-locus { color: var(--text); }
+/* THE LOCUS GLYPH beside a session (his order, 2026-10-04): a monitor for the
+   desktop, a cloud for the cloud — the same element in the rail rows, the
+   recents dropdown and the funnel's place group. A locked row (web: the
+   desktop has not granted the folder) wears a lock beside it. */
+.code-sess-locus { flex: none; display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--text-3); }
+.code-sess-locus svg { width: 13px; height: 13px; flex: none; }
+.code-sess-locus-cloud { color: var(--accent, var(--text)); }
+.code-history-item:hover .code-sess-locus, .wb-session-row:hover .code-sess-locus { color: var(--text); }
+.code-sess-lock { display: inline-flex; color: var(--warning, var(--text-3)); }
+.code-sess-lock svg { width: 11px; height: 11px; }
+.code-history-item.locked .code-history-title, .wb-session-row.locked .wb-session-title { opacity: 0.7; }
+.wb-session-row .code-sess-locus { margin-left: 0; margin-right: 4px; }
+.code-menu-item .code-sess-locus.loop-mark { margin-left: 0; margin-right: 7px; width: 14px; height: 14px; justify-content: center; }
+.loop-filter-menu .code-menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.wb-session-hint { font-size: 11.5px; color: var(--text-3); padding-top: 0; }
 .code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
 /* The Glyphh mascot is a tall figure, not a square favicon — at favicon size it
    read as a speck (his eye, 2026-09-21). It gets the whole row height and no plate rounding. */

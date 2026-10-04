@@ -76,13 +76,20 @@ interface DesktopThreadsIpc {
 /** The SDK attach surface (window.glyphhSdk.attach) — the member's machines
  *  with remote control on, each answering `sessions.*` over the relay. Mirrors
  *  web/src/desktop-sessions.ts (the mobile app's copy of the same lane). */
-interface AttachMachine { id: string; name?: string; app?: string }
+interface AttachMachine { id: string; name?: string; app?: string; folders?: string[] }
 interface AttachSurface {
   status(): Promise<{ allowed?: boolean; attached?: boolean; machines?: AttachMachine[] }>;
   dispatch<T>(method: string, params?: Record<string, unknown>, opts?: { machineId?: string }): Promise<T>;
 }
 const attachSurface = (): AttachSurface | null =>
   (window as unknown as { glyphhSdk?: { attach?: AttachSurface } }).glyphhSdk?.attach ?? null;
+
+/** The attached desktops as the last list() saw them — id, name and the
+ *  folders each GRANTED for remote control. The rail reads this to tell a
+ *  desktop session it may open from one whose folder needs a grant (his
+ *  order, 2026-10-04: list EVERY local session, lock the ungranted ones). */
+let attachedSnapshot: Array<{ id: string; name: string; folders: string[] }> = [];
+export function attachedMachines(): ReadonlyArray<{ id: string; name: string; folders: string[] }> { return attachedSnapshot; }
 
 /** Which MACHINE each desktop-relay thread lives on (from the last list()). A
  *  machine's id changes on every reconnect, so this is refreshed per list. */
@@ -114,6 +121,11 @@ function webTransport(): Transport {
     if (!a) return [];
     const st = await a.status().catch(() => null);
     const machines = st?.attached ? (st.machines ?? []) : [];
+    attachedSnapshot = machines.map((m) => ({ id: m.id, name: m.name || m.app || "", folders: Array.isArray(m.folders) ? m.folders.filter((f): f is string => typeof f === "string") : [] }));
+    // EVERY session the desktop holds lists here (his order, 2026-10-04) —
+    // `sessions.list` is not folder-guarded (remote-control.ts passes it
+    // through); the grant applies when a session is OPENED or RUN, which the
+    // rail enforces with the snapshot above and the relay's own guard.
     const lists = await Promise.all(machines.map(async (m) => {
       const r = await a.dispatch<{ sessions?: ThreadMeta[] }>("sessions.list", {}, { machineId: m.id }).catch(() => null);
       return (r?.sessions ?? []).map((t) => ({

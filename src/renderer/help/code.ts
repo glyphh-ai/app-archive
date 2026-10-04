@@ -12,6 +12,11 @@
  */
 
 import { threadLocus } from "../../shared/member-library.js";
+import {
+  LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
+  locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
+  type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike,
+} from "./session-locus.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
@@ -35,7 +40,7 @@ import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-pr
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas } from "./web-surface.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
-import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
@@ -3058,8 +3063,7 @@ async function checkWorkdirGate(): Promise<void> {
 
 function initWorkdirGate(): void {
   void checkWorkdirGate();
-  initCloudFolderChips();
-  initWebFolderChips();
+  initFolderLocusChips();
 }
 
 /**
@@ -3304,6 +3308,18 @@ function paintSourceDependents(): void {
   // both surfaces from the SOURCE, so a machine's cwd can't overwrite the pick.
   {
     const src = activeSource();
+    // THE CHIP SHOWS THE LOCUS (his order, 2026-10-04): a monitor or a cloud
+    // before the folder's name, on both rows and both surfaces.
+    for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+      const svg = document.getElementById(id)?.querySelector(":scope > svg");
+      const want = LOCUS_SVG[sourceLocus(src)];
+      if (svg && svg.getAttribute("data-locus") !== sourceLocus(src)) {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = want;
+        const next = tpl.content.firstElementChild as SVGElement | null;
+        if (next) { next.setAttribute("data-locus", sourceLocus(src)); svg.replaceWith(next); }
+      }
+    }
     if (src.kind !== "local") {
       const dir = (src as { dir?: string }).dir || "";
       const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir) : "workspace";
@@ -3367,43 +3383,42 @@ function setCloudDir(rel: string): void {
   repaintSourceUi();
 }
 
-/** CLOUD folder chips (both surfaces): a cloud source's folder chip browses
- *  the pod workspace. Registered FIRST (capture) so the machine pickers below
- *  and the desktop's native picker never fire for cloud sources. */
-function initCloudFolderChips(): void {
+/** THE FOLDER CHIP OPENS THE LOCUS PICKER on BOTH surfaces (his order,
+ *  2026-10-04): "On this desktop" / "On <machine>" and "In the cloud", in one
+ *  drop (code-source-chip.ts openFolderLocusPicker). Registered in CAPTURE so
+ *  the workbench's own handler on the same button (the desktop's recents
+ *  menu + OS picker) never runs — the picker offers both inside. The + chip
+ *  keeps its one job: a new folder (the OS picker on the desktop, fs.mkdir
+ *  over the relay on web). */
+function initFolderLocusChips(): void {
   for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
     const chip = document.getElementById(id);
     chip?.addEventListener("click", (e) => {
-      const src = activeSource();
-      if (src.kind === "local") return;   // machines keep their pickers
       e.preventDefault();
       e.stopImmediatePropagation();
-      openCloudFolderBrowser(chip, {
-        scope: cloudBrowseScope(),
-        currentDir: (src as { dir?: string }).dir,
-        onPickDir: (rel) => setCloudDir(rel),
+      const c = current();
+      const onHome = document.body.classList.contains("composer-on-home");
+      // A BORN session's locus is fixed (cloud stays cloud): the picker shows
+      // the other place but will not pick it.
+      const bornLocus = c && c.messages.length > 0 && !onHome ? sourceLocus(c.source ?? pendingSource) : null;
+      openFolderLocusPicker(chip, {
+        getSource: activeSource,
+        onPick: pickSource,
+        bornLocus,
+        cloudScope: cloudBrowseScope(),
+        onPickCloudDir: (rel) => setCloudDir(rel),
       });
     }, true);
   }
-}
-
-function initWebFolderChips(): void {
   if (!onWebTarget()) return;
-  const wire = (id: string, open: (anchor: HTMLElement, o: { getSource: typeof activeSource; onPick: typeof pickSource }) => void): void => {
+  for (const id of ["dash-wd-add", "code-workdir-add"]) {
     const chip = document.getElementById(id);
     chip?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
-      open(chip, { getSource: activeSource, onPick: pickSource });
+      openNewFolderDrop(chip, { getSource: activeSource, onPick: pickSource });
     }, true);
-  };
-  // BOTH rows — the landing's and the agent's. They are the same controls on
-  // two surfaces, and the agent view is where a session actually changes its
-  // folder mid-flight.
-  wire("dash-wd-btn", openMachineFolderBrowser);    // folder chip = the browser
-  wire("dash-wd-add", openNewFolderDrop);           // + = new folder ONLY
-  wire("code-workdir-btn", openMachineFolderBrowser);
-  wire("code-workdir-add", openNewFolderDrop);
+  }
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
@@ -5255,21 +5270,40 @@ const LOOP_OPTIONS: Array<{ key: string; name: string }> = [
   { key: "copilot", name: "Copilot" }, { key: "cursor", name: "Cursor" },
 ];
 let loopFilter: string[] = [];
+/** THE PLACE FILTER (his order, 2026-10-04): the same funnel gains a second
+ *  group — All places / This desktop / Cloud — persisted on its own pref and
+ *  applied by the ONE filter function below, in the rail and the dropdown. */
+let locusFilter: LocusFilter = "";
 function sessLoopKey(sess: RailSession): string {
   return sess.origin !== "cli" ? "glyphh" : sess.cli === GLYPHH_LOOP ? "glyphh-cli" : sess.cli;
 }
-/** Does the filter keep this row? `among` is the loops the list can hold: a
- *  filter naming none of them is no filter there. */
-function loopFilterKeeps(sess: RailSession, among?: ReadonlySet<string>): boolean {
-  const on = among ? loopFilter.filter((k) => among.has(k)) : loopFilter;
-  return !on.length || on.includes(sessLoopKey(sess));
+/** The rail's and the dropdown's one filter. `among` is the loops the list
+ *  can hold: a loop filter naming none of them is no filter there; `tab`
+ *  absent = every type (the CLI window's own pool). */
+function sessFilter(opts: { tab?: SessionType; among?: ReadonlySet<string>; query?: string }): RecentsFilter {
+  return { ...(opts.tab ? { tab: opts.tab } : {}), loops: loopFilter, ...(opts.among ? { among: opts.among } : {}), locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
+}
+function sessFilterRow(sess: RailSession): RecentsRowLike {
+  return { title: sess.title, cwd: sess.cwd, mode: sess.mode, loopKey: sessLoopKey(sess), locus: sess.locus ?? "local" };
+}
+function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
+  return recentsKeeps(sessFilterRow(sess), f);
+}
+/** Both lists re-render on either change: the rail here, the dropdown off the event. */
+function filtersChanged(): void {
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ loops: loopFilter, locus: locusFilter }));
+  renderRailSessions();
+  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
 }
 function setLoopFilter(keys: string[]): void {
   loopFilter = keys;
   void window.glyphh.setPreference?.(LOOP_FILTER_PREF, keys);
-  el("recent-sessions-filter")?.classList.toggle("active", keys.length > 0);
-  renderRailSessions();
-  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
+  filtersChanged();
+}
+function setLocusFilter(place: LocusFilter): void {
+  locusFilter = place;
+  void window.glyphh.setPreference?.(LOCUS_FILTER_PREF, place);
+  filtersChanged();
 }
 const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
 let loopFilterMenu: HTMLDivElement | null = null;
@@ -5306,6 +5340,18 @@ function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_
     mark.classList.add("loop-mark");
     row(o.name, on, mark, () => setLoopFilter(on ? loopFilter.filter((x) => x !== o.key) : [...loopFilter, o.key]));
   }
+  // THE PLACES (his order, 2026-10-04): one pick, the rail and the dropdown
+  // both narrow to it. The mark is the row's own locus glyph.
+  const sep = document.createElement("div");
+  sep.className = "code-menu-sep";
+  m.appendChild(sep);
+  row("All places", locusFilter === "", null, () => setLocusFilter(""));
+  for (const o of LOCUS_OPTIONS) {
+    const mark = document.createElement("span");
+    mark.className = "code-sess-locus loop-mark";
+    mark.innerHTML = LOCUS_SVG[o.key];
+    row(o.name, locusFilter === o.key, mark, () => setLocusFilter(locusFilter === o.key ? "" : o.key));
+  }
   const r = anchor.getBoundingClientRect();
   m.style.position = "fixed";
   m.style.left = `${r.left}px`;
@@ -5315,10 +5361,13 @@ function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_
   const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
   document.addEventListener("mousedown", close, true);
 }
-void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => {
-  if (!Array.isArray(v)) return;
-  loopFilter = v.map(String);
-  el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0);
+void Promise.all([
+  window.glyphh.getPreference?.(LOOP_FILTER_PREF, []) ?? Promise.resolve([]),
+  window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve(""),
+]).then(([loops, place]) => {
+  if (Array.isArray(loops)) loopFilter = loops.map(String);
+  locusFilter = locusFilterOf(place);
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ loops: loopFilter, locus: locusFilter }));
   renderRailSessions();
 }).catch(() => {});
 
@@ -5371,7 +5420,14 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    UX is the MAIN-era recents wholesale: Pinned first, then one group per
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
-interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli"; /** Where the thread runs (his rule, 2026-10-04): this machine, or the cloud. */ locus?: "local" | "cloud" }
+interface RailSession {
+  id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli";
+  /** Where the thread runs (his rule, 2026-10-04): the desktop, or the cloud. */
+  locus?: Locus;
+  /** WEB ONLY: a desktop session whose folder the attached desktop has not
+   *  granted — listed with a lock; opening it shows the grant card. */
+  locked?: boolean;
+}
 let railSessions: RailSession[] = [];
 /** The CLI agents' sessions, from each CLI's own store — the RAIL's and the CLI
  *  window's, never the Glyphh agent's dropdown (his order, 2026-09-30). */
@@ -5511,14 +5567,22 @@ async function loadRailSessions(): Promise<void> {
     // A thread adopted from the server (a cloud thread, or one made on another
     // surface) carries only a messageCount until opened — it lists all the same.
     .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0)
-    .map((c) => ({
-      id: c.id, cli: GLYPHH_LOOP, title: c.title, cwd: c.workdir || "", mtime: touchedAtOf(c),
-      // A thread's own space. Every NEW session is born in Code (modeOf); the
-      // older Chat and Work threads keep theirs, which is what makes the glyph
-      // worth reading.
-      mode: modeOf(c),
-      locus: threadLocus(c),
-    }))
+    .map((c) => {
+      const locus = threadLocus(c);
+      // THE FOLDER IS THE THREAD'S (his rule): a thread adopted from the
+      // server or the relay carries it on its source, not as a workdir — read
+      // both, so the web groups a desktop session under its folder too.
+      const cwd = c.workdir || (c.source?.kind === "local" ? c.source.path || "" : "");
+      return {
+        id: c.id, cli: GLYPHH_LOOP, title: c.title, cwd, mtime: touchedAtOf(c),
+        // A thread's own space. Every NEW session is born in Code (modeOf); the
+        // older Chat and Work threads keep theirs, which is what makes the glyph
+        // worth reading.
+        mode: modeOf(c),
+        locus,
+        ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
+      };
+    })
     .sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   railCliSessions = await loadCliSessions();
@@ -5535,7 +5599,14 @@ async function loadRailSessions(): Promise<void> {
 async function loadCliSessions(): Promise<RailSession[]> {
   const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }> };
   const r = await api.cliSessionsList?.().catch(() => null);
-  return (r?.ok ? r.sessions : []).map((x) => ({ ...x, mode: "code" as SessionType, origin: "cli" as const }));
+  // A CLI's sessions are the MACHINE's (its own stores): locus local, and on
+  // the web — where they arrive off the attached desktop over the relay —
+  // locked when their folder is not one the desktop granted.
+  const surface = onWebTarget() ? "web" : "desktop";
+  return (r?.ok ? r.sessions : []).map((x) => ({
+    ...x, mode: "code" as SessionType, origin: "cli" as const, locus: "local" as const,
+    ...(sessionLocked({ locus: "local", cwd: x.cwd }, surface, threadStore.attachedMachines()) ? { locked: true } : {}),
+  }));
 }
 (window.glyphh as unknown as { onCliSessionsChanged?: (cb: () => void) => void }).onCliSessionsChanged?.(() => scheduleRailSessionsRefresh());
 (window as unknown as { __glyphhCliSessions?: () => Promise<RailSession[]> }).__glyphhCliSessions = loadCliSessions;
@@ -5664,7 +5735,34 @@ async function openGlyphhSession(id: string): Promise<void> {
   if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
 }
 
+/** The locus glyph a session row wears — a monitor or a cloud — the SAME
+ *  element in the rail and the recents dropdown (his order, 2026-10-04). A
+ *  locked row (web: the desktop has not granted its folder) wears the lock
+ *  beside it and says what to do. */
+function sessLocusEl(sess: RailSession): HTMLSpanElement {
+  const locus: Locus = sess.locus ?? "local";
+  const wrap = document.createElement("span");
+  wrap.className = `code-sess-locus code-sess-locus-${locus}`;
+  wrap.innerHTML = LOCUS_SVG[locus];
+  wrap.title = LOCUS_TITLE[locus];
+  if (sess.locked) {
+    const lock = document.createElement("span");
+    lock.className = "code-sess-lock";
+    lock.innerHTML = LOCK_SVG;
+    lock.title = GRANT_CARD.title;
+    wrap.appendChild(lock);
+  }
+  return wrap;
+}
+
+/** THE GRANT APPLIES ON OPEN (his order, 2026-10-04): a desktop session the
+ *  web lists but the desktop has not granted shows the card instead of running. */
+function sessGrantCard(sess: RailSession): void {
+  void confirmAction({ title: GRANT_CARD.title, body: GRANT_CARD.body(sess.cwd), confirmLabel: "OK", cancelLabel: "Close" });
+}
+
 function sessOpen(sess: RailSession): void {
+  if (sess.locked) { sessGrantCard(sess); return; }
   // A CLI's session opens in ITS CLI window, resuming that conversation — never
   // in the Glyphh agent (his order, 2026-09-30: CLI agents "only ever open in cli mode").
   if (sess.origin === "cli") {
@@ -5752,10 +5850,9 @@ function renderRailSessions(): void {
   // doesn't change the left rail's recents list in any way"). The panel's own
   // list and the dropdown were filtered; this one, the one he was looking at,
   // was not.
-  const items = [...railSessions, ...railCliSessions]
-    .filter((x) => x.mode === typeTab)
-    .filter((x) => loopFilterKeeps(x))
-    .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
+  // ONE FILTER with the dropdown (his order, 2026-10-04): type, loop, place, search.
+  const railFilter = sessFilter({ tab: typeTab, query: q });
+  const items = [...railSessions, ...railCliSessions].filter((x) => sessFilterKeeps(x, railFilter));
   const painted = JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null });
   if (painted !== railPaintedLog) { railPaintedLog = painted; console.warn("[rail] painted", painted); }
   host.textContent = "";
@@ -5766,6 +5863,14 @@ function renderRailSessions(): void {
     // list that failed to load.
     empty.textContent = q ? "No sessions match." : `No ${TYPE_LABEL[typeTab]} sessions yet.`;
     host.appendChild(empty);
+    // ON THE WEB a desktop's sessions list only while that desktop has remote
+    // control ON (it opens no socket otherwise) — say so, once, under the empty state.
+    if (onWebTarget() && !q && !threadStore.attachedMachines().length) {
+      const hint = document.createElement("div");
+      hint.className = "wb-session-empty wb-session-hint";
+      hint.textContent = "Turn on Remote control in Glyphh Desktop to see this machine's sessions.";
+      host.appendChild(hint);
+    }
     return;
   }
   for (const sec of sessSections(items)) {
@@ -5798,13 +5903,11 @@ function renderRailSessions(): void {
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
       menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      // WHERE IT RUNS (his rule, 2026-10-04): the rail lists this machine's
-      // threads and the cloud's side by side, each wearing its locus.
-      const locus = document.createElement("span");
-      locus.className = `code-sess-locus code-sess-locus-${sess.locus ?? "local"}`;
-      locus.textContent = sess.locus === "cloud" ? "cloud" : "local";
-      locus.title = sess.locus === "cloud" ? "Runs in the cloud" : "Runs on this machine";
-      row.append(dot, markEl, label, locus, menuBtn);
+      // WHERE IT RUNS (his rule, 2026-10-04): the rail lists the desktop's
+      // threads and the cloud's side by side, each wearing its locus — the
+      // same element the recents dropdown wears (sessLocusEl).
+      row.append(dot, markEl, label, sessLocusEl(sess), menuBtn);
+      if (sess.locked) row.classList.add("locked");
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
     }
@@ -5835,15 +5938,15 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   const menuKeys: ReadonlySet<string> = opts.pool ? CLI_LOOP_KEYS : new Set(LOOP_OPTIONS.map((o) => o.key));
   const filterBtn = document.createElement("button");
   filterBtn.type = "button";
-  filterBtn.className = "rail-filter-btn" + (loopFilter.some((k) => menuKeys.has(k)) ? " active" : "");
-  filterBtn.title = "Filter by loop";
+  filterBtn.className = "rail-filter-btn" + (recentsFilterActive({ loops: loopFilter, among: menuKeys, locus: locusFilter }) ? " active" : "");
+  filterBtn.title = "Filter by loop and place";
   filterBtn.innerHTML = FILTER_SVG;
   filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
   filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn, [...menuKeys]); });
   searchWrap.appendChild(filterBtn);
   const onFilter = (): void => {
     if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
-    filterBtn.classList.toggle("active", loopFilter.some((k) => menuKeys.has(k)));
+    filterBtn.classList.toggle("active", recentsFilterActive({ loops: loopFilter, among: menuKeys, locus: locusFilter }));
     paint();
   };
   document.addEventListener("glyphh:loop-filter-changed", onFilter);
@@ -5882,15 +5985,18 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    const visible = pool
-      .filter((x) => !!opts.pool || x.mode === menuTab)
-      .filter((x) => loopFilterKeeps(x, menuKeys))
-      .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
+    // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function,
+    // the same prefs; only the type tab is this menu's own.
+    const menuFilter = sessFilter({ ...(opts.pool ? {} : { tab: menuTab }), among: menuKeys, query: q });
+    const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
-      row.className = "wb-session-row";
+      row.className = "wb-session-row" + (sess.locked ? " locked" : "");
       row.appendChild(sessDot(sess.id));
       if (opts.pool) row.appendChild(sessMarkEl(sess));
+      // The locus glyph the rail rows wear — a CLI's own sessions are the
+      // machine's by definition and carry none.
+      if (!opts.pool) row.appendChild(sessLocusEl(sess));
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
@@ -6261,7 +6367,7 @@ function initRailApps(): void {
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
   el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(e.currentTarget as HTMLElement); });
-  el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0);
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ loops: loopFilter, locus: locusFilter }));
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initRecentsVsplit();
@@ -6867,7 +6973,9 @@ export function initCode(): void {
       } else {
         try {
           const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
-          if (st?.attached) local = { kind: "local", path: "" };
+          // THE DEFAULT PLACE (session-locus.ts): the attached desktop when
+          // there is one, the cloud when none is.
+          if (defaultLocus("web", !!st?.attached) === "local") local = { kind: "local", path: "" };
         } catch { /* stays cloud */ }
       }
       if (!local) return;

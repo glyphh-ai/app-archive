@@ -1,5 +1,6 @@
 import { escapeHtml } from "./shared.js";
 import { hostHas } from "./web-surface.js";
+import { LOCUS_SVG, folderGranted, pickerSections, type Locus } from "./session-locus.js";
 /**
  * code-source-chip.ts — the WORKSPACE-SOURCE chip (ported from the platform's
  * RuntimeLocationChip), reimplemented in vanilla TS. It sits ABOVE the Code and
@@ -42,7 +43,7 @@ export type Source =
 interface Repo { id: string; fullName: string; private: boolean; defaultBranch: string }
 interface GitConnection { connected: boolean; login?: string | null }
 interface GitConnectLink { url: string; state?: string }
-interface AttachedMachine { id?: string; name?: string; app?: string; version?: string; capabilities?: string[] }
+interface AttachedMachine { id?: string; name?: string; app?: string; version?: string; capabilities?: string[]; /** The folders it granted for remote control. */ folders?: string[] }
 interface AttachStatus { attached: boolean; machines: AttachedMachine[] }
 interface FsEntry { name: string; path: string; dir: boolean; git?: boolean }
 interface FsListing { path: string; parent: string | null; root?: string; entries: FsEntry[] }
@@ -284,6 +285,166 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
     if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
   };
   document.addEventListener("mousedown", away, true);
+}
+
+/**
+ * THE FOLDER CHIP'S PICKER, explicit on both surfaces (his order, 2026-10-04:
+ * "how does the user choose between local and cloud for a session?"). Two
+ * sections, in this order:
+ *
+ *   ON THIS DESKTOP (the desktop) / ON <machine> (web: the attached desktop)
+ *     · desktop → the machine's recent folders + "Choose folder…" (the OS
+ *       picker); web → the folders that desktop GRANTED for remote control,
+ *       each opening the folder browser (fs.list over the relay) inside it.
+ *   IN THE CLOUD
+ *     · the member's existing cloud folders — the thread workspaces from
+ *       GET /api/harness/fs/spaces (a worker workspace mirrored to R2) —
+ *       and "New cloud folder…", a fresh workspace named by the session id
+ *       the first send mints. A born cloud session also offers "Folder in
+ *       this workspace…" (the pod sub-folder browser).
+ *
+ * A session's locus is FIXED AT BIRTH ("cloud stays cloud"): with a born
+ * session open, the other section's rows are shown but not pickable, and
+ * say why. The sections and the default come from session-locus.ts.
+ */
+export function openFolderLocusPicker(anchor: HTMLElement, opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+  /** The open session's locus once it has a turn; null = nothing is born. */
+  bornLocus: Locus | null;
+  /** The pod workspace a cloud folder pick can browse (a space, or a born
+   *  session's thread); null when there is none yet. */
+  cloudScope: string | null;
+  onPickCloudDir: (relDir: string) => void;
+}): void {
+  const wrap = anchor.parentElement || anchor;
+  wrap.querySelector(".ws-source-drop")?.remove();
+  closeAllDrops();
+  const menu = document.createElement("div");
+  menu.className = "code-drop-up ws-source-drop ws-drop-flex ws-locus-drop";
+  (wrap as HTMLElement).style.position ||= "relative";
+  wrap.appendChild(menu);
+  clampDropUp(menu, anchor);
+  clampDropX(menu, anchor);
+  const close = (): void => menu.remove();
+  const away = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
+  };
+  document.addEventListener("mousedown", away, true);
+  const pick = (next: Source): void => { opts.onPick(next); close(); };
+  const surface = isWeb() ? "web" : "desktop";
+  const src = opts.getSource();
+  const currentFolder = src.kind === "local" ? src.path || "" : "";
+
+  const paintRoot = async (): Promise<void> => {
+    menu.textContent = "";
+    menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Where this session works</span></div>`);
+    const [machines, spaces] = await Promise.all([listMachines(), listSpaces()]);
+    if (!menu.isConnected) return;
+    const model = pickerSections({
+      surface,
+      machines: machines.filter((m) => surface === "web").map((m) => ({ id: m.id, name: m.name || m.app || "Glyphh desktop", folders: m.folders ?? [] })),
+      spaces,
+      bornLocus: opts.bornLocus,
+    });
+    const [desk, cloud] = model.sections;
+    const lockRow = (row: HTMLElement, why: string | undefined): boolean => {
+      if (!why) return false;
+      markUnreachable(row, why);
+      return true;
+    };
+
+    // ── the desktop ──────────────────────────────────────────────────────
+    const deskLabel = document.createElement("div");
+    deskLabel.className = "ws-sec-label";
+    deskLabel.innerHTML = `${LOCUS_SVG.local}<span></span>`;
+    (deskLabel.querySelector("span") as HTMLElement).textContent = desk.label;
+    menu.appendChild(deskLabel);
+    if (desk.empty) {
+      const note = drillItem(surface === "web" && desk.machine ? "No folder granted" : "No desktop attached", desk.empty, "");
+      note.classList.add("ws-install");
+      markUnreachable(note, desk.empty);
+      menu.appendChild(note);
+    } else if (surface === "desktop") {
+      const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
+      const recents = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
+      if (!menu.isConnected) return;
+      const shown = [...new Set([currentFolder, ...recents].filter(Boolean))].slice(0, 6);
+      for (const dir of shown) {
+        const sel = dir === currentFolder;
+        const row = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
+        row.classList.add("ws-fs-row");
+        if (sel) row.classList.add("selected");
+        if (!lockRow(row, desk.locked)) row.addEventListener("click", () => pick({ kind: "local", path: dir }));
+        menu.appendChild(row);
+      }
+      const choose = drillItem("Choose folder…", "Pick any folder on this computer", "");
+      if (!lockRow(choose, desk.locked)) {
+        choose.addEventListener("click", () => {
+          void w?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) pick({ kind: "local", path: dir }); });
+        });
+      }
+      menu.appendChild(choose);
+    } else {
+      const machine = machines.find((m) => m.id === desk.machine?.id) ?? machines[0] ?? null;
+      for (const f of desk.folders) {
+        const sel = !!currentFolder && folderGranted(currentFolder, [f]);
+        const row = drillItem(lastSeg(f), currentFolder && sel && currentFolder !== f ? `${f} · in ${lastSeg(currentFolder)}` : f, sel ? CHECK : "");
+        row.classList.add("ws-fs-row");
+        if (sel) row.classList.add("selected");
+        if (!lockRow(row, desk.locked)) {
+          // Into the granted folder: browse below it, or take it as is.
+          row.addEventListener("click", () => {
+            menu.textContent = "";
+            renderLocal(menu, opts, machine, pick, () => { void paintRoot(); }, sel && currentFolder ? currentFolder : f);
+          });
+        }
+        menu.appendChild(row);
+      }
+    }
+
+    // ── the cloud ────────────────────────────────────────────────────────
+    const cloudLabel = document.createElement("div");
+    cloudLabel.className = "ws-sec-label";
+    cloudLabel.innerHTML = `${LOCUS_SVG.cloud}<span></span>`;
+    (cloudLabel.querySelector("span") as HTMLElement).textContent = cloud.label;
+    menu.appendChild(cloudLabel);
+    const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
+    for (const sp of cloud.spaces.slice(0, 8)) {
+      const label = (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `folder ${shortId(sp.id)}`);
+      const when = sp.updatedAt ? new Date(sp.updatedAt).toLocaleDateString() : "";
+      const sel = src.kind === "cloud-space" && src.space === sp.id;
+      const row = drillItem(label, when ? `Cloud folder · ${when}` : "Cloud folder", sel ? CHECK : "");
+      if (sel) row.classList.add("selected");
+      if (!lockRow(row, cloud.locked)) row.addEventListener("click", () => pick({ kind: "cloud-space", space: sp.id, label }));
+      menu.appendChild(row);
+    }
+    if (src.kind !== "local" && opts.cloudScope) {
+      const sub = drillItem("Folder in this workspace…", "Pick a sub-folder of the session's cloud folder", "");
+      sub.addEventListener("click", () => {
+        close();
+        openCloudFolderBrowser(anchor, { scope: opts.cloudScope, currentDir: (src as { dir?: string }).dir, onPickDir: opts.onPickCloudDir });
+      });
+      menu.appendChild(sub);
+    }
+    const fresh = drillItem("New cloud folder…", "A fresh workspace, named by the new session's id and mirrored to R2", src.kind === "cloud-new" ? CHECK : "");
+    if (src.kind === "cloud-new") fresh.classList.add("selected");
+    if (!lockRow(fresh, cloud.locked)) fresh.addEventListener("click", () => pick({ kind: "cloud-new" }));
+    menu.appendChild(fresh);
+    // A cloud you cannot reach is not a choice (the source chip's rule).
+    void probeSources().then((reach) => {
+      if (reach.cloud !== false || !menu.isConnected) return;
+      let past = false;
+      for (const node of Array.from(menu.children)) {
+        if (node === cloudLabel) { past = true; continue; }
+        if (past && node.classList.contains("code-drop-item")) markUnreachable(node as HTMLElement, "Can't reach the cloud runtime right now");
+      }
+    });
+    clampDropUp(menu, anchor);
+    clampDropX(menu, anchor);
+  };
+  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Where this session works</span></div><div class="drop-empty">Checking your places…</div>`);
+  void paintRoot();
 }
 
 /** The CLOUD workspace folder browser (his ask, 2026-08-20): the folder chip
@@ -894,15 +1055,18 @@ function renderLocal(
   machine: AttachedMachine | null,
   pick: (s: Source) => void,
   onBack: () => void,
+  /** Where the walk starts; defaults to the source's own folder. The locus
+   *  picker hands a granted root here. */
+  startAt?: string,
 ): void {
-  backHead(menu, "Local folder", onBack);
+  backHead(menu, machine?.name ? `On ${machine.name}` : "Local folder", onBack);
   const body = document.createElement("div");
   body.className = "ws-drop-body";
   menu.appendChild(body);
   body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your desktop…</div>`);
 
   const s = sdk();
-  const startPath = opts.getSource().kind === "local" ? (opts.getSource() as { path: string }).path : undefined;
+  const startPath = startAt || (opts.getSource().kind === "local" ? (opts.getSource() as { path: string }).path : undefined);
   let root: string | null = null;
 
   const paintListing = (listing: FsListing): void => {
