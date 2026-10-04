@@ -48,6 +48,7 @@ import {
   DOCK_ENABLED_PREF, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, dockEnabledFrom, applyDockEnabled,
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
+import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -316,16 +317,10 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
 };
 
-// ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
-// language as the office family (VIEW_META's gsheet/gdoc/gpoint set):
-// FULL-BLEED object silhouettes in saturated fills with white/tinted
-// details — never a glyph trapped in a uniform colored square. Sections
-// open as wall cards via __wbOpenSection; tools (tasks, preview) go
-// through __wbOpenTool. ──
-// APP-WEB (his rule, 2026-08-24): the Browser is an Electron webview and can
-// never render in a web tab, so the web dock hides it. navTileFor and the
-// dock backfill read this same filtered list, so a saved "preview" slot
-// simply stops materializing there.
+// ── The Echo dock — FIXED nav slots above the wall's search box. The item
+// list is help/dock-items.ts (DOCK_ITEMS): the dock paints from it, the wall
+// leads with it while the dock is off, and the saved dock order is checked
+// against it. Clicks route through openDockItem (below, in the wall). ──
 const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 /** This document is a SOLO panel (?solo=tool:…) — one agent, one tool, hosted
  *  in a card or its own window. It is not the command center, so it must never
@@ -388,28 +383,6 @@ function openNewTabForm(): void {
   window.setTimeout(tick, 60);
 }
 
-const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
-  { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
-  // An empty square with a + (his order, 2026-09-16): the New tab form, straight from the dock.
-  { key: "newtab",      title: "New tab",         icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 2.5"/><path d="M12 8v8M8 12h8"/></svg>` },
-  { key: "apps",        title: "Tabs",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
-  { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
-  // (Connections moved into Settings — his ruling, 2026-09-12; no dock tile.)
-  { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
-  // PLATFORM — the console as a work panel (his order, 2026-09-16): usage,
-  // billing, members, models, the hub. A member lands in their own scope, an
-  // org admin in theirs. Icon in the dock's language: a full-bleed purple
-  // shield over a lighter pillar, white plate details, no glyph-in-a-square.
-  { key: "platform",    title: "Platform",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 1.6 3.2 4.9v6.4c0 5.3 3.6 9.4 8.8 11.1 5.2-1.7 8.8-5.8 8.8-11.1V4.9L12 1.6z" style="fill:#8c3bf2"/><path d="M12 1.6 3.2 4.9v6.4c0 5.3 3.6 9.4 8.8 11.1V1.6z" style="fill:#a855f7"/><rect x="6.9" y="13.4" width="2.6" height="4.6" rx="1" style="fill:#ffffff" opacity=".95"/><rect x="10.7" y="10.6" width="2.6" height="7.4" rx="1" style="fill:#ffffff"/><rect x="14.5" y="12" width="2.6" height="6" rx="1" style="fill:#ffffff" opacity=".85"/><circle cx="12" cy="7.2" r="1.7" style="fill:#ffffff"/></svg>` },
-  { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
-  { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
-  { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
-  { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
-  { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
-  // Tabs, Workspaces and Drips live in Settings → Customize (his order, 2026-09-16); no dock tiles.
-  // Settings is back (his order, 2026-09-17). Tabs, Workspaces and Drips live
-  // in Settings → Customize and keep no dock tile of their own.
-  ].filter((d) => ["glyphh", "newtab", "cc", "settings", "closeall"].includes(d.key));
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -417,20 +390,6 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
 // /api/me/prefs, the SDK path) so the next boot reopens exactly what the user
 // was looking at. Module scope so the one-shot restore survives wall remounts
 // within a single app launch (but re-arms on a fresh launch).
-/** PLATFORM — the console, opened signed-in as a work panel. The server mints
- *  a console session for whoever is signed in here, so the panel lands in
- *  their own scope (member, org admin, or every org for the super admin). */
-async function openPlatformPanel(): Promise<void> {
-  const api = (window as unknown as { glyphh?: { platformPanelUrl?: (next?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }> } }).glyphh;
-  const res = await api?.platformPanelUrl?.().catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-  // Signed out, or the gateway isn't configured: the tile stays inert rather
-  // than opening a login page the user can do nothing with.
-  if (!res?.ok) { console.warn("[platform] couldn't open:", res?.error); return; }
-  const { url } = res.data as { url: string };
-  (window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string }) => void })
-    .__wbOpenApp?.({ slug: "platform", name: "Platform", url });
-}
-
 const WALL_STATE_PREF = "echoWallState";
 let wallRestored = false;
 
@@ -2680,7 +2639,7 @@ async function init(): Promise<void> {
     };
     /** A nav DOCK slot rendered as a PAGE icon (traded out of the dock). */
     const navTileFor = (key: string): EchoTile | null => {
-      const item = DOCK_ITEMS.find((d) => d.key === key);
+      const item = dockItemFor(key);
       if (!item) return null;
       const imgSrc = item.icon.match(/<img[^>]*src="([^"]+)"/)?.[1];
       return { name: item.title, slug: `dock:${item.key}`, orderKey: `dock:${item.key}`, glyphSvg: item.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, iconUrl: imgSrc || undefined, kind: "tool", navKey: item.key };
@@ -2692,6 +2651,30 @@ async function init(): Promise<void> {
      *  membership; persisted as echoDockOrder. Null until the pref loads. */
     let dockKeys: string[] = DOCK_ITEMS.map((d) => d.key);
     let pageIndex = 0;
+    /** The dock's NAV slots as wall entries while the dock is off (his order,
+     *  2026-10-04: the dock's icons lead the wall). One entry per key, kept
+     *  across repaints so the tile's DOM identity is stable; NOT in `entries`
+     *  — a nav slot the dock still owns is not a page icon, so the trade
+     *  paths (entriesByKey) never see it. */
+    const dockNavEntries = new Map<string, TileEntry>();
+    /** The dock's tiles, in the dock's order: `dockKeys` resolved to entries —
+     *  a nav slot from the table, a CLI or a traded app from the wall's own
+     *  entry. A key nothing answers (a CLI that left) paints nowhere. */
+    const dockEntries = (): TileEntry[] => {
+      const byKey = entriesByKey();
+      const out: TileEntry[] = [];
+      for (const k of dockKeys) {
+        if (dockItemFor(k)) {
+          let e = dockNavEntries.get(k);
+          if (!e) { const t = navTileFor(k); if (!t) continue; e = { tile: t, img: null }; dockNavEntries.set(k, e); }
+          out.push(e);
+          continue;
+        }
+        const e = byKey.get(k);
+        if (e) out.push(e);
+      }
+      return out;
+    };
     const makeTileEntry = (t: EchoTile): TileEntry => {
       const e: TileEntry = { tile: t, img: null };
       entries.push(e);
@@ -3121,7 +3104,18 @@ async function init(): Promise<void> {
       // (his report, 2026-08-28: dragging icons stopped working). The repaint
       // is not lost — dragend replays it.
       if (dragIconKey != null) { pendingPagesRender = true; return; }
-      const list = (wallBands[0] ?? []).filter((e) => { const k = keyOf(e.tile); return !k || !dockKeys.includes(k); });
+      // ONE rule for what the pages show (help/dock-items.ts): the dock's
+      // tiles lead while the dock is OFF (his order, 2026-10-04 — the dock's
+      // icons as the first items from the top-left), and whatever the dock
+      // carries never shows twice.
+      const fromDock = dockEntries();
+      const dockOnWall = new Set(document.body.classList.contains(DOCK_OFF_CLASS) ? fromDock : []);
+      const list = wallTilesFor<TileEntry>({
+        dockEnabled: !document.body.classList.contains(DOCK_OFF_CLASS),
+        dockItems: fromDock,
+        wallItems: wallBands[0] ?? [],
+        keyOf: (e) => keyOf(e.tile),
+      });
       const pages: TileEntry[][] = [];
       for (let i = 0; i < list.length; i += perPage) pages.push(list.slice(i, i + perPage));
       if (!pages.length) pages.push([]);
@@ -3182,7 +3176,9 @@ async function init(): Promise<void> {
             }
             activateTile(entry);
           });
-          wireIconDrag(btn, e.tile.sticky ? null : keyOf(e.tile));
+          // A tile the dock carries keeps the DOCK's order — it is arranged
+          // in the dock (shown again), not dragged about on the wall.
+          wireIconDrag(btn, e.tile.sticky || dockOnWall.has(e) ? null : keyOf(e.tile));
           btn.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
           btn.addEventListener("drop", (ev) => {
             ev.preventDefault(); ev.stopPropagation();
@@ -3982,8 +3978,10 @@ async function init(): Promise<void> {
         // the stylesheet drops the bar, the portal layer and the hover strip
         // under body.echo-dock-off, and every band measured from the dock
         // reads zero. The wall, the rail and the menus still open everything
-        // the dock did (New session, Settings, the command center, Close all).
-        applyDockEnabled(document.body, dockEnabledFrom(en));
+        // the dock did (New session, Settings, the command center, Close all),
+        // and the wall LEADS with the dock's own tiles (renderPages) — so a
+        // flip of the switch repaints the pages, live, on both surfaces.
+        if (applyDockEnabled(document.body, dockEnabledFrom(en))) renderPages();
         const rvn = Number(rv);
         dockRevealMs = Number.isFinite(rvn) ? Math.max(0, Math.min(1500, rvn)) : 350;
         document.body.classList.toggle("echo-dock-autohide", d !== false);
@@ -4834,43 +4832,7 @@ async function init(): Promise<void> {
           const again = key === "glyphh" ? null : entriesByKey().get(key);
           if (again && !again.tile.cliAgent) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
         }
-        if (DOCK_ITEMS.some((d) => d.key === key)) {
-          const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-          if (key === "glyphh") {
-            // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it
-            // should ALWAYS load a new agent with a new session no matter
-            // what… for some reason it is loading a previous state and the ui
-            // gets stuck"). No re-fronting an open panel, no reusing a
-            // layout's seat: another panel, told to start clean the moment it
-            // answers. The panel also refuses the store's pointer on its own
-            // (help/code.ts), so a dropped command cannot leave it on the
-            // last thread.
-            if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
-            openAgentForLoop(GLYPHH_LOOP_ID);
-            return;
-          }
-          // CC and Close all are permanent slots that go INERT with nothing
-          // open (his order, 2026-08-28) — dim in the row, but never acting.
-          if ((key === "cc" || key === "closeall")
-            && !document.body.classList.contains("echo-has-panels")) return;
-          if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
-          if (key === "closeall") {
-            // CLOSE ALL means ALL — the layout group AND any loose panels
-            // opened beside it (his report, 2026-09-10: the layout closed,
-            // the strays stayed). resetEcho saves layout memory + parks
-            // terminals, then clears the whole stage.
-            resetEcho();
-            return;
-          }
-          if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
-
-          if (key === "platform") { void openPlatformPanel(); return; }
-          if (key === "newtab") { openNewTabForm(); return; }
-          if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "preview") w.__wbOpenTool?.(key);
-          else if (key) w.__wbOpenSection?.(key);
-          return;
-        }
+        if (dockItemFor(key)) { openDockItem(key); return; }
         const entry = entriesByKey().get(key);
         if (entry) activateTile(entry);
       });
@@ -6700,6 +6662,40 @@ async function init(): Promise<void> {
         head.insertBefore(btn, anchor);
       }
     };
+    /** THE DOCK'S ACTIONS — one table for a dock slot wherever it is clicked:
+     *  the dock row, a slot traded onto the pages, or the dock's tiles leading
+     *  the wall while the dock is off (his order, 2026-10-04: same actions as
+     *  the dock). Keys are help/dock-items.ts (DOCK_ITEMS). */
+    const openDockItem = (key: string): void => {
+      const w = window as unknown as { __wbOpenSection?: (s: string) => void; __glyphhOpenSettings?: () => void; __wbEchoShadowPin?: () => void };
+      if (key === "glyphh") {
+        // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
+        // ALWAYS load a new agent with a new session no matter what… for some
+        // reason it is loading a previous state and the ui gets stuck"). No
+        // re-fronting an open panel, no reusing a layout's seat: another
+        // panel, told to start clean the moment it answers. The panel also
+        // refuses the store's pointer on its own (help/code.ts), so a dropped
+        // command cannot leave it on the last thread.
+        if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
+        openAgentForLoop(GLYPHH_LOOP_ID);
+        return;
+      }
+      // CC and Close all are permanent slots that go INERT with nothing open
+      // (his order, 2026-08-28) — dim in the row, but never acting.
+      if ((key === "cc" || key === "closeall") && !document.body.classList.contains("echo-has-panels")) return;
+      if (key === "cc") { w.__wbEchoShadowPin?.(); return; }
+      if (key === "closeall") {
+        // CLOSE ALL means ALL — the layout group AND any loose panels opened
+        // beside it (his report, 2026-09-10: the layout closed, the strays
+        // stayed). resetEcho saves layout memory + parks terminals, then
+        // clears the whole stage.
+        resetEcho();
+        return;
+      }
+      if (key === "newtab") { openNewTabForm(); return; }
+      if (key === "settings") { w.__glyphhOpenSettings?.(); return; }
+      w.__wbOpenSection?.(key);
+    };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
@@ -6707,23 +6703,10 @@ async function init(): Promise<void> {
       // order, 2026-10-04) — a streamed panel behind the `streamedPanels`
       // flag, the "Streamed panels are off" card otherwise (mountAppIntoCard /
       // the preview tool). The old "open its own browser tab" detour is gone.
-      // A NAV tile (a dock slot traded onto the pages) routes exactly like
-      // its dock self — sections, tools, settings, and the glyphh mark.
-      if (t.navKey) {
-        const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        // The mark on a page is the dock's mark: a new agent on a new
-        // session (his order, 2026-09-29), never an in-place reset.
-        if (t.navKey === "glyphh") {
-          if (AGENT_INSTANCED) openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" });
-          else w.__glyphhNewSession?.();
-        }
-        else if (t.navKey === "newtab") openNewTabForm();
-        else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
-        else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
-        else w.__wbOpenSection?.(t.navKey);
-        return;
-      }
+      // A NAV tile — a dock slot traded onto the pages, or the dock's own
+      // slot leading the wall while the dock is off — acts exactly like its
+      // dock self: ONE table (openDockItem) for both.
+      if (t.navKey) { openDockItem(t.navKey); return; }
       // HOME — the fixed first tile — and the agent tile are ONE identity
       // (Glyphh) with ONE behavior. The wall activates tiles DIRECTLY (this
       // path), not through ctl.openApp, which is why routing it only there
