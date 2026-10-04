@@ -34,6 +34,11 @@ export interface SavedPanelApp {
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon (installed/built Glyphh apps). */
   iconUrl?: string | null;
+  /** A local icon file (≤ 24 KB) as a data URL — main's org-apps row carries
+   *  it so the web (relay rows) can draw art that lives on this machine. */
+  iconDataUrl?: string;
+  /** A URL tab's favicon URL, the one the desktop fetches (org-apps.ts). */
+  faviconUrl?: string;
   connectionIds: string[];       // ids of first-class Connections this app uses
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;

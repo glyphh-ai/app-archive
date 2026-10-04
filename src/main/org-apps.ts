@@ -9,8 +9,10 @@
  * and see identical data.
  */
 
+import * as path from "node:path";
 import * as appsStore from "./apps-store.js";
-import type { LocalAppRow } from "./apps-store.js";
+import { APPS_DIR, type LocalAppRow } from "./apps-store.js";
+import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
 import { appCache } from "./glyphh-client.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
@@ -40,6 +42,13 @@ export interface OrgAppRow {
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
   iconUrl: string | null;
+  /** A local icon file (≤ 24 KB) as a data URL — the art the web can show
+   *  for an app whose icon lives in a folder on this machine (app-icon-file.ts).
+   *  Absent when there is none or it is bigger. */
+  iconDataUrl?: string;
+  /** For a URL tab: the favicon URL the desktop fetches for it, carried so the
+   *  web asks its own /webicon proxy for the same mark. Absent otherwise. */
+  faviconUrl?: string;
   /** The FULL marketplace listing (copy, media, rating, listed state). Carried
    *  through so the app-detail Marketplace tab reads back what a save stored —
    *  without it the read-back blanks every field but the title. */
@@ -112,7 +121,20 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
  *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
  *  tag (isGlyphhAppRow and friends match on it). */
 function toRow(app: LocalAppRow): OrgAppRow {
+  // The icon the row carries off this machine (app-icon-file.ts): a Glyphh
+  // app's icon file — in its bundle folder (config.bundleDir, a registered
+  // bundle), its tab folder, or beside its entry (an installed .glyphh zip
+  // extracts icon.svg at its root) — and a URL tab's favicon URL.
+  const bundleDir = typeof app.config?.bundleDir === "string" ? app.config.bundleDir : null;
+  const iconDataUrl = iconDataUrlForDirs([
+    bundleDir,
+    path.join(APPS_DIR(), app.slug),
+    app.kind === "glyphh" && app.nativeRef ? path.dirname(app.nativeRef) : null,
+  ]);
+  const faviconUrl = app.kind === "web" ? faviconUrlFor(app.prodUrl) : "";
   return {
+    ...(iconDataUrl ? { iconDataUrl } : {}),
+    ...(faviconUrl ? { faviconUrl } : {}),
     id: app.id,
     orgId: "",
     createdBy: "",
