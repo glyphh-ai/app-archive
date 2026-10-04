@@ -49,6 +49,7 @@ ENV NODE_ENV=production \
 
 COPY --from=build /work/app/web/serve.mjs ./web/serve.mjs
 COPY --from=build /work/app/web/serve-routes.mjs ./web/serve-routes.mjs
+COPY --from=build /work/app/web/webicon.mjs ./web/webicon.mjs
 COPY --from=build /work/app/dist/renderer ./dist/renderer
 
 EXPOSE 3002
