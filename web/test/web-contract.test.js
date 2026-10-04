@@ -13,7 +13,7 @@
  * regression guard for the blank-screen class of bug.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildContract, EMPTY, toLoopModels } from '../src/web-contract.js';
+import { buildContract, EMPTY, toLoopModels, trimWsState } from '../src/web-contract.js';
 
 /** A fake SDK client whose domain methods resolve canned SDK shapes (the AUTHED path). */
 function authedClient() {
@@ -237,5 +237,90 @@ describe('the composer model list + plan gates on web (main/loop-models.ts parit
     expect(await c.planGates()).toEqual(gates);
     const off = c.onModelsChanged(() => {});
     expect(typeof off).toBe('function');
+  });
+});
+
+// ── The 2026-10-04 sweep: names the renderer reads that the contract now serves ──
+describe('the sweep shims (2026-10-04)', () => {
+  const sweepClient = () => ({
+    ...authedClient(),
+    connections: {
+      ...authedClient().connections,
+      personalMcpCreate: vi.fn(async (input) => ({ ok: true, connection: { slug: input.slug, name: input.name } })),
+      personalMcpUpdate: vi.fn(async (slug, patch) => ({ ok: true, connection: { slug, ...patch } })),
+      personalMcpRemove: vi.fn(async () => ({ ok: true })),
+      mcpTools: vi.fn(async (slug) => { if (slug === 'org-srv') return [{ name: 'search', description: 'Search' }]; const e = new Error('404'); e.status = 404; throw e; }),
+      resolvedTools: vi.fn(async () => ({ connections: [{ slug: 'my-srv', tools: [{ name: 'a' }], availableTools: [{ name: 'a', description: 'A' }, { name: 'b', description: 'B' }] }] })),
+      popular: vi.fn(async () => ({ apps: [{ id: 'slack', name: 'Slack', installs: 9 }] })),
+      categories: vi.fn(async () => ({ categories: [{ name: 'Chat', count: 1, apps: [{ id: 'slack', name: 'Slack' }] }] })),
+    },
+    agents: { ...authedClient().agents, create: vi.fn(async (i) => ({ id: 'n', ...i })), update: vi.fn(async (ref, p) => ({ id: ref, ...p })), remove: vi.fn(async () => undefined) },
+    releases: { list: vi.fn(async () => [{ tag: 'v1.4.8', publishedAt: null, assets: [] }]), assetUrl: vi.fn(async (tag, name) => ({ url: `https://dl/${tag}/${name}` })) },
+    files: { list: vi.fn(async () => [{ id: 'f1', name: 'a.md' }]), get: vi.fn(async () => ({ id: 'f1', downloadUrl: null })), delete: vi.fn(async () => undefined) },
+  });
+  const deps = { apiUrl: 'https://api.glyphh.ai', isAuthenticated: async () => true, signOut: async () => {} };
+
+  it('the preload STRING properties are strings (a function was a truthy link once)', () => {
+    const k = buildContract(sweepClient(), deps);
+    expect(k.apiUrl).toBe('https://api.glyphh.ai');
+    expect(k.serverUrl).toBe('https://api.glyphh.ai');
+    expect(typeof k.discordInvite).toBe('string');
+    // This origin's /platform in a browser; the platform host where there is no location (node).
+    expect(k.platformUrl).toMatch(/^https:\/\/(platform\.glyphh\.ai|.+\/platform)$/);
+  });
+
+  it('custom MCP writes ride the personal MCP resource in main\'s {ok,…} shapes', async () => {
+    const c = sweepClient();
+    const k = buildContract(c, deps);
+    expect(await k.mcpConnectionsCreate({ name: 'My Srv', url: 'https://x', headers: { a: 'b' } })).toEqual({ ok: true, connection: { slug: 'my-srv', name: 'My Srv' }, toolCount: 0 });
+    expect(c.connections.personalMcpCreate).toHaveBeenCalledWith({ slug: 'my-srv', name: 'My Srv', url: 'https://x', headers: { a: 'b' } });
+    expect(await k.mcpConnectionsCreate({ name: '', url: 'x' })).toMatchObject({ ok: false });
+    expect(await k.mcpConnectionsUpdate('my-srv', { enabled: false, hiddenTools: ['b'], url: ' ' })).toEqual({ ok: true, connection: { slug: 'my-srv', enabled: false, hiddenTools: ['b'] } });
+    expect(await k.mcpConnectionsDelete('my-srv')).toEqual({ ok: true });
+    expect(await k.mcpConnectionsInstall('x')).toMatchObject({ ok: false });
+    // Tools: the org probe, else the member's resolved set (hidden = not granted).
+    expect(await k.mcpConnectionsTools('org-srv')).toEqual({ ok: true, tools: [{ name: 'search', description: 'Search', hidden: false }] });
+    expect(await k.mcpConnectionsTools('my-srv')).toEqual({ ok: true, tools: [{ name: 'a', description: 'A', hidden: false }, { name: 'b', description: 'B', hidden: true }] });
+    expect(await k.mcpConnectionsTools('nope')).toMatchObject({ ok: false, tools: [] });
+  });
+
+  it('connector discovery answers main/connectors.ts rows; agents + releases + files in their IPC shapes', async () => {
+    const k = buildContract(sweepClient(), deps);
+    expect(await k.connectorsGetPopular()).toEqual([{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [], installs: 9 }]);
+    expect(await k.connectorsGetCategories()).toEqual([{ name: 'Chat', count: 1, apps: [{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [] }] }]);
+    expect(await k.libraryAgentCreate({ name: 'Ada' })).toEqual({ ok: true, data: { id: 'n', name: 'Ada' } });
+    expect(await k.libraryAgentUpdate('ada', { name: 'Ada 2' })).toEqual({ ok: true, data: { id: 'ada', name: 'Ada 2' } });
+    expect(await k.libraryAgentDelete('ada')).toEqual({ ok: true, data: true });
+    expect(await k.releasesList()).toEqual({ ok: true, releases: [{ tag: 'v1.4.8', publishedAt: null, assets: [] }] });
+    expect(await k.releasesAssetUrl('v1.4.8', 'Glyphh.dmg')).toEqual({ ok: true, url: 'https://dl/v1.4.8/Glyphh.dmg' });
+    expect(await k.filesList()).toEqual([{ id: 'f1', name: 'a.md' }]);
+    expect(await k.filesPeek('f1')).toBe('');
+  });
+
+  it('logged out, every sweep shim still answers its empty shape', async () => {
+    const k = buildContract(rejectingClient(), deps);
+    expect(await k.mcpConnectionsCreate({ name: 'a', url: 'b' })).toMatchObject({ ok: false });
+    expect(await k.mcpConnectionsTools('a')).toMatchObject({ ok: false, tools: [] });
+    expect(await k.connectorsGetPopular()).toEqual([]);
+    expect(await k.connectorsGetCategories()).toEqual([]);
+    expect(await k.libraryAgentCreate({})).toMatchObject({ ok: false });
+    expect(await k.releasesList()).toMatchObject({ ok: false });
+    expect(await k.filesList()).toEqual([]);
+    expect(await k.wsStateLoad()).toEqual({});
+  });
+
+  it('the workbench UI state rides the member\'s prefs (workbenchUiState), trimmed to budget newest-first', async () => {
+    const c = sweepClient();
+    const store = { workbenchUiState: JSON.stringify({ wall: { v: '{"layout":"dev"}', at: 3 } }) };
+    c.profile.prefs = vi.fn(async () => ({ ...store }));
+    c.profile.setPrefs = vi.fn(async (patch) => { Object.assign(store, patch); return store; });
+    const k = buildContract(c, deps);
+    expect(await k.wsStateLoad()).toEqual({ wall: { v: '{"layout":"dev"}', at: 3 } });
+    expect(await k.wsStateSave({ wall: { v: 'x', at: 4 }, 'wall:dev': { v: 'y', at: 5 } })).toBe(true);
+    expect(JSON.parse(store.workbenchUiState)).toEqual({ wall: { v: 'x', at: 4 }, 'wall:dev': { v: 'y', at: 5 } });
+    // Budget: the newest entries survive, the oldest go.
+    const big = { old: { v: 'o'.repeat(20_000), at: 1 }, mid: { v: 'm'.repeat(20_000), at: 2 }, newest: { v: 'n', at: 3 } };
+    expect(Object.keys(trimWsState(big, 28 * 1024)).sort()).toEqual(['mid', 'newest']);
+    expect(trimWsState(null)).toEqual({});
   });
 });
