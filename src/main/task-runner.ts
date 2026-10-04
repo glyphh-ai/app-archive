@@ -32,6 +32,7 @@ import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { onUserChange } from "./user-scope.js";
+import { noteLibrarySave } from "./library-events.js";
 import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 
 export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
@@ -72,6 +73,8 @@ function readManifest(dir: string): TaskManifest {
 
 function writeManifest(dir: string, m: TaskManifest): void {
   fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(m, null, 2) + "\n", "utf-8");
+  // The bundle changed on this machine: the member library hears it (library-sync.ts).
+  noteLibrarySave("task", path.basename(dir));
 }
 
 function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {

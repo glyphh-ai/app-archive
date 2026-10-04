@@ -24,7 +24,6 @@
 import fs from "fs";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
-import { homedir } from "os";
 import { ipcMain } from "electron";
 import cron from "node-cron";
 import { getLocalDb } from "./local-db.js";
@@ -32,20 +31,17 @@ import {
   armSchedule, runSchedule, setAgentProviders,
   type ScheduleRow, type ScheduleContext, type SlotAgent,
 } from "./local-library.js";
+// The record shape is shared with the web (shared/member-library.ts): one
+// builder, so an agent made on either surface is the same row.
+import { agentSlug, buildAgentRow, type GuardrailsPolicyLike } from "../shared/member-library.js";
+import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 const AGENTS_DIR = (): string => userScopedPath("agents");
 
 /** Local caps. Blank fields mean "no cap" — the pre-purge page called these
  *  guardrails and inherited an org ceiling; locally there is no ceiling, so
  *  these are the only limits there are. */
-export interface GuardrailsPolicy {
-  maxInputTokens?: number | null;
-  maxOutputTokens?: number | null;
-  windowSeconds?: number | null;
-  windowTokens?: number | null;
-  windowCalls?: number | null;
-  maxConcurrent?: number | null;
-}
+export type GuardrailsPolicy = GuardrailsPolicyLike;
 
 export interface AgentRow {
   id: string;
@@ -87,8 +83,7 @@ export interface AgentTaskRow {
   lastError: string | null;
 }
 
-export const slugify = (name: string): string =>
-  name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+export const slugify = agentSlug;
 
 const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
   try { return { ok: true, data: fn() }; }
@@ -132,26 +127,6 @@ interface AgentInput {
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 
-const numOrNull = (v: unknown): number | null => {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
-};
-
-function cleanGuardrails(g: GuardrailsPolicy | null | undefined): GuardrailsPolicy | null {
-  if (!g) return null;
-  const out: GuardrailsPolicy = {
-    maxInputTokens: numOrNull(g.maxInputTokens),
-    maxOutputTokens: numOrNull(g.maxOutputTokens),
-    windowSeconds: numOrNull(g.windowSeconds),
-    windowTokens: numOrNull(g.windowTokens),
-    windowCalls: numOrNull(g.windowCalls),
-    maxConcurrent: numOrNull(g.maxConcurrent),
-  };
-  // All blank = no policy at all, so the detail view says "none" instead of
-  // rendering six empty rows.
-  return Object.values(out).some((v) => v !== null) ? out : null;
-}
-
 /** WHO NEEDS TO KNOW THE ROSTER MOVED: the Glyphh loop rebuilds its spawn
  *  tool from it, so an agent made from Settings, from a chat (`agent_save`)
  *  or deleted anywhere reaches the next turn of every open conversation. */
@@ -169,31 +144,37 @@ export function saveAgent(input: AgentInput): AgentRow {
   if (!name) throw new Error("an agent needs a name");
   const slug = slugify(String(input.slug || name));
   const existing = readAgent(slug);
-  const now = new Date().toISOString();
-  const row: AgentRow = {
-    id: slug,
-    slug,
-    name,
-    description: String(input.description ?? existing?.description ?? ""),
-    prompt: String(input.prompt ?? existing?.prompt ?? ""),
-    provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
-    model: String(input.model ?? existing?.model ?? ""),
-    skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
-    apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
-    live: input.live === undefined ? existing?.live ?? true : !!input.live,
-    guardrails: input.guardrails === undefined ? existing?.guardrails ?? null : cleanGuardrails(input.guardrails),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
+  const row = buildAgentRow({ ...input, slug }, existing, new Date().toISOString());
   writeAgent(row);
   // Live flips park or arm every one of its tasks at once.
   if (!existing || existing.live !== row.live) rearmTasksOf(row.slug);
   announceAgents();
+  noteLibrarySave("agent", row.slug);
   return row;
 }
 
+/** Delete the agent: its schedules go with it, a tombstone is written and
+ *  the sync pushes the remove. */
 export function deleteAgent(ref: string): void {
   const slug = String(ref);
+  removeAgentLocal(slug);
+  noteLibraryDelete("agent", slug);
+}
+
+// ── The sync's side (library-sync.ts) ────────────────────────────────────────
+
+/** An agent the server holds, written as-is (its ISO `updatedAt` IS the
+ *  server row's clock); its tasks re-arm by the new `live`. Never announced to
+ *  the sync — it came from there — but the roster listeners hear it. */
+export function applyRemoteAgent(row: AgentRow): void {
+  const existing = readAgent(row.slug);
+  writeAgent(row);
+  if (!existing || existing.live !== row.live) rearmTasksOf(row.slug);
+  announceAgents();
+}
+
+/** The agent goes without a tombstone — the server already holds one. */
+export function removeAgentLocal(slug: string): void {
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
   // would keep firing a prompt nobody can see or edit.
@@ -203,6 +184,9 @@ export function deleteAgent(ref: string): void {
   fs.rmSync(path.join(AGENTS_DIR(), `${slug}.json`), { force: true });
   announceAgents();
 }
+
+/** The agent file as it is, for the sync's local list. */
+export function readAgentRow(slug: string): AgentRow | null { return readAgent(slug); }
 
 // ── Tasks (schedule rows owned by an agent) ──────────────────────────────────
 

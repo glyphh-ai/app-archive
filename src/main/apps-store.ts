@@ -17,7 +17,7 @@
 import fs from "fs";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
-import { homedir } from "os";
+import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 export const APPS_DIR = (): string => userScopedPath("apps");
 
@@ -69,7 +69,7 @@ function writeRow(row: LocalAppRow): void {
   fs.renameSync(`${file}.tmp`, file);
 }
 
-function readRow(slug: string): LocalAppRow | null {
+export function readRow(slug: string): LocalAppRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(rowFile(slug), "utf-8")) as LocalAppRow;
     return row && row.slug ? row : null;
@@ -94,7 +94,7 @@ function migrateLegacyRow(slug: string): LocalAppRow | null {
 }
 
 /** Every registered app on this machine. */
-export async function mine(): Promise<LocalAppRow[]> {
+export function mineSync(): LocalAppRow[] {
   let ids: string[] = [];
   try { ids = fs.readdirSync(APPS_DIR()); } catch { return []; }
   const rows: LocalAppRow[] = [];
@@ -103,6 +103,10 @@ export async function mine(): Promise<LocalAppRow[]> {
     if (row) rows.push(row);
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function mine(): Promise<LocalAppRow[]> {
+  return mineSync();
 }
 
 export async function createEntry(input: CreateEntryInput): Promise<LocalAppRow> {
@@ -130,6 +134,7 @@ export async function createEntry(input: CreateEntryInput): Promise<LocalAppRow>
     updatedAt: now,
   };
   writeRow(row);
+  noteLibrarySave("tab", slug);
   return row;
 }
 
@@ -146,11 +151,28 @@ export async function updateEntry(slug: string, patch: UpdateEntryInput): Promis
   if (patch.secretNames !== undefined) row.secretNames = patch.secretNames.map(String);
   row.updatedAt = new Date().toISOString();
   writeRow(row);
+  noteLibrarySave("tab", row.slug);
   return row;
 }
 
+/** Delete the tab row: a tombstone is written and the sync pushes the remove. */
 export async function removeEntry(slug: string): Promise<void> {
-  const dir = path.join(APPS_DIR(), slug.toLowerCase().trim());
+  const key = slug.toLowerCase().trim();
+  removeEntryLocal(key);
+  noteLibraryDelete("tab", key);
+}
+
+// ── The sync's side (library-sync.ts) ────────────────────────────────────────
+
+/** A tab the server holds, written as-is (its ISO `updatedAt` IS the server
+ *  row's clock). Never announced — it came FROM the sync. */
+export function applyRemoteTab(row: LocalAppRow): void {
+  writeRow(row);
+}
+
+/** The row goes without a tombstone — the server already holds one. */
+export function removeEntryLocal(slug: string): void {
+  const dir = path.join(APPS_DIR(), slug);
   try {
     fs.rmSync(rowFile(slug), { force: true });
     // The folder is also a bundle's home when SKILL.md is there: the tab goes, the app stays.
@@ -166,4 +188,5 @@ export async function markBuilt(slug: string, version: string): Promise<void> {
   row.version = version;
   row.updatedAt = new Date().toISOString();
   writeRow(row);
+  noteLibrarySave("tab", row.slug);
 }

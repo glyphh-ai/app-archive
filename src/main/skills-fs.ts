@@ -25,6 +25,7 @@ import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
+import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
@@ -86,6 +87,21 @@ const ROOTS: Record<SkillSource, () => string> = {
 };
 const DISABLED_ROOT = (): string => userScopedPath("skills-disabled");
 
+/** THE MEMBER LIBRARY holds two of these homes (his rule, 2026-10-04): the
+ *  Glyphh skills home rides as kind `skill`, the tasks home as kind `task`.
+ *  Apps and plugins are machine bundles; a CLI's own folders are the CLI's. */
+function syncKindOf(source: SkillSource): MemberLibraryKind | null {
+  return source === "glyphh" ? "skill" : source === "task" ? "task" : null;
+}
+function announceBundle(source: SkillSource, name: string): void {
+  const kind = syncKindOf(source);
+  if (kind) noteLibrarySave(kind, name);
+}
+function announceBundleGone(source: SkillSource, name: string): void {
+  const kind = syncKindOf(source);
+  if (kind) noteLibraryDelete(kind, name);
+}
+
 const idOf = (source: SkillSource, name: string): string => `${source}:${name}`;
 function parseId(id: string): { source: SkillSource; name: string } {
   const cut = id.indexOf(":");
@@ -119,7 +135,7 @@ export function parseSkillMd(text: string): { frontmatter: Record<string, string
   return { frontmatter: fm, body: text.slice(m[0].length) };
 }
 
-function walk(dir: string, rel = ""): SkillFile[] {
+export function walk(dir: string, rel = ""): SkillFile[] {
   let out: SkillFile[] = [];
   let ents: fs.Dirent[] = [];
   try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
@@ -409,10 +425,11 @@ export function readSkillFile(id: string, rel: string): { text: string; binary: 
 }
 
 export function writeSkillFile(id: string, rel: string, text: string): void {
-  const { dir } = dirOf(id);
+  const { source, name, dir } = dirOf(id);
   const full = safeJoin(dir, rel);
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, text, "utf-8");
+  announceBundle(source, name);
 }
 
 /** Disable = move the folder out of the CLI's directory; enable = move it back. */
@@ -430,6 +447,7 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
     if (on) void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
     else void unregisterBundleApp(dir, { keepSecrets: true });
   }
+  announceBundle(source, name);
   return summarize(source, name, dest, on)!;
 }
 
@@ -439,12 +457,81 @@ let forgetInstall: ((id: string) => void) | null = null;
 export function setInstallForgetter(fn: (id: string) => void): void { forgetInstall = fn; }
 
 export function deleteSkill(id: string): void {
-  const { dir } = dirOf(id);
+  const { source, name, dir } = dirOf(id);
   const type = bundleType(dir);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
   if (type === "app") void unregisterBundleApp(dir);
   forgetInstall?.(id);
+  announceBundleGone(source, name);
+}
+
+// ── THE MEMBER LIBRARY'S SIDE (library-sync.ts) ─────────────────────────────
+// A skill or task is a FOLDER; the server holds its record (SKILL.md's
+// frontmatter and body, task.json) and its files in R2. The sync lists the
+// folders here, writes a pulled folder here, and removes a tombstoned one.
+
+export interface SyncableBundle { id: string; dir: string; enabled: boolean }
+
+/** Every bundle of a synced kind on this machine, enabled or parked. */
+export function listSyncableBundles(kind: "skill" | "task"): SyncableBundle[] {
+  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  const out: SyncableBundle[] = [];
+  for (const [root, enabled] of [[ROOTS[source](), true], [path.join(DISABLED_ROOT(), source), false]] as const) {
+    let ents: fs.Dirent[] = [];
+    try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+    for (const e of ents) {
+      if (e.name.startsWith(".") || !(e.isDirectory() || e.isSymbolicLink())) continue;
+      const dir = path.join(root, e.name);
+      if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
+      out.push({ id: e.name, dir, enabled });
+    }
+  }
+  return out;
+}
+
+/** A pulled bundle lands as the folder the server describes: the files are
+ *  written (each stamped with the manifest's mtime so the folder's clock is
+ *  the server's), files the manifest no longer names go, and the folder sits
+ *  in the enabled or parked root by the record's `enabled`. Never announced —
+ *  it came FROM the sync. */
+export function applyRemoteBundle(kind: "skill" | "task", id: string, enabled: boolean, files: Array<{ path: string; bytes: Uint8Array | null; mtime: number }>): string {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) throw new Error(`bad bundle id: ${id}`);
+  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  const live = path.join(ROOTS[source](), id);
+  const parked = path.join(DISABLED_ROOT(), source, id);
+  const dest = enabled ? live : parked;
+  const other = enabled ? parked : live;
+  // The folder follows the record's enabled flag — moved, never duplicated.
+  if (fs.existsSync(other) && !fs.existsSync(dest)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(other, dest); }
+  else if (fs.existsSync(other)) fs.rmSync(other, { recursive: true, force: true });
+  fs.mkdirSync(dest, { recursive: true });
+  const keep = new Set(files.map((f) => f.path));
+  for (const f of walk(dest)) if (!keep.has(f.path)) { try { fs.rmSync(safeJoin(dest, f.path), { force: true }); } catch { /* fine */ } }
+  for (const f of files) {
+    const full = safeJoin(dest, f.path);
+    // `bytes: null` = the local copy already holds these bytes (same sha256).
+    if (f.bytes) { fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, f.bytes); }
+    else if (!fs.existsSync(full)) continue;
+    if (f.mtime > 0) { try { fs.utimesSync(full, new Date(f.mtime), new Date(f.mtime)); } catch { /* fine */ } }
+  }
+  if (!markerOf(dest)) throw new Error(`"${id}" arrived without a SKILL.md, so nothing would list it`);
+  if (kind === "task") { try { fs.rmSync(path.join(dest, "app.json"), { force: true }); } catch { /* fine */ } }
+  syncLinks();
+  return dest;
+}
+
+/** The server tombstoned this bundle: the folder goes (live or parked), quietly. */
+export function removeBundleLocal(kind: "skill" | "task", id: string): boolean {
+  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  let gone = false;
+  for (const dir of [path.join(ROOTS[source](), id), path.join(DISABLED_ROOT(), source, id)]) {
+    if (!fs.existsSync(dir)) continue;
+    fs.rmSync(dir, { recursive: true, force: true });
+    gone = true;
+  }
+  if (gone) { syncLinks(); forgetInstall?.(idOf(source, id)); }
+  return gone;
 }
 
 /**
@@ -564,6 +651,7 @@ export function adoptSkill(id: string): SkillSummary {
   fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.renameSync(dir, home);
   syncLinks();
+  announceBundle(target, name);
   return summarize(target, name, home, true)!;
 }
 
@@ -574,6 +662,7 @@ export function replaceSkill(id: string, fromDir: string): SkillSummary {
   if (!fs.existsSync(path.join(fromDir, "SKILL.md"))) throw new Error("that folder has no SKILL.md");
   for (const e of fs.readdirSync(dir)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
   fs.cpSync(fromDir, dir, { recursive: true, filter: (src) => !SKIP_DIRS.has(path.basename(src)) });
+  announceBundle(source, name);
   return summarize(source, name, dir, true)!;
 }
 
@@ -618,6 +707,7 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   if (!markerOf(dir)) throw new Error(`"${name}" was written without a SKILL.md, so nothing would list it`);
   syncLinks();
   if (source === "app") void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
+  announceBundle(source, name);
   return summarize(source, name, dir, true)!;
 }
 
@@ -759,6 +849,9 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
   if (to === "app" && enabled) {
     void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   }
+  // A retype is a delete in one library kind and a save in another.
+  announceBundleGone(source, name);
+  announceBundle(target, name);
   return summarize(target, name, dest, enabled)!;
 }
 
@@ -834,6 +927,7 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   syncLinks();
   if (target === "app") void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
+  announceBundle(target, name);
   return summarize(target, name, dest, true)!;
 }
 

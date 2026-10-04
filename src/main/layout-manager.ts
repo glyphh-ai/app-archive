@@ -15,8 +15,9 @@
 
 import fs from "fs";
 import path from "path";
-import { homedir } from "os";
 import { userScopedPath } from "./app-paths.js";
+import { layoutRowOf, workspaceId as sharedWorkspaceId, type LayoutRowLike } from "../shared/member-library.js";
+import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 // The flattened spec shape the palette / app resolver / agent tools read.
 // (The name is historical — "server" layouts are local files now.)
@@ -45,10 +46,9 @@ export interface ServerLayout {
 
 export const WORKSPACES_DIR = (): string => userScopedPath("workspaces");
 
-/** The folder id a workspace persists under — its name, slugged. */
-export function workspaceId(name: string): string {
-  return name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace";
-}
+/** The folder id a workspace persists under — its name, slugged (the
+ *  member library's record id for the workspace, shared/member-library.ts). */
+export const workspaceId = sharedWorkspaceId;
 
 // ── Grid model ──────────────────────────────────────────────
 
@@ -90,42 +90,21 @@ export interface GridLayout {
   sessionMode?: "keep" | "new" | "last";
   folder?: string;
   space?: "chat" | "cowork" | "code";
+  /** THE LWW CLOCK (his rule, 2026-10-04: database-as-truth, latest wins):
+   *  epoch ms, this client's `Date.now()` at the save. A file written before
+   *  stamps existed has none and loses to any server copy. */
+  updatedAt?: number;
 }
 
 /** The row the Workspaces page, the wall and the attach socket read — the
- *  `layouts-list` IPC's shape, projected in ONE place so app.glyphh.ai (which
- *  reads a workspace off the desktop over the relay) sees exactly what the
- *  desktop's own renderer sees. */
-export interface LayoutRow {
-  name: string;
-  cols: number;
-  rows: number;
-  colWidths: number[];
-  rowHeights: number[];
-  target: "glyphh" | "desktop";
-  loop: string | null;
-  modelSelections: Record<string, string>;
-  sessionMode: "keep" | "new" | "last";
-  folder: string | null;
-  space: "chat" | "cowork" | "code" | null;
-  splits: GridCell[];
-}
+ *  `layouts-list` IPC's shape, projected in ONE place (shared/member-library.ts
+ *  layoutRowOf) so app.glyphh.ai — reading the server's record or a workspace
+ *  off the desktop over the relay — sees exactly what the desktop's own
+ *  renderer sees. */
+export type LayoutRow = LayoutRowLike;
 
 export function toLayoutRow(l: GridLayout): LayoutRow {
-  return {
-    name: l.name,
-    cols: l.cols,
-    rows: l.rows,
-    colWidths: l.colWidths,
-    rowHeights: l.rowHeights,
-    target: l.target ?? "glyphh",
-    loop: l.loop ?? null,
-    modelSelections: l.modelSelections ?? {},
-    sessionMode: l.sessionMode ?? "keep",
-    folder: l.folder ?? null,
-    space: l.space ?? null,
-    splits: l.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
-  };
+  return layoutRowOf(l);
 }
 
 /** Every workspace on disk, flattened to the spec shape. */
@@ -176,20 +155,46 @@ export class LayoutManager {
 
   // ── Layout CRUD ───────────────────────────────────────────
 
-  /** Save a workspace — its folder is created on first save. */
+  /** Save a workspace — its folder is created on first save. The save is
+   *  stamped with this client's clock and announced, so the sync pushes it. */
   saveLayout(grid: GridLayout): Promise<void> {
-    this.layouts.set(grid.name, grid);
-    this.persistOne(grid);
+    const stamped: GridLayout = { ...grid, updatedAt: Date.now() };
+    this.layouts.set(stamped.name, stamped);
+    this.persistOne(stamped);
+    noteLibrarySave("workspace", workspaceId(stamped.name));
     return Promise.resolve();
   }
 
-  /** Delete a workspace — the whole folder goes (definition AND state). */
+  /** Delete a workspace — the whole folder goes (definition AND state), a
+   *  tombstone is written and the sync pushes the remove. */
   async deleteLayout(name: string): Promise<boolean> {
     if (!this.layouts.has(name)) return false;
+    this.removeFolder(name);
+    noteLibraryDelete("workspace", workspaceId(name));
+    return true;
+  }
+
+  // ── The sync's side (library-sync.ts): pulls land here, remote deletes too ──
+
+  /** A workspace the server holds, written as-is (its clock is the server
+   *  row's). Never announced — it came FROM the sync. */
+  applyRemoteLayout(grid: GridLayout): void {
+    this.layouts.set(grid.name, grid);
+    this.persistOne(grid);
+  }
+
+  /** The server tombstoned this workspace (by folder id): the folder goes, quietly. */
+  removeLayoutLocal(id: string): boolean {
+    const hit = Array.from(this.layouts.values()).find((l) => workspaceId(l.name) === id);
+    if (!hit) return false;
+    this.removeFolder(hit.name);
+    return true;
+  }
+
+  private removeFolder(name: string): void {
     this.layouts.delete(name);
     try { fs.rmSync(path.join(WORKSPACES_DIR(), workspaceId(name)), { recursive: true, force: true }); }
     catch { /* already gone */ }
-    return true;
   }
 
   /** List all layouts */
