@@ -1654,6 +1654,9 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
    comfortably below the window edge (traffic lights are hidden, left inset
    pulled in). */
 .glyphh-web #panel-wc { padding-left: 2px; padding-top: 10px; height: auto; }
+/* The web header's brand mark (home.ts restores it into the cluster on web):
+   32px tall, flush left, the rail's 50px top clearance was sized for it. */
+.glyphh-web #panel-wc .app-rail-mark { display: block; height: 32px; width: auto; padding-left: 10px; }
 /* A browser tab has no OS window to drag — kill every drag-region claim (incl.
    the header's drag band) so the splash/login/header behave like ordinary pages.
    The empty drag GAP right of the cluster (margin-left offsets sized to clear the

@@ -12,7 +12,7 @@ import { initSearchClears } from "./search-clear.js";
 // bundle reaches it through: imported here so it exists from the first paint.
 import "./help/toast.js";
 import { installAutofillGuard } from "./autofill-guard.js";
-import { hostHas } from "./help/web-surface.js";
+import { hostHas, onWeb } from "./help/web-surface.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
 // Here we re-fetch the authoritative value from main and keep localStorage in sync.
@@ -51,6 +51,28 @@ for (const [id, method] of [["panel-btn-close", "windowClose"], ["panel-btn-mini
   if (!btn) continue;
   if (!hostHas(method)) { btn.remove(); continue; }
   btn.addEventListener("click", () => void (window.glyphh as unknown as Record<string, () => unknown>)[method]());
+}
+// THE WEB HEADER'S BRAND MARK (his report, 2026-10-04: the two small rail icons
+// render on app.glyphh.ai, the mark does not). Echo 2.6 (1a9aeacf) took the
+// rail's mark out of #panel-wc on both targets — the desktop still has its
+// traffic lights there, but the web's fixed header (.glyphh-web #panel-wc, the
+// 50px the rail clears) was left EMPTY. On web the cluster gets the mark back:
+// the same door as the dock's glyphh mark (a new Glyphh session).
+if (onWeb()) {
+  const cluster = document.getElementById("panel-wc");
+  if (cluster && !document.getElementById("rail-home-btn")) {
+    const btn = document.createElement("button");
+    btn.id = "rail-home-btn";
+    btn.className = "app-rail-mark-btn";
+    btn.type = "button";
+    btn.title = "Glyphh — new session";
+    btn.innerHTML = `<img class="app-rail-mark" src="brand/glyphh-mark.png" alt="Glyphh" draggable="false" />`;
+    btn.addEventListener("click", () => {
+      const w = window as unknown as { __wbOpenGlyphhAgent?: () => void; __wbOpenEchoHome?: () => void };
+      if (w.__wbOpenGlyphhAgent) w.__wbOpenGlyphhAgent(); else w.__wbOpenEchoHome?.();
+    });
+    cluster.appendChild(btn);
+  }
 }
 // Pick the startup section. Priority: ?section=<slug> in the URL (system-app
 // panel mounted as its own section) → the user's configured default
