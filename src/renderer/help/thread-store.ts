@@ -32,7 +32,7 @@
 
 import { harnessRequest, HarnessHttpError } from "./harness-api.js";
 import { threadLocus } from "./thread-locus.js";
-import { boundMessages } from "./bound-messages.js";
+import { boundMessages, adoptServerMessages } from "./bound-messages.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
 
@@ -390,8 +390,8 @@ async function reconcile(): Promise<void> {
         local.messageCount = m.messageCount;
         try {
           const full = await t.get(m.id);
-          local.messages = full.messages;
-          local.messageCount = full.messages.length;
+          local.messages = adoptServerMessages(local.messages, full.messages);
+          local.messageCount = local.messages.length;
         } catch (err) { warnOffline(err); needsReconcile = true; }
         pending.delete(m.id);
         snapshot.set(m.id, projection(local));
