@@ -2428,7 +2428,10 @@ async function init(): Promise<void> {
       const reach = band > 0 && dock ? parseFloat(getComputedStyle(dock).marginBottom) || 0 : 0;
       return { band, reach };
     };
-    /** Dots ride just UNDER the icon grid; arrows center on it. */
+    /** The grid's base row gap (styles.css .echo-page-grid), for a grid the
+     *  stylesheet has not laid out yet. */
+    const DOTS_GAP_FALLBACK = 17;
+    /** Dots ride a row gap UNDER the icon grid; arrows center on it. */
     const positionPageChrome = (): void => {
       const grid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
       const pageCount = pagesEl.children.length;
@@ -2445,7 +2448,13 @@ async function init(): Promise<void> {
       const lastIcon = icons.length ? icons[icons.length - 1] : null;
       const g = (lastIcon ?? grid).getBoundingClientRect();
       const stageH = stage.clientHeight || 1;
-      dotsEl.style.top = `${Math.min(Math.round(g.bottom - sr.top + 10), stageH - 26)}px`;
+      // THE DOTS sit one ROW GAP under the last tile's label (his order,
+      // 2026-10-04: "move the dots per page down a bit" — they crowded the
+      // labels at 10px): the same spacing the rows keep between each other,
+      // zoom-aware like the grid's own gap (styles.css .echo-page-grid), so
+      // the dots read as the row after the last one, never as part of it.
+      const rowGap = parseFloat(getComputedStyle(grid).rowGap) || DOTS_GAP_FALLBACK;
+      dotsEl.style.top = `${Math.min(Math.round(g.bottom - sr.top + rowGap), stageH - 26)}px`;
       dotsEl.style.bottom = "auto";
       const mid = Math.max(60, Math.min(Math.round(g.top - sr.top + g.height / 2 - 17), stageH - 80));
       prevArrow.style.top = `${mid}px`;
