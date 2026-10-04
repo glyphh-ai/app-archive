@@ -53,7 +53,8 @@ export interface CreateEntryInput {
   access?: "public" | "members";
 }
 
-export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug">> & { secretNames?: string[] };
+/** `url` / `nativeRef` take null to CLEAR them (an app moved to the cloud keeps no local entry). */
+export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug" | "url" | "nativeRef">> & { url?: string | null; nativeRef?: string | null; secretNames?: string[] };
 
 /** The tab row. A Glyphh app BUNDLE lives in the same folder and owns app.json
  *  (its manifest), so the row keeps its own file beside it. */

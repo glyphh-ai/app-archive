@@ -23,8 +23,9 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
+import { registerBundleApp, unregisterBundleApp, moveLocalAppToCloud } from "./glyphh-app-host.js";
 import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -386,6 +387,8 @@ export function readSkillImage(id: string, rel: string): string {
 }
 
 function dirOf(id: string): { source: SkillSource; name: string; dir: string; enabled: boolean } {
+  // A cloud app's card stands for an instance, not a folder (app-instances.ts).
+  if (isInstanceCardId(id)) throw new Error(`${instanceKeyOfCardId(id)} runs in the cloud — it has no folder on this machine`);
   const { source, name } = parseId(id);
   const live = path.join(ROOTS[source](), name);
   if (markerOf(live)) return { source, name, dir: live, enabled: true };
@@ -964,13 +967,23 @@ export function registerSkillsIpc(): void {
   const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
     try { return { ok: true, data: fn() }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   };
-  ipcMain.handle("skills-list", (_e, kind?: string | string[]) => env(() => {
-    const kinds = kindsOf(kind);
-    if (kinds.includes("app")) tabBundles();
-    return listSkills(kinds);
-  }));
+  ipcMain.handle("skills-list", async (_e, kind?: string | string[]) => {
+    try {
+      const kinds = kindsOf(kind);
+      if (kinds.includes("app")) tabBundles();
+      const rows: SkillSummary[] = listSkills(kinds);
+      // THE LIST = INSTANCES (2026-10-04): the cloud apps this member may open
+      // join the page; one whose slug is a bundle folder here IS that card.
+      if (kinds.includes("app")) {
+        const folders = new Set(rows.filter((r) => r.source === "app").map((r) => r.id.slice(r.id.indexOf(":") + 1).toLowerCase()));
+        rows.push(...await instanceCards(folders));
+      }
+      return { ok: true, data: rows };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("skill-tab", async (_e, id: string, opts?: { name?: string; slug?: string }) => {
     try {
+      if (isInstanceCardId(String(id))) return { ok: true, data: await instanceTab(String(id)) };
       const { dir } = dirOf(String(id));
       // The TYPE opens the tab, not the home it sits in: an app is an app
       // wherever its app.json is (his ruling, 2026-09-17).
@@ -979,14 +992,36 @@ export function registerSkillsIpc(): void {
       return r.ok ? { ok: true, data: { slug: r.slug, name: r.name, tool: r.tool } } : { ok: false, error: r.error };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));
+  ipcMain.handle("skill-get", async (_e, id: string) => {
+    if (isInstanceCardId(String(id))) {
+      try { return { ok: true, data: await instanceDetail(String(id)) }; }
+      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    }
+    return env(() => getSkill(String(id)));
+  });
+  // MOVE TO THE CLOUD (2026-10-04): an app card whose tab still runs from a
+  // folder here is installed as an instance; the folder stays (hidden).
+  ipcMain.handle("skill-move-to-cloud", async (_e, id: string) => {
+    try {
+      const { dir, name } = dirOf(String(id));
+      if (bundleType(dir) !== "app") return { ok: false, error: "only an app moves to the cloud" };
+      const r = await moveLocalAppToCloud(name);
+      return r.ok ? { ok: true, data: { name: r.name, instance: r.instance } } : { ok: false, error: r.error };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));
   ipcMain.handle("skill-agents", (_e, id: string) => env(() => listBundleAgents(String(id))));
   ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string }) =>
     env(() => setBundleAgent(String(id), String(ref), patch ?? {})));
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
-  ipcMain.handle("skill-delete", (_e, id: string) => env(() => { deleteSkill(String(id)); return true; }));
+  ipcMain.handle("skill-delete", async (_e, id: string) => {
+    if (isInstanceCardId(String(id))) {
+      try { await deleteInstance(instanceKeyOfCardId(String(id))); return { ok: true, data: true }; }
+      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    }
+    return env(() => { deleteSkill(String(id)); return true; });
+  });
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
   ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
   ipcMain.handle("skill-replace", async (e, id: string) => {

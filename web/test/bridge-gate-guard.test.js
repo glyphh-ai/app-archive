@@ -27,9 +27,9 @@ const ALLOWED = {
     gitInfo: 'window.wb.gitInfo — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
     listDir: 'window.wb.listDir — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
   },
-  'src/renderer/help/apps.ts': {
-    glyphhAppPreviewOpen: 'IS_WEB returns before the call (renderWebPreview); the read is res?.ok',
-  },
+  // apps.ts: glyphhAppPreviewOpen is SERVED on web since 2026-10-04 (apps
+  // live in the cloud — member-library-web.js answers the instance's panel
+  // path through this origin's /app-host proxy).
   'src/renderer/help/files.ts': {
     filesRename: 'the Rename row is offered only when hostHas("filesRename")',
   },

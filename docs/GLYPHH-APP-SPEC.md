@@ -17,6 +17,47 @@ listing fields in §2.1 are all OPTIONAL and additive — older bundles install 
 
 ---
 
+## 0. Where an app runs (2026-10-04): in the cloud
+
+Apps are installed **in the cloud**, as an **app instance** of the organization
+(server `glyphh/docs/app-instances.md`): one Fly machine per instance, the
+bundle on R2, the UI served by the server's proxy at `/app-host/<key>/ui/*`
+with the `window.glyphh.call` shim injected, the manifest's tools invoked at
+`/api/app-instances/<key>/invoke`. An org admin installs an **org instance**
+(every member, or a restricted list); anyone else a **personal** one
+(`<slug>~<user>`). Re-installing a slug updates the instance in place.
+
+What the surfaces do with that (app `src/shared/app-instances.ts`):
+
+- **Install** — `app_install` (the MCP tool), the Settings import, the `.glyphh`
+  drop and the Apps-page "Move to the cloud" all go through
+  `installGlyphhAppBundle`: validate the bundle here, create the instance,
+  PUT the zip to R2, `ready`, then write a `tab` library row whose
+  `launchConfig.instance` names the key — the row syncs to every surface.
+  Nothing is unzipped into `~/.glyphh` and no worker starts.
+- **List** — the wall, the dock, the command bar and Settings → Build → Apps
+  show the member's tab rows plus every instance they may open that no row
+  names yet (`mergeAppRows`). An app from before the cloud (its entry a file
+  on this machine) shows once, flagged `legacyLocal`, with **Move to the
+  cloud** on its card's menu; moving it retargets the tab and leaves the folder.
+- **Open** — the desktop panel's `<webview>` loads
+  `${api}/app-host/<key>/ui/index.html` with the session cookie set on its
+  partition; its `glyphh.call` is the preload's (read-only on `window`) and
+  rides main → `POST /app-host/<key>/call` as the member. On the web the panel
+  is an iframe of the SAME path on the web origin — `web/app-host-proxy.mjs`
+  turns the panel cookie into the bearer and rewrites the shim's `/call` to
+  the prefixed path. The loop's app tools (`app_list_tools` / `app_call_tool`)
+  are the instances' tools.
+- **House panels** (Images, Audio, Video, Files, Design, Slides…) are not
+  bundles; nothing here touches them.
+
+**Rollback:** `GLYPHH_LOCAL_APPS=1` in the desktop's environment starts the
+local app host again (the sections below: extract into `custom-apps/`, the
+worker, per-app SQLite/cron, the capability table) and lets the local rows
+answer tools and open from disk. Instances still list and open either way.
+
+---
+
 ## 1. Anatomy
 
 A Glyphh app ships as a `.glyphh` — a zip with the manifest and assets at the

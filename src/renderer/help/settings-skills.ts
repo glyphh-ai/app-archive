@@ -1798,6 +1798,9 @@ function wire(): void {
       { label: "Try in chat", onClick: tryInChat },
       { label: "Edit with Glyphh", onClick: () => editWith() },
       { label: "Check for updates", onClick: () => void checkForUpdates() },
+      // APPS LIVE IN THE CLOUD (2026-10-04): an app whose tab still runs from
+      // a folder on this machine moves up as an instance; its folder stays.
+      ...(current.type === "app" && !current.id.startsWith("app-instance:") ? [{ label: "Move to the cloud", onClick: () => void moveToCloud() }] : []),
       ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
       ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
       { label: "Replace", onClick: () => void replaceFiles() },
@@ -1823,6 +1826,17 @@ async function createNew(kind: BundleType): Promise<void> {
     cwd: r.data,
     prompt: NEW_PROMPT[kind],
   });
+}
+
+/** The app's bundle goes to the server as an org instance (an org admin) or
+ *  a personal one; the tab is retargeted; the folder here is left as it is. */
+async function moveToCloud(): Promise<void> {
+  if (!current) return;
+  type MoveEnv = { ok: boolean; data?: { name?: string; instance?: string }; error?: string };
+  const r: MoveEnv = await api().skillMoveToCloud(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  if (!r.ok) { fail(r.error || "Couldn't move the app to the cloud."); return; }
+  notice(`${r.data?.name || current.name} is in the cloud`, { detail: "It opens from the farm on every surface now. The folder on this machine stays." });
+  await loadSkillsSettings();
 }
 
 async function importFromFile(): Promise<void> {
