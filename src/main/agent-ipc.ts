@@ -231,6 +231,8 @@ export interface RunPayload {
   workspace?: string;
   /** The thread's TYPE, as the composer knows it: chat or code. */
   mode?: string;
+  /** The composer's effort dial; glyphh-loop.ts checks it against the SDK's names. */
+  effort?: string;
 }
 
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
@@ -261,6 +263,7 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
     chatId: p.chatId,
     ...(p.permission ? { permission: p.permission } : {}),
     ...(p.model ? { model: p.model } : {}),
+    ...(p.effort ? { effort: p.effort } : {}),
     ...(p.workdir ? { workdir: p.workdir } : {}),
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.attachments?.length ? { attachments: p.attachments } : {}),

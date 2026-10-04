@@ -14,7 +14,7 @@
  */
 
 import type { WebContents } from "electron";
-import { GlyphhLoop, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
+import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
 import { createHash } from "node:crypto";
 import { listSkills } from "./skills-fs.js";
 import { callAppTool, listInstalledAppTools } from "./glyphh-app-host.js";
@@ -36,6 +36,9 @@ export interface LoopRunPayload {
   chatId: string;
   permission?: LoopPermission;
   model?: string;
+  /** The composer's effort dial (his order, 2026-10-04). Any name the SDK
+   *  does not know is ignored, and the turn runs on the chat's last effort. */
+  effort?: string;
   workdir?: string;
   workspace?: string;
   /** The chat's stored turns, to seed a conversation this process has not seen. */
@@ -358,9 +361,11 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const files = atts.filter((a) => a.kind !== "image");
   const manifest = p.space === "work" ? attachmentInlineText(files) : attachmentPromptBlock(files);
   const images = attachmentImageRefs(atts).map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType, data: im.data } }));
+  const effort = LOOP_EFFORTS.find((e) => e === p.effort);
   const started = await loop.run({
     chatId: p.chatId, text: [text, manifest].filter(Boolean).join("\n\n"), model,
     ...(images.length ? { images } : {}),
+    ...(effort ? { effort } : {}),
     ...(p.space ? { space: p.space } : {}),
     ...(p.permission ? { permission: p.permission } : {}),
     ...(p.workdir ? { workdir: p.workdir } : {}),

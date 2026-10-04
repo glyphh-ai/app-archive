@@ -412,7 +412,7 @@ declare global {
       // Support
       submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
       // Recents (rich)
-      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; source?: unknown }) => Promise<{ runId: string }>;
+      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; effort?: "low" | "medium" | "high" | "xhigh" | "max"; source?: unknown }) => Promise<{ runId: string }>;
       onGlyphhAgentConnect?: (cb: (p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => void) => () => void;
       glyphhAgentConnectRespond?: (p: { id: string; connected: boolean; reason?: string }) => Promise<boolean>;
       glyphhPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;

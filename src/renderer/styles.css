@@ -6270,6 +6270,8 @@ img[src*="github.com"], img[src*="githubassets"], img[data-mark-src*="github.com
 
 /* A model the catalog no longer carries: named, and marked. */
 .code-chip.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+/* The effort chip on a model that takes one effort: still there, dimmed. */
+.code-chip.dim { opacity: .45; cursor: default; }
 
 /* A slot's agent picker: wide enough for a real agent name (it was 80px, so
    every option read "First ag…"), and it never outgrows the row. */
@@ -10435,18 +10437,12 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    Also bump the min-width so the descriptions don't wrap awkwardly. */
 /* Keep wide menus INSIDE the ~380px panel — native workspace BrowserViews
    composite above any DOM that spills past the panel edge, clipping it.
-   Model menu is left-anchored (its trigger sits left-of-center) and the effort
-   menu is right-anchored (its trigger sits further right); both cap their width
-   so they can't overflow the panel. */
+   Model menu is left-anchored (its trigger sits left-of-center) and caps its
+   width so it can't overflow the panel. */
 #yo-model-dropdown .yo-mode-menu {
   left: 0;
   right: auto;
   min-width: 240px;
-  max-width: calc(var(--right-inset, 380px) - 28px);
-}
-#yo-effort-dropdown .yo-mode-menu {
-  left: auto;
-  right: 0;
   max-width: calc(var(--right-inset, 380px) - 28px);
 }
 
@@ -10536,55 +10532,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    the permission options, and let their longer "when to use" line wrap. */
 .yo-model-option .yo-mode-opt-label { text-transform: none; }
 .yo-model-option .yo-mode-opt-desc { white-space: normal; font-size: 10px; line-height: 1.3; margin-top: 2px; }
-
-/* ── Effort slider (composer) ──────────────────────────────── */
-/* Fixed widths so changing the level name (Faster↔Ultracode) doesn't resize the
-   trigger / header and make the slider + menu jump while dragging. */
-.yo-effort-trigger-label { font-size: 11px; font-weight: 600; display: inline-block; min-width: 60px; text-align: left; }
-.yo-effort-bolt { display: inline-flex; }
-.yo-effort-bolt svg { width: 13px; height: 13px; }
-.yo-effort-menu { padding: 12px; min-width: 240px; }
-.yo-effort-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.yo-effort-head-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3); }
-.yo-effort-value { font-size: 12px; font-weight: 700; color: var(--text); display: inline-block; min-width: 66px; text-align: right; }
-.yo-effort-track-wrap { display: flex; align-items: center; gap: 8px; }
-.yo-effort-end { font-size: 9px; color: var(--text-3); white-space: nowrap; flex: 0 0 auto; }
-.yo-effort-slider {
-  -webkit-appearance: none; appearance: none;
-  flex: 1 1 auto; height: 8px; border-radius: 5px; cursor: pointer; margin: 0;
-  background-color: var(--surface-3, rgba(255,255,255,0.08));
-  /* Plain mode (Faster / Balanced / Smarter): solid accent fill up to the thumb,
-     NO animation — it's just a slider. */
-  background-image: linear-gradient(90deg, var(--accent-dark, #7e22ce), var(--accent, #af5fff));
-  background-size: var(--effort-fill, 33%) 100%;
-  background-repeat: no-repeat;
-}
-/* ULTRACODE only: a matrix-style particle field across the full track — faint
-   and near-empty on the left, intensifying to bright accent on the right, with
-   two layers of diagonal "rain" particles drifting at different speeds. */
-.yo-effort-slider.is-ultra {
-  background-image:
-    repeating-linear-gradient(115deg, rgba(255,255,255,.65) 0 1px, rgba(255,255,255,0) 1px 5px),
-    repeating-linear-gradient(115deg, rgba(196,150,255,.5) 0 1px, rgba(196,150,255,0) 1px 9px),
-    linear-gradient(90deg, rgba(126,34,206,.10) 0%, var(--accent-dark, #7e22ce) 45%, var(--accent, #af5fff) 100%);
-  background-size: 100% 100%, 100% 100%, 100% 100%;
-  background-repeat: no-repeat;
-  animation: yo-effort-matrix 0.7s linear infinite;
-}
-@keyframes yo-effort-matrix {
-  from { background-position: 0 0, 0 0, 0 0; }
-  to   { background-position: 11px 8px, -7px 9px, 0 0; } /* particles rain; base fixed */
-}
-.yo-effort-slider::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; border: 2px solid var(--accent); cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,.35);
-}
-.yo-effort-slider::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--accent);
-  background: #fff; cursor: pointer;
-}
 
 /* ── Plan action buttons ───────────────────────────────── */
 
@@ -14458,7 +14405,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-chipwrap > .code-chip { max-width: 100%; }
 /* Text chips give way; ICONS never do — the mic, the +, the meter and the
    speak-stop keep their size and their seat no matter how long a label gets. */
-#code-model-wrap, #code-effort-wrap, #code-mode-wrap { flex: 0 1 auto; }
+#code-model-wrap, #code-level-wrap, #code-mode-wrap { flex: 0 1 auto; }
 #code-mic-wrap, #code-speak-wrap, #code-plus-wrap, #code-ctx-wrap { flex: 0 0 auto; }
 .code-bar-left { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; }
 .code-bar-right { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-width: 0; }
@@ -14493,11 +14440,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   width: 1.5px;
   background: var(--text-faint);
 }
-
-/* Drop-up headers (effort + context panels) */
-.effort-head { display: flex; align-items: center; gap: 6px; }
-.effort-title { font-size: 12px; font-weight: 600; color: var(--text); }
-.effort-desc { font-size: 11px; color: var(--text-3); line-height: 1.45; margin: 3px 0 10px; }
 
 /* Compaction panel — one row per model lane, distance to fold. The meter is
    the rightmost trigger; anchor right but pull the panel WELL left of it.
@@ -14805,67 +14747,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .mode-info-entry h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text-bright); }
 .mode-info-entry p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
 
-/* Effort drop-up — labels over a 4-stop slider */
-.code-effort-pop { min-width: 236px; padding: 12px 14px 13px; }
-.effort-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-.effort-label.active { color: var(--white); }
-.effort-label.sf { color: var(--accent); }
-.effort-label.sf.active { color: var(--white); text-shadow: 0 0 8px rgba(175, 95, 255, 0.7); }
-.effort-track { position: relative; height: 26px; color: var(--text-bright); }
-#effort-matrix {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 6px;
-  background: rgba(175, 95, 255, 0.07);
-  opacity: 0;
-  pointer-events: none;
-}
-.code-effort-pop.superfly #effort-matrix { opacity: 1; }
-.effort-track input[type="range"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  margin: 0;
-  -webkit-appearance: none;
-  background: none;
-  cursor: pointer;
-}
-.effort-track input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  margin-top: 11px;
-  border-radius: 2px;
-  background: var(--border-2);
-}
-.effort-track input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
-  border-radius: 50%;
-  background: var(--text-bright);
-  border: 2px solid var(--accent);
-}
-/* Superfly: the matrix IS the control — the slider stays draggable but
-   disappears (drag left to come back down). */
-.code-effort-pop.superfly input[type="range"] { opacity: 0; }
-
-/* Superfly chip — purple heat */
-.code-chip.effort-superfly {
-  color: var(--white);
-  border-color: rgba(175, 95, 255, 0.65);
-  box-shadow: 0 0 9px rgba(175, 95, 255, 0.35);
-}
 .code-chip {
   border: 1px solid var(--border);
   background: none;
@@ -17648,9 +17529,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .code-drop-up .ws-fs-list,
 .code-drop-up .loop-drop-list { margin-right: -5px; padding-right: 5px; scrollbar-gutter: stable; }
 
-/* The LOOP picker was too narrow for loop names + descriptions. */
-#code-effort-pop { min-width: 300px; }
-
 /* ── The effort dial (2026-09-20): Claude's grammar — "Effort <level>" with ⓘ,
    Faster … Smarter, a track with one dot per step and a sliding thumb. Ultra
    lights the track with a pixel shimmer that runs right to left. ── */
@@ -17877,10 +17755,9 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 .layout-space-tabs .code-space-opt:hover { color: var(--text); background: var(--hover); }
 .layout-space-tabs .code-space-opt.active { background: var(--accent); color: var(--accent-ink, #fff); }
 
-/* CHAT has no workspace: no folder, no tools, no loop — the MODEL stays, and
-   the source chip stays as the inert "Cloud" label. */
-body[data-session-space="chat"] #code-plus-wrap,
-body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
+/* CHAT has no workspace: no folder, no tools — the MODEL and its effort stay,
+   and the source chip stays as the inert "Cloud" label. */
+body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 
 
 .app-rail-tile .tile-name { color: var(--text-2); }

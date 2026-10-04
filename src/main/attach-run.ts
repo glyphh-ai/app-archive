@@ -84,6 +84,7 @@ export function installAttachRunHandlers(): void {
       chatId, prompt: text, mode,
       ...(relayPermission(p.permission) ? { permission: relayPermission(p.permission) } : {}),
       ...(str(p, "model") ? { model: str(p, "model") } : {}),
+      ...(str(p, "effort") ? { effort: str(p, "effort") } : {}),
       ...(str(p, "workdir") ? { workdir: str(p, "workdir") } : {}),
     }).catch((err) => { try { sink.send("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) }); sink.send("glyphh-agent:done", { stopped: true }); } catch { /* gone */ } });
     return { runId, started: true };

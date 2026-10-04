@@ -155,8 +155,7 @@ const CURRENT_KEY = "codeCurrentChat";
 
 // ── Permission modes + effort (composer controls) ────────────────────────
 // Mode: a drop-UP menu (checkmark marks the selection; Shift+Tab cycles).
-// Effort: far right — a drop-up slider Low→Med→High→Superfly; superfly
-// turns the track into a particle matrix and maxes the reply budget.
+// Effort: far right — a drop-up dial, Faster → Smarter (renderLevelPop).
 const MODES = [
   { id: "ask", label: "Ask mode", hint: "Every action needs your approval" },
   { id: "plan", label: "Plan mode", hint: "Read-only — Glyphh plans, changes nothing" },
@@ -171,9 +170,11 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   acceptEdits: "File edits inside the working folder run without asking, so refactors flow uninterrupted. Everything else — shell commands, and anything that leaves your machine (connected-account calls, network) — still stops for approval.",
   auto: "Full auto — no gates at all. Every action runs without asking: edits, shell commands, connected-account calls, and dangerous commands alike. Use it for sessions you trust to run unattended end to end.",
 };
-// ── Effort (his order, 2026-09-20): the dial Claude's app has, beside the loop
-// chip, for every CLI that takes one (claude --effort, codex reasoning effort).
-// Five steps, Faster → Smarter; the top step is Ultra and the track lights up.
+// ── Effort (his order, 2026-09-20; restored 2026-10-04): the dial Claude's app
+// has, at the right end of the composer bar. Five steps, Faster → Smarter; the
+// top step is Ultra and the track lights up. ONE preference (`effort`, default
+// medium) for every turn — there is one loop — sent as the turn's effort; the
+// chip stays visible and dims when the model on the chip takes one effort.
 const EFFORTS = [
   { id: "low", label: "Low" },
   { id: "medium", label: "Medium" },
@@ -181,6 +182,119 @@ const EFFORTS = [
   { id: "xhigh", label: "Extra high" },
   { id: "max", label: "Ultra" },
 ] as const;
+type EffortId = (typeof EFFORTS)[number]["id"];
+const EFFORT_PREF = "effort";
+const EFFORT_HELP = "Higher effort means more thorough responses, but takes longer and uses your limits faster.";
+const isEffort = (v: unknown): v is EffortId => EFFORTS.some((e) => e.id === v);
+let effort: EffortId = "medium";
+let effortLoaded = false;
+async function loadEffort(): Promise<void> {
+  if (effortLoaded) return;
+  effortLoaded = true;
+  try {
+    const v = await window.glyphh.getPreference?.(EFFORT_PREF, "medium");
+    if (isEffort(v)) effort = v;
+  } catch { /* the default */ }
+}
+/** The effort the NEXT turn sends. */
+function currentEffort(): EffortId { return effort; }
+function setEffort(id: EffortId): void {
+  effort = id;
+  void window.glyphh.setPreference?.(EFFORT_PREF, id);
+  paintLevelChip();
+}
+/** The model the chip names: the session's pick, else what Default resolves to. */
+function chipModel(): AvailModel | null { return selectedModel() ?? rowForPick(resolvedDefaultModel()); }
+/** Does that model take an effort? The server flags it; an older server (no
+ *  flag) is read as yes, so the dial is never hidden by a missing field. */
+function modelTakesEffort(): boolean { return chipModel()?.reasoning !== false; }
+function paintLevelChip(): void {
+  const chip = el("code-level-chip");
+  if (!chip) return;
+  const e = EFFORTS.find((x) => x.id === currentEffort()) ?? EFFORTS[1];
+  const takes = modelTakesEffort();
+  chip.textContent = e.label;
+  chip.classList.toggle("ultra", takes && e.id === "max");
+  chip.classList.toggle("dim", !takes);
+  chip.setAttribute("aria-disabled", takes ? "false" : "true");
+  chip.title = takes ? "Effort" : "This model has one effort";
+}
+function renderLevelPop(): void {
+  const pop = el("code-level-pop");
+  if (!pop) return;
+  pop.textContent = "";
+  const idx = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
+  const head = document.createElement("div");
+  head.className = "code-drop-head level-head";
+  const headLabel = document.createElement("span");
+  headLabel.innerHTML = `Effort <b class="level-name"></b>`;
+  const info = document.createElement("button");
+  info.className = "drop-info-btn";
+  info.type = "button";
+  info.title = "About effort";
+  info.textContent = "i";
+  head.append(headLabel, info);
+  pop.appendChild(head);
+  const help = document.createElement("div");
+  help.className = "drop-detail-body level-help hidden";
+  help.textContent = EFFORT_HELP;
+  pop.appendChild(help);
+  info.addEventListener("click", (ev) => { ev.stopPropagation(); help.classList.toggle("hidden"); });
+  const scale = document.createElement("div");
+  scale.className = "level-scale";
+  scale.innerHTML = `<span>Faster</span><span>Smarter</span>`;
+  pop.appendChild(scale);
+  const track = document.createElement("div");
+  track.className = "level-track";
+  track.tabIndex = 0;
+  track.setAttribute("role", "slider");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", String(EFFORTS.length - 1));
+  const fill = document.createElement("span"); fill.className = "level-fill"; track.appendChild(fill);
+  EFFORTS.forEach((e, i) => {
+    const dot = document.createElement("span");
+    dot.className = "level-dot";
+    dot.style.left = `${(i / (EFFORTS.length - 1)) * 100}%`;
+    dot.title = e.label;
+    track.appendChild(dot);
+  });
+  const thumb = document.createElement("span"); thumb.className = "level-thumb"; track.appendChild(thumb);
+  pop.appendChild(track);
+  const paint = (i: number): void => {
+    const e = EFFORTS[i];
+    (head.querySelector(".level-name") as HTMLElement).textContent = e.label;
+    head.classList.toggle("ultra", e.id === "max");
+    track.classList.toggle("ultra", e.id === "max");
+    track.setAttribute("aria-valuenow", String(i));
+    const pct = (i / (EFFORTS.length - 1)) * 100;
+    thumb.style.left = `${pct}%`;
+    fill.style.width = `${pct}%`;
+    track.querySelectorAll<HTMLElement>(".level-dot").forEach((d, j) => d.classList.toggle("on", j <= i));
+  };
+  const choose = (i: number): void => {
+    const e = EFFORTS[Math.max(0, Math.min(EFFORTS.length - 1, i))];
+    setEffort(e.id);
+    paint(EFFORTS.indexOf(e));
+  };
+  const stepAt = (clientX: number): number => {
+    const r = track.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width)));
+    return Math.round(x * (EFFORTS.length - 1));
+  };
+  let dragging = false;
+  track.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); dragging = true; track.setPointerCapture(ev.pointerId); choose(stepAt(ev.clientX)); });
+  track.addEventListener("pointermove", (ev) => { if (dragging) choose(stepAt(ev.clientX)); });
+  const stop = (): void => { dragging = false; };
+  track.addEventListener("pointerup", stop);
+  track.addEventListener("pointercancel", stop);
+  track.addEventListener("keydown", (ev) => {
+    const cur = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); choose(cur + 1); }
+    else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); choose(cur - 1); }
+  });
+  pop.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  paint(idx);
+}
 // THE ONE LOOP (his order, 2026-09-28: "no cli switching etc"). A session used
 // to carry the id of the CLI pre-config that ran it, and the composer had a
 // chip to change it. There is one loop now — ours — so the id is a constant and
@@ -301,7 +415,7 @@ function adoptSessionMode(chatId: string, mode: string): void {
 // One lane since the CLI era ended (2026-09-28): the org's gateway, the
 // member's key, the org's allow-list. No seeded catalog, no plan gate here —
 // the server decided when it minted the key.
-interface AvailModel { id: string; name: string; providerSlug: string }
+interface AvailModel { id: string; name: string; providerSlug: string; /** Takes an effort (the dial); absent = yes. */ reasoning?: boolean }
 let availModels: AvailModel[] = [];
 let modelSource: "gateway" | "none" = "none";
 function modelsForLoop(): AvailModel[] {
@@ -394,6 +508,7 @@ function paintModelChip(): void {
     : "Your organization's default model";
   mc.className = "code-chip" + (none ? " warn" : "");
   paintComposerGate();
+  paintLevelChip();   // the dial dims when this model takes one effort
 }
 
 /** THE ORG'S LIST CAN CHANGE WHILE THE APP IS OPEN (his report, 2026-09-18:
@@ -661,6 +776,7 @@ function initComposerControls(): void {
     el("code-model-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
       el("code-mode-menu")?.classList.add("hidden");
+      el("code-level-pop")?.classList.add("hidden");
       el("code-ctx-pop")?.classList.add("hidden");
       renderModelMenu();
       const opening = mmenu.classList.contains("hidden");
@@ -678,6 +794,26 @@ function initComposerControls(): void {
     });
     void refreshModelList();
   }
+  // The effort dial, right of the model chip: a drop-up with the track.
+  const levelWrap = el("code-level-wrap");
+  if (levelWrap) {
+    const lpop = document.createElement("div");
+    lpop.id = "code-level-pop";
+    lpop.className = "code-drop-up code-level-pop hidden";
+    levelWrap.appendChild(lpop);
+    el("code-level-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el("code-mode-menu")?.classList.add("hidden");
+      el("code-model-menu")?.classList.add("hidden");
+      el("code-ctx-pop")?.classList.add("hidden");
+      // One effort on this model: the chip says so (its title), the dial stays shut.
+      if (!modelTakesEffort()) { lpop.classList.add("hidden"); return; }
+      const opening = lpop.classList.contains("hidden");
+      if (opening) { renderLevelPop(); lpop.classList.remove("hidden"); openChipDropUp(lpop); }
+      else lpop.classList.add("hidden");
+    });
+    void loadEffort().then(paintLevelChip);
+  }
   // Menus are built once; rows re-render on open/select.
   const menu = document.createElement("div");
   menu.id = "code-mode-menu";
@@ -685,6 +821,7 @@ function initComposerControls(): void {
   modeWrap.appendChild(menu);
   el("code-mode-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
+    el("code-level-pop")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
     renderModeMenu();
     const mm = el("code-mode-menu");
@@ -712,6 +849,7 @@ function initComposerControls(): void {
         e.stopPropagation();
         el("code-mode-menu")?.classList.add("hidden");
         el("code-model-menu")?.classList.add("hidden");
+        el("code-level-pop")?.classList.add("hidden");
         el("code-ctx-pop")?.classList.add("hidden");
         const opening = mpop.classList.contains("hidden");
         mpop.classList.toggle("hidden");
@@ -727,6 +865,7 @@ function initComposerControls(): void {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
+    if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
@@ -3619,7 +3758,7 @@ function wireComposerAttachments(): void {
     el("code-plus-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
       el("code-mode-menu")?.classList.add("hidden");
-      el("code-effort-pop")?.classList.add("hidden");
+      el("code-level-pop")?.classList.add("hidden");
       el("code-model-menu")?.classList.add("hidden");
       el("code-ctx-pop")?.classList.add("hidden");
       paintPlusFolder();
@@ -4117,7 +4256,8 @@ function send(): void {
   };
   const launch = async (retried: boolean): Promise<void> => {
     const folder = await withFolder();
-    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}) })
+    // The dial rides every turn on a model that takes one (his order, 2026-10-04).
+    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(modelTakesEffort() ? { effort: currentEffort() } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -6332,6 +6472,8 @@ export function initCode(): void {
     .onPreferenceChanged?.((key, value) => {
       // Settings → General's default model moved: the next session starts on it.
       if (key === "defaultModel") { defaultModelPref = String(value || "") || null; try { paintModelChip(); } catch { /* */ } return; }
+      // Another panel turned the effort dial: this chip follows.
+      if (key === EFFORT_PREF) { if (isEffort(value)) { effort = value; try { paintLevelChip(); } catch { /* */ } } return; }
       if (key !== TYPE_TAB_PREF) return;
       const t: SessionType = value === "work" ? "work" : "code";
       if (t === typeTab) return;

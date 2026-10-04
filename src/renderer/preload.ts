@@ -3,6 +3,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { LoopEffort } from "@glyphh/sdk/loop";
 
 /** Server-authoritative Apps tab record — mirrors yo-server's SavedApp
  *  (saved-app-service.ts). `id` is the server row's UUID; `slug` is the
@@ -1070,7 +1071,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; effort?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; effort?: LoopEffort; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
     ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
   glyphhPickAttachments: (mode?: "files" | "folder") =>
     ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
