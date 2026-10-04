@@ -11,6 +11,8 @@
  * identical), fetched server-side with a short timeout, cached in memory for a
  * day, served with the upstream content-type and a day of browser cache.
  * Anything off the list is a 404 — this is a mark proxy, not an open fetch.
+ * One RULE sits beside the list (below): the favicon-service URL for a plain
+ * hostname, so every app tab's favicon rides the same proxy.
  *
  * Pure over an injected fetch + clock + cache (web/test/webicon.test.js);
  * serve.mjs wires the real ones.
@@ -29,8 +31,52 @@ const ALLOWED = new Set(WEB_ICON_URLS);
 /** The proxy's path on this origin. */
 export const WEB_ICON_ROUTE = '/webicon';
 
-/** Exact-match only: no prefixes, no hosts, no normalisation games. */
-export const isAllowedIconUrl = (u) => typeof u === 'string' && ALLOWED.has(u);
+/**
+ * THE SECOND ALLOWANCE — a RULE, for every app tab's favicon (his report,
+ * 2026-10-04: on app.glyphh.ai every URL tab — Reddit, Gmail, Slack, Zoom —
+ * showed its letter). The desktop fetches a tab's favicon in main from
+ * Google's s2 service by hostname (src/renderer/help/app-icon.ts), a URL the
+ * browser cannot fetch cross-origin, so the proxy admits exactly that shape:
+ *
+ *   https://www.google.com/s2/favicons?domain=<host>&sz=64
+ *
+ * where <host> is a PLAIN hostname — lowercase labels of letters, digits and
+ * inner hyphens, at least two of them — never userinfo, a port, a path, an
+ * IP, or anything percent-encoded. The upstream is still only Google's
+ * favicon service; the host is the one variable. Everything else keeps the
+ * exact-match list above. (The same expression lives in
+ * src/main/app-icon-file.ts, where the relay row carries the URL; the main
+ * test keeps the two identical.)
+ */
+export const FAVICON_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const FAVICON_URL = /^https:\/\/www\.google\.com\/s2\/favicons\?domain=([^&=?#/]+)&sz=64$/;
+
+/** True for a plain hostname as defined above. */
+export const isPlainHost = (h) => typeof h === 'string' && FAVICON_HOST.test(h);
+
+/** The favicon-service URL for a plain hostname, or null for anything else. */
+export const faviconUrlForHost = (host) => (isPlainHost(host) ? `https://www.google.com/s2/favicons?domain=${host}&sz=64` : null);
+
+/** The favicon-service URL for a PAGE URL (an app tab's url): http(s) on a
+ *  plain hostname, else null (yo://, file:, localhost, an IP). */
+export function faviconUrlForPage(pageUrl) {
+  if (typeof pageUrl !== 'string' || !pageUrl) return null;
+  try {
+    const u = new URL(pageUrl);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return faviconUrlForHost(u.hostname.toLowerCase());
+  } catch { return null; }
+}
+
+/** The host a favicon-service URL names when it fits the rule exactly, else null. */
+export function faviconHostOf(u) {
+  const m = typeof u === 'string' ? FAVICON_URL.exec(u) : null;
+  return m && isPlainHost(m[1]) ? m[1] : null;
+}
+
+/** The exact list, or the favicon rule: no prefixes, no other hosts, no
+ *  normalisation games. */
+export const isAllowedIconUrl = (u) => typeof u === 'string' && (ALLOWED.has(u) || faviconHostOf(u) !== null);
 
 /** The same-origin URL the browser asks for a mark, or null off the list. */
 export function webIconProxyPath(u) {
