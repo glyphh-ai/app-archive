@@ -2603,8 +2603,20 @@ async function init(): Promise<void> {
     // ── Icon HYDRATION — remote favicons ride the main process on desktop
     // (webIconFetch → data: URL, exactly like the old wall textures); the web
     // loads our CORS-open resolver directly. Failures fall to the letter. ──
-    const iconYo = (window as unknown as { glyphh?: { webIconFetch?: (u: string) => Promise<string> } }).glyphh;
+    const iconYo = (window as unknown as { glyphh?: { webIconFetch?: (u: string) => Promise<string>; iconForRow?: (row: unknown) => string } }).glyphh;
     const iconSrcCache = new Map<string, string>();
+    /** The src an APP ROW's tile wears. Desktop: app-icon.ts's rule (a favicon
+     *  rides webIconFetch in main, below). Web (his report, 2026-10-04 — every
+     *  tile but the built-in panels showed its letter): the relay row carries
+     *  what the browser can show — a local icon file as bytes (iconDataUrl),
+     *  a URL tab's favicon through OUR /webicon proxy — and web-icons.js
+     *  (glyphh.iconForRow) picks it; art that already travels as bytes (a
+     *  folded manifest svg, a brand file) stays. "" keeps the letter / mark. */
+    const tileIconUrl = (row: unknown, icon: Parameters<typeof appIconUrl>[0]): string => {
+      const base = appIconUrl(icon) || "";
+      if (!isWebTarget() || (base && !/^https?:/i.test(base))) return base;
+      return iconYo?.iconForRow?.(row) || base;
+    };
     const hydrateIcons = (root: HTMLElement): void => {
       root.querySelectorAll<HTMLImageElement>("img[data-icon-src]").forEach((img) => {
         const src = img.dataset.iconSrc || "";
@@ -3500,7 +3512,7 @@ async function init(): Promise<void> {
           if (app.appArchetype === "glyphh-nav") {
             return { glyphSvg: appIconInner(icon, app.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
           }
-          return { iconUrl: appIconUrl(icon) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
+          return { iconUrl: tileIconUrl(app, icon) || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
         }
         const toolView = id.startsWith("tool:") ? id.slice(5) : "";
         const label = toolView ? (VIEW_META[toolView as ViewKind]?.title ?? toolView) : id;
@@ -3537,7 +3549,7 @@ async function init(): Promise<void> {
       // favicon, then what the SKILLS page would show — the panel this app IS,
       // else the app mark. Only for GLYPHH apps: a web or native app keeps its
       // designed monogram while its own icon is still resolving.
-      const iconUrl = appIconUrl(icon) || "";
+      const iconUrl = tileIconUrl(a, icon);
       // .skill-mark sizes it to the weight of an app's own icon — the panel
       // marks are drawn full-bleed and render large at the tile's svg size.
       const svgOf = (markup: string): string | undefined =>
