@@ -33,6 +33,7 @@ import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas } from "./web-surface.js";
+import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -5225,14 +5226,10 @@ const railAgents: RailCliAgent[] = [{ id: GLYPHH_LOOP, name: "Glyphh", cli: GLYP
 const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 // THE LOOP MARKS ARE BACK ON THE RAIL (his order, 2026-09-30: "the left rail
 // recents needs the 'loop' icon back and the icon for cli vs desktop"). The
-// vendor CLIs wear their public marks, fetched once through main.
-const RAIL_CLI_MARK_URLS: Record<string, string> = {
-  claude: "https://claude.ai/favicon.ico",
-  codex: "https://openai.com/favicon.ico",
-  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
-  copilot: "https://github.com/favicon.ico",
-  cursor: "https://cursor.com/favicon.ico",
-};
+// vendor CLIs wear their public marks, fetched once through main on the
+// desktop and through the front door's /webicon proxy on the web (the ONE
+// table in help/cli-marks.ts is also that proxy's allowlist).
+const RAIL_CLI_MARK_URLS: Readonly<Record<string, string>> = CLI_MARK_URLS;
 const vendorMarks: Record<string, string> = {};
 const GLYPHH_CLI_MARK_SRC = "brand/glyphh-cli-mark.svg";
 function primeVendorMarks(): void {

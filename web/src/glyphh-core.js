@@ -289,7 +289,8 @@ const NATIVE = new Set([
   'windowClose', 'windowMinimize', 'windowMaximize', 'onCloseGesture',
   'panelsHide', 'panelsShow', 'panelsRefresh', 'panelsZoom', 'panelsGetZoom',
   'capturePanels', 'copyToClipboard', 'openExternal', 'openFile', 'openInEditor',
-  'getPathForFile', 'appFileIcon', 'webIconFetch',
+  'getPathForFile', 'appFileIcon',
+  // (webIconFetch is NOT native: web-contract serves it through the /webicon proxy.)
   // Auto-updater / relaunch — an OS installer concept; a browser tab has none.
   'checkForUpdates', 'updateInstall', 'getUpdateStatus', 'relaunch',
   // OS window-manager panel/layout control (real tiled OS windows).

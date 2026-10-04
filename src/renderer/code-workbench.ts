@@ -1,3 +1,4 @@
+import { CLI_MARK_URLS } from "./help/cli-marks.js";
 /**
  * Code workbench — the old workbench rails, hosted in the Code section.
  *
@@ -2583,11 +2584,9 @@ async function init(): Promise<void> {
       name: a.name,
       slug: `agent:${a.id}`,
       orderKey: `agent:${a.id}`,
-      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" }
-        : a.cli === "codex" ? { iconUrl: "https://openai.com/favicon.ico" }
-        : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
-        : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
-        : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
+      // The vendor marks: ONE table (help/cli-marks.ts) shared with the rail
+      // and the web proxy's allowlist.
+      ...(a.cli && CLI_MARK_URLS[a.cli] ? { iconUrl: CLI_MARK_URLS[a.cli]! }
         : { glyphSvg: `<img src="brand/glyphh-cli-mark.svg" alt="" draggable="false"/>` }),   // the Glyphh CLI's own icon, not the brand mark the New tile wears
       kind: "tool",
       toolView: "terminal",
@@ -2634,14 +2633,18 @@ async function init(): Promise<void> {
           if (fb?.classList.contains("echo-app-fallback")) fb.style.display = "";
         }, { once: true });
         if (!src) { img.dispatchEvent(new Event("error")); return; }
-        // WEB: request in CORS mode — the resolver serves ACAO `*`, and
-        // Cross-Origin-Resource-Policy only blocks NO-CORS embedding, so the
-        // crossorigin attribute is what lets the browser render the bytes.
+        // WEB: a remote icon rides webIconFetch too — the vendor marks come
+        // from our own origin through the /webicon proxy (the browser cannot
+        // fetch them cross-origin; the letter fallbacks he saw, 2026-10-04),
+        // and anything else is tried in CORS mode. When that answers nothing
+        // the URL is set directly, crossorigin: our resolver serves ACAO `*`,
+        // and Cross-Origin-Resource-Policy only blocks NO-CORS embedding, so
+        // the attribute is what lets the browser render those bytes.
         if (isWebTarget() && /^https?:/i.test(src)) img.crossOrigin = "anonymous";
         // The ORIGINAL url stays on the element: a cached data: URL hides it,
         // and the GitHub mark's dark-mode inversion keys off it (styles.css).
         img.dataset.markSrc = src;
-        const direct = !/^https?:/i.test(src) || isWebTarget();
+        const direct = !/^https?:/i.test(src);
         if (direct) { img.src = src; return; }
         const cached = iconSrcCache.get(src);
         if (cached) { img.src = cached; return; }

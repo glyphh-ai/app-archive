@@ -38,6 +38,7 @@ import { runDripRecipe } from './drip-web-runner.js';
 // The CLI agent window on web: the command is computed HERE (the worker's pty
 // starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
 import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
+import { webIconProxyPath } from '../webicon.mjs';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
@@ -1197,11 +1198,16 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
-    // Vendor marks for the rail: the desktop fetches them in main; the browser tries
-    // the URL itself and settles for no icon when the vendor's CORS says no.
+    // Vendor marks (the rail's recents, the wall's CLI tiles, the dock): the
+    // desktop fetches them in main; the browser cannot — the vendors refuse a
+    // cross-origin fetch — so an allowlisted mark comes from OUR origin through
+    // the front door's /webicon proxy (web/webicon.mjs), same-origin, no CORS.
+    // Any other URL (an app's icon on our CORS-open resolver) is still tried
+    // directly; a refusal answers "" and the caller shows its letter.
     webIconFetch: async (url) => {
       try {
-        const res = await fetch(url, { mode: "cors" });
+        const proxied = webIconProxyPath(url);
+        const res = await fetch(proxied ?? url, proxied ? { credentials: "same-origin" } : { mode: "cors" });
         if (!res.ok) return "";
         const blob = await res.blob();
         return await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result || "")); r.onerror = () => resolve(""); r.readAsDataURL(blob); });

@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveRoute, isNestedShellRoute } from './serve-routes.mjs';
+import { WEB_ICON_ROUTE, webIconResponse } from './webicon.mjs';
 
 // ── Env (web/.env) ────────────────────────────────────────────────────────────
 // A tiny dependency-free .env parse of the CLIENT-SAFE web config. These are
@@ -165,7 +166,19 @@ const server = http.createServer(async (req, res) => {
   }
   securityHeaders(res, (req.headers['x-forwarded-proto'] || '').includes('https'));
   try {
-    let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const reqUrl = new URL(req.url, 'http://x');
+    let p = decodeURIComponent(reqUrl.pathname);
+    // VENDOR MARKS from our own origin (webicon.mjs): the CLI tiles' favicons
+    // the browser cannot fetch cross-origin. Allowlisted, cached a day, and
+    // served with its own cache-control (the no-store above is for the app).
+    // Not under /api, so the dev tunnel's /api proxy never swallows it.
+    if (p === WEB_ICON_ROUTE) {
+      const r = await webIconResponse(reqUrl.searchParams.get('u'));
+      res.statusCode = r.status;
+      for (const [k, v] of Object.entries(r.headers)) res.setHeader(k, v);
+      res.end(r.body);
+      return;
+    }
     // KILL-SWITCH service worker: a stale SW from the old PWA install caches old
     // modules and serves them forever (e.g. a CommonJS app-icon.js against an ESM
     // importer → "binding not found"). This build ships NO SW; serving a
