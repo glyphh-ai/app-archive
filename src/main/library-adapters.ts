@@ -9,6 +9,8 @@
  *   agent      ~/.glyphh/<user>/agents/<slug>.json                local-agents.ts
  *   skill      ~/.glyphh/<user>/skills/<name>/                    skills-fs.ts (+ skills-disabled/glyphh/)
  *   task       ~/.glyphh/<user>/tasks/<slug>/                     skills-fs.ts (+ skills-disabled/task/)
+ *   drip       user-state.sqlite  drips                           drip-manager.ts
+ *   schedule   user-state.sqlite  loop_schedules                  schedule-store.ts (writers: local-library.ts, local-agents.ts)
  *
  * The folder kinds keep a clock sidecar in `<user>/library-sync-state.json`:
  * once a folder matches the server (pushed or pulled) its record's clock is
@@ -28,6 +30,8 @@ import * as appsStore from "./apps-store.js";
 import { invalidateOrgApps } from "./org-apps.js";
 import { listAgents, applyRemoteAgent, removeAgentLocal, type AgentRow } from "./local-agents.js";
 import { applyRemoteBundle, listSyncableBundles, removeBundleLocal, walk } from "./skills-fs.js";
+import { applyRemoteDrip, listDripRecords, removeDripLocal } from "./drip-manager.js";
+import { applyRemoteSchedule, listScheduleRecords, removeScheduleLocal } from "./schedule-store.js";
 import {
   agentClock, bundleDataOf, filesClock, filesSignature, isAgentRow, isGridLayout, isTabRow, mergeTabLocal,
   tabClock, tabRecordOf, workspaceClock, workspaceId, type BundleDataLike, type MemberLibraryKind,
@@ -202,7 +206,32 @@ export function bundleAdapter(kind: "skill" | "task"): KindAdapter {
   };
 }
 
+// ── Drips and schedules (SQLite rows) ────────────────────────────────────────
+
+/** A drip preset: the record is `{ name, recipe }`; the clock is the row's stamp. */
+export function dripAdapter(): KindAdapter {
+  return {
+    kind: "drip",
+    hasFiles: false,
+    list(): LocalItem[] { return listDripRecords(); },
+    apply(item: MemberLibraryItem): void { applyRemoteDrip(item); },
+    remove(id: string): void { removeDripLocal(id); },
+  };
+}
+
+/** A schedule: the record is what puts a target on a clock; a pull arms it
+ *  on this machine's clock, a remote delete stops it. */
+export function scheduleAdapter(): KindAdapter {
+  return {
+    kind: "schedule",
+    hasFiles: false,
+    list(): LocalItem[] { return listScheduleRecords(); },
+    apply(item: MemberLibraryItem): void { applyRemoteSchedule(item); },
+    remove(id: string): void { removeScheduleLocal(id); },
+  };
+}
+
 /** Every adapter, by kind. */
 export function allAdapters(): KindAdapter[] {
-  return [workspaceAdapter(), tabAdapter(), agentAdapter(), bundleAdapter("skill"), bundleAdapter("task")];
+  return [workspaceAdapter(), tabAdapter(), agentAdapter(), bundleAdapter("skill"), bundleAdapter("task"), dripAdapter(), scheduleAdapter()];
 }

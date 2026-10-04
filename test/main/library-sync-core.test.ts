@@ -294,3 +294,47 @@ describe("the sync loop — folder kinds (skills, tasks)", () => {
     expect(srv.rows.get("skill:mine")!.deletedMs).toBe(6_000);
   });
 });
+
+describe("the sync loop — drips and schedules (2026-10-04: db rows with cloud storage)", () => {
+  it("a preset saved on the desktop PUSHES; one saved on the web PULLS into the table; a web delete lands as a local remove; a desktop delete tombstones the server", async () => {
+    const srv = fakeApi([
+      { kind: "drip", id: "aurora", updatedAt: 4_000, data: { name: "aurora", recipe: "-1 0.5 aurora" } },
+      { kind: "drip", id: "gone", updatedAt: 1_000, data: { name: "gone", recipe: "hearts" } },
+    ]);
+    const { adapter, store } = plainAdapter("drip", [{ id: "party", updatedAt: 3_000, data: { name: "party", recipe: "3 confetti" } }, { id: "gone", updatedAt: 1_000, data: { name: "gone", recipe: "hearts" } }]);
+    const tomb = tombstoneStore();
+    tomb.add("drip", "old", 2_500);
+    // The web deleted "gone" after the last sync; the since page carries its tombstone.
+    await srv.api.remove("drip", "gone", { updatedAt: 6_000 });
+    const r = await syncKind({ api: srv.api, adapter, tombstones: tomb, lastSyncAt: 5_000, fetchImpl: srv.fetchImpl });
+    expect(r.pushed).toEqual(["party"]);
+    expect(r.pulled).toEqual(["aurora"]);
+    expect(r.deletedLocal).toEqual(["gone"]);
+    expect(srv.rows.get("drip:party")).toMatchObject({ updatedAt: 3_000, data: { name: "party", recipe: "3 confetti" } });
+    expect(store.get("aurora")).toEqual({ id: "aurora", updatedAt: 4_000, data: { name: "aurora", recipe: "-1 0.5 aurora" } });
+    expect(store.has("gone")).toBe(false);
+    expect(tomb.t.size).toBe(0);                              // "old": the server never knew it → retired on 404
+  });
+
+  it("a schedule made on the web PULLS whole (the desktop arms it); a desktop edit newer than the server's PUSHES; a desktop delete REMOVES on the server", async () => {
+    const web = { name: "Nightly", cron: "0 2 * * *", kind: "task", target: "backup", agentId: null, ownerAgentId: null, args: {}, enabled: true };
+    const srv = fakeApi([
+      { kind: "schedule", id: "web1", updatedAt: 7_000, data: web },
+      { kind: "schedule", id: "s1", updatedAt: 1_000, data: { ...web, name: "Digest", target: "digest" } },
+      { kind: "schedule", id: "s2", updatedAt: 1_000, data: { ...web, name: "Brief", target: "brief" } },
+    ]);
+    const { adapter, store } = plainAdapter("schedule", [{ id: "s1", updatedAt: 8_000, data: { ...web, name: "Digest", target: "digest", enabled: false } }]);
+    const tomb = tombstoneStore();
+    tomb.add("schedule", "s2", 9_000);
+    const r = await syncKind({ api: srv.api, adapter, tombstones: tomb, lastSyncAt: null, fetchImpl: srv.fetchImpl });
+    expect(r.pulled).toEqual(["web1"]);
+    expect(r.pushed).toEqual(["s1"]);
+    expect(r.deletedRemote).toEqual(["s2"]);
+    expect(store.get("web1")).toEqual({ id: "web1", updatedAt: 7_000, data: web });
+    expect(srv.rows.get("schedule:s1")).toMatchObject({ updatedAt: 8_000, data: { enabled: false } });
+    expect(srv.rows.get("schedule:s2")!.deletedMs).toBe(9_000);
+    expect(tomb.t.size).toBe(0);
+    // A pull never reads the item for a plain kind: the list row carried the data.
+    expect(srv.api.get).not.toHaveBeenCalled();
+  });
+});

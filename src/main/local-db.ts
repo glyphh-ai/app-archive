@@ -267,6 +267,18 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_loop_runs_task ON loop_runs (task_slug, started_at);
     `,
   },
+  {
+    // THE MEMBER LIBRARY takes drips and schedules (his rule, 2026-10-04:
+    // "anything that could be local before is now a db row with cloud
+    // storage"). Each row carries the writer's clock in epoch ms — the
+    // last-write-wins stamp the sync (library-sync.ts) compares with the
+    // server's. A row written before this column reads its SQL datetime.
+    version: 12,
+    sql: `
+      ALTER TABLE drips ADD COLUMN updated_ms INTEGER;
+      ALTER TABLE loop_schedules ADD COLUMN updated_ms INTEGER;
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

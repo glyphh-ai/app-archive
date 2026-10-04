@@ -12,6 +12,9 @@
  * What it tells the renderer: `glyphh:library-synced` with the kinds that
  * changed locally (a pull or a remote delete), so the open page re-reads its
  * list; a pulled tab also fires `panel-apps-changed` (the wall listens to it).
+ * A pulled schedule is armed by its adapter as it lands (schedule-store.ts),
+ * so one made on the web fires here within a sync interval; a pulled drip
+ * is in the `.drip` command's cache at once (drip-manager.ts).
  *
  * Errors are logged, never thrown at the UI. Signed out, or the server
  * unreachable, a pass is skipped — the next trigger tries again.

@@ -10,6 +10,12 @@
  *                                    override).
  *   ~/.glyphh/skills/<slug>.json   — a skill: manifest + prompt + code.
  *   user-state.sqlite              — loop_schedules + loop_runs (migration 9).
+ *                                    A loop_schedules row is the member
+ *                                    library's `schedule` record on this
+ *                                    machine (2026-10-04): saves stamp
+ *                                    updated_ms + tell the sync, deletes
+ *                                    tombstone; schedule-store.ts is the
+ *                                    sync's side of the table.
  *
  * NAMING (2026-09-11): this file's `LoopRow`/`loop_*` identifiers are the
  * MAIN-ERA sense of "loop" — a program with role slots — which the Tasks
@@ -34,6 +40,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
+import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
 const SKILLS_DIR = (): string => userScopedPath("skills");
@@ -145,6 +152,17 @@ export interface ScheduleRow {
   target: string;
   /** JSON blob of arguments handed to the target. */
   args: string;
+  /** The writer's clock (epoch ms) — the member library's LWW stamp
+   *  (migration 12); null on a row written before it. */
+  updated_ms?: number | null;
+}
+
+/** A SCHEDULE IS A LIBRARY RECORD (his rule, 2026-10-04): every local write
+ *  stamps the row with this machine's clock and tells the sync, which pushes
+ *  it; the web's writes come back through schedule-store.ts. */
+export function touchSchedule(id: string, at: number = Date.now()): void {
+  getLocalDb().prepare("UPDATE loop_schedules SET updated_ms = ? WHERE id = ?").run(at, String(id));
+  noteLibrarySave("schedule", String(id));
 }
 
 /** What an AGENT contributes to a run: which CLI loop actually runs it, the
@@ -249,14 +267,26 @@ export function saveSchedule(input: { id?: string; name?: string; kind?: string;
   const name = String(input.name ?? "").trim() || target;
   const agentId = input.agentId ? String(input.agentId) : (kind === "skill" ? (agentChoices?.()[0]?.id ?? "") : "");
   if (kind === "skill" && !agentId) throw new Error("a skill needs an agent to run through");
-  db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at, kind, target, args)
-              VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+  db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at, kind, target, args, updated_ms)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?)
               ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, name = excluded.name, loop_slug = excluded.loop_slug, cron = excluded.cron,
-                enabled = excluded.enabled, kind = excluded.kind, target = excluded.target, args = excluded.args`)
-    .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}));
+                enabled = excluded.enabled, kind = excluded.kind, target = excluded.target, args = excluded.args, updated_ms = excluded.updated_ms`)
+    .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}), Date.now());
   const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(id) as ScheduleRow;
   armSchedule(row);
+  noteLibrarySave("schedule", id);
   return { id };
+}
+
+/** Arm or park one schedule (the Schedules page's switch, the Tasks panel's). */
+export function setScheduleEnabled(id: string, enabled: boolean): { updated: boolean } {
+  const db = getLocalDb();
+  db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, String(id));
+  const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(String(id)) as ScheduleRow | undefined;
+  if (!row) return { updated: false };
+  armSchedule(row);
+  touchSchedule(row.id);
+  return { updated: true };
 }
 
 /**
@@ -284,11 +314,13 @@ export const scheduleForTask = (slug: string): { id: string; cron: string; enabl
   return row ? { id: row.id, cron: row.cron, enabled: row.enabled } : null;
 };
 
-/** Take it off the clock. Its run history stays. */
+/** Take it off the clock. Its run history stays. A tombstone is written and
+ *  the sync pushes the remove — the web's list drops it too. */
 export function deleteSchedule(id: string): { deleted: boolean } {
   liveJobs.get(String(id))?.stop();
   liveJobs.delete(String(id));
   getLocalDb().prepare("DELETE FROM loop_schedules WHERE id = ?").run(String(id));
+  noteLibraryDelete("schedule", String(id));
   return { deleted: true };
 }
 
@@ -382,12 +414,7 @@ export function registerLocalLibraryIpc(): void {
   }));
   ipcMain.handle("library-loop-delete", (_e, ref: string) => env(() => {
     fs.rmSync(path.join(TASKS_DIR(), `${String(ref)}.json`), { force: true });
-    const db = getLocalDb();
-    for (const s of loadSchedules().filter((x) => x.loop_slug === String(ref))) {
-      liveJobs.get(s.id)?.stop();
-      liveJobs.delete(s.id);
-      db.prepare("DELETE FROM loop_schedules WHERE id = ?").run(s.id);
-    }
+    for (const s of loadSchedules().filter((x) => x.loop_slug === String(ref))) deleteSchedule(s.id);
     return { deleted: true };
   }));
   ipcMain.handle("loops-create", (_e, input: { name?: string } | undefined) => env(() => {
@@ -506,11 +533,8 @@ export function registerLocalLibraryIpc(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("tasks-set-enabled", (_e, _ref: string, taskId: string, patch: { enabled?: boolean }) => env(() => {
-    const db = getLocalDb();
-    if (patch?.enabled !== undefined) {
-      db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(patch.enabled ? 1 : 0, String(taskId));
-    }
-    const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(String(taskId)) as ScheduleRow | undefined;
+    if (patch?.enabled !== undefined) return setScheduleEnabled(String(taskId), !!patch.enabled);
+    const row = getLocalDb().prepare("SELECT * FROM loop_schedules WHERE id = ?").get(String(taskId)) as ScheduleRow | undefined;
     if (row) armSchedule(row);
     return { updated: true };
   }));
@@ -520,13 +544,7 @@ export function registerLocalLibraryIpc(): void {
   // agent). One table, one runner, the run feed shared.
   ipcMain.handle("schedules-list", () => env(listSchedulesView));
   ipcMain.handle("schedule-save", (_e, input: { id?: string; name?: string; kind: "task" | "skill"; target: string; agentId?: string | null; cron: string; enabled?: boolean; args?: unknown }) => env(() => saveSchedule(input)));
-  ipcMain.handle("schedule-set-enabled", (_e, id: string, enabled: boolean) => env(() => {
-    const db = getLocalDb();
-    db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, String(id));
-    const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(String(id)) as ScheduleRow | undefined;
-    if (row) armSchedule(row);
-    return { updated: !!row };
-  }));
+  ipcMain.handle("schedule-set-enabled", (_e, id: string, enabled: boolean) => env(() => setScheduleEnabled(String(id), !!enabled)));
   ipcMain.handle("schedule-delete", (_e, id: string) => env(() => deleteSchedule(String(id))));
   ipcMain.handle("schedule-run-now", async (_e, id: string) => {
     try { await runSchedule(String(id)); return { ok: true }; }

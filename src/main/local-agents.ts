@@ -28,7 +28,7 @@ import { ipcMain } from "electron";
 import cron from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import {
-  armSchedule, runSchedule, setAgentProviders,
+  armSchedule, runSchedule, setAgentProviders, touchSchedule,
   type ScheduleRow, type ScheduleContext, type SlotAgent,
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
@@ -177,10 +177,13 @@ export function applyRemoteAgent(row: AgentRow): void {
 export function removeAgentLocal(slug: string): void {
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
-  // would keep firing a prompt nobody can see or edit.
+  // would keep firing a prompt nobody can see or edit. Each is tombstoned:
+  // they are library records of their own, and the server must drop them too.
   for (const t of rawTasksOf(slug)) disarm(t.id);
   db.prepare("DELETE FROM loop_runs WHERE schedule_id IN (SELECT id FROM loop_schedules WHERE owner_agent_id = ?)").run(slug);
+  const owned = rawTasksOf(slug).map((t) => t.id);
   db.prepare("DELETE FROM loop_schedules WHERE owner_agent_id = ?").run(slug);
+  for (const id of owned) noteLibraryDelete("schedule", id);
   fs.rmSync(path.join(AGENTS_DIR(), `${slug}.json`), { force: true });
   announceAgents();
 }
@@ -276,6 +279,7 @@ export function addAgentTask(agentSlug: string, input: TaskInput): AgentTaskRow 
      VALUES (@id, @agent_id, @name, @loop_slug, @cron, @enabled, @created_at, @owner_agent_id, @kind, @target, @args)`
   ).run(row);
   if (agent.live) armSchedule(row);
+  touchSchedule(id);
   return taskOf(row);
 }
 
@@ -303,6 +307,7 @@ export function updateAgentTask(agentSlug: string, taskId: string, patch: TaskIn
   ).run(next);
   const agent = readAgent(agentSlug);
   armSchedule(agent?.live ? next : { ...next, enabled: 0 });
+  touchSchedule(next.id);
   return taskOf(next);
 }
 
@@ -310,7 +315,8 @@ export function deleteAgentTask(agentSlug: string, taskId: string): void {
   const db = getLocalDb();
   disarm(String(taskId));
   db.prepare("DELETE FROM loop_runs WHERE schedule_id = ?").run(String(taskId));
-  db.prepare("DELETE FROM loop_schedules WHERE id = ? AND owner_agent_id = ?").run(String(taskId), String(agentSlug));
+  const gone = db.prepare("DELETE FROM loop_schedules WHERE id = ? AND owner_agent_id = ?").run(String(taskId), String(agentSlug));
+  if (gone.changes) noteLibraryDelete("schedule", String(taskId));
 }
 
 export function listAgentTaskRuns(taskId: string): Array<{ id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }> {
