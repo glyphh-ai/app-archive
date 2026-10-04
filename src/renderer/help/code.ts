@@ -45,7 +45,7 @@ import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -946,6 +946,8 @@ interface LiveRun {
   runId: string | null;        // stamped by glyphhRun's ack, or the first event
   text: string;                // streamed text since the last commit
   bubble: HTMLElement | null;  // live DOM block (current chat only)
+  thinking?: string;           // the model's thinking so far (the loop's `thinking` deltas)
+  thinkEl?: HTMLElement | null; // its live fold (current chat only)
   startAt: number;
   inTok: number;
   outTok: number;
@@ -1225,6 +1227,27 @@ function paintBubble(bubble: HTMLElement, text: string): void {
   st.tail.innerHTML = formatMarkdown(text.slice(st.frozenLen));
 }
 
+/** THE MODEL'S THINKING (his order, 2026-10-04): a folded, dim "Thinking" line
+ *  above the answer, the same quiet summary a tool group wears; a click opens
+ *  the text. Plain text, never markdown: it is the model's notes, not a reply. */
+function thinkingEl(text: string): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "code-thinking";
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "code-tool-summary code-thinking-head";
+  head.innerHTML = `<svg class="tg-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg><span>Thinking</span>`;
+  const body = document.createElement("div");
+  body.className = "code-thinking-body hidden";
+  body.textContent = text;
+  head.addEventListener("click", () => {
+    const open = body.classList.toggle("hidden");
+    head.classList.toggle("open", !open);
+  });
+  box.append(head, body);
+  return box;
+}
+
 /** Markup this file built itself (escaped, or a fixed icon), appended as nodes. */
 function appendMarkup(parent: Element, html: string): void {
   const t = document.createElement("template");
@@ -1236,11 +1259,14 @@ function paintStream(): void {
   streamPaintQueued = false;
   const run = currentRun();
   const thread = el<HTMLDivElement>("code-thread");
+  // Thinking still streaming: only the fold's text moves, the thread stands.
+  const fold = run?.thinkEl?.isConnected ? run.thinkEl.querySelector<HTMLElement>(".code-thinking-body") : null;
+  if (fold && fold.textContent !== (run?.thinking ?? "")) fold.textContent = run?.thinking ?? "";
   if (run?.bubble && run.bubble.isConnected) {
     paintBubble(run.bubble, run.text);
     if (thread && threadPinned) thread.scrollTop = thread.scrollHeight;
-  } else {
-    renderThread(); // first token — adds the live block under the spinner
+  } else if (run?.text || !fold) {
+    renderThread(); // first token (or first thinking) — adds the live block under the spinner
   }
 }
 /** Coalesce a stream repaint to the next frame (only when the run is current). */
@@ -2432,6 +2458,7 @@ function renderThread(): void {
         inner.appendChild(turnErrorCardEl(b.msg.text));
         return;
       } else {
+        if (b.msg.thinking) inner.appendChild(thinkingEl(b.msg.thinking));
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
         inner.appendChild(el);
@@ -2456,6 +2483,11 @@ function renderThread(): void {
   spinner = null;
   if (liveRun) {
     liveRun.bubble = null;
+    liveRun.thinkEl = null;
+    if (liveRun.thinking) {
+      liveRun.thinkEl = thinkingEl(liveRun.thinking);
+      inner.appendChild(liveRun.thinkEl);
+    }
     if (liveRun.text) {
       liveRun.bubble = document.createElement("div");
       liveRun.bubble.className = "code-agent-text";
@@ -4490,7 +4522,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   void refreshSpend(true);   // a turn spent money: the banner re-reads where it stands
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
-  if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
+  if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now(), ...(run?.thinking ? { thinking: run.thinking } : {}) });
   maybeBudgetPrompt(chatId, text);
   if (chat && stopped) {
     chat.messages.push({
@@ -4994,6 +5026,13 @@ function initGlyphhAgentEvents(): void {
     const e = runEntry(d.runId);
     if (!e) return;
     e[1].text += d.delta;
+    queueStreamPaint(e[0]);
+  });
+  window.glyphh.onGlyphhAgentThinking?.((d) => {
+    if (isChildFrame(d)) return;
+    const e = runEntry(d.runId);
+    if (!e) return;
+    e[1].thinking = (e[1].thinking ?? "") + d.text;
     queueStreamPaint(e[0]);
   });
   window.glyphh.onGlyphhAgentDone?.((d) => {

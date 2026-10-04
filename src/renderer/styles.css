@@ -14953,6 +14953,20 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-tool-summary.open .tg-chev { transform: rotate(90deg); }
 .code-tool-group .code-tool-line { padding-left: 14px; margin-top: 2px; }
 
+/* The model's thinking — the same quiet summary, folded above the answer. */
+.code-thinking { align-self: stretch; max-width: 720px; }
+.code-thinking-body {
+  margin: 2px 0 6px;
+  padding: 2px 4px 2px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
 /* Plan rail — William run timeline strip */
 .ws-plan-timeline {
   border-bottom: 1px solid var(--ws-line, var(--border));

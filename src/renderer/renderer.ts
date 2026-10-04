@@ -532,6 +532,7 @@ declare global {
       appsCronList: (slug: string) => Promise<{ ok: boolean; handlers?: Array<{ id: string; cron: string; handler: string }>; error?: string }>;
       glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") => Promise<{ updated: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
+      onGlyphhAgentThinking?: (cb: (d: { runId: string; text: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onGlyphhAgentError: (cb: (d: { runId: string; error: string; fix?: { kind: string; cli: string; command: string; message: string } }) => void) => void;
       onGlyphhAgentSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;

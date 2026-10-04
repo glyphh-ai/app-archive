@@ -1255,6 +1255,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGlyphhAgentDelta: (callback: (d: { runId: string; delta: string }) => void) => {
     ipcRenderer.on("glyphh-agent:delta", (_event, d) => callback(d));
   },
+  /** The model's thinking, streamed (the loop's `thinking` deltas): the panel
+   *  folds it above the answer. */
+  onGlyphhAgentThinking: (callback: (d: { runId: string; text: string }) => void) => {
+    ipcRenderer.on("glyphh-agent:thinking", (_event, d) => callback(d));
+  },
   onGlyphhAgentDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
     ipcRenderer.on("glyphh-agent:done", (_event, d) => callback(d));
   },
