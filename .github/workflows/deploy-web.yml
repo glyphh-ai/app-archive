@@ -76,7 +76,11 @@ jobs:
       - name: Deploy app.glyphh.ai to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only --config fly.toml
+        run: |
+          # glyphh-ai-app is created once by hand (fly apps create glyphh-ai-app -o glyphh-ai);
+          # until it exists this step stops here instead of failing the mobile deploy below.
+          if ! flyctl status --config fly.toml >/dev/null 2>&1; then echo "app not created yet; skipping"; exit 0; fi
+          flyctl deploy --remote-only --config fly.toml
 
       - name: Deploy mobile.glyphh.ai to Fly
         env:
