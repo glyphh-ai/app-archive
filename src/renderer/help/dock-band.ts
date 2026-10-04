@@ -15,12 +15,21 @@
  * Also here: the "Show the dock" preference (Settings → Appearance → Dock),
  * shared by desktop and web through the preferences store. Off = the dock is
  * not rendered at all (not merely tucked) and every dock-driven offset is zero.
+ * OFF IS THE DEFAULT (his order, 2026-10-04: "the echo panel should be
+ * something people turn on purposefully"): a member who never set the pref
+ * has no dock and a wall that leads with the dock's tiles (help/
+ * dock-items.ts); a member who saved `true` keeps it. DOCK_ENABLED_DEFAULT
+ * is the one constant every reader (the wall's first paint and its pref
+ * read, the Settings switch, the web shim through the default it is handed)
+ * takes it from.
  *
  * Pure — unit-tested in test/main/dock-band.test.ts.
  */
 
-/** The preference: `true` (default) shows the dock; `false` removes it. */
+/** The preference: `true` shows the dock; `false` removes it. */
 export const DOCK_ENABLED_PREF = "dockEnabled";
+/** What an unset pref means: no dock. The ONE place the default lives. */
+export const DOCK_ENABLED_DEFAULT = false;
 /** The one-document event Settings fires after writing the pref; the wall
  *  re-reads on it (the desktop's main-process `preference-changed` broadcast
  *  carries the same change to every other document). */
@@ -29,12 +38,18 @@ export const DOCK_ENABLED_CHANGED_EVENT = "glyphh:dock-enabled-changed";
  *  portal layer and the hover strip under it. */
 export const DOCK_OFF_CLASS = "echo-dock-off";
 
-/** Reads the stored pref: anything but an explicit off means ON (an unset pref,
- *  an old map without the key, a server that hands back a string). */
-export function dockEnabledFrom(v: unknown): boolean {
+/** Reads the stored pref: an explicit on (`true`, 1, "true", "on"…) is ON, an
+ *  explicit off is OFF, and anything else — an unset pref, an old map without
+ *  the key, a string the server mangled — is the DEFAULT (off). */
+export function dockEnabledFrom(v: unknown, fallback: boolean = DOCK_ENABLED_DEFAULT): boolean {
+  if (v === true || v === 1) return true;
   if (v === false || v === 0) return false;
-  if (typeof v === "string") return !/^(false|0|off|no)$/i.test(v.trim());
-  return true;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (/^(true|1|on|yes)$/i.test(s)) return true;
+    if (/^(false|0|off|no)$/i.test(s)) return false;
+  }
+  return fallback;
 }
 
 /** What the DOM needs for a rect — a DOMRect, or a test's plain object. */

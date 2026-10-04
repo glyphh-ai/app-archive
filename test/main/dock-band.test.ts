@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   dockBand, searchTopFor, cardBandTop, dockEnabledFrom, applyDockEnabled,
-  DOCK_ENABLED_PREF, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, DOCK_LABEL_REACH,
+  DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, DOCK_LABEL_REACH,
   SEARCH_TOP_NO_DOCK, SEARCH_GAP_UNDER_DOCK, CARD_BAND_MARGIN,
 } from "../../src/renderer/help/dock-band.js";
 
@@ -61,16 +61,32 @@ describe("the pill and the card band follow the band", () => {
 });
 
 describe("the Show-the-dock preference", () => {
-  it("is on unless explicitly off — an unset pref, an old map, a string from the server", () => {
-    expect(dockEnabledFrom(undefined)).toBe(true);
-    expect(dockEnabledFrom(null)).toBe(true);
+  it("is OFF by default — one constant, and every unset read lands on it (his order, 2026-10-04)", () => {
+    expect(DOCK_ENABLED_DEFAULT).toBe(false);
+    expect(dockEnabledFrom(undefined)).toBe(DOCK_ENABLED_DEFAULT);
+    expect(dockEnabledFrom(null)).toBe(DOCK_ENABLED_DEFAULT);
+    expect(dockEnabledFrom("")).toBe(DOCK_ENABLED_DEFAULT);
+    expect(dockEnabledFrom("maybe")).toBe(DOCK_ENABLED_DEFAULT);
+    expect(dockEnabledFrom({})).toBe(DOCK_ENABLED_DEFAULT);
+    // A caller may name its own fallback; the unset read follows it.
+    expect(dockEnabledFrom(undefined, true)).toBe(true);
+  });
+  it("keeps an explicit on — a member who turned the dock on keeps it", () => {
     expect(dockEnabledFrom(true)).toBe(true);
     expect(dockEnabledFrom("true")).toBe(true);
+    expect(dockEnabledFrom(" TRUE ")).toBe(true);
+    expect(dockEnabledFrom("on")).toBe(true);
+    expect(dockEnabledFrom("yes")).toBe(true);
     expect(dockEnabledFrom(1)).toBe(true);
+    expect(dockEnabledFrom("1")).toBe(true);
+  });
+  it("keeps an explicit off, whatever the fallback", () => {
     expect(dockEnabledFrom(false)).toBe(false);
     expect(dockEnabledFrom("false")).toBe(false);
     expect(dockEnabledFrom(0)).toBe(false);
     expect(dockEnabledFrom("off")).toBe(false);
+    expect(dockEnabledFrom("no")).toBe(false);
+    expect(dockEnabledFrom(false, true)).toBe(false);
   });
   it("names the shared pref, its event and its body class", () => {
     expect(DOCK_ENABLED_PREF).toBe("dockEnabled");

@@ -45,7 +45,7 @@ function forgetWorkspaceMemory(name: string): void {
 import { maybeStartWallTour } from "./wall-tour.js";
 import { initDockPortal } from "./dock-portal.js";
 import {
-  DOCK_ENABLED_PREF, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, dockEnabledFrom, applyDockEnabled,
+  DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, dockEnabledFrom, applyDockEnabled,
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
@@ -2322,6 +2322,11 @@ async function init(): Promise<void> {
   // composer, everything — one runtime, shared sessions) sits in the fixed
   // overlay layer and follows it. The agent's own head carries the session
   // controls: title on the left, history dropdown + new-session on the right.
+  /** The Show-the-dock pref's last read in this document (null before the
+   *  first): a re-mount of the wall paints with it, the first mount with
+   *  DOCK_ENABLED_DEFAULT — never with a guess, so a fresh profile never
+   *  flashes the dock (help/dock-band.ts). */
+  let dockEnabledLast: boolean | null = null;
   /**
    * Echo, phase 1 — EVERYTHING, on one three.js wall.
    *
@@ -2335,6 +2340,14 @@ async function init(): Promise<void> {
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
+    // FIRST PAINT WITHOUT A FLASH OF THE DOCK (his order, 2026-10-04: off by
+    // default). The pref lands asynchronously (readAutoHide, below); the dock
+    // markup lands now. So the body class is set BEFORE the markup, from the
+    // last read this document made or, on the first mount, from the default
+    // — a fresh profile paints no dock and a wall led by the dock's tiles
+    // (renderPages reads the same class), and a member who saved on sees the
+    // dock as soon as the pref arrives. Nothing the pref can say is guessed.
+    applyDockEnabled(document.body, dockEnabledLast ?? DOCK_ENABLED_DEFAULT);
     body.innerHTML = `
       <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div>
         <div class="echo-search-wrap">
@@ -4058,7 +4071,7 @@ async function init(): Promise<void> {
         yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
         yoApi?.getPreference?.("echoDockRevealMs", 350) ?? 350,
-        yoApi?.getPreference?.(DOCK_ENABLED_PREF, true) ?? true,
+        yoApi?.getPreference?.(DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT) ?? DOCK_ENABLED_DEFAULT,
       ]).then(([d, z, pp, rv, en]) => {
         // SHOW THE DOCK (his order, 2026-10-04): off = not rendered at all —
         // the stylesheet drops the bar, the portal layer and the hover strip
@@ -4067,7 +4080,11 @@ async function init(): Promise<void> {
         // the dock did (New session, Settings, the command center, Close all),
         // and the wall LEADS with the dock's own tiles (renderPages) — so a
         // flip of the switch repaints the pages, live, on both surfaces.
-        if (applyDockEnabled(document.body, dockEnabledFrom(en))) renderPages();
+        // OFF unless the member saved on (DOCK_ENABLED_DEFAULT); the value is
+        // kept for the next mount's first paint (see the mount).
+        const dockOn = dockEnabledFrom(en);
+        dockEnabledLast = dockOn;
+        if (applyDockEnabled(document.body, dockOn)) renderPages();
         const rvn = Number(rv);
         dockRevealMs = Number.isFinite(rvn) ? Math.max(0, Math.min(1500, rvn)) : 350;
         document.body.classList.toggle("echo-dock-autohide", d !== false);
