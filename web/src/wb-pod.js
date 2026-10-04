@@ -32,6 +32,8 @@
  * that signal).
  */
 
+import { panelFsRoute } from '../../src/renderer/help/panel-fs-route.ts';
+
 const noop = () => {};
 const msg = (e) => (e instanceof Error ? e.message : String(e));
 
@@ -54,11 +56,14 @@ export const wbLocus = () => ({ ...locus });
 export function noteSessionsSnapshot(chats, currentId) {
   const id = String(currentId || '');
   const c = Array.isArray(chats) ? chats.find((x) => x && x.id === id) : null;
-  const cloud = !!(c && c.source && c.source.kind !== 'local');
+  // THE ONE RULE both surfaces share (src/renderer/help/panel-fs-route.ts):
+  // a cloud source routes to the pod, scoped to the workspace key the run
+  // threads on (a re-entered space's id, else the thread's); anything else is
+  // the machine — here the attached desktop over the relay.
+  const r = panelFsRoute({ surface: 'web', source: c ? c.source : null, chatId: id });
+  const cloud = r.route === 'cloud';
   const local = !!(c && c.source && c.source.kind === 'local');
-  // A cloud-space session re-enters an EXISTING workspace: the fs scope is
-  // the space's original thread id (remote-run threads the run identically).
-  const scope = cloud ? String((c.source && c.source.space) || id) : '';
+  const scope = cloud ? r.scope : '';
   if (id === locus.chatId && cloud === locus.cloud && local === locus.local && scope === locus.scope) return;
   locus = { chatId: id, cloud, local, scope };
   try {
