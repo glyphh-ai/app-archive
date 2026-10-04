@@ -163,7 +163,18 @@ function webTransport(): Transport {
           thread: { id, title: body.title ?? c?.title ?? "", mode: body.mode ?? "", source: body.source ?? null, createdAt: c?.createdAt ?? body.updatedAt, updatedAt: body.updatedAt, messageCount: body.messages?.length ?? c?.messages.length ?? 0 },
         };
       }
-      return harnessRequest<PushResult>("PUT", `/threads/${encodeURIComponent(id)}`, body);
+      try {
+        return await harnessRequest<PushResult>("PUT", `/threads/${encodeURIComponent(id)}`, body);
+      } catch (err) {
+        // 409 `stale`: the stored copy is NEWER — another surface won. Not an
+        // outage: answer "not applied" with the server's meta so pushOne marks
+        // a reconcile (which adopts it) instead of re-queueing forever.
+        if (err instanceof HarnessHttpError && err.httpStatus === 409) {
+          const theirs = await harnessRequest<ThreadMeta>("GET", `/threads/${encodeURIComponent(id)}`);
+          return { applied: false, thread: theirs };
+        }
+        throw err;
+      }
     },
     del: async (id) => {
       if (isDesktopThread(id)) {

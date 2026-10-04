@@ -10,15 +10,19 @@
  * origin the bridge booted with (window.__GLYPHH_API_URL__). This module is
  * that one place: base url, bearer, error shape, WS url.
  *
- * Routes the web expects (the server side is checked against this list):
- *   GET    /api/harness/threads                → ThreadMeta[]
+ * Routes the web expects (the control plane serves them; confirmed 2026-10-04):
+ *   GET    /api/harness/threads                → ThreadMeta[] (owner's, newest first, no messages)
  *   GET    /api/harness/threads/:id            → ThreadMeta + { messages }
  *   PUT    /api/harness/threads/:id            ← { title?, mode?, source?, messages?, updatedAt }
- *                                              → { applied, thread: ThreadMeta }   (LWW on updatedAt)
- *   DELETE /api/harness/threads/:id            → 204 (404 = already gone)
- *   POST   /api/harness/pty                    ← { cwd?, cols, rows, command? }
- *                                              → { ptyId, wsPath }
- *   WS     /api/harness/pty/:ptyId?token=…     JSON frames both ways (pty-frames.ts)
+ *                                              → { applied, thread: ThreadMeta }   (LWW on updatedAt;
+ *                                                409 `stale` when the stored copy is newer)
+ *   DELETE /api/harness/threads/:id            → tombstone (404 = already gone)
+ *   POST   /api/harness/pty                    ← { cwd?, cols, rows, command?, scope? }
+ *                                              → { ptyId, wsPath, wire: "glyphh.terminal/v2" }
+ *   DELETE /api/harness/pty/:ptyId             closes it
+ *   WS     /api/harness/pty/:ptyId?token=…     JSON frames (pty-frames.ts): data (base64), resize,
+ *                                              close, ping both ways; ready / exit / error from the worker
+ * Errors are `{ error, detail }`.
  *
  * The renderer cannot import from @glyphh/sdk (preload boundary); the SDK
  * handle's `token()` is reached structurally, like remote-run.ts does.
@@ -26,9 +30,12 @@
 
 export class HarnessHttpError extends Error {
   readonly httpStatus: number;
-  constructor(status: number, message: string) {
+  /** The server's error code (`{ error }`), e.g. "stale" on a 409 push. */
+  readonly code: string;
+  constructor(status: number, message: string, code = "") {
     super(message);
     this.httpStatus = status;
+    this.code = code;
   }
 }
 
@@ -74,10 +81,14 @@ export async function harnessRequest<T>(method: string, path: string, body?: unk
   let parsed: unknown = undefined;
   if (text) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
   if (!res.ok) {
-    const msg = parsed && typeof parsed === "object" && typeof (parsed as { error?: unknown }).error === "string"
-      ? (parsed as { error: string }).error
+    // The server's shape is `{ error, detail }` — the code first, the human line after.
+    const e = parsed && typeof parsed === "object" ? (parsed as { error?: unknown; detail?: unknown }) : {};
+    const code = typeof e.error === "string" ? e.error : "";
+    const detail = typeof e.detail === "string" ? e.detail : "";
+    const msg = code || detail
+      ? `${code}${code && detail ? ": " : ""}${detail}`
       : `${method} /api/harness${p} failed (${res.status})`;
-    throw new HarnessHttpError(res.status, msg);
+    throw new HarnessHttpError(res.status, msg, code);
   }
   if (parsed && typeof parsed === "object" && "data" in (parsed as Record<string, unknown>) && Object.keys(parsed as object).length === 1) {
     return (parsed as { data: T }).data;
