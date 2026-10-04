@@ -9733,11 +9733,14 @@ async function init(): Promise<void> {
   async function spawnRemoteTerm(wbt: WbTerminal, hostEl: HTMLElement, cols: number, rows: number): Promise<void> {
     const term = wbt.term;
     if (wbt.remote || !term) return;
-    const locus = (window as unknown as { wb?: { locus?: () => { local?: boolean } } }).wb?.locus?.();
+    const locus = (window as unknown as { wb?: { locus?: () => { local?: boolean; cloud?: boolean; scope?: string; chatId?: string } } }).wb?.locus?.();
     const target: RemotePtyTarget = locus?.local ? "desktop" : "worker";
+    // The worker shell runs in the CURRENT cloud session's workspace (its fs
+    // scope — the space's id for a re-entered space, else the thread id).
+    const scope = locus?.cloud ? (locus.scope || locus.chatId || "") : "";
     const command = wbt.initCmd;
     try {
-      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined, target, ...(command ? { command } : {}) }, {
+      const remote = await openRemotePty({ cols, rows, cwd: cwd || undefined, target, ...(scope ? { scope } : {}), ...(command ? { command } : {}) }, {
         onData: (bytes) => term.write(bytes),
         // Leave the buffer up on exit so the user can read it (local parity).
         onExit: () => { wbt.remote = undefined; },
@@ -9745,6 +9748,8 @@ async function init(): Promise<void> {
           wbt.remote = undefined;
           showRemoteTermState(wbt, hostEl, "disconnected");
         },
+        // The worker's own failure (`{type:"error"}`) — the state card says it.
+        onError: (detail) => showRemoteTermState(wbt, hostEl, "failed", detail),
       });
       if (wbt.term !== term) { remote.dispose(); return; } // tab killed while connecting
       wbt.remote = remote;

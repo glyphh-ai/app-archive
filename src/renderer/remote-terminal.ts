@@ -4,12 +4,16 @@
  *
  *   WORKER (the default on web): a shell on the session's CLOUD WORKER through
  *     the server's front door — `POST /api/harness/pty {cwd?, cols, rows,
- *     command?}` → `{ptyId, wsPath}`, then one WebSocket per terminal at
- *     `wss://<api>/api/harness/pty/<ptyId>?token=<session token>` carrying
- *     JSON frames both ways: `{type:"data", data}` / `{type:"resize", cols,
- *     rows}` / `{type:"close"}` (pty-frames.ts is the codec). `command` makes
- *     the pty start that program instead of the login shell — the CLI agent
- *     window (claude / codex / …) on web. The worker's workspace is the cwd.
+ *     command?, scope?}` → `{ptyId, wsPath, wire:"glyphh.terminal/v2"}`, then
+ *     one WebSocket per terminal at `wss://<api>/api/harness/pty/<ptyId>?token=
+ *     <session token>` carrying JSON frames: `data` (base64 bytes), `resize`,
+ *     `close`, `ping`/`pong` both ways (a ping is answered with a pong);
+ *     `ready`, `exit {code?}`, `error {error}` from the worker (pty-frames.ts
+ *     is the codec). `DELETE /api/harness/pty/<id>`
+ *     closes it. `command` is ONE program name (`claude`, `codex`) the pty
+ *     starts instead of the login shell — the CLI agent window on web; the
+ *     rest of a composed line is typed after `ready`. The worker's workspace
+ *     is the cwd; `scope` names the session whose workspace it is.
  *
  *   DESKTOP (a machine-bound session): a shell on the user's ATTACHED DESKTOP
  *     over the panel relay — `pty.open`, output pushes (`{type:"data",
@@ -27,7 +31,7 @@
 
 import { connectRelaySocket, relaySdk, type RelaySocket } from "./relay-socket.js";
 import { harnessRequest, harnessToken, harnessWsUrl, HarnessHttpError } from "./help/harness-api.js";
-import { decodePtyFrame, dataFrame, resizeFrame, closeFrame, ptyOpenBody } from "./pty-frames.js";
+import { decodePtyFrame, dataFrame, resizeFrame, closeFrame, pingFrame, pongFrame, b64ToBytes, ptyOpenBody, splitProgram, PTY_WIRE } from "./pty-frames.js";
 
 export type RemotePtyFailure = "desktop-offline" | "worker-unavailable" | "signed-out" | "failed";
 export type RemotePtyTarget = "worker" | "desktop";
@@ -48,6 +52,9 @@ export interface RemotePtyHooks {
   /** The relay socket dropped mid-session — the shell is being killed on the
    *  desktop (attach teardown); show the disconnected state. */
   onDrop(): void;
+  /** The WORKER reported its own failure (`{type:"error", error}`) — show it
+   *  in the panel state. The socket may still be open. */
+  onError?(error: string): void;
 }
 
 export interface RemotePtyHandle {
@@ -95,20 +102,17 @@ function release(sock: RelaySocket): void {
   }
 }
 
-function b64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
 export interface RemotePtyOpenOpts {
   cols: number;
   rows: number;
   /** A folder to start in — inside the worker's workspace, or on the machine. */
   cwd?: string;
-  /** A program to start instead of the login shell (the CLI agent window). */
+  /** A line to start instead of the login shell (the CLI agent window). On
+   *  the worker its first word is the pty's `command` (one program name);
+   *  the rest is typed after `ready`. */
   command?: string;
+  /** The session whose workspace the WORKER shell runs in (the thread id). */
+  scope?: string;
   /** Which far side runs the shell. Default: the worker. */
   target?: RemotePtyTarget;
 }
@@ -131,11 +135,27 @@ async function openWorkerPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Pr
   const token = await harnessToken();
   if (!token) throw new RemotePtyError("signed-out");
 
+  // ONE program name rides `command`; a composed line's remainder (flags, a
+  // prompt) is typed once the worker says `ready`. A line that starts with
+  // `cd` has no program for the wire: the shell opens and the whole line is typed.
+  const { program, rest } = splitProgram(opts.command || "");
+  const typeAfterReady = rest;
+
   let ptyId: string;
   let wsPath: string;
   try {
-    const r = await harnessRequest<{ ptyId?: string; wsPath?: string }>("POST", "/pty", ptyOpenBody(opts));
+    const r = await harnessRequest<{ ptyId?: string; wsPath?: string; wire?: string }>("POST", "/pty", ptyOpenBody({
+      cols: opts.cols, rows: opts.rows,
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+      ...(program ? { command: program } : {}),
+      ...(opts.scope ? { scope: opts.scope } : {}),
+    }));
     if (!r || typeof r.ptyId !== "string" || !r.ptyId) throw new Error("POST /api/harness/pty returned no ptyId");
+    // The wire's MAJOR must match: a v3 worker would speak frames this page
+    // can't decode, and a dead rectangle is exactly what this module exists to prevent.
+    if (typeof r.wire === "string" && r.wire && majorOf(r.wire) !== majorOf(PTY_WIRE)) {
+      throw new Error(`terminal wire mismatch: worker speaks ${r.wire}, this page ${PTY_WIRE}`);
+    }
     ptyId = r.ptyId;
     // The server names the socket path; the documented default stands in.
     wsPath = typeof r.wsPath === "string" && r.wsPath ? r.wsPath : `/pty/${encodeURIComponent(ptyId)}`;
@@ -164,24 +184,61 @@ async function openWorkerPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Pr
     ws.addEventListener("open", onOpen);
     ws.addEventListener("error", onFail);
     ws.addEventListener("close", onFail);
+  }).catch((err: unknown) => {
+    // The pty exists server-side but we can't reach it: close it, don't leak it.
+    void harnessRequest<void>("DELETE", `/pty/${encodeURIComponent(ptyId)}`).catch(() => {});
+    throw err;
   });
 
-  const enc = new TextEncoder();
   let done = false;
+  let ready = false;
+  const open = (): boolean => sock.readyState === WebSocket.OPEN;
+  const typeLine = (line: string): void => { if (line && open()) sock.send(dataFrame(`${line}\r`)); };
   const finish = (sendClose: boolean): void => {
     if (done) return;
     done = true;
-    if (sendClose) { try { if (sock.readyState === WebSocket.OPEN) sock.send(closeFrame()); } catch { /* closing anyway */ } }
+    clearInterval(keepAlive);
+    if (sendClose) {
+      try { if (open()) sock.send(closeFrame()); } catch { /* closing anyway */ }
+      // Belt to the frame's suspenders: the server's own close route.
+      void harnessRequest<void>("DELETE", `/pty/${encodeURIComponent(ptyId)}`).catch(() => {});
+    }
     try { sock.close(); } catch { /* already closed */ }
   };
+  // The server pings too; answering in kind keeps idle terminals alive
+  // through proxies that drop quiet sockets.
+  const keepAlive = setInterval(() => { try { if (open()) sock.send(pingFrame()); } catch { /* */ } }, 25_000);
   sock.addEventListener("message", (ev) => {
     const f = decodePtyFrame(typeof ev.data === "string" ? ev.data : "");
     if (!f) return;
-    if (f.type === "data") {
-      try { hooks.onData(enc.encode(f.data)); } catch { /* corrupt frame — drop it, the stream continues */ }
-    } else if (f.type === "close") {
-      finish(false); // the far pty is already gone
-      hooks.onExit(typeof f.code === "number" ? f.code : 0);
+    switch (f.type) {
+      case "data":
+        try { hooks.onData(b64ToBytes(f.data)); } catch { /* corrupt frame — drop it, the stream continues */ }
+        return;
+      case "ready":
+        if (ready) return;
+        ready = true;
+        // The composed line's remainder (or a whole `cd … && …` line).
+        if (typeAfterReady) setTimeout(() => typeLine(typeAfterReady), 150);
+        return;
+      case "exit":
+        finish(false); // the far pty is already gone
+        hooks.onExit(typeof f.code === "number" ? f.code : 0);
+        return;
+      case "close":
+        finish(false);
+        hooks.onExit(0);
+        return;
+      case "error":
+        // The worker's own failure text → the panel state card.
+        hooks.onError?.(f.error);
+        return;
+      case "ping":
+        try { if (open()) sock.send(pongFrame()); } catch { /* */ }
+        return;
+      case "pong":
+      case "resize":
+        return;
     }
   });
   sock.addEventListener("close", () => {
@@ -191,11 +248,18 @@ async function openWorkerPty(opts: RemotePtyOpenOpts, hooks: RemotePtyHooks): Pr
   });
 
   return {
-    write: (data) => { if (!done && sock.readyState === WebSocket.OPEN) sock.send(dataFrame(data)); },
-    resize: (cols, rows) => { if (!done && cols > 0 && rows > 0 && sock.readyState === WebSocket.OPEN) sock.send(resizeFrame(cols, rows)); },
+    write: (data) => { if (!done && open()) sock.send(dataFrame(data)); },
+    resize: (cols, rows) => { if (!done && cols > 0 && rows > 0 && open()) sock.send(resizeFrame(cols, rows)); },
     dispose: () => finish(true),
+    // Started by the worker (program) and/or typed here after ready: either
+    // way the caller has nothing left to type.
     startedCommand: !!opts.command,
   };
+}
+
+function majorOf(wire: string): string {
+  const m = /\/v(\d+)/.exec(wire);
+  return m ? m[1]! : wire;
 }
 
 // ── the desktop pty (the shared relay socket) ───────────────────────────────
