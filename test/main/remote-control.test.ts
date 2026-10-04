@@ -38,12 +38,14 @@ describe("the desktop's remote door", () => {
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
       "cliSessions.list",
       "fs.gitInfo", "fs.list", "fs.mkdir",
-      "layouts.get", "layouts.list",
+      "layouts.get", "layouts.list", "layouts.open",
       "panel.clipboard", "panel.close", "panel.input", "panel.nav", "panel.open", "panel.stats", "panel.webrtc",
       "panelApps.list",
+      "panels.close", "panels.list", "panels.open", "panels.switch",
       "pty.close", "pty.input", "pty.open", "pty.resize",
       "relay.ping",
       "sessions.delete", "sessions.get", "sessions.list", "sessions.put",
+      "settings.open",
     ]);
   });
 
