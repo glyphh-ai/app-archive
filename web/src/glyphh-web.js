@@ -103,7 +103,7 @@ export async function syncGating() {
 export async function serverReachable() {
   if (!hasWindow) return true;
   try {
-    const r = await fetch(`${API_URL}/healthz`, { method: 'GET', cache: 'no-store' });
+    const r = await fetch(`${API_URL}/health/liveliness`, { method: 'GET', cache: 'no-store' });
     return r.status < 500;
   } catch {
     return false;

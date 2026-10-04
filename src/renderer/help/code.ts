@@ -4537,9 +4537,9 @@ async function probeRuntime(url?: string): Promise<string> {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 4000);
     try {
-      const res = await fetch(`${url.replace(/\/$/, "")}/healthz`, { signal: ctl.signal });
+      const res = await fetch(`${url.replace(/\/$/, "")}/health/liveliness`, { signal: ctl.signal });
       return res.ok ? "the runtime IS reachable from this browser — the failure is auth or capacity, not the network"
-        : `the runtime answered ${res.status} on /healthz`;
+        : `the runtime answered ${res.status} on /health/liveliness`;
     } finally { clearTimeout(t); }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
