@@ -595,9 +595,23 @@ describe('artifacts shims — the typed resource when the SDK has it, else the r
   });
   it('a typed client.artifacts resource is preferred over the raw routes', async () => {
     const c = rawClient();
-    c.artifacts = { list: vi.fn(async () => [META]), get: vi.fn(async () => META), share: vi.fn(async () => ({ access: 'org', shareUrl: null })) };
+    c.artifacts = {
+      list: vi.fn(async () => [META]), get: vi.fn(async () => META), share: vi.fn(async () => ({ access: 'org', shareUrl: null })), remove: vi.fn(async () => undefined),
+      // The SDK's shape: comments are a SUB-RESOURCE, not a method (the viewer once died on `comments is not a function`).
+      comments: { list: vi.fn(async () => [{ id: 'c1' }]), add: vi.fn(async (_id, b) => ({ id: 'c2', ...b })), resolve: vi.fn(async (_id, cid, resolved) => ({ id: cid, resolved })), remove: vi.fn(async () => undefined) },
+    };
     const a = buildArtifactsWeb(c, { document: null });
     expect((await a.artifactsList('shared')).data).toEqual([META]);
+    expect(await a.artifactsDelete('art_1')).toEqual({ ok: true, data: {} });
+    expect(c.artifacts.remove).toHaveBeenCalledWith('art_1');
+    expect(await a.artifactsCommentsList('art_1')).toEqual({ ok: true, data: [{ id: 'c1' }] });
+    expect(c.artifacts.comments.list).toHaveBeenCalledWith('art_1');
+    expect((await a.artifactsCommentAdd('art_1', { text: 'hi', parentId: 'c1' })).data).toEqual({ id: 'c2', text: 'hi', parentId: 'c1' });
+    expect(await a.artifactsCommentPatch('art_1', 'c1', { resolved: true })).toEqual({ ok: true, data: { id: 'c1', resolved: true } });
+    expect(c.artifacts.comments.resolve).toHaveBeenCalledWith('art_1', 'c1', true);
+    expect(await a.artifactsCommentDelete('art_1', 'c1')).toEqual({ ok: true, data: {} });
+    expect(c.artifacts.comments.remove).toHaveBeenCalledWith('art_1', 'c1');
+    expect(c.calls.filter(([m, p]) => p.includes('/comments') || m === 'del')).toEqual([]);
     expect(c.artifacts.list).toHaveBeenCalledWith('shared');
     expect((await a.artifactsShare('art_1', 'org')).data).toEqual({ access: 'org', shareUrl: null });
     expect(c.http.get).not.toHaveBeenCalled();

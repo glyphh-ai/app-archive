@@ -1507,20 +1507,35 @@ export function buildArtifactsWeb(client, deps = {}) {
       if (typeof patch?.access === 'string') body.access = patch.access;
       return a()?.update ? a().update(String(id), body) : client.http.put(path(id), body);
     }),
-    artifactsDelete: (id) => env(async () => { if (a()?.delete) await a().delete(String(id)); else await client.http.del(path(id)); return {}; }),
+    artifactsDelete: (id) => env(async () => { if (a()?.remove) await a().remove(String(id)); else await client.http.del(path(id)); return {}; }),
     artifactsShare: (id, access) => env(() => (a()?.share ? a().share(String(id), String(access)) : client.http.post(path(id, '/share'), { access: String(access || 'private') }))),
+    // THE SDK'S COMMENTS ARE A SUB-RESOURCE (`client.artifacts.comments.list /
+    // add / resolve / remove`, sdk/src/resources/artifacts.ts) — not methods on
+    // the artifacts client. The first cut called `comments(id)` on that object
+    // and the viewer failed with "comments is not a function" (his report,
+    // 2026-10-05). The raw routes stay as the fallback for an older SDK.
     artifactsCommentsList: (id) => env(async () => {
-      const rows = a()?.comments ? await a().comments(String(id)) : await client.http.get(path(id, '/comments'));
+      const cm = a()?.comments;
+      const rows = cm?.list ? await cm.list(String(id)) : await client.http.get(path(id, '/comments'));
       return Array.isArray(rows) ? rows : [];
     }),
     artifactsCommentAdd: (id, input) => env(() => {
       const body = { text: String(input?.text || '') };
       if (input?.region) body.region = input.region;
       if (input?.parentId) body.parentId = String(input.parentId);
-      return a()?.addComment ? a().addComment(String(id), body) : client.http.post(path(id, '/comments'), body);
+      const cm = a()?.comments;
+      return cm?.add ? cm.add(String(id), body) : client.http.post(path(id, '/comments'), body);
     }),
-    artifactsCommentPatch: (id, cid, patch) => env(() => client.http.patch(path(id, `/comments/${encodeURIComponent(String(cid || ''))}`), { resolved: !!patch?.resolved })),
-    artifactsCommentDelete: (id, cid) => env(async () => { await client.http.del(path(id, `/comments/${encodeURIComponent(String(cid || ''))}`)); return {}; }),
+    artifactsCommentPatch: (id, cid, patch) => env(() => {
+      const cm = a()?.comments;
+      return cm?.resolve ? cm.resolve(String(id), String(cid || ''), !!patch?.resolved) : client.http.patch(path(id, `/comments/${encodeURIComponent(String(cid || ''))}`), { resolved: !!patch?.resolved });
+    }),
+    artifactsCommentDelete: (id, cid) => env(async () => {
+      const cm = a()?.comments;
+      if (cm?.remove) await cm.remove(String(id), String(cid || ''));
+      else await client.http.del(path(id, `/comments/${encodeURIComponent(String(cid || ''))}`));
+      return {};
+    }),
     /** The viewer frames `/a/<id>/raw` on THIS origin (web/artifact-proxy.mjs):
      *  an iframe carries no header, so the session parks as a cookie scoped to
      *  /a — the app-host panels' pattern (app-instances-web.js) — and the
