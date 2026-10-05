@@ -435,7 +435,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
       </div>
 
       {/* + New Session — the one primary action, top-left. */}
-      <button className="m-rail-new btn btn-primary btn-lg" onClick={onNewSession}>
+      <button className="m-rail-new action-btn primary lg" onClick={onNewSession}>
         <Icon name="plus" />
         <span>New Session</span>
       </button>
@@ -740,7 +740,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, whereOf, o
         </div>
       </div>
       <button className="m-search-fab" aria-label="Search" onClick={onSearch}><Icon name="search" /></button>
-      <button className="m-fab btn btn-primary btn-lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
+      <button className="m-fab action-btn primary lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
     </div>
   );
 }
@@ -1517,7 +1517,7 @@ function SplashFlow() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const COLORS = ['179, 107, 251', '140, 59, 242', '236, 72, 153'];
+    const COLORS = ['179, 107, 251', '175, 95, 255', '236, 72, 153'];   // index.template.html's, verbatim
     const PULSE = '255, 236, 180';
     const N = 28;
     let seed = 1337;
@@ -2333,7 +2333,7 @@ function CopyBtn({ value }: { value: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
-      className="btn"
+      className="action-btn"
       title="Copy"
       style={{ height: 20, width: 24, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
       onClick={() => {
@@ -2344,7 +2344,7 @@ function CopyBtn({ value }: { value: string }) {
       }}
     >
       {done ? (
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" style={{ color: 'var(--success)' }} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
       ) : (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
       )}
@@ -3786,7 +3786,7 @@ function FolderPickerTray({ machine, onClose, onChoose }: { machine: AttachedMac
           {creating
             ? <div className="m-fp-create"><input className="m-prompt-input" value={newName} onChange={(e) => setNewName((e.target as HTMLInputElement).value)} placeholder="New folder name" autoFocus /><button className="m-prompt-btn m-prompt-primary" onClick={() => void createFolder()}>Create</button></div>
             : <button className="m-fp-new" onClick={() => setCreating(true)} disabled={!cur}><Icon name="plus" /><span>New folder</span></button>}
-          <button className="btn btn-primary btn-lg m-fp-choose" onClick={() => cur && onChoose(cur)} disabled={!cur}>Use this folder</button>
+          <button className="action-btn primary lg m-fp-choose" onClick={() => cur && onChoose(cur)} disabled={!cur}>Use this folder</button>
         </div>
       </div>
     </div>,
@@ -3860,14 +3860,14 @@ function AppTray({ app, onClose }: { app: AppItem | null; onClose: () => void })
                 <>
                   <Icon name="monitor-off" />
                   <div className="m-apptray-msg">{state === 'signed-out' ? 'Sign in to stream apps from your desktop.' : 'Connect your desktop to view this app live.'}</div>
-                  <button className="m-apptray-retry btn btn-primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
+                  <button className="m-apptray-retry action-btn primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
                 </>
               )}
               {dropped && (
                 <>
                   <Icon name="monitor-off" />
                   <div className="m-apptray-msg">Desktop disconnected.</div>
-                  <button className="m-apptray-retry btn btn-primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
+                  <button className="m-apptray-retry action-btn primary" onClick={() => { haptic(); handleRef.current?.retry(); }}>Try again</button>
                 </>
               )}
             </div>
