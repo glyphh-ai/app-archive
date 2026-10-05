@@ -33,7 +33,9 @@ import { placeMenu, type PlaceBox } from "./menu-place.js";
 
 export type Source =
   | { kind: "cloud-new"; dir?: string }
-  | { kind: "cloud-repo"; repo: string; dir?: string }
+  /** `environmentId` names the member's cloud environment the session runs in
+   *  (his direction, 2026-10-05: personal environments); absent = Default. */
+  | { kind: "cloud-repo"; repo: string; dir?: string; environmentId?: string }
   /** An EXISTING cloud workspace (his ask, 2026-08-19): `space` is the thread
    *  id that keyed the pod workspace — the run + the fs panels scope to it,
    *  so a new session re-enters the same folder. `label` is display only. */

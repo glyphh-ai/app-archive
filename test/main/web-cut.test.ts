@@ -10,6 +10,7 @@ import {
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS,
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
+  webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -94,5 +95,54 @@ describe("+ New on the web (his report, 2026-10-05: the rail's + New did nothing
     expect(webNewSessionInPlace(true, false)).toBe(false);
     expect(webNewSessionInPlace(false, true)).toBe(false);
     expect(webNewSessionInPlace(false, false)).toBe(false);
+  });
+});
+
+describe("the web remembers its panels (his order, 2026-10-05: open work panels come back after a refresh and a login)", () => {
+  const files = { kind: "tool", toolView: "files" };
+  const diff = { kind: "tool", toolView: "diff", solo: true };
+  const browser = { kind: "tool", toolView: "preview" };
+  const app = { kind: "app", slug: "gmail", name: "Gmail", url: "https://mail.google.com" };
+  const section = { kind: "section", section: "apps" };
+  const cli = { kind: "agent", agent: "claude", name: "Claude Code" };
+
+  it("hosts exactly the ⋮ menu's tool panels — never the streamed Browser, an app, a section or a CLI agent", () => {
+    for (const v of WEB_TOOL_VIEWS) expect(webRestorableCard({ kind: "tool", toolView: v })).toBe(true);
+    for (const c of [browser, app, section, cli, null, undefined, { kind: "tool" }]) expect(webRestorableCard(c as never)).toBe(false);
+  });
+  it("names what it skips", () => {
+    expect(webCardSkipReason(browser)).toContain("preview");
+    expect(webCardSkipReason(app)).toContain("Gmail");
+    expect(webCardSkipReason(section)).toContain("apps");
+    expect(webCardSkipReason(cli)).toContain("Claude Code");
+    expect(webCardSkipReason(null)).toContain("malformed");
+    expect(webCardSkipReason({ kind: "wat" })).toContain("wat");
+  });
+  it("the plan: the restorable cards in their saved order, the rest named, the agent's seat kept", () => {
+    const plan = webRestorePlan({ layout: null, cards: [files, app, diff, browser], agentAt: 1 });
+    expect(plan.open).toEqual([files, diff]);
+    expect(plan.open[1].solo).toBe(true);   // the edge-drop rides with the card
+    expect(plan.skipped).toHaveLength(2);
+    expect(plan.skipped[0]).toContain("Gmail");
+    expect(plan.skipped[1]).toContain("preview");
+    expect(plan.agentAt).toBe(1);
+  });
+  it("the agent's seat clamps to the panels that open; absent → first", () => {
+    expect(webRestorePlan({ layout: null, cards: [files, diff], agentAt: 9 }).agentAt).toBe(2);
+    expect(webRestorePlan({ layout: null, cards: [files, diff], agentAt: -3 }).agentAt).toBe(0);
+    expect(webRestorePlan({ layout: null, cards: [files, diff] }).agentAt).toBe(0);
+    expect(webRestorePlan({ layout: null, cards: [files, diff], agentAt: Number.NaN }).agentAt).toBe(0);
+  });
+  it("a saved layout opens nothing on the web and is named; nothing saved → nothing", () => {
+    const plan = webRestorePlan({ layout: "dev", cards: [] });
+    expect(plan.open).toEqual([]);
+    expect(plan.skipped).toEqual([expect.stringContaining("dev")]);
+    for (const s of [null, undefined, {}, { layout: null, cards: null }, "junk"]) {
+      expect(webRestorePlan(s as never)).toEqual({ open: [], skipped: [], agentAt: 0 });
+    }
+  });
+  it("the web keeps the wall's memory its way (agent seat + saves on a move); the desktop is untouched", () => {
+    expect(webWallMemory(true)).toBe(true);
+    expect(webWallMemory(false)).toBe(false);
   });
 });
