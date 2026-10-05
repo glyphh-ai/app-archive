@@ -73,14 +73,20 @@ export const MENU_SECTION_ORDER: Readonly<Record<MenuSurface, ReadonlyArray<Menu
 /** The sections that open as expandable heads, collapsed on every open. */
 export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "clis"]);
 
-/** The desktop's Code toolbelt: the old Developer-tools list, in its order. */
-export const DESKTOP_CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "preview", "diff", "plan", "agents"]);
-/** A Work session's panels: the swarm (and, on the desktop, the Browser). */
-export const DESKTOP_WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["preview", "agents"]);
-export const WEB_WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["agents"]);
+/** THE ARTIFACTS PANEL (his order, 2026-10-05) lists in the Panels section
+ *  on both surfaces and for both types — last, after the type's own views.
+ *  On the web it opens full screen (web-cut.ts webPanelOpensFullScreen). */
+export const ARTIFACTS_VIEW = "artifacts";
+/** The desktop's Code toolbelt: the old Developer-tools list, in its order, then Artifacts. */
+export const DESKTOP_CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "preview", "diff", "plan", "agents", ARTIFACTS_VIEW]);
+/** A Work session's panels: the swarm (and, on the desktop, the Browser), then Artifacts. */
+export const DESKTOP_WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["preview", "agents", ARTIFACTS_VIEW]);
+export const WEB_WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["agents", ARTIFACTS_VIEW]);
+/** The web's Code panels: the in-document views (web-cut.ts), then Artifacts. */
+export const WEB_CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze([...WEB_TOOL_VIEWS, ARTIFACTS_VIEW]);
 
 const TOOL_LABELS: Record<string, string> = {
-  files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Agents", preview: "Browser",
+  files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Agents", preview: "Browser", artifacts: "Artifacts",
 };
 
 /** The one app kind the web's Apps section lists: an installed Glyphh app
@@ -163,7 +169,7 @@ export interface AgentMenu {
 
 /** The tool views a session of this type offers on this surface. */
 export function toolViewsFor(surface: MenuSurface, mode: MenuMode): ReadonlyArray<string> {
-  if (surface === "web") return mode === "work" ? WEB_WORK_TOOL_VIEWS : WEB_TOOL_VIEWS;
+  if (surface === "web") return mode === "work" ? WEB_WORK_TOOL_VIEWS : WEB_CODE_TOOL_VIEWS;
   return mode === "work" ? DESKTOP_WORK_TOOL_VIEWS : DESKTOP_CODE_TOOL_VIEWS;
 }
 

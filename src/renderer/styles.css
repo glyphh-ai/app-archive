@@ -1756,8 +1756,6 @@ html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; heig
 html.glyphh-web .app-rail-logo-img { height: 30px; width: auto; display: block; }
 /* The rail's Connections and Devices links are WEB ONLY (his order,
    2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
-.app-rail-nav-item.web-rail-link { display: none; }
-html.glyphh-web .app-rail-nav-item.web-rail-link { display: flex; }
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-header { padding-left: var(--rail-strip-w); }
 .glyphh-web #panel-wc { display: none !important; }

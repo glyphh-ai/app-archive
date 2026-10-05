@@ -13,7 +13,7 @@
  * never left to silently no-op (his order, 2026-10-04).
  */
 
-import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_DESKTOP_ONLY_EXTRA, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS } from "./web-cut.js";
+import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_DESKTOP_ONLY_EXTRA, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, webGroupPanelKept } from "./web-cut.js";
 
 interface GlyphhWebProbe { has?: (name: string) => boolean }
 
@@ -79,8 +79,12 @@ export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remot
 export function hideDesktopOnlySubs(): void {
   if (!onWeb()) return;
   for (const sub of DESKTOP_ONLY_SUBS) {
-    document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"], .settings-panel[data-sub="${sub}"]`)
-      .forEach((n) => n.classList.add("hidden"));
+    // THE WEB'S FULL-SCREEN BUILD / CUSTOMIZE (his order, 2026-10-05): a
+    // group page's PANEL stays mounted (the full-screen page adopts it as a
+    // tab); only its Settings nav row hides. Every other desktop-only panel
+    // hides with its row.
+    const sel = webGroupPanelKept(sub) ? `.settings-nav-item[data-sub="${sub}"]` : `.settings-nav-item[data-sub="${sub}"], .settings-panel[data-sub="${sub}"]`;
+    document.querySelectorAll<HTMLElement>(sel).forEach((n) => n.classList.add("hidden"));
   }
   for (const id of WEB_HIDDEN_NAV_GROUPS) document.getElementById(id)?.classList.add("hidden");
   for (const sel of [...WEB_HIDDEN_RAIL, ...WEB_HIDDEN_SETTINGS_ROWS]) {

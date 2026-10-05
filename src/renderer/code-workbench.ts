@@ -52,7 +52,8 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webRestorePlan, webWallMemory } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle } from "./help/web-cut.js";
+import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
@@ -122,7 +123,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -230,6 +231,8 @@ interface PreviewSlot {
  *  started, each an expandable row with its own feed. It holds no state of its
  *  own — main's ledger is the source (agents-panel.ts). */
 interface AgentsSlot { id: number; view: "agents"; sticky?: boolean }
+/** THE ARTIFACTS PANEL (his order, 2026-10-05) — help/artifacts-panel.ts owns the body; `panel` is its handle for teardown. */
+interface ArtifactsSlot { id: number; view: "artifacts"; sticky?: boolean; panel?: ArtifactsPanelHandle }
 
 interface PlanSlot {
   id: number; view: "plan";
@@ -274,7 +277,7 @@ interface GDriveSlot {
 interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 /** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
 interface GMediaSlot extends MediaSlotState { sticky?: boolean }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -316,6 +319,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   // (persisted layouts reference it).
   coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   agents:   { title: "Agents",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>` },
+  artifacts: { title: "Artifacts", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
@@ -1396,7 +1400,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1491,11 +1495,16 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"): void;
     /** The web's wall restore (his order, 2026-10-05): open these tool
      *  panels in order (a `solo` one owns its column, as the edge-drop left
      *  it), then reseat the agent card at `agentAt` of the open order. */
     restoreWebWall(open: Array<{ toolView: string; solo?: boolean }>, agentAt: number): void;
+    /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/web-cut.ts):
+     *  Artifacts / Build / Customize fill the page over the agent and every
+     *  open card (kept mounted); close restores exactly what was showing. */
+    openWebFullPanel(key: string): void;
+    closeWebFullPanel(): void;
     /** Open (or re-front) the terminal card and type a command into its shell:
      *  straight into a live pty, or as the first command of one still booting. */
     openTerminalWith(cmd: string): void;
@@ -1628,6 +1637,7 @@ async function init(): Promise<void> {
     if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     if (view === "agents") return { id, view };
+    if (view === "artifacts") return { id, view };
     return { id, view: "preview", url: "" };
   }
   /**
@@ -1923,6 +1933,9 @@ async function init(): Promise<void> {
     // PAGES open as Echo cards — Echo is the only surface.
     void loadSection;   // the card path runs the loader itself
     openEchoSurface();
+    // THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05): Build and
+    // Customize fill the page in place of everything showing.
+    if (IS_WEB_TARGET && webPanelOpensFullScreen(section)) { echoCtl?.openWebFullPanel(section); return; }
     echoCtl?.openSection(section);
   }
 
@@ -2230,6 +2243,7 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "agents") mountAgentsPanel(body);
+    else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "gpoint") {
       body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
@@ -5447,6 +5461,7 @@ async function init(): Promise<void> {
             sec.classList.remove("active", "wb-hosted");
             pen?.appendChild(sec);
           });
+          if (toolSlot?.view === "artifacts") toolSlot.panel?.destroy();
           if (toolSlot?.view === "terminal") {
             if (parkKey) {
               // keep pty + xterm wired (offscreen writes land in the buffer);
@@ -5826,6 +5841,26 @@ async function init(): Promise<void> {
         ta.setSelectionRange(text.length, text.length);
       };
       window.setTimeout(fill, 120);
+    };
+    /** SEND a message to the agent (his order, 2026-10-05: the Artifacts
+     *  panel's "Send to Glyphh" and "Start chat"): the text lands in the
+     *  composer and goes — on the current session, or a fresh one first.
+     *  The instanced desktop hands the prompt to a panel with send: true;
+     *  the in-document agent fills the composer and presses Send. */
+    (window as unknown as { __wbSendToAgent?: (text: string, opts?: { newSession?: boolean }) => void }).__wbSendToAgent = (text: string, opts?: { newSession?: boolean }) => {
+      if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "prompt", text, send: true }); return; }
+      openAgentForLoop(GLYPHH_LOOP_ID);
+      if (opts?.newSession) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+      let tries = 0;
+      const go = (): void => {
+        const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
+        const send = document.getElementById("code-send") as HTMLButtonElement | null;
+        if (!ta || !send || ta.disabled) { if (tries++ < 40) window.setTimeout(go, 100); return; }
+        ta.value = text;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        send.click();
+      };
+      window.setTimeout(go, opts?.newSession ? 220 : 120);
     };
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
@@ -6456,6 +6491,7 @@ async function init(): Promise<void> {
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
         else if (slot.view === "agents") mountAgentsPanel(body);
+        else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
         else if (slot.view === "gpoint") {
           body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
@@ -7201,7 +7237,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"): TileEntry => {
       // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
       // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
       // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
@@ -7224,7 +7260,69 @@ async function init(): Promise<void> {
       if (slot.view === "preview") void renderPreviewIntoSlot(b, slot);
       else if (slot.view === "monaco") void renderMonacoIntoSlot(b, slot);
     };
+    // ── THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts ->
+    // new web panel -> open an artifact it opens full screen in place of
+    // anything else showing with < - Artifacts in the header where the agent
+    // header is today. The build and customize left rail items go to the same
+    // thing… The close or x on the top right just closes and the agent and any
+    // other work panels open."). A host over the cards layer; the agent holder,
+    // the cards and the seams go visibility:hidden under body.web-full-open —
+    // nothing closes, nothing reflows — and come back exactly as they were
+    // when the host goes. Artifacts mounts its panel; Build / Customize adopt
+    // their section page the way openSectionCard does. Desktop: never. ──
+    let webFullHost: HTMLElement | null = null;
+    let webFullKey: string | null = null;
+    let webFullPanel: ArtifactsPanelHandle | null = null;
+    const closeWebFullPanel = (): void => {
+      if (!webFullHost) return;
+      const pen = document.getElementById("page-body");
+      webFullHost.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
+        sec.classList.remove("active", "wb-hosted");
+        pen?.appendChild(sec);
+      });
+      webFullPanel?.destroy();
+      webFullPanel = null;
+      webFullHost.remove();
+      webFullHost = null;
+      webFullKey = null;
+      document.body.classList.remove("web-full-open");
+      layoutCards();
+      scheduleAgentSync();
+    };
+    const openWebFullPanel = (key: string): void => {
+      if (!IS_WEB_TARGET || !webPanelOpensFullScreen(key)) return;
+      if (webFullKey === key) return;
+      if (webFullHost) closeWebFullPanel();
+      const host = document.createElement("div");
+      host.className = "web-full-panel";
+      host.dataset.panel = key;
+      host.innerHTML = `<div class="web-full-head">
+          <button type="button" class="web-full-back" title="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg><span></span></button>
+          <button type="button" class="ws-icon-btn web-full-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div><div class="web-full-body"></div>`;
+      host.querySelector<HTMLElement>(".web-full-back span")!.textContent = webFullScreenTitle(key);
+      const panelBody = host.querySelector<HTMLElement>(".web-full-body")!;
+      // "‹ Artifacts": the viewer goes back to the list; the list closes.
+      host.querySelector(".web-full-back")!.addEventListener("click", () => { if (!webFullPanel?.back()) closeWebFullPanel(); });
+      host.querySelector(".web-full-close")!.addEventListener("click", () => closeWebFullPanel());
+      body.appendChild(host);
+      webFullHost = host;
+      webFullKey = key;
+      document.body.classList.add("web-full-open");
+      if (key === "artifacts") {
+        webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel });
+        return;
+      }
+      const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${legacyKey(key)}"]`);
+      if (!sec) return;
+      panelBody.classList.add("ws-section-body");
+      sec.classList.add("active", "wb-hosted");
+      panelBody.appendChild(sec);
+      (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(legacyKey(key));
+    };
     const ctl: EchoCtlType = {
+      openWebFullPanel,
+      closeWebFullPanel,
       openApp: (app) => {
         const key = (app.slug || "").trim().toLowerCase();
         // The fixed GLYPHH tile is the + New Session front door, not an app.
@@ -8211,6 +8309,15 @@ async function init(): Promise<void> {
   }
 
   // ── Files view ──
+  /** THE ARTIFACTS PANEL on the desktop (his order, 2026-10-05): an ordinary
+   *  work panel like Files — the list, and the viewer swapping in with a back
+   *  arrow (help/artifacts-panel.ts). The handle rides the slot so a close
+   *  tears the panel down. */
+  function mountArtifactsIntoSlot(body: HTMLElement, slot: ArtifactsSlot): void {
+    slot.panel?.destroy();
+    body.innerHTML = "";
+    slot.panel = mountArtifactsPanel(body);
+  }
   async function renderFilesIntoSlot(body: HTMLElement, slot: FilesSlot): Promise<void> {
     registerLiveFsPanel(slot, body);
     if (!(await webFsReady(body, () => { void renderFilesIntoSlot(body, slot); }))) return;
@@ -10933,10 +11040,13 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound", "artifacts"].includes(v)) return;
     // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
     // not reachable on the web from any door (help/web-cut.ts).
     if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[web-cut] tool refused on the web:", v); return; }
+    // THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05): Artifacts opens
+    // full screen in place of everything showing (help/web-cut.ts).
+    if (IS_WEB_TARGET && webPanelOpensFullScreen(v)) { openEchoSurface(); echoCtl?.openWebFullPanel(v); return; }
     // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
     // slot beside the panel (his report, 2026-09-26: Files opened inside the
     // agent). The request goes up through main; only the agent's own views
@@ -10947,7 +11057,7 @@ async function init(): Promise<void> {
         ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
       return;
     }
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"); return; }
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
