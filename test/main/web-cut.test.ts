@@ -11,7 +11,7 @@ import {
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
-  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything,
+  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -117,6 +117,14 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build
   it("+ New on the web closes everything first; the desktop keeps its panels (his order, 2026-10-05)", () => {
     expect(webNewClosesEverything(true)).toBe(true);
     expect(webNewClosesEverything(false)).toBe(false);
+  });
+  it("a net-new user on the web starts on Work; a saved tab wins; the desktop starts on Code (his order, 2026-10-05)", () => {
+    expect(defaultTypeTab(true, "")).toBe("work");
+    expect(defaultTypeTab(true, undefined)).toBe("work");
+    expect(defaultTypeTab(true, "code")).toBe("code");
+    expect(defaultTypeTab(false, "")).toBe("code");
+    expect(defaultTypeTab(false, "work")).toBe("work");
+    expect(defaultTypeTab(true, "wat")).toBe("work");
   });
   it("the lists are frozen", () => {
     expect(Object.isFrozen(webFullScreenPanels)).toBe(true);

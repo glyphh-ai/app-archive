@@ -104,6 +104,15 @@ export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
 
+/** A NET-NEW USER ON THE WEB STARTS ON WORK → NEW (his order, 2026-10-05).
+ *  The rail's type tab is a saved preference; with none saved the web lands
+ *  on Work (the desktop keeps Code, its builder's default). A saved pick
+ *  always wins on both hosts. */
+export function defaultTypeTab(web: boolean, saved: unknown): "work" | "code" {
+  if (saved === "work" || saved === "code") return saved;
+  return web ? "work" : "code";
+}
+
 /** + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05: "no matter
  *  what page is up clicking new in the left rail closes whatever is open and
  *  shows the new session page"): the full-screen page, every open work
