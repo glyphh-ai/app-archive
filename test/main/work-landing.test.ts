@@ -4,7 +4,7 @@
  * greeting on load, and an Output chip whose only live row is Artifact).
  */
 import { describe, expect, it } from "vitest";
-import { GREETINGS, GREETING_MAX_CHARS, greetingBucket, greetingHash, pickGreeting } from "../../src/renderer/help/landing-greeting";
+import { GREETINGS, GREETING_MAX_CHARS, greetingBucket, greetingHash, pickGreeting, firstNameOf, renderGreeting } from "../../src/renderer/help/landing-greeting";
 import {
   ARTIFACT_STANDING_LINE, OUTPUT_FORMATS, isStoredOutputFormat, liveOutputFormats,
   outputChipLabel, outputFormatOf, outputStandingLine,
@@ -72,11 +72,28 @@ describe("the pick", () => {
   });
 
   it("lands on a line of the hour's bucket", () => {
-    expect(GREETINGS.morning).toContain(pickGreeting("s1", 7));
-    expect(GREETINGS.lunch).toContain(pickGreeting("s1", 12));
-    expect(GREETINGS.afternoon).toContain(pickGreeting("s1", 15));
-    expect(GREETINGS.evening).toContain(pickGreeting("s1", 20));
-    expect(GREETINGS.latenight).toContain(pickGreeting("s1", 2));
+    const rendered = (hour: number) => GREETINGS[greetingBucket(hour)].map((l) => renderGreeting(l, ""));
+    expect(rendered(7)).toContain(pickGreeting("s1", 7));
+    expect(rendered(12)).toContain(pickGreeting("s1", 12));
+    expect(rendered(15)).toContain(pickGreeting("s1", 15));
+    expect(rendered(20)).toContain(pickGreeting("s1", 20));
+    expect(rendered(2)).toContain(pickGreeting("s1", 2));
+  });
+  it("names the reader by first name, never a title (his order, 2026-10-05)", () => {
+    expect(firstNameOf("Chris Timmerman")).toBe("Chris");
+    expect(firstNameOf("  Ada   Lovelace ")).toBe("Ada");
+    expect(firstNameOf("")).toBe("");
+    expect(renderGreeting("Morning, {name} — cards are punched", "Chris Timmerman")).toBe("Morning, Chris — cards are punched");
+    expect(renderGreeting("Tea, then algebra, {name}", "Chris")).toBe("Tea, then algebra, Chris");
+    expect(renderGreeting("Burning the midnight oil, {name}?", "Chris")).toBe("Burning the midnight oil, Chris?");
+    expect(renderGreeting("Morning, {name} — cards are punched", "")).toBe("Morning — cards are punched");
+    expect(renderGreeting("Tea, then algebra, {name}", "")).toBe("Tea, then algebra");
+    expect(renderGreeting("Evening, {name} — one more pattern", "")).toBe("Evening — one more pattern");
+    expect(renderGreeting("Burning the midnight oil, {name}?", "")).toBe("Burning the midnight oil?");
+    expect(renderGreeting("The loom is threaded for the day", "Chris")).toBe("The loom is threaded for the day");
+    const flat = Object.values(GREETINGS).flat();
+    expect(flat.some((l) => l.includes("{name}"))).toBe(true);
+    expect(flat.some((l) => /countess|analyst|scientist|sir|lady|madam/i.test(l))).toBe(false);
   });
 
   it("spreads different seeds across the bucket's lines", () => {

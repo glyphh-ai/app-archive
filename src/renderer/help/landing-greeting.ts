@@ -20,7 +20,7 @@ export const GREETINGS: Readonly<Record<GreetingBucket, readonly string[]>> = {
   morning: [
     "Good morning — the Engine is warm",
     "Hey, early bird — Babbage would approve",
-    "Morning, poetical scientist — cards are punched",
+    "Morning, {name} — cards are punched",
     "The loom is threaded for the day",
   ],
   lunch: [
@@ -32,17 +32,17 @@ export const GREETINGS: Readonly<Record<GreetingBucket, readonly string[]>> = {
   afternoon: [
     "Afternoon — the patterns are weaving",
     "The Engine weaves algebraic patterns",
-    "Tea, then algebra, dear Analyst",
+    "Tea, then algebra, {name}",
     "Still weaving — the loom never tires",
   ],
   evening: [
     "Good evening — the Engine keeps time",
     "The lamps are lit in the Engine room",
-    "Evening, poetical scientist — one more pattern",
+    "Evening, {name} — one more pattern",
     "Poetical science, by lamplight",
   ],
   latenight: [
-    "Burning the midnight oil, dear Analyst?",
+    "Burning the midnight oil, {name}?",
     "Late — the Engine never sleeps",
     "The night shift at the Engine",
     "Babbage is asleep; we are not",
@@ -73,7 +73,24 @@ export function greetingHash(seed: string): number {
 
 /** The line for this seed at this hour. Deterministic: same seed + same
  *  bucket → same line, whatever the repaint count. */
-export function pickGreeting(seed: string, hour: number = new Date().getHours()): string {
+export function pickGreeting(seed: string, hour: number = new Date().getHours(), name = ""): string {
   const lines = GREETINGS[greetingBucket(hour)];
-  return lines[greetingHash(seed) % lines.length];
+  return renderGreeting(lines[greetingHash(seed) % lines.length], name);
+}
+
+/** THE READER'S FIRST NAME (his order, 2026-10-05: "just use their first
+ *  name in these" — no title, no assumed gender). "Chris Timmerman" → "Chris". */
+export function firstNameOf(full: string | null | undefined): string {
+  const first = String(full || "").trim().split(/\s+/)[0] || "";
+  return first.replace(/[,.;:]+$/, "");
+}
+
+/** A line's `{name}` becomes the first name; with no name the vocative
+ *  drops cleanly ("Morning, {name} — cards are punched" → "Morning — cards
+ *  are punched"; "Tea, then algebra, {name}" → "Tea, then algebra"). */
+export function renderGreeting(line: string, name = ""): string {
+  const n = firstNameOf(name);
+  if (!line.includes("{name}")) return line;
+  if (n) return line.replace("{name}", n);
+  return line.replace(/,\s*\{name\}/, "").replace(/\s*\{name\}/, "").replace(/\s+([—?])/g, " $1").replace(/\s+\?/, "?").trim();
 }

@@ -62,7 +62,7 @@ import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
-import { pickGreeting } from "./landing-greeting.js";
+import { pickGreeting, firstNameOf } from "./landing-greeting.js";
 import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, type StoredOutputFormat } from "./output-format.js";
 import { artifactStandingLine } from "./artifact-rules.js";
 import { defaultTypeTab } from "./web-cut.js";
@@ -1062,7 +1062,11 @@ function ensureGhostName(): void {
     ghostName = n;
     // Backfill the title in place if the landing is still on screen.
     const t = document.querySelector<HTMLElement>(".code-ghost-title");
-    if (t) t.textContent = greeting(ghostName);
+    if (!t) return;
+    // The WORK landing's line carries the first name (landing-greeting.ts);
+    // the Code landing keeps its own greeting.
+    if (t.classList.contains("code-ghost-greeting")) t.textContent = pickGreeting(t.dataset.seed || landingSeed, undefined, firstNameOf(ghostName));
+    else t.textContent = greeting(ghostName);
   }).catch(() => { /* landing already shows the fallback */ });
 }
 
@@ -2584,7 +2588,11 @@ function renderThread(): void {
     title.className = "code-ghost-title code-ghost-greeting";
     // Picked per session id (the landing's own seed before one is born), so
     // a repaint never flickers to another line.
-    title.textContent = pickGreeting(c?.id ?? landingSeed);
+    // The reader's FIRST NAME is in the line (his order, 2026-10-05); it
+    // backfills in place once dashboardData resolves (ensureGhostName).
+    title.textContent = pickGreeting(c?.id ?? landingSeed, undefined, firstNameOf(ghostName));
+    title.dataset.seed = c?.id ?? landingSeed;
+    ensureGhostName();
     ghost.append(mark, title);
     inner.appendChild(ghost);
     return;
