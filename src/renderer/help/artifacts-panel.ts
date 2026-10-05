@@ -203,32 +203,39 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   host.appendChild(root);
 
   // ── THE LIST ──────────────────────────────────────────────────────────────
+  // THE SAME CHROME AS THE BUILD PAGES (his report, 2026-10-05: "the
+  // artifacts page looks nothing like the other pages"): the Skills page's
+  // head (title, centred search), its tab strip and its rows, verbatim classes.
   const list = el("div", "artp-list");
-  const head = el("div", "artp-head");
-  head.appendChild(el("h2", "artp-title", "Artifacts"));
+  const head = el("div", "skills-head");
+  head.appendChild(el("h2", "", "Artifacts"));
+  const search = el("div", "skills-search", SEARCH_SVG);
+  const q = document.createElement("input");
+  q.type = "text";
+  q.placeholder = "Search artifacts";
+  q.spellcheck = false;
+  q.autocomplete = "off";
+  q.addEventListener("input", () => paintList());
+  search.appendChild(q);
+  head.appendChild(search);
   list.appendChild(head);
-  const bar = el("div", "artp-toolbar");
-  const tabs = el("div", "artp-tabs");
+  const tabs = el("div", "skills-tabs");
   tabs.setAttribute("role", "tablist");
   let tab: ArtifactTab = "all";
   for (const t of ARTIFACT_TABS) {
-    const b = btn("artp-tab", "");
+    const b = btn("skills-tab", "");
     b.textContent = t.label;
     b.dataset.tab = t.key;
     b.setAttribute("role", "tab");
     b.addEventListener("click", () => { tab = t.key; paintList(); });
     tabs.appendChild(b);
   }
-  bar.appendChild(tabs);
-  const search = el("label", "artp-search", SEARCH_SVG);
-  const q = document.createElement("input");
-  q.type = "search";
-  q.placeholder = "Search artifacts…";
-  q.spellcheck = false;
-  q.addEventListener("input", () => paintList());
-  search.appendChild(q);
-  bar.appendChild(search);
-  list.appendChild(bar);
+  const spacer = el("div", "", "");
+  spacer.style.flex = "1";
+  tabs.appendChild(spacer);
+  const count = el("span", "skills-count", "");
+  tabs.appendChild(count);
+  list.appendChild(tabs);
   const groups = el("div", "artp-groups");
   list.appendChild(groups);
   root.appendChild(list);
@@ -237,38 +244,48 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   let loadError = "";
 
   function paintList(): void {
-    tabs.querySelectorAll<HTMLElement>(".artp-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    tabs.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     groups.innerHTML = "";
-    if (loadError) { groups.appendChild(el("div", "crud-empty", "")).textContent = loadError; return; }
+    if (loadError) { count.textContent = ""; groups.appendChild(el("div", "crud-empty", "")).textContent = loadError; return; }
     const shown = searchArtifacts(filterByTab(rows, tab), q.value);
+    count.textContent = `${shown.length} ${shown.length === 1 ? "artifact" : "artifacts"}`;
     if (!shown.length) {
       groups.appendChild(el("div", "crud-empty", "")).textContent = rows.length ? "Nothing matches." : "No artifacts yet. Ask Glyphh to make one.";
       return;
     }
     for (const g of groupByMonth(shown)) {
-      groups.appendChild(el("div", "artp-month", "")).textContent = g.label;
-      for (const a of g.items) groups.appendChild(rowEl(a));
+      const grp = el("div", "skill-group", "");
+      const gh = el("div", "skill-group-head", "");
+      gh.appendChild(el("span", "", g.label));
+      gh.appendChild(el("span", "skill-group-count", `· ${g.items.length}`));
+      grp.appendChild(gh);
+      for (const a of g.items) grp.appendChild(rowEl(a));
+      groups.appendChild(grp);
     }
   }
 
   function rowEl(a: ArtifactMeta): HTMLElement {
-    const row = el("div", "artp-row");
+    const row = el("div", "skill-row openable artp-row");
     row.dataset.id = a.id;
     row.setAttribute("role", "button");
     row.tabIndex = 0;
-    row.appendChild(el("span", `artp-row-icon ${artifactKind(a)}`, KIND_ICON[artifactKind(a)]));
-    const name = el("span", "artp-row-name");
+    row.appendChild(el("div", `skill-tile-icon artp-row-icon ${artifactKind(a)}`, KIND_ICON[artifactKind(a)]));
+    const main = el("div", "skill-row-main");
+    const name = el("div", "skill-row-name");
     name.textContent = a.name;
-    row.appendChild(name);
-    const meta = el("span", "artp-row-meta");
-    if (isLocked(a)) meta.appendChild(el("span", "artp-row-lock", LOCK_SVG)).title = "Private";
-    if (!a.mine) { const by = el("span", "artp-row-by"); by.textContent = a.ownerName || "Shared"; meta.appendChild(by); }
-    const ed = el("span", "artp-row-edited");
-    ed.textContent = editedLabel(a);
-    meta.appendChild(ed);
-    row.appendChild(meta);
+    if (isLocked(a)) { const lock = el("span", "artp-row-lock", LOCK_SVG); lock.title = "Private"; name.appendChild(lock); }
+    main.appendChild(name);
+    const sub = el("div", "skill-row-sub");
+    const desc = el("span", "skill-row-desc");
+    desc.textContent = `${a.mine ? "by you" : `by ${a.ownerName || "a member"}`} · ${editedLabel(a)}`;
+    sub.appendChild(desc);
+    main.appendChild(sub);
+    row.appendChild(main);
+    const ed = el("span", "skill-row-date");
+    ed.textContent = editedLabel(a).replace(/^Edited\s+/i, "");
+    row.appendChild(ed);
     if (canManage(a)) {
-      const k = btn("ws-icon-btn artp-row-kebab", KEBAB_SVG, "More");
+      const k = btn("skills-kebab artp-row-kebab", KEBAB_SVG, "More");
       k.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openRowMenu(k, [

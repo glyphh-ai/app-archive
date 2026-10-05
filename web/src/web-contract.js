@@ -1497,7 +1497,7 @@ export function buildArtifactsWeb(client, deps = {}) {
   return {
     artifactsList: (scope) => env(async () => {
       const s = SCOPES.has(String(scope)) ? String(scope) : 'all';
-      const rows = a()?.list ? await a().list({ scope: s }) : await client.http.get(`/api/artifacts?scope=${s}`);
+      const rows = a()?.list ? await a().list(s) : await client.http.get(`/api/artifacts?scope=${s}`);
       return Array.isArray(rows) ? rows : [];
     }),
     artifactsGet: (id) => env(() => (a()?.get ? a().get(String(id)) : client.http.get(path(id)))),

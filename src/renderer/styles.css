@@ -14383,6 +14383,12 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-agent.work-landing { justify-content: center; }
 .code-agent.work-landing .code-thread { flex: 0 0 auto; overflow: visible; }
 .code-agent.work-landing .code-thread-inner { min-height: 0; }
+/* The agent card on the web is a GRID (head / thread / composer): a fourth,
+   equal row below the composer takes half the free space and the greeting
+   sits at the thread's foot, so greeting + composer meet in the middle. */
+.ws-agent-holder > .code-agent.work-landing { grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr); }
+.ws-agent-holder .code-agent.work-landing > .code-thread { display: flex; flex-direction: column; justify-content: flex-end; }
+.ws-agent-holder .code-agent.work-landing .code-thread-inner { min-height: 0; flex: 0 0 auto; }
 .code-ghost-mark.code-ghost-mark-accent {
   width: 36px;
   height: 44px;             /* the mark's own 165×200 ratio */
@@ -21958,7 +21964,8 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-lef
 .artp-host { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
 .artp { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; color: var(--text); }
 .artp-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 24px; }
-.web-full-body .artp-list { max-width: 960px; width: 100%; margin: 0 auto; padding: 28px 24px 40px; }
+/* Full width with the Build page's gutters, never a centred column (his report, 2026-10-05). */
+.web-full-body .artp-list { width: 100%; padding: 18px 24px 40px; }
 .artp-title { margin: 0 0 14px; font: 700 20px var(--font-display, inherit); letter-spacing: -0.01em; }
 .artp-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .artp-tabs { display: inline-flex; gap: 2px; }

@@ -598,7 +598,7 @@ describe('artifacts shims — the typed resource when the SDK has it, else the r
     c.artifacts = { list: vi.fn(async () => [META]), get: vi.fn(async () => META), share: vi.fn(async () => ({ access: 'org', shareUrl: null })) };
     const a = buildArtifactsWeb(c, { document: null });
     expect((await a.artifactsList('shared')).data).toEqual([META]);
-    expect(c.artifacts.list).toHaveBeenCalledWith({ scope: 'shared' });
+    expect(c.artifacts.list).toHaveBeenCalledWith('shared');
     expect((await a.artifactsShare('art_1', 'org')).data).toEqual({ access: 'org', shareUrl: null });
     expect(c.http.get).not.toHaveBeenCalled();
   });
