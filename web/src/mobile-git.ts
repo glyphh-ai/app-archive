@@ -21,9 +21,25 @@
  *     default branch is the one row.
  */
 import { glyphh } from './glyphh-web.js';
-import { gitCompleteError, pendingLinkInUrl, type BranchRow, type RepoRow } from './mobile-cloud';
+import { gitCompleteError, pendingLinkInUrl, type BranchRow, type GitInstallationRow, type RepoRow } from './mobile-cloud';
 
-interface GitStatus { connected: boolean; login?: string | null; /** A link was started and awaits this member's completion. */ pending?: boolean; /** GitHub's settings page for this installation. */ installationUrl?: string }
+interface GitStatus {
+  connected: boolean;
+  login?: string | null;
+  /** A link was started and awaits this member's completion. */
+  pending?: boolean;
+  /** GitHub's settings page for the first installation. */
+  installationUrl?: string;
+  /** Every installation the member reaches, their own account first. */
+  installations?: GitInstallationRow[];
+}
+
+/** The status as the sheet keeps it: the flags, and the manage doors. */
+const shape = (s: Partial<GitStatus> | null | undefined): GitStatus => ({
+  connected: !!s?.connected, login: s?.login ?? null, pending: !!s?.pending,
+  ...(s?.installationUrl ? { installationUrl: s.installationUrl } : {}),
+  ...(Array.isArray(s?.installations) ? { installations: s.installations } : {}),
+});
 interface GitDoor {
   status(): Promise<GitStatus>;
   complete?(link?: string): Promise<GitStatus>;
@@ -42,7 +58,7 @@ export const mobileGit = {
   /** Linked, and as whom. A failed read is "not connected" (never a throw —
    *  the sheet shows the Connect row). */
   async status(): Promise<GitStatus> {
-    try { const s = await git().status(); return { connected: !!s?.connected, login: s?.login ?? null, pending: !!s?.pending }; }
+    try { return shape(await git().status()); }
     catch { return { connected: false, login: null }; }
   },
 
@@ -53,7 +69,7 @@ export const mobileGit = {
     const s = typeof g.complete === 'function'
       ? await g.complete(link)
       : await raw().post<GitStatus>('/api/git/connect/complete', link ? { link } : {});
-    return { connected: !!s?.connected, login: s?.login ?? null, pending: !!s?.pending };
+    return shape(s);
   },
 
   /** The words for a failed completion — the shared rule (help/cloud-source.ts). */

@@ -10,7 +10,7 @@ import {
   cloudSource, sourceForPicks, cloudSendBlock, webCloudSendBlock, picksOf, environmentIdOf, isCloudKind,
   cloudLabel, envChipLabel, repoChipLabel, folderChipLabel, cloudChipsModel, composerChipSet,
   NETWORK_OPTIONS, networkLabel, environmentName, environmentSubline, parseDotenv, environmentFormError, maskedDotenv, environmentSaveError,
-  toggleRepo, setBranch, groupRepos, splitRepo, pendingLinkInUrl, stripPendingLink, gitCompleteError,
+  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, MANAGE_FALLBACK_URL, splitRepo, pendingLinkInUrl, stripPendingLink, gitCompleteError,
 } from "../../src/renderer/help/cloud-source";
 import { LOCUS_LOCKED_HINT } from "../../src/renderer/help/session-locus";
 
@@ -158,13 +158,35 @@ describe("the repositories list", () => {
     expect(toggleRepo(two, ada)).toEqual([two[1]]);
     expect(setBranch(two, "glyphh-ai/server", "release")).toEqual([two[0], { repo: "glyphh-ai/server", branch: "release" }]);
   });
-  it("groups by owner, alphabetical, searched by substring", () => {
-    expect(groupRepos([server, widgets, ada]).map((g) => [g.owner, g.repos.map((r) => r.fullName)])).toEqual([
-      ["acme", ["acme/widgets"]], ["glyphh-ai", ["glyphh-ai/ada", "glyphh-ai/server"]],
+  it("groups by account in the server's order (the member's own first), names alphabetical, searched by substring across every account", () => {
+    expect(groupRepos([server, widgets, ada]).map((g) => [g.account, g.repos.map((r) => r.fullName)])).toEqual([
+      ["glyphh-ai", ["glyphh-ai/ada", "glyphh-ai/server"]], ["acme", ["acme/widgets"]],
     ]);
     expect(groupRepos([server, widgets, ada], "SERV").map((g) => g.repos.map((r) => r.fullName))).toEqual([["glyphh-ai/server"]]);
+    // The installation account leads over the owner segment (a fork an org installation lists).
+    const forked = { ...widgets, account: "timmetim" };
+    expect(groupRepos([forked, ada]).map((g) => g.account)).toEqual(["timmetim", "glyphh-ai"]);
+    expect(groupRepos([forked, ada], "widg").map((g) => [g.account, g.repos.length])).toEqual([["timmetim", 1]]);
     expect(splitRepo("glyphh-ai/ada")).toEqual({ owner: "glyphh-ai", name: "ada" });
     expect(splitRepo("bare")).toEqual({ owner: "", name: "bare" });
+  });
+  it("wears account headers only when the member reaches more than one account, judged over the whole list", () => {
+    expect(accountHeaders([server, ada])).toBe(false);
+    expect(accountHeaders([])).toBe(false);
+    expect(accountHeaders([server, widgets])).toBe(true);
+    expect(accountHeaders([{ ...ada, account: "timmetim" }, { ...server, account: "glyphh-ai" }])).toBe(true);
+  });
+  it("offers one manage row per installation when there are several, else the single row to the one page", () => {
+    const mine = { id: "9002", account: "timmetim", type: "User" as const, url: "https://github.com/settings/installations/9002" };
+    const org = { id: "9001", account: "glyphh-ai", type: "Organization" as const, url: "https://github.com/organizations/glyphh-ai/settings/installations/9001" };
+    expect(manageRows({ installations: [mine, org] }).map((r) => [r.label, r.url])).toEqual([
+      ["Manage timmetim repositories…", mine.url], ["Manage glyphh-ai repositories…", org.url],
+    ]);
+    expect(manageRows({ installations: [mine, org] })[1].hint).toMatch(/organization/);
+    expect(manageRows({ installationUrl: org.url, installations: [org] })).toEqual([{ label: "Manage repository access…", hint: "Change which repositories the Glyphh app may reach, on GitHub", url: org.url }]);
+    expect(manageRows({ installationUrl: org.url })[0].url).toBe(org.url);
+    expect(manageRows({}).map((r) => r.url)).toEqual([MANAGE_FALLBACK_URL]);
+    expect(manageRows(null)[0].url).toBe(MANAGE_FALLBACK_URL);
   });
 });
 

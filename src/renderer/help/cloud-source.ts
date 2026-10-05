@@ -21,8 +21,13 @@
  */
 import { type Locus } from "./session-locus.js";
 
-/** A repository as the SDK lists it (contract/git.ts Repo). */
-export interface RepoRow { id: string; fullName: string; private: boolean; defaultBranch: string; url?: string }
+/** A repository as the SDK lists it (contract/git.ts Repo): `account` is the
+ *  installation account it listed through — the member's own login or an org
+ *  of theirs (2026-10-05: the list spans every installation they reach). */
+export interface RepoRow { id: string; fullName: string; private: boolean; defaultBranch: string; url?: string; account?: string; installationId?: string }
+
+/** One installation the member reaches (contract/git.ts GitInstallation). */
+export interface GitInstallationRow { id: string; account: string; type: "User" | "Organization"; url: string }
 
 /** One picked repo + the base branch it checks out on. */
 export interface RepoPick { repo: string; branch: string }
@@ -278,21 +283,56 @@ export function setBranch(picks: readonly RepoPick[], repo: string, branch: stri
   return picks.map((p) => (p.repo === repo ? { ...p, branch } : p));
 }
 
-/** The list grouped by owner, owners and names each alphabetical; the search
- *  is a case-insensitive substring over `owner/name`. */
-export function groupRepos(repos: readonly RepoRow[], query = ""): Array<{ owner: string; repos: RepoRow[] }> {
+/** The account a row lists under: the installation's account, else the
+ *  owner in `owner/name` (a row from before accounts rode on it). */
+export const accountOf = (r: Pick<RepoRow, "fullName" | "account">): string => r.account || r.fullName.split("/")[0] || "";
+
+/** The list grouped by ACCOUNT in the order the server lists them (the
+ *  member's own account first, then their orgs — never re-sorted here),
+ *  names alphabetical within a group; the search is a case-insensitive
+ *  substring over `owner/name`, across every account. */
+export function groupRepos(repos: readonly RepoRow[], query = ""): Array<{ account: string; repos: RepoRow[] }> {
   const q = query.trim().toLowerCase();
   const shown = q ? repos.filter((r) => r.fullName.toLowerCase().includes(q)) : [...repos];
-  const byOwner = new Map<string, RepoRow[]>();
+  const byAccount = new Map<string, RepoRow[]>();
   for (const r of shown) {
-    const owner = r.fullName.split("/")[0] || "";
-    const list = byOwner.get(owner) ?? [];
+    const account = accountOf(r);
+    const list = byAccount.get(account) ?? [];
     list.push(r);
-    byOwner.set(owner, list);
+    byAccount.set(account, list);
   }
-  return [...byOwner.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([owner, list]) => ({ owner, repos: list.sort((a, b) => a.fullName.localeCompare(b.fullName)) }));
+  return [...byAccount.entries()].map(([account, list]) => ({ account, repos: list.sort((a, b) => a.fullName.localeCompare(b.fullName)) }));
+}
+
+/** Whether the list wears a small header per account: only when the member
+ *  reaches more than one (his order, 2026-10-05: "timmetim", "glyphh-ai").
+ *  Read over the WHOLE list, not the search's slice, so headers never flicker
+ *  while typing. */
+export function accountHeaders(repos: readonly RepoRow[]): boolean {
+  return new Set(repos.map(accountOf)).size > 1;
+}
+
+/** GitHub's generic installations page: the door when the status named none. */
+export const MANAGE_FALLBACK_URL = "https://github.com/settings/installations";
+
+/** A "Manage repository access…" row: where the member changes which
+ *  repositories the Glyphh app may reach. */
+export interface ManageRow { label: string; hint: string; url: string }
+
+/** The manage rows for a status: ONE row per installation when the member
+ *  reaches more than one (each to its own settings page — an org's lives
+ *  under the org), else the single row as before, to the first installation's
+ *  page (or the status's `installationUrl`, or GitHub's generic page). */
+export function manageRows(status: { installationUrl?: string; installations?: readonly GitInstallationRow[] } | null | undefined): ManageRow[] {
+  const list = status?.installations ?? [];
+  if (list.length > 1) {
+    return list.map((i) => ({
+      label: `Manage ${i.account} repositories…`,
+      hint: i.type === "Organization" ? "Change which repositories the Glyphh app may reach in this organization, on GitHub" : "Change which repositories the Glyphh app may reach on your account, on GitHub",
+      url: i.url || MANAGE_FALLBACK_URL,
+    }));
+  }
+  return [{ label: "Manage repository access…", hint: "Change which repositories the Glyphh app may reach, on GitHub", url: list[0]?.url || status?.installationUrl || MANAGE_FALLBACK_URL }];
 }
 
 export const splitRepo = (fullName: string): { owner: string; name: string } => {

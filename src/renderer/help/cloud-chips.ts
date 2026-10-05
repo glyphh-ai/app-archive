@@ -40,12 +40,12 @@ import { CHECK, CHEV, backHead, clampDropUp, clampDropX, closeAllDrops, drillIte
 import {
   DEFAULT_ENVIRONMENT_ID, DEFAULT_ENVIRONMENT_NAME, NETWORK_OPTIONS,
   cloudChipsModel, environmentFormError, environmentIdOf, environmentName, environmentSaveError, environmentSubline,
-  gitCompleteError, groupRepos, maskedDotenv, picksOf, setBranch, sourceForPicks, splitRepo, toggleRepo,
-  type BranchRow, type EnvironmentNetwork, type EnvironmentRow, type EnvironmentVarRow, type RepoPick, type RepoRow,
+  accountHeaders, gitCompleteError, groupRepos, manageRows, maskedDotenv, picksOf, setBranch, sourceForPicks, splitRepo, toggleRepo,
+  type BranchRow, type EnvironmentNetwork, type EnvironmentRow, type EnvironmentVarRow, type GitInstallationRow, type ManageRow, type RepoPick, type RepoRow,
 } from "./cloud-source.js";
 
 // ── The web bridge's doors (web/src/web-contract.js) ─────────────────────
-interface GitStatus { connected: boolean; login?: string | null; pending?: boolean; installationUrl?: string }
+interface GitStatus { connected: boolean; login?: string | null; pending?: boolean; installationUrl?: string; installations?: GitInstallationRow[] }
 interface EnvironmentDetail extends EnvironmentRow { vars: EnvironmentVarRow[] }
 interface CloudDoors {
   cloudGitStatus(): Promise<GitStatus>;
@@ -115,7 +115,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
   let git: GitState = "unknown";
   // GitHub's settings page for THIS installation — where repositories change
   // (an org's lives under the org; his report, 2026-10-05).
-  let manageUrl = "";
+  let manage: ManageRow[] = manageRows(null);
   let environments: EnvironmentRow[] = [];
   let repos: RepoRow[] | null = null;
   let menu: HTMLElement | null = null;
@@ -437,8 +437,11 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
         const groups = groupRepos(known.filter((r) => !ps2.some((p) => p.repo === r.fullName)), query);
         if (repos === null) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">Loading repositories…</div>`);
         else if (!groups.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">${known.length ? (query ? "No repositories match." : "Every repository is selected.") : "No repositories found — grant the Glyphh app some on GitHub."}</div>`);
+        // A header per account only when the member reaches more than one
+        // (their own account leads — the server's order).
+        const headed = accountHeaders(known);
         for (const g of groups) {
-          secLabel(g.owner);
+          if (headed) secLabel(g.account);
           for (const r of g.repos) list.appendChild(repoRow(r, false));
         }
         if (ps2.length) {
@@ -446,9 +449,11 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
           next.addEventListener("click", () => { view = { kind: "branches" }; draw(); });
           foot.appendChild(next);
         }
-        const manage = drillItem("Manage repository access…", "Change which repositories the Glyphh app may reach, on GitHub", "");
-        manage.addEventListener("click", () => { window.open(manageUrl || "https://github.com/settings/installations", "_blank", "noopener"); });
-        foot.appendChild(manage);
+        for (const row of manage) {
+          const item = drillItem(row.label, row.hint, "");
+          item.addEventListener("click", () => { window.open(row.url, "_blank", "noopener"); });
+          foot.appendChild(item);
+        }
         const disc = drillItem("Disconnect GitHub", "Unlink this account (repos stop listing here)", "");
         if (locked) markUnreachable(disc, LOCUS_LOCKED_HINT.cloud);
         else disc.addEventListener("click", () => {
@@ -521,7 +526,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
           const tick = async (): Promise<void> => {
             if (mine !== pollAbort) return;
             let st = await d.cloudGitStatus();
-            if (st.installationUrl) manageUrl = st.installationUrl;
+            manage = manageRows(st);
             if (!st.connected && st.pending) {
               try { st = await d.cloudGitComplete(); }
               catch (e) { git = "off"; err = gitCompleteError(e); draw(); paint(); opts.onChange(); return; }
@@ -551,7 +556,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
     const d = doors();
     if (!d) { git = "off"; paint(); return; }
     const st = await d.cloudGitStatus();
-    if (st.installationUrl) manageUrl = st.installationUrl;
+    manage = manageRows(st);
     git = st.connected ? "on" : "off";
     paint();
     opts.onChange();
