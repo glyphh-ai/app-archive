@@ -2,14 +2,14 @@
  * app-instances.test.ts — APPS ARE INSTALLED IN THE CLOUD (his decision,
  * 2026-10-04). The pure side (src/shared/app-instances.ts): the create
  * request a bundle makes, the tab row an instance gets, the one list
- * (instances + tabs + a legacy local app once), the panel URL, the Apps-page
+ * (instances + tabs, one row per slug), the panel URL, the Apps-page
  * card; and the desktop door (src/main/app-instances.ts) over a fake client:
  * install = create → PUT → ready, the org/personal fallback, the panel's
  * `glyphh.call` as the member.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  callPathOf, instanceCardOf, instanceDetailOf, instanceKeyOfRow, instanceRequestOf, instanceTabRow, instanceToolRows, isLegacyLocalRow,
+  callPathOf, instanceCardOf, instanceDetailOf, instanceKeyOfRow, instanceRequestOf, instanceTabRow, instanceToolRows,
   mergeAppRows, panelPathOf, panelUrlOf, resolveInstance, tabConfigOf, instanceCardId, isInstanceCardId, instanceKeyOfCardId,
   type AppInstanceSummary,
 } from "../../src/shared/app-instances.js";
@@ -32,7 +32,7 @@ const tab = (over: Partial<TabRowLike>): TabRowLike => ({
   id: "crm", kind: "web", slug: "crm", name: "CRM", prodUrl: "https://crm", nativeRef: null, config: null, description: "", access: "members", owned: true,
   latestVersion: null, version: "0.1.0", secretNames: [], requiredConnections: [], listing: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z", ...over,
 });
-const LEGACY = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk (local)", nativeRef: "/Users/me/.glyphh/apps/expense-desk/index.html", config: { capabilities: ["db.exec"], secrets: { K: "v" } } });
+const LOCAL = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk (local)", nativeRef: "/Users/me/.glyphh/apps/expense-desk/index.html", config: { capabilities: ["db.exec"], secrets: { K: "v" }, data: "local" } });
 
 describe("instanceRequestOf — the create body a bundle makes", () => {
   it("carries slug, kind, the zip's identity and the manifest as it is", () => {
@@ -58,13 +58,13 @@ describe("instanceTabRow — the tab record an instance gets", () => {
     expect(row.requiredConnections).toEqual([{ slug: "gmail", actAs: "user", connected: false }]);
     expect(instanceKeyOfRow(row)).toBe("expense-desk");
   });
-  it("retargets a legacy local row: entry gone, identity, dates and config vars kept, folder untouched", () => {
-    const row = instanceTabRow(ORG, MANIFEST, LEGACY, "2026-10-04T10:00:00.000Z");
+  it("retargets a local row: entry gone, identity, dates and config vars kept", () => {
+    const row = instanceTabRow(ORG, MANIFEST, LOCAL, "2026-10-04T10:00:00.000Z");
     expect(row.nativeRef).toBeNull();
     expect(row.id).toBe("expense-desk");
-    expect(row.createdAt).toBe(LEGACY.createdAt);
+    expect(row.createdAt).toBe(LOCAL.createdAt);
     expect(row.config).toMatchObject({ instance: "expense-desk", secrets: { K: "v" } });
-    expect(isLegacyLocalRow(row)).toBe(false);
+    expect(instanceKeyOfRow(row)).toBe("expense-desk");
   });
   it("with no manifest, reads the instance's own summary", () => {
     const row = instanceTabRow(PERSONAL, null, null, "2026-10-04T10:00:00.000Z");
@@ -74,23 +74,23 @@ describe("instanceTabRow — the tab record an instance gets", () => {
 });
 
 describe("mergeAppRows — THE LIST", () => {
-  it("lists tab rows, every instance no tab names, and a legacy local app once (never beside its instance)", () => {
-    const rows = mergeAppRows([ORG, PERSONAL], [tab({}), LEGACY], "2026-10-04T00:00:00.000Z");
+  it("lists tab rows and every instance no tab names, one row per slug (a local row never beside its instance)", () => {
+    const rows = mergeAppRows([ORG, PERSONAL], [tab({}), LOCAL], "2026-10-04T00:00:00.000Z");
     expect(rows.map((r) => r.slug).sort()).toEqual(["crm", "expense-desk", "notes"]);
     const desk = rows.find((r) => r.slug === "expense-desk")!;
     // The instance is the app; the local copy is hidden behind it.
     expect(desk.execPath).toBeNull();
     expect(desk.appArchetype).toBe("glyphh-app");
     expect(desk.launchConfig).toMatchObject({ instance: "expense-desk", instanceStatus: "ready", instanceAccess: "everyone" });
-    expect(desk.launchConfig?.legacyLocal).toBeUndefined();
     const notes = rows.find((r) => r.slug === "notes")!;
     expect(notes.launchConfig).toMatchObject({ instance: "notes~u1", instanceKind: "personal" });
   });
-  it("flags a legacy local app that is not in the cloud, once", () => {
-    const rows = mergeAppRows([], [LEGACY, LEGACY]);
+  it("lists a local-data app that has no instance once, from its folder, with no extra flag", () => {
+    const rows = mergeAppRows([], [LOCAL, LOCAL]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].launchConfig).toMatchObject({ legacyLocal: true });
-    expect(rows[0].execPath).toBe(LEGACY.nativeRef);
+    expect(rows[0].execPath).toBe(LOCAL.nativeRef);
+    expect(rows[0].launchConfig).toMatchObject({ data: "local" });
+    expect(rows[0].launchConfig).not.toHaveProperty("legacyLocal");
   });
   it("an org instance wins a personal one of the same slug for the row", () => {
     const mine = { ...PERSONAL, key: "expense-desk~u1", slug: "expense-desk" };

@@ -454,7 +454,6 @@ declare global {
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
       skillDelete: (id: string) => Promise<LibEnvelope>;
       skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
-      skillMoveToCloud: (id: string) => Promise<{ ok: boolean; data?: { name?: string; instance?: string }; error?: string }>;
       skillReveal: (id: string) => Promise<LibEnvelope>;
       skillAdopt: (id: string) => Promise<LibEnvelope>;
       skillReplace: (id: string) => Promise<LibEnvelope>;

@@ -29,17 +29,21 @@ with the `window.glyphh.call` shim injected, the manifest's tools invoked at
 
 What the surfaces do with that (app `src/shared/app-instances.ts`):
 
-- **Install** — `app_install` (the MCP tool), the Settings import, the `.glyphh`
-  drop and the Apps-page "Move to the cloud" all go through
-  `installGlyphhAppBundle`: validate the bundle here, create the instance,
-  PUT the zip to R2, `ready`, then write a `tab` library row whose
-  `launchConfig.instance` names the key — the row syncs to every surface.
-  Nothing is unzipped into `~/.glyphh` and no worker starts.
+- **Install** — `app_install` (the MCP tool), the Settings import and the
+  `.glyphh` drop all go through `installGlyphhAppBundle`: validate the bundle
+  here, create the instance, PUT the zip to R2, `ready`, then write a `tab`
+  library row whose `launchConfig.instance` names the key — the row syncs to
+  every surface. Nothing is unzipped into `~/.glyphh` and no worker starts.
 - **List** — the wall, the dock, the command bar and Settings → Build → Apps
   show the member's tab rows plus every instance they may open that no row
-  names yet (`mergeAppRows`). An app from before the cloud (its entry a file
-  on this machine) shows once, flagged `legacyLocal`, with **Move to the
-  cloud** on its card's menu; moving it retargets the tab and leaves the folder.
+  names yet (`mergeAppRows`), one row per slug.
+- **Before the cloud** — there is no migration (his word, 2026-10-05: "all
+  apps prior, the usage is zero, will be deleted"). An app folder from before
+  the cloud model — a bundle whose manifest says nothing about `data` (§0.1),
+  with no instance of its slug, that is not a house app — is removed once per
+  user on the first sign-in after the cut (`src/main/legacy-app-sweep.ts`);
+  skills, tasks, plugins, app-data stores and the user's files are not in
+  reach. A run that cannot list the instances waits for the next sign-in.
 - **Open** — the desktop panel's `<webview>` loads
   `${api}/app-host/<key>/ui/index.html` with the session cookie set on its
   partition; its `glyphh.call` is the preload's (read-only on `window`) and
@@ -65,9 +69,9 @@ every surface routes by it. "Local is local, cloud is cloud."
 
 The marketplace shows `local` as a badge of honor ("Local data"; `per-home`
 wears "Local + cloud"). The Apps page marks an installed app with the
-sessions' locus glyphs (a cloud, a monitor) and never offers "Move to the
-cloud" for a `local` app. The server refuses `from-hub` for a `local` item
-(400). The rules are one module: `src/renderer/help/app-data-rules.ts`.
+sessions' locus glyphs (a cloud, a monitor). The server refuses `from-hub`
+for a `local` item (400). The rules are one module:
+`src/renderer/help/app-data-rules.ts`.
 
 **Global override:** `GLYPHH_LOCAL_APPS=1` in the desktop's environment runs
 EVERY app on the local host (the sections below) whatever its manifest says,

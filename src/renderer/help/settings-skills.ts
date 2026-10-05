@@ -12,7 +12,7 @@
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import {
-  APP_LOCUS_TITLE, appDataBadge, appDataOf, appLocusOf, installButton, installRoute, offersMoveToCloud, type AppData, type AppLocus,
+  APP_LOCUS_TITLE, appDataBadge, appDataOf, appLocusOf, installButton, installRoute, type AppData, type AppLocus,
 } from "./app-data-rules.js";
 import { LOCUS_SVG } from "./session-locus.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
@@ -1859,10 +1859,6 @@ function wire(): void {
       { label: "Try in chat", onClick: tryInChat },
       { label: "Edit with Glyphh", onClick: () => editWith() },
       { label: "Check for updates", onClick: () => void checkForUpdates() },
-      // APPS LIVE IN THE CLOUD (2026-10-04): an app whose tab still runs from
-      // a folder on this machine moves up as an instance; its folder stays.
-      // Never for an app whose author keeps its data on this machine (app-data-rules.ts).
-      ...(offersMoveToCloud(current) ? [{ label: "Move to the cloud", onClick: () => void moveToCloud() }] : []),
       ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
       ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
       { label: "Replace", onClick: () => void replaceFiles() },
@@ -1888,17 +1884,6 @@ async function createNew(kind: BundleType): Promise<void> {
     cwd: r.data,
     prompt: NEW_PROMPT[kind],
   });
-}
-
-/** The app's bundle goes to the server as an org instance (an org admin) or
- *  a personal one; the tab is retargeted; the folder here is left as it is. */
-async function moveToCloud(): Promise<void> {
-  if (!current) return;
-  type MoveEnv = { ok: boolean; data?: { name?: string; instance?: string }; error?: string };
-  const r: MoveEnv = await api().skillMoveToCloud(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-  if (!r.ok) { fail(r.error || "Couldn't move the app to the cloud."); return; }
-  notice(`${r.data?.name || current.name} is in the cloud`, { detail: "It opens from the farm on every surface now. The folder on this machine stays." });
-  await loadSkillsSettings();
 }
 
 async function importFromFile(): Promise<void> {

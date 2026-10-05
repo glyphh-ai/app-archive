@@ -21,9 +21,9 @@
  *
  * THE LOCAL HOST (below: extract into custom-apps/, a hidden worker, per-app
  * SQLite/cron, the capability table) stays in the file behind
- * `GLYPHH_LOCAL_APPS=1` for a rollback and is not started otherwise. A tab
- * from before the cloud (its entry a file here) shows once with "Move to the
- * cloud" (moveLocalAppToCloud); its folder is never deleted.
+ * `GLYPHH_LOCAL_APPS=1` for a rollback and is not started otherwise. An app
+ * folder from before the cloud is swept on the first sign-in after the cut
+ * (legacy-app-sweep.ts); there is no migration.
  *
  * The local host's own contract, kept for the rollback:
  *
@@ -688,50 +688,6 @@ async function installBundleInCloud(zipPath: string, zip: AdmZip, manifest: Glyp
     ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [], slug: manifest.slug, instance: inst.key,
     tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" })),
   };
-}
-
-/** MOVE TO THE CLOUD: a tab from before (its entry a file on this machine)
- *  is zipped from its folder and installed as an instance; the tab is
- *  retargeted at the instance and the folder stays where it is (hidden, not
- *  deleted). A folder without manifest.json (a skills-home bundle: app.json +
- *  ui/) gets one written into the zip from what its row declares. */
-export async function moveLocalAppToCloud(slug: string): Promise<{ ok: boolean; name?: string; instance?: string; error?: string }> {
-  const key = String(slug || "").toLowerCase().trim();
-  const row = appsStore.readRow(key);
-  if (!row || row.kind !== "glyphh") return { ok: false, error: `"${slug}" is not a Glyphh app tab on this machine` };
-  if (instanceKeyOfRow(row)) return { ok: false, error: `${row.name} is already in the cloud` };
-  if (!row.nativeRef) return { ok: false, error: `${row.name} has no local bundle to move` };
-  if (appDataOfManifest((row.config ?? null) as { data?: unknown } | null) === "local") return { ok: false, error: `${row.name} keeps its data on this machine — its author said so (data: local); it does not move to the cloud` };
-  const cfg = (row.config ?? {}) as { bundleDir?: unknown; capabilities?: unknown; connectors?: unknown; tools?: unknown; window?: unknown; worker?: unknown; release?: unknown };
-  const dir = typeof cfg.bundleDir === "string" && cfg.bundleDir ? cfg.bundleDir : path.dirname(row.nativeRef);
-  if (!fs.existsSync(dir)) return { ok: false, error: `${row.name}'s bundle folder is gone: ${dir}` };
-  const zip = new AdmZip();
-  zip.addLocalFolder(dir, "", (p) => !/(^|[\\/])(\.glyphh-|node_modules|\.git)/.test(p));
-  if (!zip.getEntry("manifest.json")) {
-    const entry = path.relative(dir, row.nativeRef).split(path.sep).join("/");
-    const synthesized: GlyphhAppManifest = {
-      manifestVersion: 2, kind: "glyphh-app", name: row.name, slug: key, entry,
-      capabilities: Array.isArray(cfg.capabilities) ? cfg.capabilities.map(String) : [],
-      connectors: Array.isArray(cfg.connectors) ? cfg.connectors.map(String) : [],
-      tools: Array.isArray(cfg.tools) ? (cfg.tools as GlyphhAppTool[]).filter((t) => t && typeof t.name === "string" && (typeof t.capability === "string") !== (typeof t.handler === "string")) : [],
-      ...(cfg.window && typeof cfg.window === "object" ? { window: cfg.window as { width?: number; height?: number } } : {}),
-      ...(typeof cfg.worker === "string" ? { worker: cfg.worker } : {}),
-      description: row.description,
-    };
-    zip.addFile("manifest.json", Buffer.from(JSON.stringify(synthesized, null, 2)));
-  }
-  const tmp = path.join(os.tmpdir(), `glyphh-move-${process.pid}-${key}.glyphh`);
-  try {
-    zip.writeZip(tmp);
-    const r = await installGlyphhAppBundle(tmp);
-    if (!r.ok) return { ok: false, error: r.error };
-    stopAppWorker(key);
-    return { ok: true, name: r.name, instance: r.instance };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
-  }
 }
 
 // ── run ─────────────────────────────────────────────────────

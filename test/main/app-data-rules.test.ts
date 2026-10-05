@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   APP_LOCUS_TITLE, LOCAL_APP_DESKTOP_OFFLINE, LOCAL_APP_RUNS_ON_DESKTOP, LOCAL_NEEDS_DESKTOP_LINE,
-  appDataBadge, appDataOf, appLocusOf, installButton, installRoute, isLocalAppAnswer, keepsLocalData, localAppWebLine, offersMoveToCloud,
+  appDataBadge, appDataOf, appLocusOf, installButton, installRoute, isLocalAppAnswer, keepsLocalData, localAppWebLine,
 } from "../../src/renderer/help/app-data-rules.js";
 
 describe("appDataOf — the manifest's word, read off whatever carries it", () => {
@@ -96,12 +96,5 @@ describe("the Apps page", () => {
     expect(appLocusOf({ id: "app:notes" })).toBe("cloud");
     expect(appLocusOf({ id: "app:notes", locus: "cloud", data: "local" })).toBe("cloud");
     expect(APP_LOCUS_TITLE).toEqual({ cloud: "Data in the cloud", local: "Data on this desktop" });
-  });
-  it("Move to the cloud: an app from before the cloud only — never a local-data app, never an instance", () => {
-    expect(offersMoveToCloud({ id: "app:legacy", type: "app" })).toBe(true);
-    expect(offersMoveToCloud({ id: "app:keep", type: "app", data: "local" })).toBe(false);
-    expect(offersMoveToCloud({ id: "app:keep", type: "app", data: "per-home" })).toBe(false);
-    expect(offersMoveToCloud({ id: "app-instance:notes~u1", type: "app" })).toBe(false);
-    expect(offersMoveToCloud({ id: "glyphh:notes", type: "skill" })).toBe(false);
   });
 });

@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { registerBundleApp, unregisterBundleApp, moveLocalAppToCloud } from "./glyphh-app-host.js";
+import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
 import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, listInstances } from "./app-instances.js";
 import { appDataOfManifest, type AppData } from "../shared/app-instances.js";
@@ -985,8 +985,7 @@ export function registerSkillsIpc(): void {
         const folders = new Set(rows.filter((r) => r.source === "app").map((r) => r.id.slice(r.id.indexOf(":") + 1).toLowerCase()));
         // WHERE EACH APP'S DATA SITS (his verdict, 2026-10-05), for the page's
         // mark: a folder whose author said local / per-home is this machine's;
-        // a folder that stands for an instance is the cloud's; a folder from
-        // before the cloud is this machine's too (and offers the move).
+        // a folder that stands for an instance is the cloud's.
         const cloudSlugs = new Set((await listInstances().catch(() => [])).map((i) => i.slug));
         for (const r of rows) {
           if (r.source !== "app") continue;
@@ -1015,16 +1014,6 @@ export function registerSkillsIpc(): void {
       catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     }
     return env(() => getSkill(String(id)));
-  });
-  // MOVE TO THE CLOUD (2026-10-04): an app card whose tab still runs from a
-  // folder here is installed as an instance; the folder stays (hidden).
-  ipcMain.handle("skill-move-to-cloud", async (_e, id: string) => {
-    try {
-      const { dir, name } = dirOf(String(id));
-      if (bundleType(dir) !== "app") return { ok: false, error: "only an app moves to the cloud" };
-      const r = await moveLocalAppToCloud(name);
-      return r.ok ? { ok: true, data: { name: r.name, instance: r.instance } } : { ok: false, error: r.error };
-    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));

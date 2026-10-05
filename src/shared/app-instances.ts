@@ -14,7 +14,7 @@
  *   · the `tab` library row an instance gets   (instanceTabRow) — it rides the
  *     member library to every surface, its launchConfig names the instance
  *   · the panel path an instance's UI loads at (panelPathOf / panelUrlOf)
- *   · the ONE list — instances + tab rows + a legacy local app once
+ *   · the ONE list — instances + tab rows, one row per slug
  *     (mergeAppRows)
  *   · the Settings → Apps card of an instance  (instanceCardOf)
  *
@@ -130,8 +130,8 @@ export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "man
 
 /** The tab row an instance gets (kind glyphh, no local entry, config names
  *  the instance). `existing` keeps the row's identity, dates and config vars;
- *  a legacy local row (nativeRef = a file on this machine) is RETARGETED: its
- *  entry goes, the folder stays. */
+ *  a local row (nativeRef = a file on this machine) is RETARGETED: its entry
+ *  goes. */
 export function instanceTabRow(inst: AppInstanceSummary, manifest: BundleManifestLike | null, existing: TabRowLike | null, nowIso: string): TabRowLike {
   const config = tabConfigOf(inst, manifest);
   const keptVars = existing?.config && typeof existing.config === "object"
@@ -166,20 +166,11 @@ export function instanceKeyOfRow(row: { config?: Record<string, unknown> | null;
   return typeof key === "string" && key ? key : null;
 }
 
-/** A glyphh tab row from BEFORE the cloud: its entry is a file on this
- *  machine and nothing names an instance. It is listed once, flagged, with
- *  the "Move to the cloud" action; a tab row that already names an instance
- *  is not legacy, whatever else it carries. */
-export function isLegacyLocalRow(row: TabRowLike): boolean {
-  return row.kind === "glyphh" && !instanceKeyOfRow(row) && !!row.nativeRef;
-}
-
-/** THE LIST. Every tab row the member has (web, native, glyphh), each
+/** THE LIST. Every tab row the member has (web, native, glyphh) and every
  *  instance they may open that no tab row names yet (an org instance an admin
- *  installed shows for every member without a row of their own), and a
- *  legacy local glyphh app once — never beside an instance of the same slug.
- *  Instance rows and legacy rows are flagged in launchConfig so a surface
- *  can offer "Move to the cloud" / read the status without a second lookup. */
+ *  installed shows for every member without a row of their own) — one row per
+ *  slug. Instance rows carry the instance's status in launchConfig so a
+ *  surface reads it without a second lookup. */
 export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[], nowIso = new Date(0).toISOString()): OrgAppRowLike[] {
   const bySlug = new Map<string, AppInstanceSummary>();
   for (const inst of instances) {
@@ -196,13 +187,12 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
     seen.add(slug);
     const inst = bySlug.get(slug);
     if (tab.kind === "glyphh" && inst && !instanceKeyOfRow(tab)) {
-      // A legacy local row whose slug is already in the cloud: the instance is
-      // the app; the local copy is hidden behind it.
+      // A local row whose slug is already in the cloud: the instance is the
+      // app; the local copy is hidden behind it.
       out.push(withStatus(tabRowOf(instanceTabRow(inst, null, tab, tab.updatedAt || nowIso)), inst));
       continue;
     }
     const row = tabRowOf(tab);
-    if (isLegacyLocalRow(tab)) { out.push({ ...row, launchConfig: { ...(row.launchConfig ?? {}), legacyLocal: true } }); continue; }
     const named = instanceKeyOfRow(tab);
     const live = named ? instances.find((i) => i.key === named) : undefined;
     out.push(live ? withStatus(row, live) : row);
