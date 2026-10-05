@@ -22,6 +22,10 @@
  *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
  *   layouts.get  {name}        → one workspace by name
  *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
+ *   app.call {app, tool, args} → THE HOUSE APPS' READ DOOR (house-doors.ts): the web's own
+ *                                Design / Slides / Images / Video / Audio / Drive panels fill
+ *                                from this machine's app-data (his order, 2026-10-05). Reads
+ *                                only, house apps only; bytes ride as capped data URLs.
  *
  * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
  * live on this machine only (the chat store in agent-ipc.ts), so the phone
@@ -50,6 +54,8 @@ import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, typ
 import { listCliSessions } from "./cli-agents.js";
 import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
+import { houseCall } from "./house-doors.js";
+import { realHouseDeps } from "./house-deps.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -140,6 +146,10 @@ export function installAttachHandlers(): void {
   });
 
   registerRelayHandler("panelApps.list", async () => ({ apps: await fetchOrgApps() }));
+
+  // THE HOUSE APPS' FILES FOR THE WEB'S OWN PANELS (his order, 2026-10-05):
+  // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
+  registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
 
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();

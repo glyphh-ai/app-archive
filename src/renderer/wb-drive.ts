@@ -11,6 +11,7 @@
  */
 
 import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
+import { houseEmptyText } from "./help/house-relay.js";
 import { officePager, officePage, biasThumbCrop } from "./wb-office-ui.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
@@ -212,7 +213,9 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       if (!body.isConnected || !res) return;
       if (!res.ok) {
         const empty = body.querySelector<HTMLElement>(".gdrive-empty")!;
-        empty.textContent = `Couldn't load Drive: ${res.error ?? "unknown error"}`;
+        // No desktop attached on the web: the connect line, bare (his order,
+        // 2026-10-05; help/house-relay.ts) — an empty state, not an error.
+        empty.textContent = houseEmptyText(res, "Couldn't load Drive:");
         empty.classList.remove("hidden");
         return;
       }
