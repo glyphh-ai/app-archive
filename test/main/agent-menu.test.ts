@@ -15,6 +15,7 @@ import {
   menuFoldState, toggleFold, isExpanded, cliFoldKey,
   CONNECT_DESKTOP_LINE, CONNECT_DESKTOP_LINK, NO_APPS_LINE, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL,
   CLI_SESSIONS_PER_CLI, DESKTOP_CODE_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
+  WORKSPACES_SECTION_LABEL, workspaceRows,
   type MenuAppRow, type MenuCliSession, type MenuSection, menuLocusOf } from "../../src/renderer/help/agent-menu.js";
 import { WEB_TOOL_VIEWS } from "../../src/renderer/help/web-cut.js";
 
@@ -31,15 +32,16 @@ const apps: MenuAppRow[] = [
   { slug: "notes", name: "Notes", kind: "native", icon: null, machineId: "m1", machineName: MAC.name },
   { slug: "crm", name: "CRM", kind: "glyphh", icon: null, machineId: "m1", machineName: MAC.name },
 ];
+const SPACES = [{ name: "Dev" }, { name: "Writing" }];
 const sess = (id: string, cli: string, mtime: number): MenuCliSession => ({ id, cli, title: `s-${id}`, cwd: "/w", mtime });
 const section = <K extends MenuSection["kind"]>(m: { sections: MenuSection[] }, kind: K): Extract<MenuSection, { kind: K }> | undefined =>
   m.sections.find((s): s is Extract<MenuSection, { kind: K }> => s.kind === kind);
 const kinds = (m: { sections: MenuSection[] }): string[] => m.sections.map((s) => s.kind);
 
 describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen list for both surfaces", () => {
-  it("the frozen lists: desktop = Panels, Session; web = the same first, then Apps, Agents / CLIs", () => {
+  it("the frozen lists: desktop = Panels, Session; web = the same first, then Apps, Agents / CLIs, Workspaces LAST", () => {
     expect([...MENU_SECTION_ORDER.desktop]).toEqual(["tools", "session"]);
-    expect([...MENU_SECTION_ORDER.web]).toEqual(["tools", "session", "apps", "clis"]);
+    expect([...MENU_SECTION_ORDER.web]).toEqual(["tools", "session", "apps", "clis", "workspaces"]);
     expect(Object.isFrozen(MENU_SECTION_ORDER)).toBe(true);
     expect(Object.isFrozen(MENU_SECTION_ORDER.web)).toBe(true);
     expect(Object.isFrozen(MENU_SECTION_ORDER.desktop)).toBe(true);
@@ -48,9 +50,9 @@ describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen lis
     expect([...MENU_SECTION_ORDER.web].slice(0, MENU_SECTION_ORDER.desktop.length)).toEqual([...MENU_SECTION_ORDER.desktop]);
   });
   it("a full menu on each surface paints in exactly that order", () => {
-    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [], locus: "local" });
+    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [], locus: "local", workspaces: SPACES });
     expect(kinds(web)).toEqual([...MENU_SECTION_ORDER.web]);
-    expect(web.sections.map((s) => s.label)).toEqual([TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL, APPS_SECTION_LABEL, CLIS_SECTION_LABEL]);
+    expect(web.sections.map((s) => s.label)).toEqual([TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, WORKSPACES_SECTION_LABEL]);
     const desk = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false } });
     expect(kinds(desk)).toEqual([...MENU_SECTION_ORDER.desktop]);
     // The desktop's rows, verbatim, lead the web's menu (Browser aside — a streamed panel the web never reaches).
@@ -62,8 +64,8 @@ describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen lis
 });
 
 describe("EXPANDABLE SECTIONS, COLLAPSED ON OPEN (his review, 2026-10-05)", () => {
-  it("Apps and Agents / CLIs are the collapsible ones, with a count on the head", () => {
-    expect([...COLLAPSIBLE_SECTIONS]).toEqual(["apps", "clis"]);
+  it("Apps, Agents / CLIs and Workspaces are the collapsible ones, with a count on the head", () => {
+    expect([...COLLAPSIBLE_SECTIONS]).toEqual(["apps", "clis", "workspaces"]);
     const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)], locus: "local" });
     const a = section(m, "apps")!;
     const c = section(m, "clis")!;
@@ -295,5 +297,42 @@ describe("WHERE AN APPS ROW OPENS (his order, 2026-10-05: Apps → Design opens 
     const rows = section(m, "apps")!.rows;
     expect(rows.find((r) => r.slug === "design")?.tool).toBe("gdesign");
     expect(rows.find((r) => r.slug === "crm")?.tool).toBeUndefined();
+  });
+});
+
+describe("WORKSPACES — the last fold on the web (his order, 2026-10-05: 'another collapsable section at the bottom')", () => {
+  it("lists the member's workspaces by name, collapsible with a count, LAST — with or without a desktop, on either locus", () => {
+    for (const machines of [[MAC], []]) {
+      for (const locus of ["local", "cloud"] as const) {
+        const m = agentMenuModel({ surface: "web", mode: "work", session: null, machines, apps: [], clis: CLIS, cliSessions: [], locus, workspaces: SPACES });
+        const w = section(m, "workspaces")!;
+        expect(w).toBeDefined();
+        expect(w.collapsible).toBe(true);
+        expect(w.count).toBe(2);
+        expect(w.label).toBe(WORKSPACES_SECTION_LABEL);
+        expect(w.rows).toEqual([{ name: "Dev" }, { name: "Writing" }]);
+        expect(sectionHeadLabel(w.label, w.count)).toBe("Workspaces · 2");
+        expect(kinds(m)[kinds(m).length - 1]).toBe("workspaces");
+      }
+    }
+  });
+  it("no workspaces → no section (never an empty fold)", () => {
+    for (const workspaces of [[], undefined, [{ name: "" }, { name: "   " }]]) {
+      const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [], workspaces });
+      expect(section(m, "workspaces")).toBeUndefined();
+    }
+  });
+  it("the rows: trimmed names, one per name (case-insensitive), blanks dropped", () => {
+    expect(workspaceRows([{ name: " Dev " }, { name: "dev" }, { name: "" }, { name: "Writing" }])).toEqual([{ name: "Dev" }, { name: "Writing" }]);
+  });
+  it("the desktop never lists it — the desktop has Echo", () => {
+    const m = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false }, workspaces: SPACES });
+    expect(section(m, "workspaces")).toBeUndefined();
+    expect(kinds(m)).toEqual(["tools", "session"]);
+  });
+  it("the fold starts collapsed like the others", () => {
+    const folds = menuFoldState();
+    expect(isExpanded(folds, "workspaces")).toBe(false);
+    expect(toggleFold(folds, "workspaces")).toBe(true);
   });
 });

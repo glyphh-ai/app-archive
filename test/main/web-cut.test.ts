@@ -12,7 +12,8 @@ import {
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
   webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
-} from "../../src/renderer/help/web-cut.js";
+  WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailWordmark, webEchoSurface, webEchoOpens, webCloseAllOpensNew,
+  webLayoutCells, webWorkspaceOpenLines, workspaceOpenClosesHosts, LAYOUT_AGENT_CELL, type WebLayoutApp, RAIL_HEADER_ORDER, webRailHeaderOrder } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
 describe("webBootSurfaces — what the home shell boots into", () => {
@@ -81,10 +82,15 @@ describe("settings on the web — everything for building leaves", () => {
       expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
     }
   });
-  it("both group headers hide in Settings, with the command-center doors and the dock / streamed rows — but NOT the rail's Build / Customize", () => {
+  it("both group headers hide in Settings, with the rail's More and the dock / streamed rows — but NOT the rail's Build / Customize, NOT the Echo buttons and NOT the wordmark (his order, 2026-10-05: the logo holds the traffic lights' spot, the icons stay fixed beside it)", () => {
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-build", "nav-group-customize"]);
-    expect(WEB_HIDDEN_RAIL).toContain("#rail-echo-btn");
-    expect(WEB_HIDDEN_RAIL).toContain("#rail-echo-btn-strip");
+    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle"]);
+    expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
+    expect(webRailWordmark(true)).toBe(true);
+    expect(webRailWordmark(false)).toBe(false);
+    expect([...RAIL_HEADER_ORDER]).toEqual(["chrome", "collapse", "echo"]);
+    expect([...webRailHeaderOrder(true)]).toEqual([...webRailHeaderOrder(false)]);
+    for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="build"]');
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="customize"]');
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#show-dock-row", "#streamed-panels-row"]);
@@ -198,5 +204,87 @@ describe("the web remembers its panels (his order, 2026-10-05: open work panels 
   it("the web keeps the wall's memory its way (agent seat + saves on a move); the desktop is untouched", () => {
     expect(webWallMemory(true)).toBe(true);
     expect(webWallMemory(false)).toBe(false);
+  });
+});
+
+describe("THE ECHO ICON AT THE RAIL'S TOP-LEFT ON THE WEB (his order, 2026-10-05)", () => {
+  it("the wordmark leaves (hidden by selector), the desktop's two Echo buttons stay, and Echo leads the strip on the web only", () => {
+    expect(WEB_RAIL_WORDMARK).toBe(".app-rail-logo");
+    expect([...WEB_RAIL_ECHO_BUTTONS]).toEqual(["#rail-echo-btn", "#rail-echo-btn-strip"]);
+    expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
+    expect(webRailWordmark(true)).toBe(true);
+    expect(webRailWordmark(false)).toBe(false);
+  });
+  it("the web's Echo is the workspaces-only overlay: search yes, dock no, workspace tiles only — opened on the web, never the desktop's rule", () => {
+    expect(webEchoSurface()).toEqual({ search: true, dock: false, tiles: "workspaces" });
+    expect(Object.isFrozen(webEchoSurface())).toBe(true);
+    expect(webEchoOpens(true)).toBe(true);
+    expect(webEchoOpens(false)).toBe(false);
+    // The wall and the dock still never BOOT on the web — this is an overlay, not a boot surface.
+    expect(bootsSurface(true, "wall")).toBe(false);
+    expect(bootsSurface(true, "dock")).toBe(false);
+    expect(bootsSurface(true, "echo")).toBe(false);
+  });
+});
+
+describe("CLOSE ALL PANELS ON THE WEB OPENS A NEW SESSION (his order, 2026-10-05)", () => {
+  it("the web closes everything and starts fresh in the rail's current type; the desktop only closes", () => {
+    expect(webCloseAllOpensNew(true)).toBe(true);
+    expect(webCloseAllOpensNew(false)).toBe(false);
+  });
+});
+
+describe("WORKSPACES ON THE WEB render only what is web native (his order, 2026-10-05)", () => {
+  const apps: WebLayoutApp[] = [
+    { slug: "crm", id: "crm", name: "CRM", kind: "glyphh", cloud: true },
+    { slug: "slides", id: "slides", name: "Slides", kind: "glyphh", cloud: false },
+    { slug: "gmail", id: "gmail", name: "Gmail", kind: "web", cloud: false },
+    { slug: "notes", id: "notes", name: "Notes", kind: "native", cloud: false },
+  ];
+  const cell = (panelId: string) => ({ panelId });
+  it("keeps the ⋮ menu's in-document tool panels, drops the Browser and Artifacts (a full-screen page), each named", () => {
+    const plan = webLayoutCells([cell("tool:files"), cell("tool:terminal"), cell("tool:preview"), cell("tool:artifacts"), cell("tool:")], apps);
+    expect(plan.keep).toEqual([{ kind: "tool", view: "files" }, { kind: "tool", view: "terminal" }]);
+    expect(plan.skipped).toEqual([
+      "the preview panel (not hosted on the web)",
+      "the artifacts panel (not hosted on the web)",
+      "the unnamed panel (not hosted on the web)",
+    ]);
+    for (const v of WEB_TOOL_VIEWS) expect(webLayoutCells([cell(`tool:${v}`)], []).keep).toEqual([{ kind: "tool", view: v }]);
+  });
+  it("keeps a CLOUD Glyphh app (by slug or id, any case); a desktop-installed bundle, a URL tab, a native app and an unknown id drop, each named", () => {
+    const plan = webLayoutCells([cell("CRM"), cell("slides"), cell("gmail"), cell("notes"), cell("ghost")], apps);
+    expect(plan.keep).toEqual([{ kind: "app", slug: "crm", name: "CRM" }]);
+    expect(plan.skipped).toEqual([
+      'the app "Slides" (installed on the desktop)',
+      'the tab "Gmail" (opens on the desktop)',
+      'the app "Notes" (desktop only)',
+      'the app "ghost" (not in your library)',
+    ]);
+  });
+  it("the agent's own cell is kept (the web's agent is seated already); a CLI agent's cell is desktop only", () => {
+    expect(LAYOUT_AGENT_CELL).toBe("tool:coding");
+    const plan = webLayoutCells([cell("tool:coding"), cell("agent:claude")], apps);
+    expect(plan.keep).toEqual([{ kind: "agent" }]);
+    expect(plan.skipped).toEqual(['the CLI agent "claude" (desktop only)']);
+  });
+  it("empty and malformed cells are named, never thrown on", () => {
+    expect(webLayoutCells([cell(""), cell("   "), { panelId: undefined as never }], apps).skipped).toEqual(["an empty cell", "an empty cell", "an empty cell"]);
+    expect(webLayoutCells([], [])).toEqual({ keep: [], skipped: [] });
+  });
+  it("the toasts: nothing kept → one error line; something skipped → one line listing it; all kept → quiet", () => {
+    expect(webWorkspaceOpenLines("Dev", { keep: [], skipped: ["the tab \"Gmail\" (opens on the desktop)"] }))
+      .toEqual({ error: 'Nothing in "Dev" runs on the web', info: null });
+    expect(webWorkspaceOpenLines("Dev", { keep: [{ kind: "tool", view: "files" }], skipped: ["a", "b"] }))
+      .toEqual({ error: null, info: "Skipped on the web: a, b" });
+    expect(webWorkspaceOpenLines("Dev", { keep: [{ kind: "tool", view: "files" }], skipped: [] })).toEqual({ error: null, info: null });
+  });
+});
+
+describe("OPEN WORKSPACE CLOSES ITS HOST FIRST (his order, 2026-10-05: 'close the customize or settings menu and open the workspace')", () => {
+  it("the web closes the full-screen Customize panel; the desktop the Settings modal and the Customize work panel", () => {
+    expect([...workspaceOpenClosesHosts(true)]).toEqual(["web-full-panel"]);
+    expect([...workspaceOpenClosesHosts(false)]).toEqual(["settings-modal", "customize-panel"]);
+    expect(Object.isFrozen(workspaceOpenClosesHosts(true))).toBe(true);
   });
 });

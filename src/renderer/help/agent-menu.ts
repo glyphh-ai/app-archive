@@ -41,6 +41,15 @@
  *                  the worker; with a desktop attached, its live CLI sessions
  *                  nest under each CLI's row behind that row's own chevron
  *                  (collapsed too), a click resuming that session on the desktop.
+ *   Workspaces     WEB ONLY, LAST, COLLAPSED on every open (his order,
+ *                  2026-10-05: "the web can still have these they just
+ *                  render only apps and panels that are truly web native.
+ *                  They show from the agent right top dropdown as another
+ *                  collapsable section at the bottom") — the member's
+ *                  workspaces by name (`layoutsList`); a click opens one the
+ *                  web way (web-cut.ts webLayoutCells: the in-document tool
+ *                  panels and the cloud Glyphh apps, the rest named). Omitted
+ *                  when the member has none.
  *
  * Pure: agent-menu-ui.ts paints exactly this; test/main/agent-menu.test.ts
  * pins the behaviours.
@@ -50,12 +59,13 @@ import { houseViewOf } from "./house-relay.js";
 
 export type MenuSurface = "web" | "desktop";
 export type MenuMode = "work" | "code";
-export type MenuSectionKind = "tools" | "session" | "apps" | "clis";
+export type MenuSectionKind = "tools" | "session" | "apps" | "clis" | "workspaces";
 
 export const CONNECT_DESKTOP_LINE = "Connect your desktop to open apps";
 export const CONNECT_DESKTOP_LINK = "Settings → Devices";
 export const APPS_SECTION_LABEL = "Apps";
 export const CLIS_SECTION_LABEL = "Agents / CLIs";
+export const WORKSPACES_SECTION_LABEL = "Workspaces";
 export const TOOLS_SECTION_LABEL = "Panels";
 export const SESSION_SECTION_LABEL = "Session";
 export const NO_APPS_LINE = "No Glyphh apps installed yet";
@@ -67,11 +77,11 @@ export const CLI_SESSIONS_PER_CLI = 5;
  *  order; its own two come after. */
 export const MENU_SECTION_ORDER: Readonly<Record<MenuSurface, ReadonlyArray<MenuSectionKind>>> = Object.freeze({
   desktop: Object.freeze(["tools", "session"] as MenuSectionKind[]),
-  web: Object.freeze(["tools", "session", "apps", "clis"] as MenuSectionKind[]),
+  web: Object.freeze(["tools", "session", "apps", "clis", "workspaces"] as MenuSectionKind[]),
 });
 
 /** The sections that open as expandable heads, collapsed on every open. */
-export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "clis"]);
+export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "clis", "workspaces"]);
 
 /** THE ARTIFACTS PANEL (his order, 2026-10-05) lists in the Panels section
  *  on both surfaces and for both types — last, after the type's own views.
@@ -128,6 +138,9 @@ export interface MenuCliSession { id: string; cli: string; title: string; cwd: s
 /** The open session, or null on a fresh landing. */
 export interface MenuSession { pinned: boolean }
 
+/** One of the member's workspaces (preload / web-contract `layoutsList`), by name. */
+export interface MenuWorkspaceRow { name: string }
+
 export interface AgentMenuInput {
   surface: MenuSurface;
   /** The session's type (modeOf), or the rail's active tab on a fresh landing. */
@@ -144,6 +157,8 @@ export interface AgentMenuInput {
   cliSessions?: ReadonlyArray<MenuCliSession>;
   /** The session picker's locus: CLIs show only on a desktop path. */
   locus?: MenuLocus;
+  /** WEB: the member's workspaces (`layoutsList`); none → no section. */
+  workspaces?: ReadonlyArray<MenuWorkspaceRow>;
 }
 
 export interface MenuAppsSection {
@@ -163,12 +178,13 @@ export interface MenuAppsSection {
 }
 export interface MenuCliEntry { id: string; name: string; sessions: MenuCliSession[] }
 export interface MenuClisSection { kind: "clis"; label: string; collapsible: true; count: number; rows: MenuCliEntry[] }
+export interface MenuWorkspacesSection { kind: "workspaces"; label: string; collapsible: true; count: number; rows: MenuWorkspaceRow[] }
 export interface MenuToolRow { view: string; label: string }
 export interface MenuToolsSection { kind: "tools"; label: string; rows: MenuToolRow[] }
 export type SessionAction = "rename" | "pin" | "new-panel" | "delete";
 export interface MenuSessionRow { action: SessionAction; label: string; danger: boolean }
 export interface MenuSessionSection { kind: "session"; label: string; rows: MenuSessionRow[] }
-export type MenuSection = MenuAppsSection | MenuClisSection | MenuToolsSection | MenuSessionSection;
+export type MenuSection = MenuAppsSection | MenuClisSection | MenuToolsSection | MenuSessionSection | MenuWorkspacesSection;
 
 export interface AgentMenu {
   surface: MenuSurface;
@@ -237,6 +253,23 @@ export function menuLocusOf(source: { kind?: unknown } | null | undefined): Menu
   return source && typeof source === "object" && source.kind === "local" ? "local" : "cloud";
 }
 
+/** THE WORKSPACE ROWS: one per name (trimmed, non-empty), the first of a
+ *  duplicate name wins (the library merges server and desktop rows by name
+ *  already; this guards the menu against a stray twin). */
+export function workspaceRows(rows: ReadonlyArray<MenuWorkspaceRow>): MenuWorkspaceRow[] {
+  const seen = new Set<string>();
+  const out: MenuWorkspaceRow[] = [];
+  for (const r of rows) {
+    const name = String(r?.name ?? "").trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ name });
+  }
+  return out;
+}
+
 /** The expandable head's text: "Apps · 3", "Agents / CLIs · 6". */
 export function sectionHeadLabel(label: string, count: number): string {
   return `${label} · ${count}`;
@@ -282,6 +315,10 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
       }));
       if (clis.length) byKind.set("clis", { kind: "clis", label: CLIS_SECTION_LABEL, collapsible: true, count: clis.length, rows: clis });
     }
+    // WORKSPACES, LAST (his order, 2026-10-05): the member's workspaces by
+    // name, one row each; with none the section is simply omitted.
+    const spaces = workspaceRows(i.workspaces ?? []);
+    if (spaces.length) byKind.set("workspaces", { kind: "workspaces", label: WORKSPACES_SECTION_LABEL, collapsible: true, count: spaces.length, rows: spaces });
   }
   const sections: MenuSection[] = [];
   for (const kind of MENU_SECTION_ORDER[i.surface]) {

@@ -53,7 +53,8 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, webEchoOpens, webEchoSurface, webLayoutCells, webWorkspaceOpenLines } from "./help/web-cut.js";
+import { webInstalledApps } from "./help/agent-menu-ui.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
@@ -1481,6 +1482,9 @@ async function init(): Promise<void> {
   interface EchoCtlType {
     openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; cloud?: boolean }): void;
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> }): void;
+    /** THE WEB'S WORKSPACE OPEN (his order, 2026-10-05): only the cells the
+     *  web renders (help/web-cut.ts webLayoutCells), the rest named. */
+    openLayoutWeb(layout: { name: string; splits: Array<{ panelId: string }> }): Promise<void>;
     openSection(section: string): void;
     openAgent(): void;
     /** The agent was docked (parked out to the rail/dock) — close its now-empty
@@ -2405,6 +2409,10 @@ async function init(): Promise<void> {
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
+    // THE WEB'S ECHO IS THE WORKSPACES OVERLAY (his order, 2026-10-05;
+    // help/web-cut.ts webEchoSurface): the class hides the dock and seats
+    // the search at the top; the wall below carries workspace tiles only.
+    body.classList.toggle("web-echo", IS_WEB_TARGET && webEchoOpens(IS_WEB_TARGET));
     // FIRST PAINT WITHOUT A FLASH OF THE DOCK (his order, 2026-10-04: off by
     // default). The pref lands asynchronously (readAutoHide, below); the dock
     // markup lands now. So the body class is set BEFORE the markup, from the
@@ -3100,7 +3108,7 @@ async function init(): Promise<void> {
             const target = openEntryForNav(k);
             if (target) {
               items.push({ label: "Close panel", onPick: () => closeCard(target) });
-              if (openList.some((x) => x.card)) items.push({ label: "Close all panels", onPick: () => { for (const x of [...openList]) closeCard(x); } });
+              if (openList.some((x) => x.card)) items.push({ label: "Close all panels", onPick: () => closeAllPanels() });
             }
             showTileMenu(ev, items);
           });
@@ -3191,13 +3199,29 @@ async function init(): Promise<void> {
         items.push({ label: "Close panel", onPick: () => closeCard(target) });
       }
       if ((layoutOpen || target) && openList.some((x) => x.card)) {
-        items.push({ label: "Close all panels", onPick: () => { for (const x of [...openList]) closeCard(x); } });
+        items.push({ label: "Close all panels", onPick: () => closeAllPanels() });
       }
       return items;
     };
     // ── The pages: chunk the list, render icon grids, dots, snap scroll. ──
     /** A repaint asked for during a drag — replayed on dragend. */
     let pendingPagesRender = false;
+    /** CLOSE ALL PANELS — the one helper the dock's and the tiles' menus
+     *  share. Every card closes; ON THE WEB a fresh session then starts in
+     *  place in the rail's current type (help/web-cut.ts webCloseAllOpensNew;
+     *  his order, 2026-10-05: "close all panels in web -> closes all panels
+     *  -> opens new either work or code depending on what was opened last").
+     *  The web's agent card is in-document and never instanced, so it stays
+     *  seated and the new session lands in it (activateGlyphh). The desktop
+     *  only closes, as ever. */
+    function closeAllPanels(): void {
+      if (webCloseAllOpensNew(IS_WEB_TARGET)) {
+        for (const x of [...openList]) if (!isAgentEntry(x)) closeCard(x);
+        activateGlyphh();
+        return;
+      }
+      for (const x of [...openList]) closeCard(x);
+    }
     const renderPages = (): void => {
       // NEVER rebuild the wall mid-drag: the dragged button would be replaced
       // under the pointer and the browser would cancel the drag silently
@@ -3793,7 +3817,9 @@ async function init(): Promise<void> {
       // 2026-10-05: the web remembers its open panels across a refresh and
       // a login) — restoreWallOnce replays what the web can host.
       if (!bootsSurface(IS_WEB_TARGET, "wall")) {
-        buildWall([[]]);
+        // …but the WORKSPACE TILES are on it (his order, 2026-10-05): the
+        // web's Echo button lifts a wall of those alone (webEchoSurface).
+        buildWall([webEchoSurface().tiles === "workspaces" ? (layouts || []).map((l) => layoutTileOf(l)) : []]);
         restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
@@ -4620,7 +4646,23 @@ async function init(): Promise<void> {
     };
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
+    /** THE WEB'S ECHO (his order, 2026-10-05: "when clicked the echo overlay
+     *  shows but only the workspaces render. no dock so search at the top
+     *  etc. but with workspaces in the grid only"): the SAME overlay the
+     *  desktop lifts — the wall over the open cards — toggled by the rail's
+     *  Echo icon; its wall holds workspace tiles only (built so at boot), the
+     *  search at the top filters them, the dock is CSS-hidden (.web-echo).
+     *  Closing (the X, Esc, or a pick) returns to the agent. A full-screen
+     *  page up at the time closes first — the overlay lifts over the agent. */
+    const openWebEcho = (): void => {
+      if (!openList.length) { console.warn("[web-cut] Echo: no agent seated yet"); return; }
+      const on = !shadowPinned;
+      if (on) closeWebFullPanel();
+      setShadow(on, on);
+      if (on) { searchEl.value = ""; paintSearch(); searchEl.focus(); }
+    };
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
+      if (IS_WEB_TARGET && webEchoOpens(IS_WEB_TARGET)) { openWebEcho(); return; }
       // THE WEB CUT: there is no command center to lift on the web.
       if (!bootsSurface(IS_WEB_TARGET, "echo")) { console.warn("[web-cut] the command center does not open on the web"); return; }
       if (!openList.length) return;
@@ -5615,7 +5657,7 @@ async function init(): Promise<void> {
           layoutCards();
         });
         mkItem("Close panel", () => closeCard(e));
-        mkItem("Close all panels", () => { for (const x of [...openList]) closeCard(x); });
+        mkItem("Close all panels", () => closeAllPanels());
         menu.style.left = `${ev.clientX}px`;
         menu.style.top = `${ev.clientY}px`;
         document.body.appendChild(menu);
@@ -5936,6 +5978,29 @@ async function init(): Promise<void> {
         return;
       }
       openLayoutInEchoArranged(layout);
+    };
+    /** A WORKSPACE ON THE WEB (his order, 2026-10-05: "they just render only
+     *  apps and panels that are truly web native"): help/web-cut.ts
+     *  webLayoutCells decides — the in-document tool panels open through
+     *  getOrOpenTool, a cloud Glyphh app as a web panel (ctl.openApp, cloud),
+     *  the agent's own cell is the seated agent; the rest is named in one
+     *  toast line. Nothing kept → one error line and nothing changes. The
+     *  workspace replaces what was showing (the full-screen page and the
+     *  loose panels close; the agent stays seated), as a layout replaces the
+     *  desktop's arrangement. The layout's folder is a desktop path — the
+     *  web's panels read the session's own locus, so it is not switched. */
+    const openLayoutWeb = async (layout: { name: string; splits: Array<{ panelId: string }> }): Promise<void> => {
+      const apps = await webInstalledApps().catch(() => []);
+      const plan = webLayoutCells(layout.splits || [], apps);
+      const lines = webWorkspaceOpenLines(layout.name, plan);
+      setShadow(false, false);   // a pick is a decision — the overlay drops
+      if (lines.error) { toastErr(lines.error); return; }
+      webShowAgentOnly();
+      for (const k of plan.keep) {
+        if (k.kind === "tool") getOrOpenTool(k.view as Parameters<typeof getOrOpenTool>[0]);
+        else if (k.kind === "app") ctl.openApp({ slug: k.slug, name: k.name, url: "", glyphh: true, cloud: true });
+      }
+      if (lines.info) toasts()?.info(lines.info);
     };
     const openLayoutInEchoArranged = (layout: LayoutRow): void => {
       // The layout REPLACES the echo arrangement — cards sit at the layout's
@@ -6715,6 +6780,15 @@ async function init(): Promise<void> {
       for (const x of [...openList]) if (x.card?.isConnected && !isAgentEntry(x)) closeCard(x);
     };
     (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly = webShowAgentOnly;
+    // OPEN WORKSPACE CLOSES ITS HOST FIRST (his order, 2026-10-05; help/
+    // web-cut.ts workspaceOpenClosesHosts): help/layouts.ts closes the
+    // full-screen page through this door on the web, and the Customize work
+    // panel (a page card) on the desktop, before the workspace opens.
+    (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel = () => closeWebFullPanel();
+    (window as unknown as { __wbClosePage?: (section: string) => void }).__wbClosePage = (section) => {
+      const key = legacyKey(section);
+      for (const x of openList.filter((c) => c.tile.slug === `page:${key}`)) closeCard(x);
+    };
     const activateGlyphh = (_self?: TileEntry): void => {
       // EVERY door is another panel (his ruling, 2026-09-26) and every panel
       // starts on a NEW session (his order, 2026-09-29).
@@ -7005,7 +7079,7 @@ async function init(): Promise<void> {
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.cliAgent) { openAgentCliCard(t); return; }
-      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
+      if (t.layoutRow) { if (IS_WEB_TARGET) { void openLayoutWeb(t.layoutRow); return; } openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
@@ -7396,6 +7470,7 @@ async function init(): Promise<void> {
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
+      openLayoutWeb: (layout) => openLayoutWeb(layout),
       openSection: (section) => {
         // Section pages (Apps, Workspaces, Agents, …) follow the ONE open
         // rule everything else does now (his order, 2026-08-30): the card
@@ -10644,6 +10719,15 @@ async function init(): Promise<void> {
    *  the saved snapshot contributes GEOMETRY ONLY — the widths and heights
    *  the user dragged to last time. */
   function openLayoutRow(layout: LayoutRow, appRows: PanelAppRow[]): void {
+    // THE WEB (his order, 2026-10-05): a workspace renders only its
+    // web-native cells — Echo's own web open decides (openLayoutWeb); the
+    // ⋮ menu's Workspaces rows, the Echo tiles and the Workspaces page's
+    // Open all land here by name (__wbOpenLayoutByName).
+    if (IS_WEB_TARGET) {
+      if (echoCtl) void echoCtl.openLayoutWeb(layout);
+      else console.warn("[web-cut] workspace open before Echo mounted:", layout.name);
+      return;
+    }
     // A DESKTOP-target layout never panels — main opens it on the desktop
     // (native launches + external browsers), same as .dip and the agent.
     if (layout.target === "desktop") {

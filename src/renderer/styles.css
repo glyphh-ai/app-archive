@@ -1748,19 +1748,30 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
 /* The collapse toggle sits at the rail's RIGHT edge on the web (his report,
    2026-10-05: "this icon should be over the right of the left rail edge") —
    after the drag spacer, so it marks the edge it folds. */
-.glyphh-web #rail-collapse-btn { order: 3; }
 /* With the rail folded, the web's strip is ONE button (no traffic lights, no
    Echo) — the heads that clear it sit at the far left, right after it (his
    report, 2026-10-05: "these should all be to the far left of the header"). */
-html.glyphh-web body { --rail-strip-w: 38px; }
 /* A WORK session on the web has no ⋮ at all (his order, 2026-10-05: "in web
    for work the three dots should not be there at all"). */
 html.glyphh-web body[data-session-space="work"] #code-tools-more { display: none !important; }
 /* The wordmark at the rail's top-left, WEB ONLY and BIG (his order, 2026-10-05):
    the console's own file; the desktop keeps its traffic lights there. */
 .app-rail-logo { display: none; }
-html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; height: 100%; padding: 0 6px 0 8px; flex: 0 0 auto; }
-html.glyphh-web .app-rail-logo-img { height: 30px; width: auto; display: block; }
+/* THE ECHO ICON LEADS THE RAIL ON THE WEB (his order, 2026-10-05: "the top
+   left of the app web should have the echo icon"; web-cut.ts
+   webRailEchoLeads — the wordmark that sat there is WEB_HIDDEN_RAIL now).
+   The desktop's strip is untouched: Collapse, then Echo at the right. */
+/* THE RAIL HEADER ON THE WEB IS THE DESKTOP'S (his order, 2026-10-05): the wordmark
+   holds the traffic lights' spot (the desktop's 84px inset becomes the logo's own
+   width), then Collapse, then Echo — DOM order, no reordering — at the SAME x whether
+   the rail is open or collapsed: both the open header and the collapsed strip lay out
+   [logo 8px → 82px wide][6px][26][2][26] from the left edge. */
+html.glyphh-web #app-rail-top { padding-left: 8px; }
+html.glyphh-web #rail-collapsed-strip { padding-left: 8px; }
+html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; height: 100%; padding: 0 6px 0 0; flex: 0 0 auto; }
+html.glyphh-web .app-rail-logo-img { height: 30px; width: 82px; object-fit: contain; display: block; }
+html.glyphh-web #rail-collapse-btn, html.glyphh-web #rail-expand-btn, html.glyphh-web #rail-echo-btn, html.glyphh-web #rail-echo-btn-strip { order: 0; width: 26px; height: 26px; flex: 0 0 auto; }
+html.glyphh-web body { --rail-strip-w: 156px; }
 /* The rail's Connections and Devices links are WEB ONLY (his order,
    2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
@@ -17904,6 +17915,13 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
 .echo-topbar-stacked { max-width: 92%; }
+/* THE WEB'S ECHO = WORKSPACES ONLY (his order, 2026-10-05; web-cut.ts
+   webEchoSurface: search yes, dock no): the dock and its hot strip never
+   paint, the search pill sits at the top, the grid starts under it. */
+.ws-echo-body.web-echo .echo-topbar, .ws-echo-body.web-echo .echo-dock-hotstrip { display: none !important; }
+html.glyphh-web #echo-dock-layer { display: none !important; }
+.ws-echo-body.web-echo .echo-search-wrap { top: 28px; }
+.ws-echo-body.web-echo .echo-page-grid { padding-top: calc(28px + 44px + 26px); }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
@@ -21902,6 +21920,8 @@ html.glyphh-web #code-reset-open { display: none !important; }
 }
 .code-view-more-menu .code-menu-link:hover { color: var(--accent-light, var(--text)); }
 .code-view-more-menu .code-view-menu-item .wam-icon { width: 16px; height: 16px; border-radius: 4px; object-fit: cover; flex: 0 0 auto; }
+.code-view-more-menu .code-view-menu-item .wam-mark { display: inline-flex; align-items: center; justify-content: center; }
+.code-view-more-menu .code-view-menu-item .wam-mark svg { width: 16px; height: 16px; }
 .code-view-more-menu .code-view-menu-item.wam-sub { padding-left: 30px; font-size: 12px; color: var(--text-2); }
 .code-view-more-menu .code-view-menu-item.wam-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-view-more-menu .code-view-menu-item.wam-sub.locked { opacity: 0.6; }

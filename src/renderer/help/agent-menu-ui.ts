@@ -12,6 +12,10 @@
  * workbench's own door (__wbOpenAgentCli — a cloud session's CLI runs on its
  * pod); a desktop CLI session under them resumes on the desktop through the
  * rail's own open (help/code.ts sessOpen, handed in).
+ * WEB: the Workspaces rows (last, a fold) open the workspace THE WEB WAY
+ * through the workbench's own door (__wbOpenLayoutByName → web-cut.ts
+ * webLayoutCells: the in-document tool panels and the cloud Glyphh apps open,
+ * the rest is named in a toast).
  * BOTH: the Panels rows open the workbench views for the session's type; the
  * Session rows are the old head kebab's (Rename / Pin / New agent panel /
  * Delete), handed in from code.ts, shown only while a session is open.
@@ -25,16 +29,18 @@
  * Every open repaints from the last answer at once and refreshes behind it.
  */
 import { hostHas, onWeb } from "./web-surface.js";
+import { toolViewIcon } from "./layouts.js";
 import { toast } from "./toast.js";
 import {
   agentMenuModel, appRowOpen, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
-  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction, menuLocusOf } from "./agent-menu.js";
+  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
 
 interface MenuApi {
   attachStatus?: () => Promise<{ attached: boolean; machines: MenuMachine[] }>;
   desktopAppsList?: () => Promise<{ ok: boolean; apps: MenuAppRow[] }>;
   desktopPanelOpen?: (p: { app: string; machineId?: string }) => Promise<{ ok: boolean; name?: string; error?: string }>;
   cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
+  layoutsList?: () => Promise<Array<{ name?: string }>>;
 }
 type RailSessionLike = MenuCliSession & { origin?: "cli"; locked?: boolean };
 export interface AgentMenuDoors {
@@ -49,11 +55,12 @@ export interface AgentMenuDoors {
 interface ShellDoors {
   __wbOpenAgentCli?: (id: string) => void;
   __wbOpenTool?: (view: string) => void;
+  __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
   __glyphhOpenSettings?: (sub?: string) => void;
   __glyphhCliSessions?: () => Promise<RailSessionLike[]>;
 }
 
-const api = (): MenuApi => window.glyphh as unknown as MenuApi;
+const api = (): MenuApi => ((window as unknown as { glyphh?: unknown }).glyphh ?? {}) as MenuApi;
 const shell = (): ShellDoors => window as unknown as ShellDoors;
 
 const IC = {
@@ -66,6 +73,7 @@ const IC = {
   agents: `<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>`,
   artifacts: `<svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>`,
   cli: `<svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  layout: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="12" x2="12" y2="21"/></svg>`,
   app: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
   session: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   rename: `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -77,7 +85,8 @@ const IC = {
 const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
 /** The web's last relay answer (machines, apps, CLIs, sessions) — painted at once on the next open. */
-let lastWeb: { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] } | null = null;
+type WebRead = { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
+let lastWeb: WebRead | null = null;
 let clisCache: MenuCliRow[] = [];
 
 /** The web's three relay reads + the CLI list, in parallel; each failure is an empty. */
@@ -106,23 +115,36 @@ export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSl
   return out;
 }
 
-async function readWeb(): Promise<{ machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] }> {
+async function readWeb(): Promise<WebRead> {
   const a = api();
-  const [status, apps, installed, clis, sessions] = await Promise.all([
+  const [status, apps, installed, clis, sessions, layouts] = await Promise.all([
     hostHas("attachStatus") ? a.attachStatus!().catch(() => null) : Promise.resolve(null),
     hostHas("desktopAppsList") ? a.desktopAppsList!().catch(() => null) : Promise.resolve(null),
     hostHas("panelAppsList") ? (a as unknown as { panelAppsList?: () => Promise<InstalledAppLike[]> }).panelAppsList!().catch(() => null) : Promise.resolve(null),
     hostHas("cliAgentsList") ? a.cliAgentsList!().catch(() => null) : Promise.resolve(null),
     (shell().__glyphhCliSessions?.() ?? Promise.resolve([] as RailSessionLike[])).catch(() => [] as RailSessionLike[]),
+    // THE WORKSPACES (his order, 2026-10-05): the member library's rows, by name.
+    hostHas("layoutsList") ? a.layoutsList!().catch(() => null) : Promise.resolve(null),
   ]);
   if (clis?.ok && clis.agents.length) clisCache = clis.agents.map((c) => ({ id: c.id, name: c.name }));
   const machines = status?.machines ?? [];
   const deskRows = apps?.ok ? apps.apps : [];
   const deskSlugs = new Set(deskRows.map((r) => r.slug.toLowerCase()));
-  return { machines, apps: deskRows, installed: installedRowsOf(Array.isArray(installed) ? installed : [], deskSlugs, machines[0] ?? null), sessions };
+  const workspaces = (Array.isArray(layouts) ? layouts : []).map((l) => ({ name: String(l?.name ?? "") }));
+  return { machines, apps: deskRows, installed: installedRowsOf(Array.isArray(installed) ? installed : [], deskSlugs, machines[0] ?? null), sessions, workspaces };
 }
 
-function modelFor(doors: AgentMenuDoors, web: { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] } | null): AgentMenu {
+/** THE WEB'S INSTALLED APPS, as the ⋮ menu reads them — for the workbench's
+ *  workspace open (web-cut.ts webLayoutCells needs each row's kind and
+ *  whether it lives in the cloud). A fresh read; the menu's cache follows. */
+export async function webInstalledApps(): Promise<MenuAppRow[]> {
+  if (!onWeb()) return [];
+  const read = await readWeb();
+  lastWeb = read;
+  return read.installed;
+}
+
+function modelFor(doors: AgentMenuDoors, web: WebRead | null): AgentMenu {
   const src = (shell() as unknown as { __glyphhActiveSource?: () => { kind?: unknown } | null }).__glyphhActiveSource?.() ?? null;
   return agentMenuModel({
     surface: onWeb() ? "web" : "desktop",
@@ -134,6 +156,7 @@ function modelFor(doors: AgentMenuDoors, web: { machines: MenuMachine[]; apps: M
     clis: clisCache,
     cliSessions: web?.sessions ?? [],
     locus: menuLocusOf(src),
+    workspaces: web?.workspaces ?? [],
   });
 }
 
@@ -172,6 +195,13 @@ function appIcon(a: MenuAppRow): string {
     img.alt = "";
     img.src = a.icon;
     return img.outerHTML;
+  }
+  // A HOUSE APP WEARS ITS OWN MARK (his order, 2026-10-05: "apps should
+  // carry the icon from the apps into this dropdown") — the same coloured
+  // mark the Skills page paints for its tool (layouts.ts toolViewIcon).
+  if (a.tool) {
+    const mark = toolViewIcon(a.tool);
+    if (mark) return `<span class="wam-icon wam-mark">${mark}</span>`;
   }
   return IC.app;
 }
@@ -267,6 +297,23 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
           sb.addEventListener("click", () => { close(); doors.openCliSession?.({ ...full, origin: "cli" }); });
           menu.appendChild(sb);
         }
+      }
+    } else if (s.kind === "workspaces") {
+      // THE WORKSPACES FOLD (his order, 2026-10-05): one row per workspace;
+      // a click closes the menu and opens it the web way through the
+      // workbench's door (webLayoutCells decides what renders).
+      const open = fold(s.kind, s.label, s.count);
+      for (const ws of s.rows) {
+        const b = under(row(IC.layout, ws.name, "wam-workspace wam-sub"), open);
+        b.dataset.workspace = ws.name;
+        b.title = `Open ${ws.name} — its web-native panels and apps`;
+        b.addEventListener("click", () => {
+          close();
+          const door = shell().__wbOpenLayoutByName;
+          if (!door) { console.warn("[agent-menu] no workspace door — the workbench has not booted"); return; }
+          void door(ws.name).then((ok) => { if (!ok) toast(`${ws.name} is not in your workspaces`, { kind: "error" }); });
+        });
+        menu.appendChild(b);
       }
     } else if (s.kind === "tools") {
       menu.appendChild(head(s.label));
