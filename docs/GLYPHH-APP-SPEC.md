@@ -51,10 +51,28 @@ What the surfaces do with that (app `src/shared/app-instances.ts`):
 - **House panels** (Images, Audio, Video, Files, Design, Slides…) are not
   bundles; nothing here touches them.
 
-**Rollback:** `GLYPHH_LOCAL_APPS=1` in the desktop's environment starts the
-local app host again (the sections below: extract into `custom-apps/`, the
-worker, per-app SQLite/cron, the capability table) and lets the local rows
-answer tools and open from disk. Instances still list and open either way.
+### 0.1 Where an app's DATA lives (2026-10-05): the author's word, `data`
+
+"An app is a row in the db." The user **never** picks where an app's data
+lives — the app's author declares it in the manifest (`"data"`, §2), and
+every surface routes by it. "Local is local, cloud is cloud."
+
+| `data`       | meaning | install | open |
+|--------------|---------|---------|------|
+| `"cloud"` (default) | the app and its store are a cloud instance | web and desktop alike: `POST /api/app-instances/from-hub {itemId}` (a hub app) or `installGlyphhAppBundle` (a bundle) → an instance | the instance's UI through the proxy |
+| `"local"`    | **the data never leaves the machine**: the desktop's local host (extract into the Glyphh home, the worker, per-app SQLite/cron, the capability table) runs it; it has no instance | the desktop installs it; the web installs it **only through a connected desktop** (`apps.install {itemId, from}` over the relay — attach.py `REMOTE_METHODS`); with no desktop the web's Install is disabled with "Local data — installs on your desktop; connect it to install from here" | on the desktop, from its folder; on the web the panel says "Runs on your Mac — open Glyphh Desktop", or "your Mac is offline" |
+| `"per-home"` | **a store per home**, each scoped to its home's documents: the cloud instance AND the local host on a connected desktop | both: `from-hub` (or the bundle's cloud install) **and** the local host on the desktop; on the web with no desktop, the cloud alone — no error | the desktop opens its own store; the web opens the instance's |
+
+The marketplace shows `local` as a badge of honor ("Local data"; `per-home`
+wears "Local + cloud"). The Apps page marks an installed app with the
+sessions' locus glyphs (a cloud, a monitor) and never offers "Move to the
+cloud" for a `local` app. The server refuses `from-hub` for a `local` item
+(400). The rules are one module: `src/renderer/help/app-data-rules.ts`.
+
+**Global override:** `GLYPHH_LOCAL_APPS=1` in the desktop's environment runs
+EVERY app on the local host (the sections below) whatever its manifest says,
+and lets every local row answer tools and open from disk. Without it the
+local host starts only for the apps whose `data` asks for it.
 
 ---
 
@@ -90,6 +108,15 @@ is restarted on the new code; its cron schedules survive).
   "worker": "worker.js",          // OPTIONAL headless entry (see §4)
   "description": "…",             // one-line tagline; shown in the card + listing
   "window": { "width": 500, "height": 680 },
+
+  // WHERE THE APP'S DATA LIVES (§0.1) — the AUTHOR's word; the user never picks.
+  //   "cloud"    (default) a cloud instance; installs from the web and the desktop
+  //   "local"    the data never leaves the machine: the desktop's local host runs
+  //              it; no web install without a connected desktop; the marketplace
+  //              wears it as a badge ("Local data")
+  //   "per-home" a store per home, each scoped to its home's documents: the cloud
+  //              instance AND the local host on a connected desktop
+  "data": "cloud",
 
   // ── Marketplace listing (all OPTIONAL; see §2.1). These travel WITH the
   //    bundle, so a published app is self-describing — no separate metadata
@@ -128,6 +155,9 @@ is restarted on the new code; its cron schedules survive).
 
 Rules:
 - `slug` is unique per user. Re-install updates in place.
+- `data` is `"cloud"`, `"local"` or `"per-home"`; anything else reads as the
+  default. It is read at parse (`readGlyphhAppManifest`), carried on the tab
+  row's `launchConfig.data`, and on the hub/catalog row of a published app.
 - A tool declares `capability` **xor** `handler` — exactly one. Tools with
   neither/both are dropped at parse; a `handler` tool without a manifest
   `worker` fails install.

@@ -76,6 +76,27 @@ import {
   callInstanceBridge, callInstanceTool, ensureInstanceTab, findInstance, installBundleAsInstance, instanceKeyOfRow, instancePanelUrl,
   listInstanceTools, localAppsEnabled, sessionBearer, type AppInstanceSummary,
 } from "./app-instances.js";
+import { appDataOfManifest, INSTANCE_CONFIG_KEY, type AppData } from "../shared/app-instances.js";
+
+// ── WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05) ─────────────────────
+// The AUTHOR declares `data` in the manifest: `cloud` (default) is an instance
+// on the farm; `local` runs on THIS host — unzipped here, its worker and store
+// on this machine, never in the cloud; `per-home` is both, and on the desktop
+// the local store answers. The user never picks. GLYPHH_LOCAL_APPS=1 is the
+// global override that runs every app on the local host.
+
+/** Does this manifest's app run on the local host here? */
+export const runsLocally = (data: AppData): boolean => localAppsEnabled() || data === "local" || data === "per-home";
+/** Does this manifest's app have a cloud instance? (`local` never does.) */
+export const runsInCloud = (data: AppData): boolean => data !== "local";
+/** A tab row that the local host answers: its author said local/per-home (or
+ *  the override is on) AND its entry is a file on this machine. */
+export function rowRunsLocally(row: { execPath?: string | null; nativeRef?: string | null; launchConfig?: Record<string, unknown> | null; config?: Record<string, unknown> | null } | null | undefined): boolean {
+  if (!row) return false;
+  const entry = row.execPath ?? row.nativeRef;
+  if (!entry) return false;
+  return runsLocally(appDataOfManifest((row.launchConfig ?? row.config ?? null) as { data?: unknown } | null));
+}
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -116,6 +137,8 @@ export interface GlyphhAppManifest {
    *  bundles (they fall back to the installing user's org). */
   publisherOrgId?: string;
   description?: string;
+  /** Where the app's data lives — the author's word (default cloud). */
+  data?: AppData;
 }
 
 
@@ -285,6 +308,8 @@ interface BundleManifest {
   tools?: string;
   capabilities?: string[];
   dependencies?: { connections?: Array<ConnDep | string> };
+  /** Where the app's data lives — the author's word (default cloud). */
+  data?: unknown;
 }
 
 /** A disabled app's CONFIG VARS, parked while it has no row to live in.
@@ -330,7 +355,16 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
       try { const svg = fs.readFileSync(iconPath); if (svg.length < 64_000) iconUrl = `data:image/svg+xml;base64,${svg.toString("base64")}`; } catch { iconUrl = null; }
     }
   }
-  const config = { capabilities, connectors, tools, bundleDir: dir, ...(m.tool ? { tool: String(m.tool) } : {}), ...(iconUrl ? { iconUrl } : {}) };
+  // THE AUTHOR'S WORD rides the row (app-data-rules.ts): a per-home app also
+  // names its cloud instance, so the web opens the farm's copy while this
+  // machine opens its own.
+  const data = appDataOfManifest(m);
+  const inst = data === "per-home" ? await findInstance(slug).catch(() => undefined) : undefined;
+  const config = {
+    capabilities, connectors, tools, bundleDir: dir, data,
+    ...(m.tool ? { tool: String(m.tool) } : {}), ...(iconUrl ? { iconUrl } : {}),
+    ...(inst ? { [INSTANCE_CONFIG_KEY]: inst.key, instanceKind: inst.kind } : {}),
+  };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === slug)).catch(() => undefined);
     // The app's config vars survive: from its own row when it has one, else
@@ -397,6 +431,7 @@ export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
     ? [...new Set(m.connectors.map((c) => String(c).trim().toLowerCase()).filter((c) => /^[a-z0-9_-]+$/.test(c)))]
     : [];
   m.worker = typeof m.worker === "string" && m.worker.trim() ? m.worker.trim() : undefined;
+  m.data = appDataOfManifest(m);
   m.tools = Array.isArray(m.tools)
     ? m.tools.filter(
         (t) =>
@@ -484,9 +519,18 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const remote = lintRemoteAssets(textEntries);
   if (remote.length) return { ok: false, error: `Bundle references remote assets (bundle them at build time): ${remote[0]}` };
 
-  if (!localAppsEnabled()) return installBundleInCloud(zipPath, zip, manifest);
+  // WHERE IT GOES IS THE AUTHOR'S WORD (his verdict, 2026-10-05): cloud → an
+  // instance; local → this host; per-home → the instance AND this host.
+  const data = appDataOfManifest(manifest);
+  if (!runsLocally(data)) return installBundleInCloud(zipPath, zip, manifest);
+  let cloud: Awaited<ReturnType<typeof installBundleInCloud>> | null = null;
+  if (runsInCloud(data) && !(data === "cloud" && localAppsEnabled())) {
+    cloud = await installBundleInCloud(zipPath, zip, manifest);
+    if (!cloud.ok) return cloud;
+  }
+  ensureLocalHost();
 
-  // THE LOCAL HOST (GLYPHH_LOCAL_APPS=1 only).
+  // THE LOCAL HOST (the manifest's data: local / per-home, or GLYPHH_LOCAL_APPS=1).
   // Install lands in the app's org-scoped local home apps/<author-org>/<slug>.
   // The author's org rides in the bundle (publisherOrgId, Phase 3); a legacy
   // bundle without it installs under THIS user's org. If the org can't be
@@ -518,6 +562,9 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       tools: manifest.tools ?? [],
       window: manifest.window ?? null,
       worker: manifest.worker ?? null,
+      data,
+      // A per-home app's tab names its instance too: the web opens the farm's copy.
+      ...(cloud?.instance ? { [INSTANCE_CONFIG_KEY]: cloud.instance } : {}),
       // What the installer sees on the Releases tab: this app came from a bundle,
       // and the bundle knows which build it is.
       ...(manifest.release ? { release: manifest.release } : {}),
@@ -654,6 +701,7 @@ export async function moveLocalAppToCloud(slug: string): Promise<{ ok: boolean; 
   if (!row || row.kind !== "glyphh") return { ok: false, error: `"${slug}" is not a Glyphh app tab on this machine` };
   if (instanceKeyOfRow(row)) return { ok: false, error: `${row.name} is already in the cloud` };
   if (!row.nativeRef) return { ok: false, error: `${row.name} has no local bundle to move` };
+  if (appDataOfManifest((row.config ?? null) as { data?: unknown } | null) === "local") return { ok: false, error: `${row.name} keeps its data on this machine — its author said so (data: local); it does not move to the cloud` };
   const cfg = (row.config ?? {}) as { bundleDir?: unknown; capabilities?: unknown; connectors?: unknown; tools?: unknown; window?: unknown; worker?: unknown; release?: unknown };
   const dir = typeof cfg.bundleDir === "string" && cfg.bundleDir ? cfg.bundleDir : path.dirname(row.nativeRef);
   if (!fs.existsSync(dir)) return { ok: false, error: `${row.name}'s bundle folder is gone: ${dir}` };
@@ -971,17 +1019,21 @@ function withAppApiKey(app: AppRow, args: Record<string, unknown>): Record<strin
 export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
   // THE CLOUD FIRST: every instance this member may open, by key. The rows on
   // this machine answer only while the local host is switched on.
-  const cloud = (await listInstanceTools().catch(() => [])).map((r) => ({
+  const cloudAll = (await listInstanceTools().catch(() => [])).map((r) => ({
     app: r.app, name: r.name,
     tools: r.tools.filter((t) => !hiddenAppTools(r.app).has(t.name)),
   })).filter((r) => r.tools.length > 0);
-  if (!localAppsEnabled()) return cloud;
-  const cloudSlugs = new Set(cloud.map((r) => r.app.split("~", 1)[0]));
+  // THE LOCAL HOST'S ROWS (his verdict, 2026-10-05): an app whose author kept
+  // its data on this machine answers here — and a per-home app's local store
+  // answers on the desktop, so its instance steps aside for that slug.
   // The shared row types launchConfig loosely; AppRow narrows it to the
   // Glyphh-app keys this module reads.
   const apps = await fetchOrgApps().catch(() => []) as AppRow[];
-  const local = apps
-    .filter((a) => isGlyphhAppRow(a) && !instanceKeyOfRow(a) && !cloudSlugs.has(a.slug))
+  const localRows = apps.filter((a) => isGlyphhAppRow(a) && rowRunsLocally(a));
+  const localSlugs = new Set(localRows.map((a) => a.slug));
+  const cloud = cloudAll.filter((r) => !localSlugs.has(r.app.split("~", 1)[0]));
+  if (!localRows.length) return cloud;
+  const local = localRows
     .map((a) => {
       const hidden = hiddenAppTools(a.slug);
       return {
@@ -998,15 +1050,19 @@ export async function listInstalledAppTools(): Promise<Array<{ app: string; name
  *  Capability tools pass straight through to the host; handler tools run the
  *  app's own logic in its worker. */
 export async function callAppTool(appSlug: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
-  // An instance answers first — by key, by slug, or the member's personal one.
-  const inst = await findInstance(appSlug);
-  if (inst) {
-    if (hiddenAppTools(inst.key).has(toolName)) throw new Error(`tool "${toolName}" is set to Never for this app`);
-    return callInstanceTool(inst.key, toolName, args || {});
+  // THE LOCAL HOST FIRST for an app whose author kept its data here (local /
+  // per-home); then an instance — by key, by slug, or the member's personal one.
+  const localRow = await findAppRow(appSlug).catch(() => undefined);
+  const app = localRow && rowRunsLocally(localRow) ? localRow : undefined;
+  if (!app) {
+    const inst = await findInstance(appSlug);
+    if (inst) {
+      if (hiddenAppTools(inst.key).has(toolName)) throw new Error(`tool "${toolName}" is set to Never for this app`);
+      return callInstanceTool(inst.key, toolName, args || {});
+    }
+    throw new Error(`unknown app: ${appSlug} — not installed in the cloud, and no local-data app of that name is on this machine (app_list_tools names what is)`);
   }
-  if (!localAppsEnabled()) throw new Error(`unknown app: ${appSlug} — not installed in the cloud (an app from before the cloud is moved from Settings → Build → Apps → Move to the cloud)`);
-  const app = await findAppRow(appSlug);
-  if (!app) throw new Error(`unknown app: ${appSlug}`);
+  ensureLocalHost();
   const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);
   if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
   if (hiddenAppTools(app.slug).has(toolName)) throw new Error(`tool "${toolName}" is set to Never for this app`);
@@ -1223,6 +1279,42 @@ function syncAppLibs(): void {
   }
 }
 
+let localHostUp = false;
+/** Bring the local host up once: shared libs, the app CSP on the panel
+ *  sessions, the legacy relocation, the services (per-app db, cron, notify). */
+function ensureLocalHost(): void {
+  if (localHostUp) return;
+  localHostUp = true;
+  syncAppLibs();
+  // Harden the sessions that host installed-app UI pages (standalone window =
+  // default session; in-app preview = persist:yo) with the app CSP.
+  hardenAppSession(session.defaultSession);
+  hardenAppSession(session.fromPartition("persist:yo"));
+  // Relocate any legacy flat installs into the org-scoped layout (best-effort,
+  // post-auth). Legacy apps keep working either way — custom-apps stays covered.
+  void migrateCustomAppsToOrgScoped();
+  initAppServices({
+    resolveApp: async (slug) => {
+      const row = await findAppRow(slug);
+      return row ? workerSpecFromRow(row) : null;
+    },
+    openApp: (slug) => {
+      // Workbench panel beside the agent — OS app windows are retired.
+      // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
+      void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
+    },
+  });
+}
+
+/** A local-data app on this machine (signed in) starts the host. */
+async function armLocalHostIfNeeded(): Promise<void> {
+  if (localHostUp || !getActiveUserId()) return;
+  try {
+    const rows = await fetchOrgApps();
+    if (rows.some((r) => isGlyphhAppRow(r) && rowRunsLocally(r))) ensureLocalHost();
+  } catch { /* offline or signed out — the next sign-in, install or open arms it */ }
+}
+
 /** Register the glyphh-app IPC surface (idempotent; call once at startup).
  *  Also wires app services (per-app db, cron re-arm, notifications) — cron
  *  schedules persisted by installed apps come back to life here. */
@@ -1235,31 +1327,16 @@ export function registerGlyphhAppHost(): void {
   void repairAppCards();
   onUserChange(() => { void repairAppCards(); });
 
-  // THE LOCAL HOST IS NOT STARTED (his decision, 2026-10-04): no shared libs
-  // synced, no legacy relocation, no cron armed, no worker. GLYPHH_LOCAL_APPS=1
-  // brings all of it back for a rollback.
-  if (localAppsEnabled()) {
-    syncAppLibs();
-    // Harden the sessions that host installed-app UI pages (standalone window =
-    // default session; in-app preview = persist:yo) with the app CSP.
-    hardenAppSession(session.defaultSession);
-    hardenAppSession(session.fromPartition("persist:yo"));
-    // Relocate any legacy flat installs into the org-scoped layout (best-effort,
-    // post-auth). Legacy apps keep working either way — custom-apps stays covered.
-    void migrateCustomAppsToOrgScoped();
-    initAppServices({
-      resolveApp: async (slug) => {
-        const row = await findAppRow(slug);
-        return row ? workerSpecFromRow(row) : null;
-      },
-      openApp: (slug) => {
-        // Workbench panel beside the agent — OS app windows are retired.
-        // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
-        void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
-      },
-    });
-  } else {
-    console.warn("[glyphh-app] local app host off — apps run in the cloud (GLYPHH_LOCAL_APPS=1 restores it)");
+  // THE LOCAL HOST STARTS FOR THE APPS THAT NEED IT (his verdict, 2026-10-05):
+  // every app at once under GLYPHH_LOCAL_APPS=1; otherwise the moment a
+  // local-data app is found on this machine (at boot and on sign-in, so its
+  // crons re-arm), installed, opened or called. A machine with cloud apps
+  // only never syncs libs, relocates folders, arms a cron or starts a worker.
+  if (localAppsEnabled()) ensureLocalHost();
+  else {
+    console.warn("[glyphh-app] local app host idle — it starts for an app whose author keeps its data on this machine (GLYPHH_LOCAL_APPS=1 runs every app on it)");
+    void armLocalHostIfNeeded();
+    onUserChange(() => { void armLocalHostIfNeeded(); });
   }
 
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
@@ -1290,7 +1367,11 @@ export function registerGlyphhAppHost(): void {
     // guest's partition gets the session cookie the proxy honors for `ui/*`;
     // the page's `glyphh.call` is the preload's (contextBridge, read-only —
     // the pod's injected shim cannot replace it) and rides main → /call.
-    const instanceKey = instanceKeyOfRow(row);
+    // THE LOCAL STORE FIRST (his verdict, 2026-10-05): an app whose author
+    // kept its data on this machine opens from its folder here, instance or
+    // not (a per-home app names both; the desktop is a home).
+    const localHere = rowRunsLocally(row);
+    const instanceKey = localHere ? null : instanceKeyOfRow(row);
     if (instanceKey) {
       const guest = typeof previewWcId === "number" ? webContents.fromId(previewWcId) : undefined;
       if (!guest || guest.hostWebContents !== event.sender) return { ok: false, error: "invalid preview target" };
@@ -1303,9 +1384,10 @@ export function registerGlyphhAppHost(): void {
       }
       return { ok: true, fileUrl: instancePanelUrl(instanceKey), hosted: true };
     }
-    if (!localAppsEnabled()) {
+    if (!localHere) {
       return { ok: false, error: `${row.name} is installed on this machine only. Move it to the cloud from Settings → Build → Apps (its folder stays).` };
     }
+    ensureLocalHost();
     const entryPath = String(row.execPath || "");
     if (!entryPath || !fs.existsSync(entryPath)) {
       // The LOCAL bundle is per-machine; R2/hosting is the source of record.

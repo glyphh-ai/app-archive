@@ -26,6 +26,11 @@
  *                                Design / Slides / Images / Video / Audio / Drive panels fill
  *                                from this machine's app-data (his order, 2026-10-05). Reads
  *                                only, house apps only; bytes ride as capped data URLs.
+ *   apps.install {itemId, from?} → A LOCAL-DATA HUB APP INSTALLS HERE (his verdict, 2026-10-05:
+ *                                "Local is local, cloud is cloud"): the web's Install for an app
+ *                                whose manifest says `data: local` (or per-home) rides to this
+ *                                machine, which installs it with its local host (hub-ipc.ts
+ *                                installHubItem — the same door the desktop's own Install uses).
  *
  * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
  * live on this machine only (the chat store in agent-ipc.ts), so the phone
@@ -56,6 +61,7 @@ import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { houseCall } from "./house-doors.js";
 import { realHouseDeps } from "./house-deps.js";
+import { installHubItem } from "./hub-ipc.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -150,6 +156,16 @@ export function installAttachHandlers(): void {
   // THE HOUSE APPS' FILES FOR THE WEB'S OWN PANELS (his order, 2026-10-05):
   // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
   registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
+
+  // A LOCAL-DATA APP FROM THE WEB (his verdict, 2026-10-05): the web cannot
+  // install it alone, so its Install lands here and this machine's local host
+  // takes it — the desktop's own hub install, routed by the manifest's data.
+  registerRelayHandler("apps.install", async (params) => {
+    const itemId = str(params, "itemId");
+    if (!itemId) throw new Error("apps.install requires { itemId }");
+    const from = str(params, "from") === "org" ? "org" : "glyphh";
+    return installHubItem(`${from}:${itemId}`, "app");
+  });
 
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();

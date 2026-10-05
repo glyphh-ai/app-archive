@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { buildAppInstancesWeb, panelCookieOf, PANEL_COOKIE } from '../src/app-instances-web.js';
+import { LOCAL_APP_DESKTOP_OFFLINE, LOCAL_APP_RUNS_ON_DESKTOP } from '../../src/renderer/help/app-data-rules.ts';
 import { buildMemberLibrary } from '../src/member-library-web.js';
 import { fakeLibrary, CRM } from './helpers/member-library.js';
 
@@ -20,17 +21,20 @@ const ORG = {
 };
 const MINE = { ...ORG, key: 'notes~u1', slug: 'notes', kind: 'personal', manifest: { name: 'Notes', tools: [], capabilities: [], connectors: [] }, url: '/app-host/notes~u1/' };
 
-function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLibrary({ tab: [{ id: 'crm', updatedAt: 1_000, data: CRM }] }) } = {}) {
+function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLibrary({ tab: [{ id: 'crm', updatedAt: 1_000, data: CRM }] }), attached = null, fromHub = null } = {}) {
   const dels = [];
+  const posts = [];
   return {
-    dels,
+    dels, posts,
     memberLibrary: library,
     me: vi.fn(async () => ({ userId: 'u1' })),
     token: vi.fn(async () => { if (!token) throw new Error('signed out'); return token; }),
     http: {
       get: vi.fn(async (path) => { if (path === '/api/app-instances') return instances; throw new Error(`unexpected GET ${path}`); }),
+      post: vi.fn(async (path, body) => { posts.push({ path, body }); if (path === '/api/app-instances/from-hub') return fromHub; throw new Error(`unexpected POST ${path}`); }),
       del: vi.fn(async (path) => { dels.push(path); }),
     },
+    ...(attached === null ? {} : { attach: { status: vi.fn(async () => ({ attached, machines: attached ? [{ id: 'm1', name: 'Mac' }] : [] })) } }),
   };
 }
 const fakeDoc = () => ({ cookie: '' });
@@ -113,5 +117,34 @@ describe('the member library folds instances in', () => {
     client.http.get = vi.fn(async () => { throw new Error('offline'); });
     const lib = buildMemberLibrary(client, { document: fakeDoc() });
     expect((await lib.panelAppsList()).map((r) => r.slug)).toEqual(['crm']);
+  });
+});
+
+// ── WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05) ──────────────────────
+describe('a hub app as this member\'s instance, and a local app\'s panel on the web', () => {
+  it('installFromHub posts the item id and answers the instance — bare or wrapped — and drops the cached list', async () => {
+    const c = fakeClient({ fromHub: MINE });
+    const w = buildAppInstancesWeb(c, { document: fakeDoc() });
+    await w.listInstances();
+    expect(await w.installFromHub('pub-4')).toEqual(MINE);
+    expect(c.posts).toEqual([{ path: '/api/app-instances/from-hub', body: { itemId: 'pub-4' } }]);
+    await w.listInstances();
+    expect(c.http.get).toHaveBeenCalledTimes(2); // the install invalidated the cache
+    const wrapped = buildAppInstancesWeb(fakeClient({ fromHub: { instance: ORG } }), { document: fakeDoc() });
+    expect(await wrapped.installFromHub('pub-1')).toEqual(ORG);
+    await expect(buildAppInstancesWeb(fakeClient({ fromHub: { nope: true } }), { document: fakeDoc() }).installFromHub('x')).rejects.toThrow(/no instance/);
+    await expect(w.installFromHub('')).rejects.toThrow(/needs the hub item/);
+  });
+
+  it('a local-data tab (no instance) answers the honest line: it runs on the Mac, or the Mac is offline', async () => {
+    const rows = [{ slug: 'vault', name: 'Vault', launchConfig: { data: 'local' } }];
+    const on = buildAppInstancesWeb(fakeClient({ attached: true }), { document: fakeDoc() });
+    expect(await on.previewOpen('vault', rows)).toEqual({ ok: false, localApp: true, error: LOCAL_APP_RUNS_ON_DESKTOP });
+    const off = buildAppInstancesWeb(fakeClient({ attached: false }), { document: fakeDoc() });
+    expect(await off.previewOpen('vault', rows)).toEqual({ ok: false, localApp: true, error: LOCAL_APP_DESKTOP_OFFLINE });
+    // No attach client at all reads as offline; a per-home tab that names its instance opens the instance.
+    expect(await buildAppInstancesWeb(fakeClient(), { document: fakeDoc() }).previewOpen('vault', rows)).toMatchObject({ localApp: true, error: LOCAL_APP_DESKTOP_OFFLINE });
+    const perHome = [{ slug: 'notes', name: 'Notes', launchConfig: { data: 'per-home', instance: 'notes~u1' } }];
+    expect(await on.previewOpen('notes', perHome)).toEqual({ ok: true, fileUrl: '/app-host/notes~u1/ui/index.html', hosted: true });
   });
 });

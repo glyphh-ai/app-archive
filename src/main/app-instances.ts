@@ -6,15 +6,21 @@
  * every surface.
  *
  *   install   POST /api/app-instances → PUT the zip to R2 → POST …/ready
+ *   from hub  POST /api/app-instances/from-hub {itemId} — a hub app as the
+ *             caller's personal instance, server-side (data: cloud / per-home;
+ *             the server refuses data: local with a 400)
  *   list      GET  /api/app-instances (the ones this member may open)
  *   tools     the manifest's tools; a call is POST …/{key}/invoke
  *   bridge    a panel's `glyphh.call` is POST /app-host/{key}/call, as the member
  *   delete    DELETE /api/app-instances/{key}
  *
  * The LOCAL app host (glyphh-app-host.ts: unzip into ~/.glyphh, a worker, a
- * SQLite per app) is no longer started; `GLYPHH_LOCAL_APPS=1` brings it back
- * for a rollback (documented in docs/GLYPHH-APP-SPEC.md). Nothing here
- * touches Electron, so the pure parts are tested under test/main.
+ * SQLite per app) runs for the apps whose AUTHOR said so — `data: "local"`
+ * or `"per-home"` in the manifest (his verdict, 2026-10-05: "Local is local,
+ * cloud is cloud"; renderer/help/app-data-rules.ts); `GLYPHH_LOCAL_APPS=1`
+ * is the global override that runs it for every app (documented in
+ * docs/GLYPHH-APP-SPEC.md). Nothing here touches Electron, so the pure parts
+ * are tested under test/main.
  */
 
 import * as appsStore from "./apps-store.js";
@@ -29,7 +35,8 @@ import {
 export type { AppInstanceSummary, InstanceCard, InstanceKind } from "../shared/app-instances.js";
 export { isInstanceCardId, instanceKeyOfCardId, instanceKeyOfRow, panelUrlOf } from "../shared/app-instances.js";
 
-/** The rollback switch: the local app host (unzip + worker + db) runs again. */
+/** The global override: the local app host (unzip + worker + db) runs for
+ *  EVERY app, whatever its manifest says. */
 export const localAppsEnabled = (): boolean => process.env.GLYPHH_LOCAL_APPS === "1";
 
 const CACHE_KEY = "app-instances";
@@ -87,6 +94,20 @@ export async function installBundleAsInstance(bytes: Buffer, manifest: BundleMan
   const live = await client.http.post<AppInstanceSummary>(`/api/app-instances/${encodeURIComponent(made.instance.key)}/ready`, {});
   invalidateInstances();
   return live;
+}
+
+/** A HUB APP AS THIS MEMBER'S PERSONAL INSTANCE, made server-side: the hub
+ *  item's bundle becomes the instance without a round trip through this
+ *  machine. The server answers the instance (or `{instance}`); it refuses a
+ *  `data: local` item with a 400 — that one installs with the local host. */
+export async function installFromHub(itemId: string): Promise<AppInstanceSummary> {
+  const id = String(itemId || "").trim();
+  if (!id) throw new Error("installFromHub needs the hub item's id");
+  const answer = await getClient().http.post<AppInstanceSummary | { instance: AppInstanceSummary }>("/api/app-instances/from-hub", { itemId: id });
+  const inst = answer && typeof answer === "object" && "instance" in answer && answer.instance && typeof answer.instance === "object" ? answer.instance : answer as AppInstanceSummary;
+  if (!inst || typeof inst !== "object" || typeof inst.key !== "string") throw new Error("the server answered no instance for that hub item");
+  invalidateInstances();
+  return inst;
 }
 
 /** The `tab` row for an instance: written through apps-store so it is
