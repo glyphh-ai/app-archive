@@ -77,6 +77,16 @@ export function buildMemberLibrary(client, deps = {}) {
   const lib = () => client.memberLibrary;
   const desktopRead = deps.desktopRead ?? (async () => []);
   const fetchImpl = deps.fetchImpl ?? ((u, i) => fetch(u, i));
+  // THE BYTES GO THROUGH THE SERVER (his report, 2026-10-05: "Failed to fetch"
+  // installing a plugin — a browser cannot reach the presigned R2 URLs
+  // cross-origin, and the bucket's CORS is not ours to set). The server's
+  // GET/PUT /api/library/v2/<kind>/<id>/files/<path> move a file on the
+  // member's own prefix; the desktop keeps the presigned lane.
+  const apiUrl = String(deps.apiUrl ?? '').replace(/\/+$/, '');
+  const fileUrl = (kind, id, rel) => `${apiUrl}/api/library/v2/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/files/${String(rel).split('/').map(encodeURIComponent).join('/')}`;
+  const authHeaders = async () => { let t = null; try { t = (await client.token()) || null; } catch { t = null; } return t ? { authorization: `Bearer ${t}` } : {}; };
+  const fileGet = async (kind, id, rel) => fetchImpl(fileUrl(kind, id, rel), { method: 'GET', headers: await authHeaders() });
+  const filePut = async (kind, id, rel, body) => fetchImpl(fileUrl(kind, id, rel), { method: 'PUT', headers: await authHeaders(), body });
   // THE CLOCK: this client's `Date.now()`, strictly increasing across the
   // writes of this page — a save and a delete in the same millisecond must
   // not collide on the server's strictly-newer rule.
@@ -253,8 +263,7 @@ export function buildMemberLibrary(client, deps = {}) {
       const { ref, item } = await bundleItem(pageId);
       const f = (item.files ?? []).find((x) => x.path === rel);
       if (!f) return { ok: false, error: `no file ${rel}` };
-      const urls = await lib().files(ref.kind, ref.id, [rel]);
-      const res = await fetchImpl(urls.get[rel]);
+      const res = await fileGet(ref.kind, ref.id, rel);
       if (!res.ok) return { ok: false, error: `read ${rel}: HTTP ${res.status}` };
       const buf = new Uint8Array(await res.arrayBuffer());
       const binary = buf.subarray(0, 4096).includes(0);
@@ -292,12 +301,9 @@ export function buildMemberLibrary(client, deps = {}) {
     const res = await lib().put(kind, id, { data, files, updatedAt: at });
     if (!res.applied) throw new Error(STALE);
     const paths = Object.keys(writes);
-    if (paths.length) {
-      const urls = await lib().files(kind, id, paths);
-      for (const rel of paths) {
-        const r = await fetchImpl(urls.put[rel], { method: 'PUT', body: bytes[rel] });
-        if (!r.ok) throw new Error(`upload ${rel}: HTTP ${r.status}`);
-      }
+    for (const rel of paths) {
+      const r = await filePut(kind, id, rel, bytes[rel]);
+      if (!r.ok) throw new Error(`upload ${rel}: HTTP ${r.status}`);
     }
     return res.item;
   };
@@ -738,9 +744,8 @@ export function buildMemberLibrary(client, deps = {}) {
       const files = {};
       let bytes = 0;
       if (paths.length) {
-        const urls = await lib().files(ref.kind, ref.id, paths);
         for (const rel of paths) {
-          const res = await fetchImpl(urls.get[rel]);
+          const res = await fileGet(ref.kind, ref.id, rel);
           if (!res.ok) throw new Error(`read ${rel}: HTTP ${res.status}`);
           const buf = new Uint8Array(await res.arrayBuffer());
           if (buf.subarray(0, 4096).includes(0)) throw new Error(`"${rel}" is binary — the hub carries text files only (put assets behind a URL)`);

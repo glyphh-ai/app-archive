@@ -213,7 +213,7 @@ export function buildContract(client, deps) {
   // (layouts.list / panelApps.list over the relay) fill in behind the
   // server's — one row per name/slug, the server winning a tie — so a machine
   // that has not synced yet still shows what it has.
-  const library = buildMemberLibrary(client, { desktopRead });
+  const library = buildMemberLibrary(client, { desktopRead, apiUrl });
   const { layoutsList, panelAppsList } = library;
   const house = createHouseRelay({ client });
 

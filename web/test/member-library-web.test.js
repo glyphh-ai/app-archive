@@ -22,10 +22,12 @@ const skillSeed = () => fakeLibrary({
 function fakeR2(seedText = {}) {
   const stored = new Map(Object.entries(seedText));
   const fetchImpl = vi.fn(async (url, init = {}) => {
-    const m = /^https:\/\/r2\/(put|get)\/[^/]+\/[^/]+\/(.+)$/.exec(url);
+    // The server's byte doors (his report, 2026-10-05): GET/PUT /api/library/v2/<kind>/<id>/files/<path>.
+    const m = /^https:\/\/api\/api\/library\/v2\/[^/]+\/[^/]+\/files\/(.+)$/.exec(url);
     if (!m) return { ok: false, status: 400, arrayBuffer: async () => new ArrayBuffer(0) };
-    if (m[1] === 'put') { stored.set(m[2], new TextDecoder().decode(init.body)); return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }; }
-    const text = stored.get(m[2]);
+    if (!(init.headers && /^Bearer /.test(init.headers.authorization || ''))) return { ok: false, status: 401, arrayBuffer: async () => new ArrayBuffer(0) };
+    if ((init.method || 'GET') === 'PUT') { stored.set(decodeURIComponent(m[1]), new TextDecoder().decode(init.body)); return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }; }
+    const text = stored.get(decodeURIComponent(m[1]));
     if (text === undefined) return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
     return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer };
   });
@@ -64,16 +66,16 @@ describe('skills and tasks on web — list and view from the server', () => {
 describe('skills on web — files through the presigned URLs, the record re-put', () => {
   it('skillFileRead downloads the one file from its GET url', async () => {
     const { fetchImpl } = fakeR2({ 'scripts/run.sh': '#!/bin/sh\necho hi\n' });
-    const lib = buildMemberLibrary({ memberLibrary: skillSeed() }, { fetchImpl });
+    const lib = buildMemberLibrary({ memberLibrary: skillSeed(), token: async () => 'tok', token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl, apiUrl: 'https://api' });
     expect(await lib.skillFileRead('glyphh:notes', 'scripts/run.sh')).toEqual({ ok: true, data: { text: '#!/bin/sh\necho hi\n', binary: false, size: 18 } });
-    expect(fetchImpl).toHaveBeenCalledWith('https://r2/get/skill/notes/scripts/run.sh');
+    expect(fetchImpl.mock.calls.map((c) => c[0])).toContain('https://api/api/library/v2/skill/notes/files/scripts/run.sh');
     expect(await lib.skillFileRead('glyphh:notes', 'missing.txt')).toMatchObject({ ok: false, error: /no file/ });
   });
 
   it('skillFileWrite uploads to the PUT url and re-puts the record with the new manifest (SKILL.md re-derives the data)', async () => {
     const api = skillSeed();
     const { stored, fetchImpl } = fakeR2();
-    const lib = buildMemberLibrary({ memberLibrary: api }, { fetchImpl, now: () => 9_000 });
+    const lib = buildMemberLibrary({ memberLibrary: api, token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl, now: () => 9_000 });
     const md = '---\nname: notes\ndescription: Keep BETTER notes\n---\n\nBody.\n';
     expect(await lib.skillFileWrite('glyphh:notes', 'SKILL.md', md)).toEqual({ ok: true, data: true });
     expect(stored.get('SKILL.md')).toBe(md);
@@ -92,14 +94,14 @@ describe('skills on web — files through the presigned URLs, the record re-put'
 
   it('a stale clock is said, not silently lost', async () => {
     const api = skillSeed();
-    const lib = buildMemberLibrary({ memberLibrary: api }, { fetchImpl: fakeR2().fetchImpl, now: () => 1 });
+    const lib = buildMemberLibrary({ memberLibrary: api, token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl: fakeR2().fetchImpl, now: () => 1 });
     expect(await lib.skillFileWrite('glyphh:notes', 'SKILL.md', 'x')).toMatchObject({ ok: false, error: /newer copy/ });
   });
 
   it('skillCreate makes the standard folder (a task gets its task.json, run.js and package.json) and uploads every file', async () => {
     const api = fakeLibrary();
     const { stored, fetchImpl } = fakeR2();
-    const lib = buildMemberLibrary({ memberLibrary: api }, { fetchImpl });
+    const lib = buildMemberLibrary({ memberLibrary: api, token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl });
     const r = await lib.skillCreate('My Task!', 'task');
     expect(r).toMatchObject({ ok: true, data: { id: 'task:my-task', type: 'task', fileCount: 4 } });
     expect([...stored.keys()].sort()).toEqual(['SKILL.md', 'package.json', 'run.js', 'task.json']);
@@ -127,7 +129,7 @@ describe('skills on web — files through the presigned URLs, the record re-put'
   it('taskSlotSet rewrites task.json through the same file lane', async () => {
     const api = skillSeed();
     const { stored } = fakeR2();
-    const lib = buildMemberLibrary({ memberLibrary: api }, { fetchImpl: fakeR2().fetchImpl, now: () => 11_000 });
+    const lib = buildMemberLibrary({ memberLibrary: api, token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl: fakeR2().fetchImpl, now: () => 11_000 });
     const r = await lib.taskSlotSet('digest', 'main', 'ada');
     expect(r).toMatchObject({ ok: true, data: { slots: [{ name: 'main', agent: 'ada' }] } });
     expect(api.rows.get('task:digest').data.manifest.slots.main.agent).toBe('ada');
@@ -279,7 +281,7 @@ const hubRoutes = () => ({
 });
 const hubLib = (seed = fakeLibrary(), routes = hubRoutes(), deps = {}, client = {}) => {
   const http = fakeHttp(routes);
-  const lib = buildMemberLibrary({ memberLibrary: seed, http, ...client }, { now: () => 9_000, ...deps });
+  const lib = buildMemberLibrary({ memberLibrary: seed, http, token: async () => 'tok', ...client }, { now: () => 9_000, apiUrl: 'https://api', ...deps });
   return { lib, http, api: seed };
 };
 /** An attach client: the connected desktops, and what `apps.install` answers. */
@@ -447,7 +449,7 @@ describe('standings, updates, shares, versions and publish on web', () => {
 
   it('skillCreate on the Plugins page writes the desktop\'s plugin template', async () => {
     const { fetchImpl, stored } = fakeR2();
-    const lib = buildMemberLibrary({ memberLibrary: fakeLibrary() }, { fetchImpl, now: () => 9_000 });
+    const lib = buildMemberLibrary({ memberLibrary: fakeLibrary(), token: async () => 'tok' }, { apiUrl: 'https://api', fetchImpl, now: () => 9_000 });
     const r = await lib.skillCreate('My Plugin', 'plugin');
     expect(r.data).toMatchObject({ id: 'plugin:my-plugin', type: 'plugin', name: 'my-plugin', description: 'What this plugin is for, in one line.', fileCount: 3 });
     expect([...stored.keys()].sort()).toEqual(['.claude-plugin/plugin.json', 'README.md', 'skills/my-plugin/SKILL.md']);
