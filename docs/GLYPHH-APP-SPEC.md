@@ -312,6 +312,17 @@ OS permission prompts, and the security boundary.
 - **`cron.schedule`** — persisted (survives restarts) upsert keyed by `id`
   (per-app); fires the worker `handler` with `args`. Standard 5-field cron
   syntax. Max 20 schedules per app. Requires a manifest `worker`.
+- **Time zone** (2026-10-05) — the cron fields are read in the **member's
+  zone**, the one from Settings › Account, on every host: the desktop arms
+  node-cron on it, the cloud clock reads a task schedule on its owner's, and
+  a cloud instance is told it as **`APP_TZ`** at boot (UTC for an org
+  instance or an unset zone; `/healthz` reports it as `tz`). `"0 8 * * 1-5"`
+  is 08:00 there, wherever the machine runs. A zone changed on the Account
+  page re-arms the desktop's schedules at once and the cloud clock reads the
+  new zone on its next sweep; a running instance picks it up on its next
+  launch. A wall minute the clock skips (spring forward) never fires; an
+  hour it repeats (fall back) fires a schedule once unless the hour field
+  is `*`.
 - **`notify.send`** — OS notification; clicking it opens the app's UI.
 
 ### AI & data services (cross-platform, on-device unless noted)

@@ -25,6 +25,8 @@ import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
 import { renderRunList, type RunRowLite } from "./lib-runs.js";
+import { accountApi } from "./settings-api.js";
+import { cronNext, deviceZone, isZone } from "./cron-next.js";
 let openRunId: string | null = null;
 
 interface Env<T> { ok: boolean; data?: T; error?: string }
@@ -57,6 +59,9 @@ const api = (): Api => window.glyphh as unknown as Api;
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
 let rows: ScheduleRow[] = [];
+/** The member's zone (Settings › Account): what "next" is read on. The
+ *  device's own until the profile answers. */
+let zone = deviceZone();
 let recents: RecentRun[] = [];
 let tasks: TaskSpecLite[] = [];
 let skills: SkillLite[] = [];
@@ -124,40 +129,6 @@ export function cronToWords(cron: string): string {
   return listed.length ? `every ${listed.join(", ")} at ${time}` : cron;
 }
 
-function cronSets(cron: string): Array<Set<number>> | null {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return null;
-  const ranges: Array<[number, number]> = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
-  const out: Array<Set<number>> = [];
-  for (let i = 0; i < 5; i++) {
-    const [lo, hi] = ranges[i]!;
-    const set = new Set<number>();
-    for (const piece of parts[i]!.split(",")) {
-      const m = /^(\*|\d+)(?:-(\d+))?(?:\/(\d+))?$/.exec(piece);
-      if (!m) return null;
-      const step = m[3] ? parseInt(m[3], 10) : 1;
-      const a = m[1] === "*" ? lo : parseInt(m[1]!, 10);
-      const b = m[1] === "*" ? hi : m[2] ? parseInt(m[2], 10) : a;
-      for (let v = a; v <= b; v += step) set.add(i === 4 && v === 7 ? 0 : v);
-    }
-    out.push(set);
-  }
-  return out;
-}
-
-export function cronNext(cron: string, from: Date): Date | null {
-  const sets = cronSets(cron);
-  if (!sets) return null;
-  const [mins, hours, doms, mons, dows] = sets as [Set<number>, Set<number>, Set<number>, Set<number>, Set<number>];
-  const d = new Date(from.getTime());
-  d.setSeconds(0, 0); d.setMinutes(d.getMinutes() + 1);
-  for (let i = 0; i < 366 * 24 * 60; i++) {
-    if (mons.has(d.getMonth() + 1) && doms.has(d.getDate()) && dows.has(d.getDay()) && hours.has(d.getHours()) && mins.has(d.getMinutes())) return d;
-    d.setMinutes(d.getMinutes() + 1);
-  }
-  return null;
-}
-
 const relSpan = (ms: number): string => {
   const abs = Math.abs(ms);
   const unit = abs < 60_000 ? "s" : abs < 3_600_000 ? "m" : abs < 86_400_000 ? "h" : "d";
@@ -205,13 +176,15 @@ const runsHere = (): boolean => !onWeb() && hostHas("scheduleRunNow");
 
 export async function loadSchedulesPage(): Promise<void> {
   wire();
-  const [r, rr, t, s, a] = await Promise.all([
+  const [r, rr, t, s, a, tz] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),
     api().tasksSpecs().catch(() => ({ ok: false } as Env<TaskSpecLite[]>)),
     api().skillsList("skill").catch(() => ({ ok: false } as Env<SkillLite[]>)),
     api().libraryAgentsList().catch(() => ({ ok: false } as Env<AgentLite[]>)),
+    accountApi().profile().then((p) => p.timezone).catch(() => ""),
   ]);
   if (!r.ok) { fail(r.error || "Couldn't load schedules."); return; }
+  zone = isZone(tz) ? tz : deviceZone();
   rows = r.data ?? [];
   recents = rr.ok ? rr.data ?? [] : [];
   tasks = t.ok ? t.data ?? [] : [];
@@ -237,7 +210,7 @@ function paintOverview(): void {
   const now = Date.now();
   const shown = rows
     .filter((r) => !query || `${r.name} ${targetName(r)} ${r.agentName || ""}`.toLowerCase().includes(query))
-    .map((r) => ({ r, next: r.enabled ? cronNext(r.cron, new Date()) : null }))
+    .map((r) => ({ r, next: r.enabled ? cronNext(r.cron, new Date(), zone) : null }))
     .sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
   if (count) count.textContent = rows.length ? String(rows.length) : "";
   list.textContent = "";
@@ -253,7 +226,7 @@ function paintOverview(): void {
     // flight, because that is the schedule's state right now.
     const status = r.lastStatus === "running" ? `<span class="ws-task-chip">running</span>` : "";
     const when = r.enabled
-      ? (next ? `<span class="ws-task-next" title="${escapeHtml(next.toLocaleString())}">${escapeHtml(relSpan(next.getTime() - now))}</span>` : `<span class="ws-task-next">—</span>`)
+      ? (next ? `<span class="ws-task-next" title="${escapeHtml(next.toLocaleString(undefined, { timeZone: zone }))}">${escapeHtml(relSpan(next.getTime() - now))}</span>` : `<span class="ws-task-next">—</span>`)
       : `<span class="ws-task-next">paused</span>`;
     card.innerHTML = `
       <div class="ws-task-head"><span class="ws-task-name"></span>${status}${when}</div>

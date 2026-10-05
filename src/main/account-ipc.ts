@@ -17,6 +17,7 @@ import { ipcMain } from "electron";
 import type { MemberRole, OrgUpdate, GuardrailsPolicy } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client";
 import { refreshHeartbeat } from "./auth";
+import { setUserZone } from "./user-zone";
 
 // OrgInfraChoice isn't re-exported from the SDK index, so its input is mirrored
 // structurally here (threads-ipc.ts's discipline). region + tier ('shared' is
@@ -256,7 +257,11 @@ export function registerAccountIpc(): void {
   // ── The caller's own profile ────────────────────────────────────────────
   ipcMain.handle("account-profile-get", () => getClient().profile.get());
   ipcMain.handle("account-profile-update", async (_e, patch: SelfProfileUpdate) => {
-    try { return { ok: true as const, profile: await getClient().profile.update(patch) }; }
+    try {
+      const profile = await getClient().profile.update(patch);
+      setUserZone(profile.timezone); // a moved zone re-arms every schedule here
+      return { ok: true as const, profile };
+    }
     catch (err) { return fail(err); }
   });
 
