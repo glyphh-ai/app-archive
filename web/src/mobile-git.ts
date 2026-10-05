@@ -23,7 +23,7 @@
 import { glyphh } from './glyphh-web.js';
 import { gitCompleteError, pendingLinkInUrl, type BranchRow, type RepoRow } from './mobile-cloud';
 
-interface GitStatus { connected: boolean; login?: string | null; /** A link was started and awaits this member's completion. */ pending?: boolean }
+interface GitStatus { connected: boolean; login?: string | null; /** A link was started and awaits this member's completion. */ pending?: boolean; /** GitHub's settings page for this installation. */ installationUrl?: string }
 interface GitDoor {
   status(): Promise<GitStatus>;
   complete?(link?: string): Promise<GitStatus>;

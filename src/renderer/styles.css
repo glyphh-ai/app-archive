@@ -14373,10 +14373,16 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   flex-direction: row;
   justify-content: center;
   gap: 14px;
-  margin: auto auto 0;
+  margin: 0 auto;
   padding: 24px 24px 18px;
   transform: none;
 }
+/* The fresh Work landing centres greeting + composer in the page (his order,
+   2026-10-05): the thread stops stretching and the column centres its two
+   children; the first send drops the class and the layout is today's. */
+.code-agent.work-landing { justify-content: center; }
+.code-agent.work-landing .code-thread { flex: 0 0 auto; overflow: visible; }
+.code-agent.work-landing .code-thread-inner { min-height: 0; }
 .code-ghost-mark.code-ghost-mark-accent {
   width: 36px;
   height: 44px;             /* the mark's own 165×200 ratio */

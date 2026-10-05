@@ -4179,6 +4179,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
     void mobileGit.status().then((st) => {
       if (!on) return;
       setGit(st.connected ? 'on' : 'off');
+      if (st.installationUrl) setManageUrl(st.installationUrl);
       if (st.connected) void loadRepos();
     });
     return () => { on = false; };
@@ -4279,7 +4280,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
                   <div className="m-sel-group">
                     {/* A GitHub App only lists repos its installation was granted — the
                         web's two account rows, verbatim. */}
-                    <button className="m-opt" onClick={() => { haptic(); window.open('https://github.com/settings/installations', '_blank', 'noopener'); }}>
+                    <button className="m-opt" onClick={() => { haptic(); window.open(manageUrl || 'https://github.com/settings/installations', '_blank', 'noopener'); }}>
                       <span className="m-opt-text"><span className="m-opt-name">Manage repository access…</span><span className="m-opt-desc">Grant the Glyphh app more repositories on GitHub</span></span><Icon name="external" />
                     </button>
                     <button className="m-opt" onClick={disconnect} disabled={locked}>
@@ -4367,6 +4368,8 @@ function App() {
   const [envOpen, setEnvOpen] = useState(false);
   const [reposOpen, setReposOpen] = useState(false);
   const [git, setGit] = useState<GitState>('unknown');
+  // GitHub's settings page for this installation — where repositories change (his report, 2026-10-05).
+  const [manageUrl, setManageUrl] = useState('');
   const [gitNote, setGitNote] = useState('');   // the return landing's verdict, for the repos sheet
   const [picks, setPicksState] = useState<RepoPick[]>(() => { try { return picksOf({ repos: JSON.parse(localStorage.getItem('yoCloudPicks') || '[]') }); } catch { return []; } });
   const setPicks = (p: RepoPick[]) => { setPicksState(p); try { localStorage.setItem('yoCloudPicks', JSON.stringify(p)); } catch { /* */ } };
@@ -5103,7 +5106,7 @@ function App() {
         .then((st) => { if (!on) return; setGit(st.connected ? 'on' : 'off'); setGitNote(''); if (st.connected) setReposOpen(true); })
         .catch((err: unknown) => { if (!on) return; setGit('off'); setGitNote(mobileGit.completeError(err)); setReposOpen(true); });
     } else {
-      void mobileGit.status().then((st) => { if (on) setGit(st.connected ? 'on' : 'off'); });
+      void mobileGit.status().then((st) => { if (on) { setGit(st.connected ? 'on' : 'off'); if (st.installationUrl) setManageUrl(st.installationUrl); } });
     }
     // Attached desktops (Code strip). POLL it — a one-shot fetch goes stale the
     // instant the socket reconnects (a server restart drops the attach WS, the

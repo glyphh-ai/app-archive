@@ -2557,13 +2557,18 @@ function renderThread(): void {
   // nothing streams — the first send repaints the thread as today, and the
   // composer never moves. Code keeps the landing below, untouched.
   const workLanding = (!c || !c.messages.length) && (c ? modeOf(c) : typeTab) === "work" && !(c && liveRuns.has(c.id));
+  // THE LANDING IS CENTRED (his order, 2026-10-05: "in the middle of the page
+  // centered for new"): the agent column centres the greeting AND the
+  // composer while nothing has been said; the first send lays it out as today.
+  document.querySelector(".code-agent")?.classList.toggle("work-landing", workLanding);
   if (workLanding) {
     const ghost = document.createElement("div");
     ghost.className = "code-ghost code-ghost-work";
     const mark = document.createElement("div");
     mark.className = "code-ghost-mark code-ghost-mark-accent";
-    // The mark in the accent colour = the home hero's own artwork (.dash-mark).
-    mark.innerHTML = `<img src="brand/glyphh-mark-purple.png" alt="" draggable="false" />`;
+    // THE standard mark, exactly as the Code landing paints it (his report,
+    // 2026-10-05: the accent artwork read as inverted on light).
+    mark.innerHTML = `<img src="brand/glyphh-mark.png" alt="" draggable="false" />`;
     const title = document.createElement("div");
     title.className = "code-ghost-title code-ghost-greeting";
     // Picked per session id (the landing's own seed before one is born), so

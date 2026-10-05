@@ -45,7 +45,7 @@ import {
 } from "./cloud-source.js";
 
 // ── The web bridge's doors (web/src/web-contract.js) ─────────────────────
-interface GitStatus { connected: boolean; login?: string | null; pending?: boolean }
+interface GitStatus { connected: boolean; login?: string | null; pending?: boolean; installationUrl?: string }
 interface EnvironmentDetail extends EnvironmentRow { vars: EnvironmentVarRow[] }
 interface CloudDoors {
   cloudGitStatus(): Promise<GitStatus>;
@@ -109,6 +109,9 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
   repoBtn.className = "cl-runtime-chip cl-runtime-btn cl-repo-chip";
 
   let git: GitState = "unknown";
+  // GitHub's settings page for THIS installation — where repositories change
+  // (an org's lives under the org; his report, 2026-10-05).
+  let manageUrl = "";
   let environments: EnvironmentRow[] = [];
   let repos: RepoRow[] | null = null;
   let menu: HTMLElement | null = null;
@@ -431,8 +434,8 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
           next.addEventListener("click", () => { view = { kind: "branches" }; draw(); });
           foot.appendChild(next);
         }
-        const manage = drillItem("Manage repository access…", "Grant the Glyphh app more repositories on GitHub", "");
-        manage.addEventListener("click", () => { window.open("https://github.com/settings/installations", "_blank", "noopener"); });
+        const manage = drillItem("Manage repository access…", "Change which repositories the Glyphh app may reach, on GitHub", "");
+        manage.addEventListener("click", () => { window.open(manageUrl || "https://github.com/settings/installations", "_blank", "noopener"); });
         foot.appendChild(manage);
         const disc = drillItem("Disconnect GitHub", "Unlink this account (repos stop listing here)", "");
         if (locked) markUnreachable(disc, LOCUS_LOCKED_HINT.cloud);
@@ -506,6 +509,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
           const tick = async (): Promise<void> => {
             if (mine !== pollAbort) return;
             let st = await d.cloudGitStatus();
+            if (st.installationUrl) manageUrl = st.installationUrl;
             if (!st.connected && st.pending) {
               try { st = await d.cloudGitComplete(); }
               catch (e) { git = "off"; err = gitCompleteError(e); draw(); paint(); opts.onChange(); return; }
@@ -535,6 +539,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
     const d = doors();
     if (!d) { git = "off"; paint(); return; }
     const st = await d.cloudGitStatus();
+    if (st.installationUrl) manageUrl = st.installationUrl;
     git = st.connected ? "on" : "off";
     paint();
     opts.onChange();
