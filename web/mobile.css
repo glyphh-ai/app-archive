@@ -2421,3 +2421,68 @@ h1, h2, h3, h4,
   font-weight: 700 !important;
   letter-spacing: -0.02em;
 }
+
+/* ── The cloud lane on app.glyphh.ai on a phone (his direction, 2026-10-05) ──
+   Tokens only — no new colours. The Code list, the composer's environment /
+   repo chips, and the environment + repositories sheets. */
+/* The Code list: section heads with a trailing +, device chips, plain rows. */
+.m-cl-sect { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 6px; }
+.m-cl-sect .m-code-label { margin: 0 2px; font-size: 19px; }
+.m-cl-add { width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: var(--text-2); display: grid; place-items: center; cursor: pointer; }
+.m-cl-add svg { width: 20px; height: 20px; }
+.m-cl-add:active { background: var(--hover); }
+.m-devices { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 26px; }
+.m-dev-chip { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; padding: 12px 18px 12px 14px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font: 500 19px/1 var(--font-sans); cursor: pointer; }
+.m-dev-chip:active { background: var(--hover); }
+.m-dev-ico { position: relative; display: inline-flex; width: 22px; height: 22px; color: var(--text-2); flex: 0 0 22px; }
+.m-dev-ico svg { width: 22px; height: 22px; }
+.m-dev-dot { position: absolute; top: -3px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--success); border: 2px solid var(--surface); }
+.m-dev-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-list-note-tight { padding: 14px 4px; text-align: left; font-size: 15px; }
+.m-cl-list { display: flex; flex-direction: column; }
+.m-cl-row { display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 16px 4px; border: 0; background: none; text-align: left; cursor: pointer; }
+.m-cl-row:active { background: var(--hover); }
+.m-cl-mark { flex: 0 0 22px; width: 22px; height: 22px; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); }
+.m-cl-mark svg { width: 14px; height: 14px; }
+.m-cl-mark[data-mark="running"] svg { width: 18px; height: 18px; animation: m-spin 1.2s linear infinite; }
+.m-cl-mark[data-mark="waiting"] { color: var(--warning); }
+.m-cl-mark[data-mark="waiting"] svg { width: 18px; height: 18px; }
+.m-cl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.m-cl-title { font: 500 23px/1.25 var(--font-sans); color: var(--text); }
+.m-cl-sub { display: inline-flex; align-items: center; gap: 8px; font: 400 18px/1.2 var(--font-sans); color: var(--text-3); }
+.m-cl-sub svg { width: 20px; height: 20px; flex: 0 0 20px; color: var(--text-faint); }
+.m-cl-sub[data-live="true"] svg { color: var(--success); }
+.m-cl-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The round search button bottom-left; the New session pill stays bottom-right. */
+.m-search-fab { position: absolute; left: 16px; bottom: calc(var(--safe-bottom) + 12px); z-index: 6; width: 52px; height: 52px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 20px var(--overlay-bg); }
+.m-search-fab svg { width: 22px; height: 22px; }
+.m-code .m-fab { bottom: calc(var(--safe-bottom) + 12px); }
+
+/* The rail's recents: a where-subline under the title. */
+.m-recent-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.m-recent-where { font: 400 11.5px/1 var(--font-sans); color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The composer's chips: environment · repos (or folder). */
+.m-env-row { display: flex; gap: 8px; padding: 0 2px 8px; overflow-x: auto; scrollbar-width: none; }
+.m-env-row::-webkit-scrollbar { display: none; }
+.m-env-chip { flex: 0 1 auto; min-width: 0; background: var(--surface); border: 1px solid var(--border); }
+.m-env-chip-locked { opacity: 0.75; }
+.m-env-chip-ico { position: relative; display: inline-flex; flex: 0 0 18px; }
+.m-env-chip-ico .m-dev-dot { top: -3px; right: -3px; width: 8px; height: 8px; }
+.m-send-block { padding: 0 8px 8px; font: 500 13.5px/1.3 var(--font-sans); color: var(--text-3); }
+
+/* The environment + repositories sheets. */
+.m-sel-tall { height: min(86vh, 760px); }
+.m-env-opt:disabled { opacity: 0.5; cursor: default; }
+.m-env-ico { position: relative; flex: 0 0 26px; display: inline-flex; width: 26px; height: 26px; color: var(--text-2); }
+.m-env-ico svg { width: 24px; height: 24px; }
+.m-env-ico .m-dev-dot { top: -2px; right: -3px; }
+.m-env-count { font: 400 17px/1 var(--font-sans); color: var(--text-3); white-space: nowrap; }
+.m-sel-next { position: absolute; right: 16px; display: inline-flex; align-items: center; gap: 2px; height: 34px; padding: 0 10px 0 14px; border: 0; border-radius: 17px; background: var(--surface-2); color: var(--text); font: 600 15px/1 var(--font-sans); cursor: pointer; }
+.m-sel-next svg { width: 16px; height: 16px; }
+.m-sel-foot { flex: 0 0 auto; padding: 10px 16px calc(var(--safe-bottom) + 12px); }
+.m-sel-search-input { margin-bottom: 0; cursor: text; }
+.m-sel-search-input input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--text); font: 400 18px/1 var(--font-sans); }
+.m-sel-search-input input::placeholder { color: var(--text-faint); }
+.m-connecting-inline { position: static; transform: none; width: fit-content; max-width: 100%; margin: 12px auto; white-space: normal; text-align: left; }
+.m-branch-row .m-opt-desc { font-family: var(--font-mono); }
