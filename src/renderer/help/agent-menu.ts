@@ -265,7 +265,8 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
       count: appRows.length,
       enabled: true,
       rows: appRows,
-      note: appRows.length ? null : NO_APPS_LINE,
+      // "Apps · 0" says it (his order, 2026-10-05): no line under an empty fold.
+      note: null,
       link: null,
     });
     // AGENTS / CLIs ONLY ON A DESKTOP PATH (his order, 2026-10-05: "Only

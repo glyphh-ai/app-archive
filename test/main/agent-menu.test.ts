@@ -119,8 +119,7 @@ describe("APPS = ONLY THE GLYPHH APPS THE DESKTOP CAN LOAD (his review, 2026-10-
     expect(a.enabled).toBe(true);
     expect(a.rows).toEqual([]);
     expect(a.count).toBe(0);
-    expect(a.note).toBe(NO_APPS_LINE);
-    expect(NO_APPS_LINE).toBe("No Glyphh apps installed yet");
+    expect(a.note).toBeNull();   // "Apps · 0" says it (his order, 2026-10-05)
     expect(a.link).toBeNull();
   });
   it("two desktops with the same app list it once; a row without a slug is dropped", () => {
@@ -175,7 +174,7 @@ describe("web, not attached — no desktop (his order, 2026-10-05: installed app
     const a = section(mm, "apps")!;
     expect(a.enabled).toBe(true);
     expect(a.rows).toEqual([]);
-    expect(a.note).toBe(NO_APPS_LINE);
+    expect(a.note).toBeNull();
   });
   it("no Agents / CLIs on a cloud locus, attached or not", () => {
     expect(section(m, "clis")).toBeUndefined();
