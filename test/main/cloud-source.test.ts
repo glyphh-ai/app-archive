@@ -55,6 +55,11 @@ describe("the send gate", () => {
     expect(webCloudSendBlock({ ...base, surface: "desktop" })).toBe("");
     expect(webCloudSendBlock({ ...base, connected: true, picks: [two[0]] })).toBe("");
   });
+  it("never holds a WORK session (his report, 2026-10-05: the page would not submit)", () => {
+    const base = { surface: "web" as const, locus: "cloud" as const, born: false, connected: false, picks: [] };
+    expect(webCloudSendBlock({ ...base, type: "work" })).toBe("");
+    expect(webCloudSendBlock({ ...base, type: "code" })).toBe("Connect GitHub to start a cloud session");
+  });
 });
 
 describe("the two chips", () => {

@@ -3152,7 +3152,8 @@ function bornLocus(): Locus | null {
 function cloudSendBlockNow(): string {
   if (!onWebTarget()) return "";
   const src = activeSource();
-  return webCloudSendBlock({ surface: "web", locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
+  const c = current();
+  return webCloudSendBlock({ surface: "web", type: c ? modeOf(c) : typeTab, locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
 }
 
 /** The source for the ACTIVE surface — the current session's stamped source,

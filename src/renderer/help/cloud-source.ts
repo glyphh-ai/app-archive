@@ -79,7 +79,11 @@ export function cloudSendBlock(connected: boolean, picks: readonly RepoPick[]): 
 /** The same gate as the composer applies it: only an UNBORN cloud session on
  *  the WEB is gated (a born one already runs; a desktop session's gate is its
  *  folder; the desktop app never hits it). */
-export function webCloudSendBlock(input: { surface: "web" | "desktop"; locus: Locus; born: boolean; connected: boolean; picks: readonly RepoPick[] }): string {
+export function webCloudSendBlock(input: { surface: "web" | "desktop"; locus: Locus; born: boolean; connected: boolean; picks: readonly RepoPick[]; type?: "work" | "code" }): string {
+  // A WORK session needs no repository (his report, 2026-10-05: "the page
+  // won't submit" — the gate held a chat-only Work session on the web for
+  // GitHub). Only a Code session in the cloud checks out a repository.
+  if (input.type === "work") return "";
   if (input.surface !== "web" || input.locus !== "cloud" || input.born) return "";
   return cloudSendBlock(input.connected, input.picks);
 }
