@@ -164,6 +164,17 @@ function openSharePopover(anchor: HTMLElement, meta: ArtifactMeta, onChange: (m:
       b.addEventListener("click", async () => {
         const share = bridge().artifactsShare;
         if (!share) { toast("Sharing needs the server.", { kind: "error" }); return; }
+        if (o.access === meta.access) return;
+        // PUBLIC ASKS FIRST (his order, 2026-10-05): anyone with the link can
+        // view it, signed in or not.
+        if (o.access === "public") {
+          const ok = await confirmAction({
+            title: "Share with anyone who has the link?",
+            body: "Anyone with this link can view this artifact, even without a Glyphh account or sign-in.",
+            confirmLabel: "Share publicly",
+          });
+          if (!ok) return;
+        }
         const r = await share(meta.id, o.access);
         if (!r.ok) { toast("Couldn't change who can see this", { kind: "error", detail: err(r, "") }); return; }
         meta = { ...meta, access: r.data.access, shareUrl: r.data.shareUrl };

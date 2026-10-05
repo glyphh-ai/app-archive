@@ -7535,6 +7535,21 @@ async function init(): Promise<void> {
     };
     echoCtl = ctl;
     notifyOpenApps();
+    // A SHARED LINK OPENED SIGNED IN (his order, 2026-10-05): the viewer page
+    // hands the id over as ?artifact=<id>; the app opens it in its own
+    // Artifacts view and strips the query so a reload never re-opens it.
+    if (IS_WEB_TARGET) {
+      try {
+        const u = new URL(window.location.href);
+        const art = u.searchParams.get("artifact");
+        if (art) {
+          u.searchParams.delete("artifact"); u.searchParams.delete("t");
+          window.history.replaceState({}, "", u.toString());
+          openWebFullPanel("artifacts");
+          void webFullPanel?.open(art);
+        }
+      } catch { /* a bare stub */ }
+    }
 
     // (The 3D pick/pan/edit machinery is GONE — flat icons handle their own
     // clicks and HTML5 drags; the dock/pages trade instead of deleting.)
