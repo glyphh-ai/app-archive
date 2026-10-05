@@ -48,9 +48,13 @@ import {
   cloudSource, cloudSendBlock, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
   toggleRepo, setBranch, groupRepos, splitRepo, mergeThreads, sessionSubline, sessionMark,
   toStoredMessages, picksOf, isCloudKind, defaultLocus, LOCUS_LOCKED_HINT,
-  type RepoPick, type RepoRow, type BranchRow, type CloudSource, type Locus, type ListedThread,
+  environmentIdOf, environmentName, environmentSubline, environmentFormError, maskedDotenv, NETWORK_OPTIONS, DEFAULT_ENVIRONMENT_ID,
+  type RepoPick, type RepoRow, type BranchRow, type CloudSource, type Locus, type ListedThread, type EnvironmentRow, type EnvironmentNetwork,
 } from './mobile-cloud';
 import { mobileGit } from './mobile-git';
+// NAMED ENVIRONMENTS (his direction, 2026-10-05: personal environments): the
+// member's own rows beside Default, over the SDK's environments resource.
+import { mobileEnvironments } from './mobile-environments';
 import { cloudSessions } from './cloud-sessions';
 import type { Source } from '../../src/renderer/help/code-source-chip';
 import { gateAfter, IDLE_GATE, mayPin, SETTLE_MS, type FollowGate } from './mobile-scroll-follow';
@@ -3953,12 +3957,12 @@ function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => vo
 /* ── Choose environment (his target screen, 2026-10-05) ─────────────────────
    WHERE the next session runs. "Remote control" = the attached desktops (the
    existing desktop lane: a tap opens that machine's folder picker); "Cloud
-   environments" = the one "Default" environment the cloud has today — a repo
-   grant is all a cloud session needs. Named environments come next; the
-   "Create environment" row is disabled until they exist as a record. A born
-   session locks the OTHER section (session-locus.ts: the locus is fixed at
-   birth). ─────────────────────────────────────────────────────────────── */
-function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, onPickDesktop, onPickCloud }: {
+   environments" = Default (the built-in one: no variables, full network) plus
+   the member's NAMED environments (personal environments: a name, a network
+   policy, .env text kept encrypted on the server). "Create environment" opens
+   the form; ⋯ on a row edits it. A born session locks the OTHER section and
+   its environment (session-locus.ts: the locus is fixed at birth). ──────── */
+function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, environments, envPick, onPickDesktop, onPickCloud, onCreate, onEdit }: {
   open: boolean; onClose: () => void;
   desktops: AttachedMachine[];
   /** How many of the member's sessions live on the named machine. */
@@ -3966,11 +3970,27 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
   locus: Locus;
   /** The open session has run — its locus can no longer change. */
   born: boolean;
+  /** The member's named environments (Default is not among them). */
+  environments: EnvironmentRow[];
+  /** The picked cloud environment's id ("default" = the built-in one). */
+  envPick: string;
   onPickDesktop: (d: AttachedMachine) => void;
-  onPickCloud: () => void;
+  onPickCloud: (environmentId: string) => void;
+  onCreate: () => void;
+  onEdit: (row: EnvironmentRow) => void;
 }) {
   const lockDesktop = born && locus === 'cloud';
   const lockCloud = born && locus === 'local';
+  const cloudRow = (id: string, name: string, sub: string | null, row: EnvironmentRow | null) => (
+    <div key={id} className="m-env-row">
+      <button className="m-opt m-env-opt" disabled={lockCloud || (born && locus === 'cloud')} title={lockCloud ? LOCUS_LOCKED_HINT.local : undefined} onClick={() => { haptic(); onPickCloud(id); }}>
+        <span className="m-env-ico"><Icon name="cloud" /></span>
+        <span className="m-opt-text"><span className="m-opt-name">{name}</span>{sub && <span className="m-opt-desc">{sub}</span>}</span>
+        {locus === 'cloud' && envPick === id && <span className="m-opt-tick"><Icon name="tick" /></span>}
+      </button>
+      {row && <button className="m-env-more" aria-label={`Edit ${name}`} onClick={() => { haptic(); onEdit(row); }}><Icon name="dots" /></button>}
+    </div>
+  );
   return createPortal(
     <div className="m-sel-overlay" data-open={open ? 'true' : 'false'} data-sheet="environment">
       <div className="m-sel-scrim" onClick={onClose} />
@@ -4000,20 +4020,111 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
 
           <div className="m-code-label">Cloud environments</div>
           <div className="m-sel-group">
-            <button className="m-opt m-env-opt" disabled={lockCloud} title={lockCloud ? LOCUS_LOCKED_HINT.local : undefined} onClick={() => { haptic(); onPickCloud(); }}>
-              <span className="m-env-ico"><Icon name="cloud" /></span>
-              <span className="m-opt-text"><span className="m-opt-name">Default</span></span>
-              {locus === 'cloud' && <span className="m-opt-tick"><Icon name="tick" /></span>}
-            </button>
+            {cloudRow(DEFAULT_ENVIRONMENT_ID, 'Default', null, null)}
+            {environments.map((e) => cloudRow(e.id, e.name, environmentSubline(e), e))}
           </div>
           <div className="m-sel-group">
-            {/* Named environments are not a record yet — disabled, honestly. */}
-            <button className="m-opt m-env-opt" disabled>
+            <button className="m-opt m-env-opt" disabled={lockCloud} onClick={() => { haptic(); onCreate(); }}>
               <span className="m-env-ico"><Icon name="plus" /></span>
-              <span className="m-opt-text"><span className="m-opt-name">Create environment</span><span className="m-opt-desc">Named environments come next</span></span>
+              <span className="m-opt-text"><span className="m-opt-name">Create environment</span></span>
             </button>
           </div>
           {lockCloud && <div className="m-sel-note">{LOCUS_LOCKED_HINT.local}</div>}
+          {born && locus === 'cloud' && <div className="m-sel-note">This session's environment was fixed when it started.</div>}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ── New cloud environment (his screenshot, 2026-10-05: personal environments)
+   Name · Network access (No / Trusted / Full) · Environment variables in .env
+   format · "Create environment". The same form EDITS a row: the stored
+   variables show as KEY=masked preview (never a value); the text is sent only
+   when the member edited it, so an untouched edit keeps the stored secrets.
+   A "Delete environment" danger row closes the edit. ───────────────────── */
+function EnvironmentFormSheet({ open, onClose, editing, onSaved, onDeleted }: {
+  open: boolean; onClose: () => void;
+  /** The row being edited; null = a new environment. */
+  editing: EnvironmentRow | null;
+  onSaved: (row: EnvironmentRow) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [network, setNetwork] = useState<EnvironmentNetwork>('full');
+  const [vars, setVars] = useState('');
+  const [varsDirty, setVarsDirty] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setErr(''); setBusy(false); setConfirmDelete(false); setVarsDirty(false);
+    if (!editing) { setName(''); setNetwork('full'); setVars(''); return; }
+    setName(editing.name); setNetwork(editing.network); setVars(''); setLoading(true);
+    let on = true;
+    mobileEnvironments.get(editing.id)
+      .then((d) => { if (!on) return; setName(d.name); setNetwork(d.network); setVars(maskedDotenv(d.vars)); })
+      .catch((e: unknown) => { if (on) setErr(mobileEnvironments.saveError(e)); })
+      .finally(() => { if (on) setLoading(false); });
+    return () => { on = false; };
+  }, [open, editing?.id]);
+
+  const submit = () => {
+    const problem = environmentFormError({ name, vars: editing && !varsDirty ? '' : vars });
+    if (problem) { setErr(problem); return; }
+    haptic(); setBusy(true); setErr('');
+    void (async () => {
+      try {
+        const saved = editing
+          ? await mobileEnvironments.update(editing.id, { name: name.trim(), network, ...(varsDirty ? { vars } : {}) })
+          : await mobileEnvironments.create({ name: name.trim(), network, vars });
+        onSaved({ id: saved.id, name: saved.name, network: saved.network, varCount: saved.varCount });
+      } catch (e) { setErr(mobileEnvironments.saveError(e)); }
+      finally { setBusy(false); }
+    })();
+  };
+  const remove = () => {
+    if (!editing) return;
+    if (!confirmDelete) { haptic(); setConfirmDelete(true); return; }
+    haptic(); setBusy(true); setErr('');
+    void mobileEnvironments.delete(editing.id)
+      .then(() => onDeleted(editing.id))
+      .catch((e: unknown) => { setErr(mobileEnvironments.saveError(e)); setBusy(false); });
+  };
+
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'} data-sheet="environment-form">
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-tall" role="dialog" aria-modal="true">
+        <div className="m-sel-grip" />
+        <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">{editing ? 'Edit cloud environment' : 'New cloud environment'}</span></div>
+        <div className="m-sel-body">
+          <div className="m-set-form m-env-form">
+            <label className="m-field"><span className="m-field-l m-env-field-l">Name</span>
+              <input className="m-field-in" value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Default" maxLength={60} autoComplete="off" spellCheck={false} {...NOFILL} /></label>
+            <label className="m-field"><span className="m-field-l m-env-field-l">Network access</span>
+              <span className="m-env-select">
+                <select className="m-field-in" value={network} onChange={(e) => setNetwork(e.currentTarget.value as EnvironmentNetwork)}>
+                  {NETWORK_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+                <Icon name="caret" />
+              </span></label>
+            <label className="m-field"><span className="m-field-l m-env-field-l">Environment variables</span>
+              <textarea className="m-field-in m-field-area m-env-vars" value={vars} onChange={(e) => { setVars(e.currentTarget.value); setVarsDirty(true); }} placeholder="API_KEY=hunter2" rows={8} autoComplete="off" spellCheck={false} autoCapitalize="off" autoCorrect="off" disabled={loading} /></label>
+            <div className="m-field-note m-env-note">In <a href="https://www.dotenv.org/docs/security/env" target="_blank" rel="noopener noreferrer">.env format</a>.</div>
+          </div>
+          {err && <div className="m-field-err">{err}</div>}
+          {editing && (
+            <button className="m-field-btn m-field-danger m-env-delete" disabled={busy} onClick={remove}>
+              {confirmDelete ? 'Tap again to delete' : 'Delete environment'}
+            </button>
+          )}
+        </div>
+        <div className="m-sel-foot">
+          <button className="m-login-primary m-env-submit" disabled={busy || loading} onClick={submit}>{busy ? 'Saving…' : editing ? 'Save environment' : 'Create environment'}</button>
         </div>
       </div>
     </div>,
@@ -4260,6 +4371,15 @@ function App() {
   // Where the NEXT session lands when the member has not said: the web's
   // rule (session-locus.ts defaultLocus) — the attached desktop, else the cloud.
   const [newLocusPick, setNewLocusPick] = useState<Locus | null>(null);
+  // The member's NAMED environments and the NEW session's pick (kept on the
+  // phone like the repo picks; a session takes a copy at birth).
+  const [environments, setEnvironments] = useState<EnvironmentRow[]>([]);
+  const [envPick, setEnvPickState] = useState<string>(() => { try { return localStorage.getItem('yoCloudEnv') || DEFAULT_ENVIRONMENT_ID; } catch { return DEFAULT_ENVIRONMENT_ID; } });
+  const setEnvPick = (id: string) => { setEnvPickState(id); try { localStorage.setItem('yoCloudEnv', id); } catch { /* */ } };
+  const [envForm, setEnvForm] = useState<{ open: boolean; editing: EnvironmentRow | null }>({ open: false, editing: null });
+  const loadEnvironments = () => { void mobileEnvironments.list().then(setEnvironments); };
+  useEffect(() => { if (authState === 'in') loadEnvironments(); }, [authState]);
+  useEffect(() => { if (envOpen) loadEnvironments(); }, [envOpen]);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
@@ -4542,7 +4662,7 @@ function App() {
     if (!session || (born?.kind !== 'local' && !isCloudKind(born?.kind))) {
       if (session && newLocus === 'cloud') {
         if (cloudSendBlock(git === 'on', picks)) { haptic(); setReposOpen(true); return; }
-        const src = cloudSource(picks)!;
+        const src = cloudSource(picks, envPick)!;
         chatFor(session.id).source = src as Source;
         saveLocus(session.id, { kind: 'cloud', source: src });
       } else {
@@ -4831,7 +4951,7 @@ function App() {
     return src?.kind === 'local' ? src.path : '';
   })();
   const chips: ComposerChip[] = [
-    { id: 'env', icon: effLocus === 'cloud' ? 'cloud' : 'laptop', label: envChipLabel(effLocus, openMachine), live: effLocus === 'local' && desktops.some((d) => (d.name || d.app) === openMachine), locked: sessionBorn, onClick: () => setEnvOpen(true) },
+    { id: 'env', icon: effLocus === 'cloud' ? 'cloud' : 'laptop', label: envChipLabel(effLocus, openMachine, environmentName(sessionBorn && effLocus === 'cloud' ? environmentIdOf(openSrc as { environmentId?: unknown } | undefined) : envPick, environments)), live: effLocus === 'local' && desktops.some((d) => (d.name || d.app) === openMachine), locked: sessionBorn, onClick: () => setEnvOpen(true) },
     effLocus === 'cloud'
       ? { id: 'repo', icon: 'github', label: repoChipLabel(openPicks, git === 'on' || (sessionBorn && openPicks.length > 0)), locked: sessionBorn, onClick: () => setReposOpen(true) }
       : { id: 'folder', icon: 'files', label: folderChipLabel(openFolder), locked: sessionBorn, onClick: () => { if (sessionBorn) return; if (desktops[0]) setFolderPick(desktops[0]); else setEnvOpen(true); } },
@@ -5236,8 +5356,14 @@ function App() {
       <EnvironmentSheet open={envOpen} onClose={() => { haptic(); setEnvOpen(false); }} desktops={desktops}
         sessionCount={(name) => (threads ?? []).filter((t) => t.source?.kind === 'local' && (t.source.machineName === name)).length}
         locus={effLocus} born={sessionBorn}
+        environments={environments} envPick={sessionBorn && effLocus === 'cloud' ? environmentIdOf(openSrc as { environmentId?: unknown } | undefined) : envPick}
         onPickDesktop={(d) => { setEnvOpen(false); setNewLocusPick('local'); setFolderPick(d); }}
-        onPickCloud={() => { setEnvOpen(false); setNewLocusPick('cloud'); }} />
+        onPickCloud={(id) => { setEnvOpen(false); setNewLocusPick('cloud'); setEnvPick(id); }}
+        onCreate={() => setEnvForm({ open: true, editing: null })}
+        onEdit={(row) => setEnvForm({ open: true, editing: row })} />
+      <EnvironmentFormSheet open={envForm.open} editing={envForm.editing} onClose={() => { haptic(); setEnvForm((f) => ({ ...f, open: false })); }}
+        onSaved={(row) => { setEnvironments((rows) => rows.some((r) => r.id === row.id) ? rows.map((r) => (r.id === row.id ? row : r)) : [...rows, row].sort((a, b) => a.name.localeCompare(b.name))); setEnvForm((f) => ({ ...f, open: false })); if (!envForm.editing) { setNewLocusPick('cloud'); setEnvPick(row.id); setEnvOpen(false); } }}
+        onDeleted={(id) => { setEnvironments((rows) => rows.filter((r) => r.id !== id)); if (envPick === id) setEnvPick(DEFAULT_ENVIRONMENT_ID); setEnvForm((f) => ({ ...f, open: false })); }} />
       <ReposSheet open={reposOpen} onClose={() => { haptic(); setReposOpen(false); setGitNote(''); }} picks={sessionBorn ? openPicks : picks} setPicks={setPicks} git={git} setGit={setGit} locked={sessionBorn} note={gitNote} />
       {/* Apps: the installed-app list + the streamed desktop app tray. */}
       <AppsSheet open={appsOpen} onClose={() => { haptic(); setAppsOpen(false); }} onPick={openAppTray} />
