@@ -11,6 +11,7 @@ import {
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
+  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, webGroupTabs, webGroupPanelKept,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -68,19 +69,54 @@ describe("settings on the web — everything for building leaves", () => {
       expect(WEB_KEPT_SUBS).toContain(sub);
     }
   });
-  it("the MCP Server page is the desktop's (his order, 2026-10-05) and the web rail's menu is Connections, Devices, Artifacts", () => {
+  it("the MCP Server page is the desktop's (his order, 2026-10-05)", () => {
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
     expect(DESKTOP_ONLY_SUBS.has("mcp")).toBe(true);
-    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Connections", "Devices", "Artifacts"]);
-    for (const l of WEB_RAIL_LINKS) expect(WEB_KEPT_SUBS).toContain(l.sub);
   });
-  it("both group headers hide, with the rail's doors and the dock / streamed rows", () => {
+  it("the web rail's menu is ONLY Artifacts, Build, Customize (his order, 2026-10-05: Connections and Devices left the rail; they stay in Settings)", () => {
+    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Build", "Customize"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "build", "customize"]);
+    for (const sub of ["connections-cfg", "devices"]) {
+      expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
+      expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
+    }
+  });
+  it("both group headers hide in Settings, with the command-center doors and the dock / streamed rows — but NOT the rail's Build / Customize", () => {
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-build", "nav-group-customize"]);
     expect(WEB_HIDDEN_RAIL).toContain("#rail-echo-btn");
     expect(WEB_HIDDEN_RAIL).toContain("#rail-echo-btn-strip");
-    expect(WEB_HIDDEN_RAIL).toContain('.app-rail-nav-item[data-settings-sub="build"]');
-    expect(WEB_HIDDEN_RAIL).toContain('.app-rail-nav-item[data-settings-sub="customize"]');
+    expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="build"]');
+    expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="customize"]');
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#show-dock-row", "#streamed-panels-row"]);
+  });
+});
+
+describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build / Customize open full, replacing everything; X restores)", () => {
+  it("exactly the rail's three open full screen on the web", () => {
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "build", "customize"]);
+    expect(webFullScreenPanels.map((k) => k)).toEqual(WEB_RAIL_LINKS.map((l) => l.sub));
+    for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
+  });
+  it("no other panel takes that path — Files, Agents, Settings, an app", () => {
+    for (const k of ["files", "agents", "terminal", "settings", "gmail", "", "preview"]) expect(webPanelOpensFullScreen(k)).toBe(false);
+  });
+  it("the header reads '‹ Artifacts' / '‹ Build' / '‹ Customize'", () => {
+    expect(webFullScreenTitle("artifacts")).toBe("Artifacts");
+    expect(webFullScreenTitle("build")).toBe("Build");
+    expect(webFullScreenTitle("customize")).toBe("Customize");
+    expect(Object.keys(WEB_FULL_SCREEN_TITLES).sort()).toEqual([...webFullScreenPanels].sort());
+    expect(webFullScreenTitle("wat")).toBe("wat");
+  });
+  it("the full-screen Build / Customize pages carry the groups' tabs (they read the server member library); their panels stay mounted on the web", () => {
+    expect([...webGroupTabs("build")]).toEqual([...WEB_BUILD_SUBS]);
+    expect([...webGroupTabs("customize")]).toEqual([...WEB_CUSTOMIZE_SUBS]);
+    expect([...webGroupTabs("artifacts")]).toEqual([]);
+    for (const sub of [...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS]) expect(webGroupPanelKept(sub)).toBe(true);
+    for (const sub of ["remote", "mcp", "general"]) expect(webGroupPanelKept(sub)).toBe(false);
+  });
+  it("the lists are frozen", () => {
+    expect(Object.isFrozen(webFullScreenPanels)).toBe(true);
+    expect(Object.isFrozen(WEB_RAIL_LINKS)).toBe(true);
   });
 });
 

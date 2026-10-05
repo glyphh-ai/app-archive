@@ -1759,8 +1759,6 @@ html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; heig
 html.glyphh-web .app-rail-logo-img { height: 30px; width: auto; display: block; }
 /* The rail's Connections and Devices links are WEB ONLY (his order,
    2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
-.app-rail-nav-item.web-rail-link { display: none; }
-html.glyphh-web .app-rail-nav-item.web-rail-link { display: flex; }
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-header { padding-left: var(--rail-strip-w); }
 .glyphh-web #panel-wc { display: none !important; }
@@ -21920,3 +21918,173 @@ html.glyphh-web #code-reset-open { display: none !important; }
 .ws-env-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
 .ws-repo-list .ws-sec-label { padding-top: 8px; }
 .ws-repo-foot { flex: 0 0 auto; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+
+/* ══ THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05) ════════════════════
+   Artifacts / Build / Customize fill the page over the agent and every open
+   card — nothing closes: the agent layer and the cards go visibility:hidden
+   under body.web-full-open and return as they were when the host goes.
+   The header sits where the agent header is: "‹ <title>" left, X right. */
+html.glyphh-web .web-full-panel {
+  position: absolute; inset: 0; z-index: 120; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); pointer-events: auto;
+}
+html.glyphh-web body.web-full-open #code-agent-layer,
+html.glyphh-web body.web-full-open .echo-cards,
+html.glyphh-web body.web-full-open .echo-layout-bar { visibility: hidden; }
+.web-full-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: 40px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--border-2); background: var(--surface);
+}
+html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-left: var(--rail-strip-w); }
+.web-full-back {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 4px; border: 0; border-radius: 6px;
+  background: none; color: var(--text-2); font: 600 13px var(--font-display, inherit); cursor: pointer;
+}
+.web-full-back:hover { background: var(--hover); color: var(--text); }
+.web-full-back svg { width: 16px; height: 16px; }
+.web-full-close svg { width: 14px; height: 14px; }
+.web-full-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.web-full-body.ws-section-body > .help-section { flex: 1; min-height: 0; overflow: auto; }
+
+/* ══ THE ARTIFACTS PANEL (his order, 2026-10-05) ══════════════════════════════
+   One body for both surfaces (help/artifacts-panel.ts): the list, the viewer
+   with the sandboxed frame, and the comments overlay drawn above it. */
+.artp-host { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+.artp { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; color: var(--text); }
+.artp-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 24px; }
+.web-full-body .artp-list { max-width: 960px; width: 100%; margin: 0 auto; padding: 28px 24px 40px; }
+.artp-title { margin: 0 0 14px; font: 700 20px var(--font-display, inherit); letter-spacing: -0.01em; }
+.artp-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.artp-tabs { display: inline-flex; gap: 2px; }
+.artp-tab {
+  border: 0; border-radius: 6px; padding: 5px 9px; background: none; color: var(--text-3);
+  font: 500 12.5px inherit; cursor: pointer;
+}
+.artp-tab:hover { color: var(--text); background: var(--hover); }
+.artp-tab.active { color: var(--text); background: var(--surface-2); }
+.artp-search { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.artp-search svg { width: 14px; height: 14px; color: var(--text-3); flex: none; }
+.artp-search input {
+  width: 180px; max-width: 40vw; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px;
+}
+.artp-search input:focus { outline: none; border-color: var(--accent); }
+.artp-month { margin: 14px 0 4px; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+.artp-row {
+  display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-radius: 8px; cursor: pointer;
+}
+.artp-row:hover, .artp-row:focus-visible { background: var(--hover); outline: none; }
+.artp-row-icon {
+  flex: none; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--surface-2); color: var(--text-2);
+}
+.artp-row-icon svg { width: 16px; height: 16px; }
+.artp-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.artp-row-meta { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; color: var(--text-3); }
+.artp-row-lock { display: inline-flex; color: var(--text-3); }
+.artp-row-lock svg { width: 12px; height: 12px; }
+.artp-row-by::after, .artp-row-lock::after { content: "·"; margin-left: 6px; color: var(--text-faint); }
+.artp-row-kebab { flex: none; width: 24px; height: 24px; opacity: 0; }
+.artp-row:hover .artp-row-kebab, .artp-row:focus-within .artp-row-kebab { opacity: 1; }
+.artp-row-kebab svg { width: 14px; height: 14px; }
+
+/* The viewer. The desktop's back arrow sits in its own head; the web's
+   full-screen host carries "‹ Artifacts" instead. */
+.artp-viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
+.artp-viewer-head {
+  flex: none; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 6px;
+  border-bottom: 1px solid var(--border-2); background: var(--surface);
+}
+.artp-back svg { width: 16px; height: 16px; }
+.artp-viewer-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-2); }
+.artp-viewer-actions { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.artp-viewer-actions .btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.artp-viewer-actions .btn svg { width: 14px; height: 14px; }
+.artp-comment-btn.active { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+.artp-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.artp-content { position: absolute; inset: 0; overflow: auto; }
+.artp-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.artp-image { display: block; max-width: 100%; margin: 24px auto; }
+.artp-markdown { max-width: 820px; margin: 0 auto; padding: 28px 24px 48px; font-size: 14px; line-height: 1.55; }
+.artp-text { margin: 0; padding: 20px 24px 40px; font: 12.5px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.artp-download, .artp-loading { padding: 32px 24px; }
+.artp-download a { color: var(--accent-text); }
+
+/* THE COMMENTS OVERLAY: a transparent layer over the frame takes the drag in
+   Comment mode (the frame underneath stops getting the pointer); regions are
+   dashed accent rectangles, pins are numbered accent dots. */
+.artp-overlay { position: absolute; inset: 0; pointer-events: none; }
+.artp-stage.commenting .artp-overlay { pointer-events: auto; cursor: crosshair; }
+.artp-stage.commenting .artp-content { pointer-events: none; }
+.artp-region {
+  position: absolute; box-sizing: border-box; border: 1.5px dashed var(--accent); border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent); opacity: 0.55; pointer-events: none;
+}
+.artp-region.drawing, .artp-region.active { opacity: 1; }
+.artp-region.drawing::before {
+  content: ""; position: absolute; left: -5px; top: -5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+}
+.artp-pins { position: absolute; inset: 0; pointer-events: none; }
+.artp-pin {
+  position: absolute; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--bg);
+  background: var(--accent); color: var(--accent-fg); font: 700 11px inherit; cursor: pointer; pointer-events: auto;
+  box-shadow: 0 2px 8px var(--shadow); display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.artp-pin.active, .artp-pin.draft { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.artp-pop {
+  position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 16px); padding: 10px 12px 8px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border-2); box-shadow: 0 18px 50px var(--shadow); color: var(--text);
+}
+.artp-pop-eyebrow { font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artp-pop-sub { font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
+.artp-pop-msgs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.artp-msg-top { display: flex; align-items: center; gap: 6px; }
+.artp-avatar {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text-2); font-size: 10px; font-weight: 700;
+}
+.artp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.artp-msg-who { flex: 1; min-width: 0; display: inline-flex; align-items: baseline; gap: 6px; font-size: 12.5px; }
+.artp-msg-who small { font-size: 11px; color: var(--text-3); }
+.artp-msg-acts { display: inline-flex; gap: 2px; }
+.artp-msg-acts .ws-icon-btn { width: 22px; height: 22px; }
+.artp-msg-acts svg { width: 13px; height: 13px; }
+.artp-msg-text { margin: 4px 0 0 26px; font-size: 13px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+.artp-pop-note { font-size: 11.5px; color: var(--text-3); margin: 0 0 8px 26px; }
+.artp-link { border: 0; background: none; padding: 0; color: var(--text-2); text-decoration: underline; font: inherit; font-size: 11.5px; cursor: pointer; }
+.artp-pop-input {
+  width: 100%; box-sizing: border-box; resize: none; padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 13px; line-height: 1.4;
+}
+.artp-pop-input:focus { outline: none; border-color: var(--accent); }
+.artp-pop-send { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.artp-pop-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.artp-pop-check input { accent-color: var(--accent); margin: 0; }
+.artp-pop-go {
+  width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--text-3); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.artp-pop-go:hover { color: var(--text); background: var(--hover); }
+.artp-pop-go svg { width: 14px; height: 14px; }
+
+/* The share popover: Private / Organization / Public link (+ Copy). */
+.artp-share-pop {
+  position: fixed; z-index: 1000; width: 260px; padding: 8px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border-2); box-shadow: 0 18px 50px var(--shadow); color: var(--text);
+}
+.artp-share-title { font-size: 12px; font-weight: 600; color: var(--text-3); padding: 2px 6px 6px; }
+.artp-share-rows { display: flex; flex-direction: column; gap: 2px; }
+.artp-share-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 7px;
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.artp-share-row:hover { background: var(--hover); }
+.artp-share-row.active { background: var(--surface-2); }
+.artp-share-check { flex: none; width: 16px; height: 16px; display: inline-flex; color: var(--accent-text); }
+.artp-share-check svg { width: 16px; height: 16px; }
+.artp-share-text { display: flex; flex-direction: column; gap: 1px; }
+.artp-share-text strong { font-size: 13px; font-weight: 500; }
+.artp-share-text small { font-size: 11px; color: var(--text-3); }
+.artp-share-link { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.artp-share-url { flex: 1; min-width: 0; font-size: 11.5px; }
+.artp-share-copy { flex: none; height: 28px; padding: 0 10px; }

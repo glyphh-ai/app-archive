@@ -55,20 +55,64 @@ export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
  *  show on the web (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
 export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
 
-/** The rail's menu on the web, in his order (2026-10-05: "the menu on the
- *  left should be Connections, Devices, Artifacts"); each opens Settings at
- *  that page. The desktop's rail keeps Artifacts, Build, Customize. */
+/** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
+ *  customize webpanels should be what is shown in the left rail", then
+ *  "remove connections and devices from the left rail on web"): Artifacts,
+ *  Build, Customize — each opens FULL SCREEN (webPanelOpensFullScreen).
+ *  Connections and Devices stay reachable inside Settings. The desktop's
+ *  rail keeps the same three, opening as ordinary work panels. */
 export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
-  { sub: "connections-cfg", label: "Connections" },
-  { sub: "devices", label: "Devices" },
   { sub: "artifacts", label: "Artifacts" },
+  { sub: "build", label: "Build" },
+  { sub: "customize", label: "Customize" },
 ]);
 
-/** The rail's doors into the command center and the Build/Customize pages —
- *  hidden on web (ids and selectors, applied by web-surface.ts). */
+/** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts -> new
+ *  web panel -> open an artifact it opens full screen in place of anything
+ *  else showing… The build and customize left rail items go to the same
+ *  thing. Those panels open full replacing anything showing in the web. The
+ *  close or x on the top right just closes and the agent and any other work
+ *  panels open."). Opening one hides the agent card and every open work
+ *  panel (kept mounted, state preserved) and paints the panel edge to edge
+ *  under a header where the agent header is — "‹ <title>" on the left (back
+ *  = close), an X on the right. Closing restores exactly what was showing.
+ *  The desktop never takes this path: there they are ordinary work panels. */
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "build", "customize"]);
+export function webPanelOpensFullScreen(key: string): boolean {
+  return webFullScreenPanels.includes(key);
+}
+/** The header's title per full-screen panel ("‹ Artifacts"). */
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", build: "Build", customize: "Customize" });
+export function webFullScreenTitle(key: string): string {
+  return WEB_FULL_SCREEN_TITLES[key] ?? key;
+}
+
+/** THE BUILD AND CUSTOMIZE PAGES ON THE WEB read the SERVER member library
+ *  (web-contract.js / member-library-web.js) the way the desktop's library
+ *  sync does, so the full-screen Build page carries the same tabs the
+ *  desktop's does; the rows are CSS-hidden in Settings by the web cut, so
+ *  the group page lists them from here instead of from the nav. Apps and
+ *  Plugins stay in the list: those pages paint the desktopOnlyCard line
+ *  themselves (they are machine bundles). */
+export const WEB_GROUP_TABS: Readonly<Record<string, ReadonlyArray<string>>> = Object.freeze({
+  build: WEB_BUILD_SUBS,
+  customize: WEB_CUSTOMIZE_SUBS,
+});
+/** The settings subs a web group page adopts as tabs; [] for a group the web has no page for. */
+export function webGroupTabs(group: string): ReadonlyArray<string> {
+  return WEB_GROUP_TABS[group] ?? Object.freeze([]);
+}
+/** Is this settings panel kept MOUNTED (not CSS-hidden) on the web because a
+ *  full-screen group page adopts it? Its nav row still hides. */
+export function webGroupPanelKept(sub: string): boolean {
+  return WEB_BUILD_SUBS.includes(sub) || WEB_CUSTOMIZE_SUBS.includes(sub);
+}
+
+/** The rail's doors into the command center — hidden on web (ids and
+ *  selectors, applied by web-surface.ts). Build and Customize left this list
+ *  on 2026-10-05: they are the rail's full-screen pages now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-echo-btn", "#rail-echo-btn-strip", "#rail-more-toggle",
-  '.app-rail-nav-item[data-settings-sub="build"]', '.app-rail-nav-item[data-settings-sub="customize"]',
 ]);
 
 /** Settings rows that govern surfaces the web no longer has: the dock

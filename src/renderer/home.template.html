@@ -136,16 +136,12 @@
              Layouts (each opens the modal at that section; the pages live in
              the modal). Everything else stays modal-only. -->
         <nav class="app-rail-nav" data-rail-section="menu">
-          <!-- WEB ONLY (his order, 2026-10-05): the rail's menu there is
-               Connections, Devices, Artifacts — help/web-cut.ts WEB_RAIL_LINKS. -->
-          <button class="app-rail-nav-item web-rail-link" data-settings-sub="connections-cfg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-            <span>Connections</span>
-          </button>
-          <button class="app-rail-nav-item web-rail-link" data-settings-sub="devices">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-            <span>Devices</span>
-          </button>
+          <!-- THE RAIL'S MENU (his order, 2026-10-05): Artifacts, Build,
+               Customize on both surfaces — help/web-cut.ts WEB_RAIL_LINKS.
+               Connections and Devices left the web rail the same day
+               ("remove connections and devices from the left rail on web");
+               they live in Settings. Artifacts opens the work panel (full
+               screen on the web); Build and Customize open their pages. -->
           <button class="app-rail-nav-item" data-settings-sub="artifacts">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
             <span>Artifacts</span>

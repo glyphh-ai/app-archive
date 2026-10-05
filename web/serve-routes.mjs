@@ -42,6 +42,10 @@ export const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !
 // config so the SDK knows the API url.
 export const MOBILE_ROUTES = new Set(['/m', '/m/']);
 export const GITHUB_DONE_ROUTE = '/github/done';
+// THE ARTIFACT PAGES (his order, 2026-10-05): /a/<id> is the viewer page for a
+// direct / shared link, /a/<id>/raw and /meta are the proxy's (artifact-proxy.mjs).
+export const ARTIFACT_ROUTE_PREFIX = '/a/';
+export const isArtifactPath = (p) => String(p || '').startsWith(ARTIFACT_ROUTE_PREFIX) && String(p).length > ARTIFACT_ROUTE_PREFIX.length;
 
 export const isPhoneUserAgent = (ua) => /iPhone|iPod|Android.+Mobile/i.test(String(ua || ''));
 export const hasAuthedCookie = (cookie) => /(?:^|;\s*)glyphh_logged_in=1\b/.test(String(cookie || ''));
@@ -54,6 +58,7 @@ const hasExt = (p) => /\.[a-z0-9]+$/i.test(p);
  * @returns {{ kind: 'redirect', location: string }
  *         | { kind: 'mobile' }                       — the mobile shell (mobile.html)
  *         | { kind: 'github-done' }                  — the GitHub connect return page
+ *         | { kind: 'artifact' }                     — /a/<id>[/raw|/meta] (artifact-proxy.mjs decides the part)
  *         | { kind: 'login', nested: boolean }       — the login shell (index.html, home.html fallback)
  *         | { kind: 'app' }                          — the command center (home.html, /home)
  *         | { kind: 'platform' }                     — the admin surface (home.html, /platform)
@@ -76,6 +81,9 @@ export function resolveRoute({ path, ua = '', cookie = '', mobileOnly = false })
   // page that completes the link and closes itself — on every device, before
   // the phone routing, so no shell boots in the second tab.
   if (p === GITHUB_DONE_ROUTE) return { kind: 'github-done' };
+  // An artifact link (his order, 2026-10-05) is the same on every device, signed
+  // in or not: the viewer page, or the proxied bytes / row under it.
+  if (isArtifactPath(p)) return { kind: 'artifact' };
   // The OAuth consent screen is web-boot's, on every device: the mobile shell has
   // no consent view, so handing a phone mobile.html here would swallow the
   // authorization request and strand the MCP client mid-flow.

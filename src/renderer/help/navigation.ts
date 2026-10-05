@@ -4,6 +4,7 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
+import { webGroupTabs } from "./web-cut.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
@@ -942,10 +943,16 @@ const groupLastSub: Record<string, string> = {};
 function groupTabs(group: string): Array<{ sub: string; label: string }> {
   const head = document.getElementById(`nav-group-${group}`);
   const out: Array<{ sub: string; label: string }> = [];
+  // THE WEB'S FULL-SCREEN BUILD / CUSTOMIZE (his order, 2026-10-05): the
+  // group's nav rows are CSS-hidden there by the web cut, so the page lists
+  // the group's pages from web-cut.ts (they read the server member library)
+  // and takes only each row's label from the nav.
+  const webSubs = onWeb() ? webGroupTabs(group) : null;
   for (let el = head?.nextElementSibling; el && !el.classList.contains("settings-nav-group"); el = el.nextElementSibling) {
     const b = el as HTMLElement;
     const sub = b.dataset.sub;
-    if (!sub || b.classList.contains("hidden")) continue;
+    if (!sub) continue;
+    if (webSubs ? !webSubs.includes(sub) : b.classList.contains("hidden")) continue;
     out.push({ sub, label: b.querySelector("span")?.textContent?.trim() || sub });
   }
   return out;
@@ -1132,6 +1139,10 @@ export function initHelp() {
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
+      // THE ARTIFACTS PANEL (his order, 2026-10-05): the rail's Artifacts
+      // opens the work panel — an ordinary card on the desktop, full screen
+      // on the web (code-workbench.ts __wbOpenTool) — never the Settings page.
+      if (sub === "artifacts") { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("artifacts"); return; }
       const wb = RAIL_WB_SECTIONS[sub];
       if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
       else openSettingsModal(sub);
