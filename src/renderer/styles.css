@@ -516,9 +516,15 @@ body {
   --titlebar-h: 30px;
 }
 
+/* Scrollbars are a thin track with a SHORT thumb (his order, 2026-10-05): the
+   thumb never grows past 15px however little there is to scroll, so a long
+   list and a short one wear the same mark. Chromium honours min/max-height
+   on a custom thumb. Applies to the desktop and the web alike. */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+::-webkit-scrollbar-thumb:vertical { min-height: 10px; max-height: 15px; }
+::-webkit-scrollbar-thumb:horizontal { min-width: 10px; max-width: 15px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 .hidden { display: none !important; }
