@@ -77,6 +77,7 @@ import {
   listInstanceTools, localAppsEnabled, sessionBearer, type AppInstanceSummary,
 } from "./app-instances.js";
 import { appDataOfManifest, INSTANCE_CONFIG_KEY, type AppData } from "../shared/app-instances.js";
+import { HOUSE_APPS } from "./house-doors.js";
 
 // ── WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05) ─────────────────────
 // The AUTHOR declares `data` in the manifest: `cloud` (default) is an instance
@@ -96,6 +97,25 @@ export function rowRunsLocally(row: { execPath?: string | null; nativeRef?: stri
   const entry = row.execPath ?? row.nativeRef;
   if (!entry) return false;
   return runsLocally(appDataOfManifest((row.launchConfig ?? row.config ?? null) as { data?: unknown } | null));
+}
+
+/** A HOUSE APP IS LOCAL BY NATURE (his verdict, 2026-10-05): Images, Video,
+ *  Audio, Drive, Design and Slides keep their libraries in this machine's
+ *  app-data (media-local.ts, office-store.ts) and their tools are host
+ *  capabilities (media.*, design.*, …) no cloud instance has — so a house row
+ *  answers here whatever its manifest says about `data`, which the bundles
+ *  shipped before the author's word existed never wrote. */
+export const isHouseSlug = (slug: string): boolean => Object.prototype.hasOwnProperty.call(HOUSE_APPS, slug);
+type AppRowLike = Parameters<typeof rowRunsLocally>[0] & { slug?: string };
+/** Does this tab row answer on THIS machine: a local / per-home app, or a house app with its entry here? */
+export function rowAnswersHere(row: AppRowLike): boolean {
+  if (!row || !(row.execPath ?? row.nativeRef)) return false;
+  return rowRunsLocally(row) || isHouseSlug(String(row.slug || ""));
+}
+/** Where the row's data lives, for app_list_tools: a house app's is on this machine. */
+export function rowData(row: AppRowLike): AppData {
+  if (row && isHouseSlug(String(row.slug || ""))) return "local";
+  return appDataOfManifest((row?.launchConfig ?? row?.config ?? null) as { data?: unknown } | null);
 }
 
 // ── manifest ────────────────────────────────────────────────
@@ -1015,30 +1035,37 @@ function withAppApiKey(app: AppRow, args: Record<string, unknown>): Record<strin
   return key ? { ...args, apiKey: key } : args;
 }
 
+/** One row of app_list_tools: `data` says where the app answers — `cloud` is
+ *  an instance, `local` / `per-home` this machine (a house app is `local`) —
+ *  so the relay and the gateway's merge (server mcp_apps.py) can tell them apart. */
+export interface AppToolRow { app: string; name: string; data: AppData; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }
+
 /** Every installed Glyphh app + the MCP tools it exposes (for app_list_tools). */
-export async function listInstalledAppTools(): Promise<Array<{ app: string; name: string; tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }> }>> {
+export async function listInstalledAppTools(): Promise<AppToolRow[]> {
   // THE CLOUD FIRST: every instance this member may open, by key. The rows on
   // this machine answer only while the local host is switched on.
-  const cloudAll = (await listInstanceTools().catch(() => [])).map((r) => ({
-    app: r.app, name: r.name,
+  const cloudAll: AppToolRow[] = (await listInstanceTools().catch(() => [])).map((r) => ({
+    app: r.app, name: r.name, data: "cloud" as const,
     tools: r.tools.filter((t) => !hiddenAppTools(r.app).has(t.name)),
   })).filter((r) => r.tools.length > 0);
   // THE LOCAL HOST'S ROWS (his verdict, 2026-10-05): an app whose author kept
   // its data on this machine answers here — and a per-home app's local store
-  // answers on the desktop, so its instance steps aside for that slug.
+  // answers on the desktop, so its instance steps aside for that slug. The
+  // house apps are on this machine by nature (rowAnswersHere).
   // The shared row types launchConfig loosely; AppRow narrows it to the
   // Glyphh-app keys this module reads.
   const apps = await fetchOrgApps().catch(() => []) as AppRow[];
-  const localRows = apps.filter((a) => isGlyphhAppRow(a) && rowRunsLocally(a));
+  const localRows = apps.filter((a) => isGlyphhAppRow(a) && rowAnswersHere(a));
   const localSlugs = new Set(localRows.map((a) => a.slug));
   const cloud = cloudAll.filter((r) => !localSlugs.has(r.app.split("~", 1)[0]));
   if (!localRows.length) return cloud;
-  const local = localRows
+  const local: AppToolRow[] = localRows
     .map((a) => {
       const hidden = hiddenAppTools(a.slug);
       return {
         app: a.slug,
         name: a.name,
+        data: rowData(a),
         tools: (a.launchConfig?.tools || []).filter((t) => !hidden.has(t.name)).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema ?? t.input })),
       };
     })
@@ -1053,7 +1080,7 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
   // THE LOCAL HOST FIRST for an app whose author kept its data here (local /
   // per-home); then an instance — by key, by slug, or the member's personal one.
   const localRow = await findAppRow(appSlug).catch(() => undefined);
-  const app = localRow && rowRunsLocally(localRow) ? localRow : undefined;
+  const app = localRow && rowAnswersHere(localRow) ? localRow : undefined;
   if (!app) {
     const inst = await findInstance(appSlug);
     if (inst) {

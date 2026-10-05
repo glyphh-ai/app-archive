@@ -24,7 +24,7 @@ import { panelGoto, panelIsLive } from "./rpa.js";
 import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
 import { getClient } from "./glyphh-client.js";
 import { gatewayCreds } from "./gateway-token.js";
-import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
+import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
 import os from "os";
@@ -185,20 +185,9 @@ export function installRelayHandlers(deps: Deps): void {
     throw new Error("local MCP servers are retired — custom MCP connections run server-side; use connector_call_tool");
   });
 
-  // ── Installed Glyphh apps — discover, invoke, deploy (GLYPHH-APP-SPEC §5) ─
-  // Every installed app's declared MCP tools are discoverable + callable by any
-  // relay consumer (Claude, etc.), so a user's LLM tools can orchestrate them.
-
-  registerRelayHandler("apps.listTools", () => listInstalledAppTools());
-
-  registerRelayHandler("apps.callTool", async (params) => {
-    const p = params as { app?: string; tool?: string; args?: Record<string, unknown> } | null;
-    const app = String(p?.app || "");
-    const tool = String(p?.tool || "");
-    if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
-    return { result: await callAppTool(app, tool, p?.args || {}) };
-  });
-
+  // ── Installed Glyphh apps — deploy (GLYPHH-APP-SPEC §5). Discovery and
+  // invocation (apps.listTools / apps.callTool) are attach-handlers.ts's: the
+  // same two the remote door serves the gateway's /mcp. ─
   registerRelayHandler("apps.install", async (params) => {
     const p = params as { bundleBase64?: string; path?: string; url?: string } | null;
     let r: { ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] };

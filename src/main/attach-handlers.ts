@@ -32,6 +32,20 @@
  *                                machine, which installs it with its local host (hub-ipc.ts
  *                                installHubItem — the same door the desktop's own Install uses).
  *
+ *   apps.listTools {}          → THE APPS' TOOLS ON THIS MACHINE (his report, 2026-10-05: "even
+ *                                though the app is installed the web agent is not getting its
+ *                                tools"): the rows the local MCP's app_list_tools answers —
+ *                                [{ app, name, data, tools: [{ name, description, inputSchema }] }],
+ *                                the house apps' (Images: save_image / list_images / delete_image,
+ *                                …) and every local-data app's, cloud instances beside them. The
+ *                                gateway's app_list_tools (server mcp_apps.py) merges these rows
+ *                                into a cloud session's list through the relay.
+ *   apps.callTool {app, tool, args} → run one as the desktop's own agent would (glyphh-app-host.ts
+ *                                callAppTool: the Tools tab's Never list, the app's own guardrails).
+ *                                Over the relay the remote door (remote-control.ts) adds the
+ *                                approval rule first: a tool set to Needs approval is refused,
+ *                                never auto-allowed.
+ *
  * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
  * live on this machine only (the chat store in agent-ipc.ts), so the phone
  * lists and opens them over the attach socket.
@@ -62,6 +76,7 @@ import { fetchOrgApps } from "./org-apps.js";
 import { houseCall } from "./house-doors.js";
 import { realHouseDeps } from "./house-deps.js";
 import { installHubItem } from "./hub-ipc.js";
+import { callAppTool, listInstalledAppTools } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -165,6 +180,19 @@ export function installAttachHandlers(): void {
     if (!itemId) throw new Error("apps.install requires { itemId }");
     const from = str(params, "from") === "org" ? "org" : "glyphh";
     return installHubItem(`${from}:${itemId}`, "app");
+  });
+
+  // THE APPS' TOOLS ON THIS MACHINE (his report, 2026-10-05): the same two the
+  // local MCP's app_list_tools / app_call_tool run — one registry, one answer
+  // for the desktop's loop, a CLI over loopback and a cloud session over the
+  // relay. The approval rule for the relay is the remote door's.
+  registerRelayHandler("apps.listTools", () => listInstalledAppTools());
+  registerRelayHandler("apps.callTool", async (params) => {
+    const app = str(params, "app");
+    const tool = str(params, "tool");
+    if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
+    const args = (params as { args?: unknown } | null)?.args;
+    return { result: await callAppTool(app, tool, args && typeof args === "object" ? args as Record<string, unknown> : {}) };
   });
 
   registerRelayHandler("fs.list", async (params) => {

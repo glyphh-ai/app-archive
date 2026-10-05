@@ -36,6 +36,16 @@ const hubInstalls: Array<[string, string]> = [];
 vi.mock("../../src/main/hub-ipc.js", () => ({
   installHubItem: async (ref: string, kind: string) => { hubInstalls.push([ref, kind]); return { id: `app:${ref.split(":")[1]}` }; },
 }));
+// The apps' tools (glyphh-app-host.ts): the rows the local MCP's app_list_tools
+// answers and the call its app_call_tool runs; pinned there, relayed here.
+const toolCalls: Array<[string, string, unknown]> = [];
+vi.mock("../../src/main/glyphh-app-host.js", () => ({
+  listInstalledAppTools: async () => [
+    { app: "recall", name: "Recall", data: "cloud", tools: [{ name: "ask" }] },
+    { app: "images", name: "Images", data: "local", tools: [{ name: "save_image", description: "File an image", inputSchema: { type: "object" } }, { name: "list_images" }] },
+  ],
+  callAppTool: async (app: string, tool: string, args: unknown) => { toolCalls.push([app, tool, args]); return { files: [] }; },
+}));
 vi.mock("../../src/main/cli-agents.js", () => ({
   listCliSessions: () => [
     { id: "s-claude", cli: "claude", title: "fix the sync bug", cwd: "/Users/me/code/app", mtime: 20 },
@@ -118,6 +128,24 @@ describe("the Customize libraries over the attach socket", () => {
 
   it("panelApps.list hands the web the desktop's panel-apps-list rows", async () => {
     expect(await handlers.get("panelApps.list")!({})).toEqual({ apps: [TAB] });
+  });
+
+  it("apps.listTools answers the local MCP's app_list_tools rows, house apps and cloud instances alike, each saying where it answers (his report, 2026-10-05)", async () => {
+    expect(await handlers.get("apps.listTools")!({})).toEqual([
+      { app: "recall", name: "Recall", data: "cloud", tools: [{ name: "ask" }] },
+      { app: "images", name: "Images", data: "local", tools: [{ name: "save_image", description: "File an image", inputSchema: { type: "object" } }, { name: "list_images" }] },
+    ]);
+  });
+
+  it("apps.callTool runs an app's tool through the desktop's own callAppTool and answers { result }", async () => {
+    const h = handlers.get("apps.callTool")!;
+    expect(await h({ app: "images", tool: "list_images", args: { q: "sunset" } })).toEqual({ result: { files: [] } });
+    // No args is an empty object; a non-object is never handed to the app.
+    expect(await h({ app: "images", tool: "list_images" })).toEqual({ result: { files: [] } });
+    expect(await h({ app: "images", tool: "list_images", args: "q=sunset" })).toEqual({ result: { files: [] } });
+    expect(toolCalls).toEqual([["images", "list_images", { q: "sunset" }], ["images", "list_images", {}], ["images", "list_images", {}]]);
+    await expect(h({ app: "images" })).rejects.toThrow(/requires \{ app, tool \}/);
+    await expect(h({ tool: "list_images" })).rejects.toThrow(/requires \{ app, tool \}/);
   });
 
   it("app.call is registered for the web's own house panels and answers through house-doors (his order, 2026-10-05)", async () => {

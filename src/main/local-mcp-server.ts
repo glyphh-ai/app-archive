@@ -644,13 +644,13 @@ function buildMcpServer(): McpServer {
   // ── Installed Glyphh apps — discover / invoke / deploy ─
   mcp.tool(
     "app_list_tools",
-    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances and their own. Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
+    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances, their own, and the apps on this machine (the house apps Images / Video / Audio / Drive / Design / Slides and any local-data app). Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, data ('cloud' | 'local' | 'per-home'), tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
     {},
     async () => via("apps.listTools", {}),
   );
   mcp.tool(
     "app_call_tool",
-    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user.",
+    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user, or on this machine for a local-data or house app.",
     {
       app: z.string().describe("App key — from app_list_tools"),
       tool: z.string().describe("Tool name — from app_list_tools"),
