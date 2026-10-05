@@ -20,7 +20,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { desktopOnlyCard, hostHas, onWeb } from "./web-surface.js";
+import { hostHas, onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
@@ -193,33 +193,18 @@ async function runNow(r: ScheduleRow, btn: HTMLButtonElement): Promise<void> {
 let pendingOpen: string | null = null;
 export function openScheduleOnLoad(id: string): void { pendingOpen = String(id || "") || null; }
 
-/** Can this host run a schedule and show its runs? The desktop's clock can;
- *  a browser tab reads the records only, until the cloud clock exists. */
+/** Can this host RUN a schedule now? The desktop's clock can; the web
+ *  bridge answers NEEDS_DESKTOP, so the Run buttons hide there (his rule,
+ *  2026-10-04: a control the host cannot serve is hidden). The PAGE itself is
+ *  identical on both hosts (his order, 2026-10-05: "why are these not
+ *  identical? the one from the desktop has the graph") — the runs chart,
+ *  Recent runs and a schedule's history paint from whatever the host's
+ *  records hold; on the web that is an honest empty list until cloud runs
+ *  are recorded, never a desktop-only card or a note in their place. */
 const runsHere = (): boolean => !onWeb() && hostHas("scheduleRunNow");
-
-/** The one line the web page carries above its list: where the runs are. */
-const RUNS_NOTE = "Task schedules fire on the cloud clock and run on your worker; skill schedules fire on your desktop, where their agent lives. Run history for cloud runs lands here next.";
-
-function paintRunsNote(): void {
-  const overview = el("schedules-overview");
-  if (!overview) return;
-  let note = el("schedules-runs-note");
-  if (runsHere()) { note?.remove(); return; }
-  if (!note) {
-    note = document.createElement("p");
-    note.id = "schedules-runs-note";
-    note.className = "settings-hint";
-    note.style.margin = "0 0 10px";
-    overview.insertBefore(note, overview.firstChild);
-  }
-  note.textContent = RUNS_NOTE;
-  // The chart is the runs': nothing to draw from here.
-  el("schedules-chart")?.parentElement?.classList.add("hidden");
-}
 
 export async function loadSchedulesPage(): Promise<void> {
   wire();
-  paintRunsNote();
   const [r, rr, t, s, a] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),
     api().tasksSpecs().catch(() => ({ ok: false } as Env<TaskSpecLite[]>)),
@@ -309,7 +294,6 @@ let openRecentId: string | null = null;
  *  on demand since this lane carries a summary only. */
 function paintRecents(): void {
   const host = el("schedules-recent"); if (!host) return;
-  if (!runsHere()) { host.innerHTML = desktopOnlyCard("Runs land on your desktop", "Open Glyphh Desktop to see what ran and run a schedule now."); return; }
   const named = recents.slice(0, 15).map((run) => ({
     ...run,
     label: run.scheduleName || (run.taskSlug ? (tasks.find((t) => t.slug === run.taskSlug)?.name || run.taskSlug) : "run"),
@@ -327,7 +311,7 @@ function paintRecents(): void {
 }
 
 function paintChart(): void {
-  const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas || !runsHere()) return;
+  const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas) return;
   const Chart = (window as unknown as { Chart?: new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void } }).Chart;
   if (!Chart) return;
   const css = getComputedStyle(document.documentElement);
@@ -426,7 +410,6 @@ function closeEditor(): void {
 
 async function paintRuns(id: string): Promise<void> {
   const host = el("schedule-runs"); if (!host) return;
-  if (!runsHere()) { host.innerHTML = desktopOnlyCard("Run history lives on your desktop", "Open Glyphh Desktop for this schedule's runs."); return; }
   host.innerHTML = loadingHtml("Loading history…");
   const r = await api().scheduleRuns(id);
   if (!host.isConnected || editing?.id !== id) return;
