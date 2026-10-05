@@ -10,7 +10,12 @@
  *   workspaces  layoutsList / layoutsSaveGrid / layoutsDelete
  *   app tabs    panelAppsList / panelAppsCreate / panelAppsUpdate / panelAppsDelete
  *   skills+tasks skillsList / skillGet / skillFileRead / skillFileWrite / skillCreate /
- *               skillDelete / skillSetEnabled  (files through the presigned R2 URLs)
+ *   +plugins    skillDelete / skillSetEnabled  (files through the presigned R2 URLs)
+ *   the hub     skillsDiscover / hubCategories / skillHubFiles / skillInstall / skillUpdate /
+ *               skillUpdates / skillStandings / skillShares / skillWithdraw / skillVersions /
+ *               skillVersionFiles / skillCategoriesSet / skillPublish — the same server
+ *               routes main/hub-ipc.ts reads; INSTALL = a put into this library
+ *               (his report, 2026-10-05: Discover was empty on the web)
  *   agents      libraryAgentsList / libraryAgentGet / libraryAgentCreate / libraryAgentUpdate / libraryAgentDelete
  *   tasks       tasksSpecs / taskSpec / taskSlotSet
  *   drips       dripsList / dripsSave / dripsDelete
@@ -24,7 +29,7 @@
  */
 import {
   buildScheduleData, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, buildAgentRow, buildTabRow, dripId, dripRecordOf,
-  isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
+  hubPayloadFiles, isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
   layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId,
 } from '../../src/shared/member-library';
 import { mergeAppRows } from '../../src/shared/app-instances';
@@ -32,6 +37,8 @@ import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
 export const NEEDS_DESKTOP = 'This runs on your desktop. Open the Glyphh desktop app for it — the record itself is here, synced from the server.';
+/** An APP is a bundle on the machine, not a library record: its Add on the web says so. */
+export const APP_INSTALLS_ON_DESKTOP = 'Apps install on your desktop — open Glyphh Desktop to add this app.';
 
 const ok = (data) => ({ ok: true, data });
 const fail = (err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -46,6 +53,18 @@ async function sha256Hex(bytes) {
 }
 
 const encode = (text) => new TextEncoder().encode(text);
+/** A file's bytes as the hub carries it: text, or an image as a data URL
+ *  (skills-fs.installSkill writes the same bytes on the desktop). */
+function bytesOf(rel, text) {
+  const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(text);
+  if (m && /\.(png|jpe?g|gif|webp|svg)$/i.test(rel)) {
+    const bin = atob(m[2]);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  return encode(text);
+}
 
 /**
  * @param {object} client the SDK client (client.memberLibrary)
@@ -159,7 +178,9 @@ export function buildMemberLibrary(client, deps = {}) {
   };
 
   // ── Skills and tasks ──────────────────────────────────────────────────────
-  const BUNDLE_KINDS = { skill: 'skill', task: 'task' };
+  // PLUGINS ARE RECORDS TOO (his report, 2026-10-05): a Claude Code plugin
+  // folder in the library, installed on the machine by the desktop's sync.
+  const BUNDLE_KINDS = { skill: 'skill', task: 'task', plugin: 'plugin' };
   const skillsList = async (kind) => {
     const asked = Array.isArray(kind) ? kind : [kind ?? 'skill'];
     const kinds = [...new Set(asked.map((k) => BUNDLE_KINDS[k]).filter(Boolean))];
@@ -205,24 +226,33 @@ export function buildMemberLibrary(client, deps = {}) {
       return ok({ text: binary ? '' : new TextDecoder().decode(buf), binary, size: buf.length });
     } catch (err) { return fail(err); }
   };
-  /** Write one file: upload the bytes, then re-put the record with the new
-   *  manifest (and, for SKILL.md / task.json, the data it derives). */
-  const putBundleFiles = async (kind, id, item, writes, enabledOverride) => {
+  /** The file that carries a bundle's manifest: task.json for a task, the
+   *  plugin manifest for a plugin. */
+  const MANIFEST_FILE = { task: 'task.json', plugin: '.claude-plugin/plugin.json' };
+  /** Write files: upload the bytes, then re-put the record with the new
+   *  manifest (and, for SKILL.md / task.json / plugin.json, the data it
+   *  derives). `opts.enabled` sets the flag; `opts.patch` lands on the data
+   *  (an install's origin); `opts.drop` names files the manifest loses. */
+  const putBundleFiles = async (kind, id, item, writes, opts = {}) => {
     const at = now();
     const manifest = new Map((item?.files ?? []).map((f) => [f.path, { path: f.path, size: f.size, mtime: f.mtime, sha256: f.sha256 }]));
+    for (const rel of opts.drop ?? []) manifest.delete(rel);
+    const bytes = {};
     for (const [rel, text] of Object.entries(writes)) {
-      const bytes = encode(text);
-      manifest.set(rel, { path: rel, size: bytes.length, mtime: at, sha256: await sha256Hex(bytes) });
+      bytes[rel] = bytesOf(rel, text);
+      manifest.set(rel, { path: rel, size: bytes[rel].length, mtime: at, sha256: await sha256Hex(bytes[rel]) });
     }
     const files = [...manifest.values()];
     const data = { ...(item?.data ?? {}) };
+    const manifestFile = MANIFEST_FILE[kind];
+    if (manifestFile && writes[manifestFile] !== undefined) { try { data.manifest = JSON.parse(writes[manifestFile]); } catch { /* not json — the manifest field waits */ } }
     const skillMd = writes['SKILL.md'] ?? null;
-    if (skillMd !== null || !item) {
+    if (skillMd !== null || !item || (kind === 'plugin' && writes[manifestFile] !== undefined)) {
       const text = skillMd ?? '';
-      Object.assign(data, bundleDataOf(kind, id, text, enabledOverride ?? data.enabled !== false, kind === 'task' ? data.manifest ?? null : null));
+      Object.assign(data, bundleDataOf(kind, id, text, opts.enabled ?? data.enabled !== false, manifestFile ? data.manifest ?? null : null));
     }
-    if (kind === 'task' && writes['task.json'] !== undefined) { try { data.manifest = JSON.parse(writes['task.json']); } catch { /* not json — the manifest field waits */ } }
-    if (enabledOverride !== undefined) data.enabled = enabledOverride;
+    if (opts.enabled !== undefined) data.enabled = opts.enabled;
+    if (opts.patch) Object.assign(data, opts.patch);
     data.type = kind;
     const res = await lib().put(kind, id, { data, files, updatedAt: at });
     if (!res.applied) throw new Error(STALE);
@@ -230,7 +260,7 @@ export function buildMemberLibrary(client, deps = {}) {
     if (paths.length) {
       const urls = await lib().files(kind, id, paths);
       for (const rel of paths) {
-        const r = await fetchImpl(urls.put[rel], { method: 'PUT', body: encode(writes[rel]) });
+        const r = await fetchImpl(urls.put[rel], { method: 'PUT', body: bytes[rel] });
         if (!r.ok) throw new Error(`upload ${rel}: HTTP ${r.status}`);
       }
     }
@@ -252,13 +282,20 @@ export function buildMemberLibrary(client, deps = {}) {
       try { await lib().get(k, name); return { ok: false, error: `a ${k} named "${name}" already exists` }; }
       catch (err) { if (!isNotFound(err)) throw err; }
       const md = `---\nname: ${name}\ndescription: What this ${k} is for, in one line — the agent reads this to decide when to use it.\n---\n\n# ${name}\n\nInstructions the agent follows when this ${k} applies.\n`;
-      const writes = { 'SKILL.md': md };
+      // The same template skills-fs.createSkill writes on the desktop.
+      const writes = k === 'plugin'
+        ? {
+          '.claude-plugin/plugin.json': JSON.stringify({ name, description: 'What this plugin is for, in one line.', version: '0.1.0' }, null, 2) + '\n',
+          'README.md': `# ${name}\n\nA Claude Code plugin: skills/, commands/, agents/, hooks/ and .mcp.json travel together.\n`,
+          [`skills/${name}/SKILL.md`]: md,
+        }
+        : { 'SKILL.md': md };
       if (k === 'task') {
         writes['task.json'] = JSON.stringify({ name, program: 'run.js', slots: { main: { label: 'Main', description: 'The agent this task runs through.', agent: null } }, schedule: null, dependencies: { connections: [] } }, null, 2) + '\n';
         writes['run.js'] = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
         writes['package.json'] = JSON.stringify({ type: 'commonjs', private: true }, null, 2) + '\n';
       }
-      const item = await putBundleFiles(k, name, null, writes, true);
+      const item = await putBundleFiles(k, name, null, writes, { enabled: true });
       return ok(bundleRowOf(k, name, item.data ?? {}, item.updatedAt, item.files?.length ?? Object.keys(writes).length));
     } catch (err) { return fail(err); }
   };
@@ -401,6 +438,259 @@ export function buildMemberLibrary(client, deps = {}) {
     catch (err) { return isNotFound(err) ? ok({ deleted: true }) : fail(err); }
   };
 
+  // ── The hub (main/hub-ipc.ts, on the web) ─────────────────────────────────
+  // Every read is the route the desktop reads: the org's published items at
+  // GET /api/library/<kind>, the Glyphh catalog at GET /api/hub/public, the
+  // shelves at GET /api/hub/categories, an item's folder at …/payload. The
+  // projections are hub-ipc's, field for field, so the Skills page paints
+  // the same rows on both surfaces.
+  const http = () => client.http;
+  const HUB_KINDS = ['skill', 'app', 'plugin', 'task'];
+  const kindOf = (k) => (HUB_KINDS.includes(k) ? k : 'skill');
+  const kindsOf = (k) => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
+  const orgList = (k) => http().get(`/api/library/${k}`).then((r) => (Array.isArray(r) ? r : [])).catch(() => []);
+  const pubList = () => http().get('/api/hub/public').then((r) => (Array.isArray(r) ? r : [])).catch(() => []);
+  const baseFor = (from, kind, itemId) => (from === 'org' ? `/api/library/${kind}/${encodeURIComponent(itemId)}` : `/api/hub/public/${encodeURIComponent(itemId)}`);
+  /** A catalog row's LIVE version, or 0 while nothing of it is approved. */
+  const versionOf = (r) => Number(r?.headVersion ?? r?.version ?? 0);
+  const slugOfPageId = (pageId) => String(pageId).slice(String(pageId).indexOf(':') + 1).toLowerCase();
+  const NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
+
+  /** Every bundle this member holds here, by kind — the honest "already yours". */
+  const mineRows = async () => {
+    const out = [];
+    for (const k of Object.values(BUNDLE_KINDS)) for (const r of await listRows(k)) out.push({ kind: k, id: r.id, data: r.data ?? {} });
+    return out;
+  };
+  const skillsDiscover = async (kind) => {
+    try {
+      const kinds = kindsOf(kind);
+      const [orgLists, pub, mine] = await Promise.all([
+        Promise.all(kinds.map(async (k) => [k, await orgList(k)])),
+        pubList(),
+        mineRows(),
+      ]);
+      // ALREADY YOURS IS NOT THE SAME AS ADDABLE (his report, 2026-09-18): the
+      // library row is the honest answer, the hub's `installed` only counts installs.
+      const have = new Set(mine.map((m) => `${m.kind}:${m.id.toLowerCase()}`));
+      const has = (k, slug) => have.has(`${k}:${String(slug || '').toLowerCase()}`);
+      const rows = [];
+      for (const [k, org] of orgLists) {
+        for (const it of org) {
+          if (!it.headVersion) continue;
+          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: !!it.installed || has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k });
+        }
+      }
+      for (const p of pub.filter((x) => kinds.includes(x.kind))) {
+        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: !!p.installed || has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind });
+      }
+      return ok(rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
+    } catch (err) { return fail(err); }
+  };
+  const hubCategories = async () => {
+    try { const r = await http().get('/api/hub/categories').catch(() => []); return ok(Array.isArray(r) ? r : []); }
+    catch (err) { return fail(err); }
+  };
+  const payloadOf = async (base, version) => {
+    const p = await http().get(`${base}/payload${version ? `?version=${version}` : ''}`);
+    return p && typeof p === 'object' ? p : {};
+  };
+  const skillHubFiles = async (ref, kind) => {
+    try {
+      const [from, itemId] = String(ref).split(':', 2);
+      return ok(hubPayloadFiles('skill', '', await payloadOf(baseFor(from, kindOf(kind), itemId))));
+    } catch (err) { return fail(err); }
+  };
+  /** The catalog row behind a ref, from the list the desktop reads too. */
+  const catalogMeta = async (from, kind, itemId) => {
+    const rows = from === 'org' ? await orgList(kind) : await pubList();
+    const meta = rows.find((r) => r.id === itemId);
+    if (!meta) throw new Error(`that ${kind} is no longer available to you`);
+    return meta;
+  };
+  /** INSTALL = A PUT INTO THIS LIBRARY (his rule, 2026-10-04; his report,
+   *  2026-10-05): the hub item's files go to R2 under the member's record,
+   *  the record carries where it came from, and the desktop's sync lands it
+   *  as a folder on the machine. An app is not a record — it says so. */
+  const skillInstall = async (ref, kind) => {
+    try {
+      const k = kindOf(kind);
+      if (k === 'app') return { ok: false, error: APP_INSTALLS_ON_DESKTOP };
+      const [from, itemId] = String(ref).split(':', 2);
+      if (from !== 'org' && from !== 'glyphh') return { ok: false, error: `not a hub item: ${ref}` };
+      const meta = await catalogMeta(from, k, itemId);
+      const base = baseFor(from, k, itemId);
+      const files = hubPayloadFiles(meta.slug, meta.description || '', await payloadOf(base));
+      if (k === 'plugin' && !files['.claude-plugin/plugin.json']) return { ok: false, error: 'a plugin needs .claude-plugin/plugin.json' };
+      if (k !== 'plugin' && !files['SKILL.md']) return { ok: false, error: `a ${k} needs a SKILL.md` };
+      const id = String(meta.slug || '');
+      if (!NAME_RE.test(id)) return { ok: false, error: `bad ${k} name: ${id}` };
+      let existing = null;
+      try { existing = await lib().get(k, id); } catch (err) { if (!isNotFound(err)) throw err; }
+      const author = from === 'glyphh' ? 'Glyphh' : (meta.author || 'your organization');
+      const origin = { from, itemId, kind: k, slug: meta.slug, version: versionOf(meta), files: Object.keys(files), installedAt: new Date().toISOString(), author };
+      // A reinstall takes the catalog's folder whole: what the last install wrote and the payload dropped goes.
+      const drop = (existing?.data?.origin?.files ?? []).filter((f) => !(f in files));
+      await putBundleFiles(k, id, existing, files, { enabled: true, patch: { origin }, drop });
+      await http().post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the record is the truth
+      return ok({ id: bundlePageId(k, id) });
+    } catch (err) { return fail(err); }
+  };
+  /** Every catalog row this member can see, by kind, org rows first (hub-ipc.catalogRows). */
+  const catalogRows = async (kinds) => {
+    const [orgLists, pub] = await Promise.all([Promise.all(kinds.map(async (k) => [k, await orgList(k)])), pubList()]);
+    const out = [];
+    for (const [k, rows] of orgLists) for (const row of rows) out.push({ from: 'org', kind: k, row });
+    for (const row of pub) if (row.kind && kinds.includes(row.kind)) out.push({ from: 'glyphh', kind: row.kind, row });
+    return out;
+  };
+  /** Where a bundle came from: the origin the install recorded, else the
+   *  catalog row with its slug or name (hub-ipc.originFor). */
+  const originFor = (m, catalog) => {
+    const recorded = m.data?.origin;
+    if (recorded && typeof recorded === 'object' && recorded.itemId) return recorded;
+    const slug = m.id.toLowerCase();
+    const rows = catalog.filter((c) => versionOf(c.row) > 0);
+    const hit = rows.find((c) => c.kind === m.kind && c.row.slug?.toLowerCase() === slug)
+      ?? rows.find((c) => c.kind === m.kind && c.row.name?.toLowerCase() === slug);
+    if (!hit) return null;
+    return { from: hit.from, itemId: hit.row.id, kind: m.kind, slug: hit.row.slug, version: 0, files: [], installedAt: '' };
+  };
+  const standingsOf = async () => {
+    const out = {};
+    const mine = await mineRows();
+    if (!mine.length) return out;
+    const catalog = await catalogRows([...new Set(mine.map((m) => m.kind))]);
+    if (!catalog.length) return out;
+    for (const m of mine) {
+      const o = originFor(m, catalog);
+      if (!o) continue;
+      const hit = catalog.find((c) => c.from === o.from && c.kind === m.kind && c.row.id === o.itemId);
+      if (!hit) continue;
+      out[bundlePageId(m.kind, m.id)] = {
+        from: o.from,
+        sourceName: o.from === 'org' ? "your organization's hub" : 'the Glyphh catalog',
+        name: hit.row.name,
+        have: Number(o.version || 0),
+        latest: versionOf(hit.row),
+      };
+    }
+    return out;
+  };
+  const skillStandings = async () => { try { return ok(await standingsOf()); } catch (err) { return fail(err); } };
+  const skillUpdates = async () => {
+    try {
+      const out = {};
+      for (const [id, st] of Object.entries(await standingsOf())) if (st.latest > 0 && st.latest > st.have) out[id] = { have: st.have, latest: st.latest, name: st.name };
+      return ok(out);
+    } catch (err) { return fail(err); }
+  };
+  /** Take the catalog's current version over this copy: the payload's files
+   *  are written, what the last install wrote and the payload dropped goes,
+   *  anything the member added stays (hub-ipc.update). */
+  const skillUpdate = async (pageId) => {
+    try {
+      const { ref, item } = await bundleItem(pageId);
+      const o = originFor({ kind: ref.kind, id: ref.id, data: item.data ?? {} }, await catalogRows([ref.kind]));
+      if (!o) return { ok: false, error: 'no catalog item matches this one by slug, so there is nothing to update from' };
+      const meta = await catalogMeta(o.from, ref.kind, o.itemId);
+      const base = baseFor(o.from, ref.kind, o.itemId);
+      const files = hubPayloadFiles(meta.slug, meta.description || '', await payloadOf(base));
+      const version = versionOf(meta);
+      const drop = (o.files ?? []).filter((f) => !(f in files));
+      await putBundleFiles(ref.kind, ref.id, item, files, { patch: { origin: { ...o, version, files: Object.keys(files) } }, drop });
+      return ok({ version });
+    } catch (err) { return fail(err); }
+  };
+  /** The org item behind a library record: the one whose slug is the record's id, else its name. */
+  const orgItemFor = async (kind, id, name) => {
+    const items = await orgList(kind);
+    return items.find((it) => it.slug?.toLowerCase() === id.toLowerCase() || it.name === name) ?? null;
+  };
+  const skillShares = async () => {
+    try {
+      const out = {};
+      const mine = await mineRows();
+      if (!mine.length) return ok(out);
+      const kinds = [...new Set(mine.map((m) => m.kind))];
+      const byKind = new Map(await Promise.all(kinds.map(async (k) => [k, await orgList(k)])));
+      for (const m of mine) {
+        const hit = (byKind.get(m.kind) ?? []).find((it) => it.slug?.toLowerCase() === m.id.toLowerCase() || it.name === m.data.name);
+        if (!hit) continue;
+        const state = { head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, rejected: hit.rejectedVersion ?? null };
+        if (state.head || state.pending || state.rejected) out[bundlePageId(m.kind, m.id)] = state;
+      }
+      return ok(out);
+    } catch (err) { return fail(err); }
+  };
+  const skillWithdraw = async (pageId) => {
+    try {
+      const { ref, item } = await bundleItem(pageId);
+      const hit = await orgItemFor(ref.kind, ref.id, item.data?.name);
+      if (!hit) return { ok: false, error: "this one isn't on your organization's hub" };
+      const r = await http().del(`/api/library/${ref.kind}/${encodeURIComponent(hit.id)}/submission`);
+      return ok({ withdrawn: Number(r?.withdrawn ?? 0) });
+    } catch (err) { return fail(err); }
+  };
+  const skillVersions = async (pageId) => {
+    try {
+      const { ref, item } = await bundleItem(pageId);
+      const kind = ref.kind;
+      const hit = await orgItemFor(kind, ref.id, item.data?.name);
+      if (!hit) return ok({ itemId: null, kind, versions: [], head: null, pending: null, declined: null, categories: [] });
+      const rows = await http().get(`/api/library/${kind}/${encodeURIComponent(hit.id)}/versions`).catch(() => []);
+      const list = (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || '', createdAt: r.created_at, status: r.status || 'approved', reviewSummary: r.review_summary || '' }));
+      // A DECLINE IS NEWS (his order, 2026-09-17): the newest rejected version counts while nothing newer stands.
+      const newest = list[0];
+      const declined = newest && newest.status === 'rejected' ? { version: newest.version, summary: newest.reviewSummary } : null;
+      return ok({ itemId: hit.id, kind, versions: list, declined, head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, categories: Array.isArray(hit.categories) ? hit.categories : [] });
+    } catch (err) { return fail(err); }
+  };
+  const skillVersionFiles = async (itemId, version, kind) => {
+    try {
+      const payload = await payloadOf(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}`, Number(version));
+      const files = payload.files && typeof payload.files === 'object' ? payload.files : null;
+      return ok(files ?? { 'SKILL.md': typeof payload.prompt === 'string' ? payload.prompt : '' });
+    } catch (err) { return fail(err); }
+  };
+  const skillCategoriesSet = async (itemId, kind, ids) => {
+    try {
+      const categories = Array.isArray(ids) ? ids.map(String).filter(Boolean) : [];
+      await http().post(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}/categories`, { categories });
+      return ok(categories);
+    } catch (err) { return fail(err); }
+  };
+  /** SHARE = PROMOTE (hub-ipc.publish): the record's files, read back off R2,
+   *  go to the org's hub as text; a binary file stops it, as on the desktop. */
+  const skillPublish = async (pageId, notes = '') => {
+    try {
+      const { ref, item } = await bundleItem(pageId);
+      const paths = (item.files ?? []).map((f) => f.path);
+      const files = {};
+      let bytes = 0;
+      if (paths.length) {
+        const urls = await lib().files(ref.kind, ref.id, paths);
+        for (const rel of paths) {
+          const res = await fetchImpl(urls.get[rel]);
+          if (!res.ok) throw new Error(`read ${rel}: HTTP ${res.status}`);
+          const buf = new Uint8Array(await res.arrayBuffer());
+          if (buf.subarray(0, 4096).includes(0)) throw new Error(`"${rel}" is binary — the hub carries text files only (put assets behind a URL)`);
+          bytes += buf.length;
+          if (bytes > 900_000) throw new Error(`this ${ref.kind}'s files exceed the hub's 1 MB text limit`);
+          files[rel] = new TextDecoder().decode(buf);
+        }
+      }
+      const data = item.data ?? {};
+      const { body } = parseSkillMd(files['SKILL.md'] || '');
+      const name = data.name || ref.id;
+      const slug = name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'skill';
+      const r = await http().post(`/api/library/${ref.kind}/promote`, {
+        slug, name, description: data.description || '', notes: String(notes ?? ''), payload: { files, prompt: body, manifest: data.frontmatter ?? {} },
+      });
+      return ok(r);
+    } catch (err) { return fail(err); }
+  };
+
   const needsDesktop = async () => ({ ok: false, error: NEEDS_DESKTOP });
   const emptyList = async () => ok([]);
 
@@ -429,14 +719,11 @@ export function buildMemberLibrary(client, deps = {}) {
     tasksSpecs, taskSpec, taskSlotSet,
     // Runs happen on the desktop: nothing to list here, nothing to start.
     taskRun: needsDesktop, taskRuns: emptyList, taskRunGet: needsDesktop, taskRunCancel: needsDesktop,
-    // The hub (discover, install, update), sharing and publishing are the
-    // desktop's hub-ipc lane; the Skills page reads them from its detail and
-    // its Discover tab, so each answers honestly here — nothing to list, or
-    // "runs on your desktop" for the action.
-    skillsDiscover: emptyList, skillUpdates: emptyList, skillShares: emptyList, skillStandings: emptyList, skillVersions: emptyList,
-    hubCategories: emptyList,
-    skillInstall: needsDesktop, skillUpdate: needsDesktop, skillHubFiles: needsDesktop, skillCategoriesSet: needsDesktop,
-    skillPublish: needsDesktop, skillWithdraw: needsDesktop, skillVersionFiles: needsDesktop,
+    // THE HUB ON THE WEB (his report, 2026-10-05): the same routes as the
+    // desktop's hub-ipc lane; an install is a put into this library.
+    skillsDiscover, skillUpdates, skillShares, skillStandings, skillVersions,
+    hubCategories, skillInstall, skillUpdate, skillHubFiles, skillCategoriesSet,
+    skillPublish, skillWithdraw, skillVersionFiles,
     dripsList, dripsSave, dripsDelete,
     // The schedules are records here; the RUNS are the desktop's clock until
     // the cloud clock exists (schedules.ts says so on the page).

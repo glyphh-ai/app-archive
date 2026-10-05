@@ -10,7 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { paintDesktopOnly } from "./web-surface.js";
+import { onWeb, paintDesktopOnly } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
@@ -390,12 +390,12 @@ async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
 
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
-  // SKILLS AND TASKS ARE THE MEMBER LIBRARY'S (his rule, 2026-10-04): the web
-  // lists, views and edits them from the server (web-contract.js); the
-  // desktop syncs its folders from the same records. APPS and PLUGINS are
-  // machine bundles still — a browser tab has none, and the page is the one
-  // card that says so.
-  if ((cfg.kind === "app" || cfg.kind === "plugin") && paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
+  // SKILLS, TASKS AND PLUGINS ARE THE MEMBER LIBRARY'S (his rule, 2026-10-04;
+  // plugins since his report, 2026-10-05): the web lists, views, installs and
+  // edits them from the server (web-contract.js); the desktop syncs its
+  // folders from the same records. APPS are machine bundles still — a browser
+  // tab has none, and the page is the one card that says so.
+  if (cfg.kind === "app" && paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
     Array.from(el("skills-list-view")?.querySelectorAll<HTMLElement>(".skills-head, .skills-tabs") ?? []))) { el("skill-detail-view")?.classList.add("hidden"); el("skills-list-view")?.classList.remove("hidden"); return; }
   wire();
   el("skill-detail-view")?.classList.add("hidden");
@@ -580,7 +580,8 @@ function renderList(): void {
   const count = el("skills-count"); if (count) count.textContent = `${shown.length} available`;
   paintControls();
   if (!shown.length) {
-    host.innerHTML = `<div class="crud-empty">${q ? `Nothing matching "${escapeHtml(q)}"` : "Nothing to discover yet — your organization hasn't published skills, and Glyphh's catalog has none your org allows."}</div>`;
+    // The line names THIS page's kind (his report, 2026-10-05: Tasks said "skills").
+    host.innerHTML = `<div class="crud-empty">${q ? `Nothing matching "${escapeHtml(q)}"` : `Nothing to discover yet — your organization hasn't published ${cfg.nouns}, and Glyphh's catalog has none your org allows.`}</div>`;
     return;
   }
   if (q || discoverView.kind !== "home") { renderDiscoverList(host, shown); return; }
@@ -626,10 +627,19 @@ function updateButton(id: string, latest: number): HTMLButtonElement {
   return b;
 }
 
+/** AN APP INSTALLS ON THE DESKTOP (his report, 2026-10-05): it is a bundle on
+ *  the machine, not a library record, so its Add on the web says where. */
+const appOnWeb = (d: { type?: BundleType }): boolean => onWeb() && d.type === "app";
 function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = wide ? "action-btn skill-add-wide" : "action-btn skill-add-btn";
+  if (appOnWeb(d) && !d.installed) {
+    b.textContent = wide ? "Installs on your desktop" : "Desktop";
+    b.disabled = true;
+    b.title = "Open Glyphh Desktop to add this app — it is a bundle on that machine.";
+    return b;
+  }
   b.textContent = d.installed ? (wide ? "Added" : "✓") : (wide ? "Add" : "+");
   b.disabled = d.installed;
   b.title = d.installed ? "Already in your skills" : "Add to your skills";
@@ -908,7 +918,11 @@ function paintDetailChrome(): void {
     el("skill-share")?.before(add);
   }
   add.classList.toggle("hidden", !hub);
-  if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
+  if (hub) {
+    const desktop = appOnWeb(hubItem!) && !hubItem!.installed;
+    add.textContent = hubItem!.installed ? "Added" : desktop ? "Installs on your desktop" : "Add";
+    add.disabled = hubItem!.installed || desktop;
+  }
   // The detail's actions, resolved every time: a mixed list moves between an
   // app and a skill, and a stale Open must not survive the move.
   const action = (id: string, label: string, primary: boolean, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
@@ -1750,7 +1764,7 @@ function wire(): void {
   // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web wrote, or
   // dropped what it deleted): the list re-reads. An open detail is left alone.
   (api() as unknown as { onLibrarySynced?: (cb: (info: { kind: string }) => void) => void }).onLibrarySynced?.((info) => {
-    if (info.kind !== "skill" && info.kind !== "task") return;
+    if (info.kind !== "skill" && info.kind !== "task" && info.kind !== "plugin") return;
     if (el("skill-detail-view")?.classList.contains("hidden") !== false) void loadSkillsSettings();
   });
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
