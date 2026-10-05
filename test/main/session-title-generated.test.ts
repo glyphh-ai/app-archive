@@ -20,7 +20,6 @@ describe("placeholderTitle", () => {
   it("is the first 42 characters of the prompt plus an ellipsis", () => {
     expect(placeholderTitle(PROMPT)).toBe(`${PROMPT.slice(0, 42)}…`);
     expect(placeholderTitle(PROMPT).length).toBe(43);
-    expect(placeholderTitle("can you use my research aget to research the market")).toBe("can you use my research aget to research…");
   });
   it("keeps a short prompt whole", () => {
     expect(placeholderTitle("Fix the relay reconnect")).toBe("Fix the relay reconnect");

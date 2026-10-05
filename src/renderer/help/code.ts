@@ -4802,7 +4802,10 @@ async function generateSessionTitle(chat: CodeChat): Promise<void> {
   try {
     const may = mayGenerateTitle(chat);
     if (!may.ok) return;
-    const model = pickUtilityModel(availModels);
+    // The server's resolved utility model first (the gates are already loaded
+    // for the composer); the same rule over the composer's own rows otherwise.
+    const gates = await planGates().catch(() => null);
+    const model = (gates?.utilityModel && String(gates.utilityModel)) || pickUtilityModel(availModels);
     if (!model) return;   // nothing configured → the placeholder stands
     chat.titleGenerated = true;   // once per thread, in flight or done
     const before = chat.title;
