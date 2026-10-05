@@ -40,6 +40,7 @@ import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // cloud worker) — read and written over the attach socket.
 import { desktopSessions } from './desktop-sessions';
 import { resolveDefaultModel } from './default-model';
+import { gateAfter, IDLE_GATE, mayPin, SETTLE_MS, type FollowGate } from './mobile-scroll-follow';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -1252,28 +1253,49 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
     const el = scrollRef.current; if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
     followRef.current = near; setAtBottom(near);
+    // The scroll event our own pin raised is not a gesture; every other one
+    // after the finger lifted is (or restarts) a coast (mobile-scroll-follow.ts).
+    if (selfScrollRef.current) { selfScrollRef.current = false; return; }
+    if (!gateRef.current.touching) { gateRef.current = gateAfter('scroll', gateRef.current); armSettle(); }
   };
   const scrollToBottom = (smooth: boolean) => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); };
   const [changesOpen, setChangesOpen] = useState(false);
   // Follow the stream smoothly: while the user is at the bottom, pin to the bottom
   // with a SINGLE coalesced rAF per change (instant scrollTop, no per-frame
   // scrollTo animations fighting the growing content — that was the "jumping").
-  // NEVER pin while a finger is on the scroller. Programmatic scrollTop writes
-  // against a live touch/momentum gesture are the classic WebKit wedge: touch
-  // delivery dies PAGE-WIDE (rendering intact, nothing tappable) until reload —
-  // the mobile freeze report. The pin resumes on touch end if still following.
-  const touchActiveRef = useRef(false);
-  const onTouchStart = () => { touchActiveRef.current = true; };
-  const onTouchEnd = () => {
-    touchActiveRef.current = false;
-    if (followRef.current) { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; }
+  // NEVER pin while a GESTURE is on the scroller — a finger down, OR the coast
+  // after a flick (his report, 2026-10-05: "unless he goes very slow it hangs
+  // up"). Programmatic scrollTop writes against a live touch/momentum gesture
+  // are the classic WebKit wedge: touch delivery dies PAGE-WIDE (rendering
+  // intact, nothing tappable) until reload. The gate (mobile-scroll-follow.ts)
+  // stays shut from touchstart until SETTLE_MS of scroll silence after the
+  // finger lifts; then the pin resumes if still following.
+  const gateRef = useRef<FollowGate>(IDLE_GATE);
+  const settleRef = useRef(0);
+  const selfScrollRef = useRef(false);
+  const pin = () => {
+    const el = scrollRef.current; if (!el) return;
+    const top = el.scrollHeight - el.clientHeight;
+    if (el.scrollTop >= top) return;              // already there — no event to swallow
+    selfScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
   };
+  const armSettle = () => {
+    clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(() => {
+      gateRef.current = gateAfter('settled', gateRef.current);
+      if (mayPin(gateRef.current, followRef.current)) pin();
+    }, SETTLE_MS);
+  };
+  const onTouchStart = () => { clearTimeout(settleRef.current); gateRef.current = gateAfter('touchstart', gateRef.current); };
+  const onTouchEnd = () => { gateRef.current = gateAfter('touchend', gateRef.current); armSettle(); };
+  useEffect(() => () => clearTimeout(settleRef.current), []);
   useEffect(() => {
-    if (!followRef.current || touchActiveRef.current) return;
+    if (!mayPin(gateRef.current, followRef.current)) return;
     cancelAnimationFrame(scrollRafRef.current);
     scrollRafRef.current = requestAnimationFrame(() => {
-      if (touchActiveRef.current) return; // a touch began between schedule and frame
-      const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight;
+      if (!mayPin(gateRef.current, followRef.current)) return; // a gesture began between schedule and frame
+      pin();
     });
     return () => cancelAnimationFrame(scrollRafRef.current);
   }, [msgs, comp.sending]);
