@@ -184,6 +184,31 @@ export function buildMemberLibrary(client, deps = {}) {
   // PLUGINS ARE RECORDS TOO (his report, 2026-10-05): a Claude Code plugin
   // folder in the library, installed on the machine by the desktop's sync.
   const BUNDLE_KINDS = { skill: 'skill', task: 'task', plugin: 'plugin' };
+  // THE INSTALLED APPS THAT ARE TAB ROWS (his report, 2026-10-05: "build in
+  // the web doesn't carry apps yet"): the house apps — Drive, Slides, Design,
+  // Images… — and any Glyphh app the desktop registered are `tab` rows of
+  // kind "glyphh" in the member library, not instances, so the desktop's
+  // Skills page lists them and the web's did not. They list here as app
+  // cards (`app-tab:<slug>`); an instance of the same slug IS that card.
+  const TAB_CARD = 'app-tab:';
+  const isTabCardId = (id) => String(id || '').startsWith(TAB_CARD);
+  const tabCardOf = (t) => ({
+    id: `${TAB_CARD}${t.slug}`, source: 'app', type: 'app',
+    name: String(t.name || t.slug), description: String(t.description || ''), author: 'you',
+    enabled: true, dir: '', fileCount: 0, updatedAt: t.updatedAt,
+    icon: null, tool: (t.config && typeof t.config === 'object' && typeof t.config.tool === 'string') ? t.config.tool : null,
+    locus: t.nativeRef ? 'local' : 'cloud', data: appDataOf({ launchConfig: t.config ?? null }),
+  });
+  const tabApps = async () => {
+    const srv = await listRows('tab');
+    return srv.filter((r) => isTabRow(r.data) && r.data.kind === 'glyphh').map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
+  };
+  const tabCard = async (pageId) => {
+    const slug = String(pageId).slice(TAB_CARD.length);
+    const t = (await tabApps()).find((x) => x.slug === slug);
+    if (!t) throw new Error(`no app ${slug}`);
+    return t;
+  };
   const skillsList = async (kind) => {
     const asked = Array.isArray(kind) ? kind : [kind ?? 'skill'];
     const kinds = [...new Set(asked.map((k) => BUNDLE_KINDS[k]).filter(Boolean))];
@@ -194,8 +219,14 @@ export function buildMemberLibrary(client, deps = {}) {
         rows.push(bundleRowOf(k, r.id, r.data, r.updatedAt, Array.isArray(r.data.files) ? r.data.files.length : (r.fileCount ?? 0)));
       }
     }
-    // Settings → Apps on the web = the cloud instances (no folders here).
-    if (asked.includes('app')) rows.push(...await appInstances.cards());
+    // Settings → Apps on the web = the cloud instances + the installed tab apps.
+    if (asked.includes('app')) {
+      const instances = await appInstances.cards();
+      const have = new Set(instances.map((c) => String(c.name).toLowerCase()));
+      const haveSlugs = new Set((await appInstances.listInstances()).map((i) => String(i.slug).toLowerCase()));
+      rows.push(...instances);
+      for (const t of await tabApps()) if (!haveSlugs.has(t.slug.toLowerCase()) && !have.has(String(t.name).toLowerCase())) rows.push(tabCardOf(t));
+    }
     return ok(rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
   };
   const bundleItem = async (pageId) => {
@@ -207,6 +238,7 @@ export function buildMemberLibrary(client, deps = {}) {
   const skillGet = async (pageId) => {
     try {
       if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.detail(pageId));
+      if (isTabCardId(pageId)) { const t = await tabCard(pageId); return ok({ ...tabCardOf(t), frontmatter: {}, body: t.description || '', files: [] }); }
       const { ref, item } = await bundleItem(pageId);
       const data = item.data ?? {};
       const files = (item.files ?? []).map((f) => ({ path: f.path, size: f.size }));
@@ -733,6 +765,8 @@ export function buildMemberLibrary(client, deps = {}) {
 
   /** An instance's card opens as its tab; anything else needs the desktop's folder. */
   const skillTab = async (pageId) => {
+    // A tab app's card IS its tab already: open it by slug.
+    if (isTabCardId(pageId)) { try { const t = await tabCard(pageId); return ok({ slug: t.slug, name: t.name }); } catch (err) { return fail(err); } }
     if (!appInstances.isInstanceCardId(String(pageId))) return { ok: false, error: NEEDS_DESKTOP };
     try { return ok(await appInstances.tab(pageId)); } catch (err) { return fail(err); }
   };

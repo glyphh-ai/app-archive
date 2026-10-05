@@ -500,3 +500,22 @@ describe('an app installs by its manifest\'s data', () => {
       .toEqual({ ok: true, data: { id: 'app-instance:ledger~u1', warning: 'installed in the cloud; your desktop did not take it: busy' } });
   });
 });
+
+describe("the web's Skills page carries the installed APPS that are tab rows (his report, 2026-10-05: 'build in the web doesn't carry apps yet')", () => {
+  const tabs = () => fakeLibrary({
+    tab: [
+      { id: 'drive', updatedAt: 7_000, data: { id: 'drive', kind: 'glyphh', slug: 'drive', name: 'Drive', prodUrl: null, nativeRef: null, config: { tool: 'gdrive' }, description: "Glyphh's Drive", access: 'members', owned: true, latestVersion: null, version: '0.1.0', secretNames: [], requiredConnections: [], listing: null, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' } },
+      { id: 'gmail', updatedAt: 8_000, data: { id: 'gmail', kind: 'web', slug: 'gmail', name: 'Gmail', prodUrl: 'https://mail.google.com', nativeRef: null, config: null, description: '', access: 'members', owned: true, latestVersion: null, version: '0.1.0', secretNames: [], requiredConnections: [], listing: null, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' } },
+    ],
+  });
+  it('a Glyphh tab row lists as an app card; a URL tab does not; its detail and its open answer', async () => {
+    const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
+    const rows = (await lib.skillsList(['skill', 'app', 'task'])).data;
+    expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);
+    expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', locus: 'cloud', data: 'cloud', author: 'you' });
+    expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
+    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive' } });
+    expect((await lib.skillsList('skill')).data).toEqual([]);
+  });
+});
+
