@@ -28,8 +28,7 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { toast } from "./toast.js";
 import {
   agentMenuModel, appRowOpen, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
-  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction,
-} from "./agent-menu.js";
+  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction, menuLocusOf } from "./agent-menu.js";
 
 interface MenuApi {
   attachStatus?: () => Promise<{ attached: boolean; machines: MenuMachine[] }>;
@@ -78,31 +77,63 @@ const IC = {
 const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
 /** The web's last relay answer (machines, apps, CLIs, sessions) — painted at once on the next open. */
-let lastWeb: { machines: MenuMachine[]; apps: MenuAppRow[]; sessions: RailSessionLike[] } | null = null;
+let lastWeb: { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] } | null = null;
 let clisCache: MenuCliRow[] = [];
 
 /** The web's three relay reads + the CLI list, in parallel; each failure is an empty. */
-async function readWeb(): Promise<{ machines: MenuMachine[]; apps: MenuAppRow[]; sessions: RailSessionLike[] }> {
+/** THE INSTALLED APPS (his order, 2026-10-05): the web's panelAppsList —
+ *  the server's tab rows, every cloud instance, the attached desktop's rows
+ *  behind — mapped to menu rows. A row the desktop did not report is a
+ *  CLOUD one and opens as a panel here. */
+interface InstalledAppLike { slug?: string; id?: string; name?: string; kind?: string; appArchetype?: string; iconDataUrl?: string | null; icon?: string | null; launchConfig?: { tool?: string } | null; config?: { tool?: string } | null; instanceKey?: string; machineId?: string; machineName?: string }
+export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSlugs: ReadonlySet<string>, machine: MenuMachine | null): MenuAppRow[] {
+  const out: MenuAppRow[] = [];
+  for (const r of rows) {
+    const slug = String(r.slug || r.id || "").trim();
+    if (!slug) continue;
+    const kind = r.kind ?? (r.appArchetype === "glyphh-app" ? "glyphh" : "web");
+    const onDesktop = desktopSlugs.has(slug.toLowerCase());
+    const cloud = !!r.instanceKey || !onDesktop;
+    out.push({
+      slug, name: String(r.name || slug), kind,
+      icon: r.iconDataUrl ?? r.icon ?? null,
+      tool: r.launchConfig?.tool ?? r.config?.tool ?? null,
+      machineId: cloud ? "" : (r.machineId ?? machine?.id ?? ""),
+      machineName: cloud ? "the cloud" : (r.machineName ?? machine?.name ?? ""),
+      cloud,
+    });
+  }
+  return out;
+}
+
+async function readWeb(): Promise<{ machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] }> {
   const a = api();
-  const [status, apps, clis, sessions] = await Promise.all([
+  const [status, apps, installed, clis, sessions] = await Promise.all([
     hostHas("attachStatus") ? a.attachStatus!().catch(() => null) : Promise.resolve(null),
     hostHas("desktopAppsList") ? a.desktopAppsList!().catch(() => null) : Promise.resolve(null),
+    hostHas("panelAppsList") ? (a as unknown as { panelAppsList?: () => Promise<InstalledAppLike[]> }).panelAppsList!().catch(() => null) : Promise.resolve(null),
     hostHas("cliAgentsList") ? a.cliAgentsList!().catch(() => null) : Promise.resolve(null),
     (shell().__glyphhCliSessions?.() ?? Promise.resolve([] as RailSessionLike[])).catch(() => [] as RailSessionLike[]),
   ]);
   if (clis?.ok && clis.agents.length) clisCache = clis.agents.map((c) => ({ id: c.id, name: c.name }));
-  return { machines: status?.machines ?? [], apps: apps?.ok ? apps.apps : [], sessions };
+  const machines = status?.machines ?? [];
+  const deskRows = apps?.ok ? apps.apps : [];
+  const deskSlugs = new Set(deskRows.map((r) => r.slug.toLowerCase()));
+  return { machines, apps: deskRows, installed: installedRowsOf(Array.isArray(installed) ? installed : [], deskSlugs, machines[0] ?? null), sessions };
 }
 
-function modelFor(doors: AgentMenuDoors, web: { machines: MenuMachine[]; apps: MenuAppRow[]; sessions: RailSessionLike[] } | null): AgentMenu {
+function modelFor(doors: AgentMenuDoors, web: { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[] } | null): AgentMenu {
+  const src = (shell() as unknown as { __glyphhActiveSource?: () => { kind?: unknown } | null }).__glyphhActiveSource?.() ?? null;
   return agentMenuModel({
     surface: onWeb() ? "web" : "desktop",
     mode: doors.mode(),
     session: doors.session(),
     machines: web?.machines ?? [],
     apps: web?.apps ?? [],
+    installed: web?.installed ?? [],
     clis: clisCache,
     cliSessions: web?.sessions ?? [],
+    locus: menuLocusOf(src),
   });
 }
 
@@ -173,10 +204,12 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
         const where = appRowOpen(a, m.surface);
         b.title = where.open === "web-panel"
           ? `Open ${a.name} here — its files come from ${a.machineName || "your desktop"}`
+          : where.open === "cloud-panel" ? `Open ${a.name} — installed in the cloud`
           : `Open ${a.name} on ${a.machineName || "your desktop"}`;
         b.addEventListener("click", () => {
           close();
           if (where.open === "web-panel") { shell().__wbOpenTool?.(where.view); return; }
+          if (where.open === "cloud-panel") { (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true }); return; }
           void openOnDesktop(a);
         });
         menu.appendChild(b);

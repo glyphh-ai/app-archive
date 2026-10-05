@@ -1478,7 +1478,7 @@ async function init(): Promise<void> {
   /** While an Echo panel is mounted, every agent/panel tool routes into
    *  Echo's own slots — set by renderEchoIntoSlot, cleared on teardown. */
   interface EchoCtlType {
-    openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }): void;
+    openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; cloud?: boolean }): void;
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> }): void;
     openSection(section: string): void;
     openAgent(): void;
@@ -7357,7 +7357,10 @@ async function init(): Promise<void> {
         // THE WEB CUT (his order, 2026-10-05): an app opens ON THE DESKTOP
         // (panels.open over the relay, help/web-agent-menu-ui.ts) — the web
         // never hosts or streams one. No desktop → that door says so.
-        if (IS_WEB_TARGET) { openAppOnDesktopWeb(app); return; }
+        // A CLOUD-INSTALLED app is a panel here — its UI through the instance
+        // proxy (mountGlyphhAppWebView), no desktop needed (his order,
+        // 2026-10-05); every other app still opens on the desktop.
+        if (IS_WEB_TARGET && !(app.glyphh && app.cloud)) { openAppOnDesktopWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -8217,7 +8220,7 @@ async function init(): Promise<void> {
     (window as unknown as { glyphh?: { wbAppsChanged?: (apps: Array<{ slug: string; name: string }>) => void } }).glyphh?.wbAppsChanged?.(open);
   }
 
-  interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }
+  interface WbAppRef { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; /** installed in the cloud: a panel on the web (his order, 2026-10-05) */ cloud?: boolean }
   interface WbLayoutCell extends WbAppRef { col: number; row: number; span?: number; sticky?: boolean; tool?: string; config?: CellConfig }
   interface WbGridLayout { cols: number; colWidths: number[]; rowHeights: number[]; cells: WbLayoutCell[] }
 

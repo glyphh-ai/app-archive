@@ -58,7 +58,7 @@ export const APPS_SECTION_LABEL = "Apps";
 export const CLIS_SECTION_LABEL = "Agents / CLIs";
 export const TOOLS_SECTION_LABEL = "Panels";
 export const SESSION_SECTION_LABEL = "Session";
-export const NO_APPS_LINE = "No Glyphh apps installed on this desktop";
+export const NO_APPS_LINE = "No Glyphh apps installed yet";
 /** How many of a CLI's sessions list under it (newest first). */
 export const CLI_SESSIONS_PER_CLI = 5;
 
@@ -110,7 +110,14 @@ export interface MenuAppRow {
   tool?: string | null;
   machineId: string;
   machineName: string;
+  /** An app INSTALLED IN THE CLOUD (a personal instance): opens as a panel on
+   *  the web, no desktop needed (his order, 2026-10-05). */
+  cloud?: boolean;
 }
+
+/** Where the session picker points (his order, 2026-10-05: the ⋮ menu is
+ *  keyed off it): a desktop path, or the cloud. */
+export type MenuLocus = "local" | "cloud";
 
 /** A CLI agent row (preload / web-contract `cliAgentsList`). */
 export interface MenuCliRow { id: string; name: string }
@@ -128,9 +135,15 @@ export interface AgentMenuInput {
   session: MenuSession | null;
   /** WEB: attach.status's machines — is a desktop attached, and which. */
   machines?: ReadonlyArray<MenuMachine>;
+  /** The attached desktop's apps (machine-tagged rows). */
   apps?: ReadonlyArray<MenuAppRow>;
+  /** The member's INSTALLED apps wherever they live — the cloud instances
+   *  (listed with or without a desktop) and the desktop's. */
+  installed?: ReadonlyArray<MenuAppRow>;
   clis?: ReadonlyArray<MenuCliRow>;
   cliSessions?: ReadonlyArray<MenuCliSession>;
+  /** The session picker's locus: CLIs show only on a desktop path. */
+  locus?: MenuLocus;
 }
 
 export interface MenuAppsSection {
@@ -207,10 +220,21 @@ export function glyphhAppsOnly(rows: ReadonlyArray<MenuAppRow>): MenuAppRow[] {
  *  a Glyphh app whose tool names a house panel — opens the web's own panel
  *  (__wbOpenTool(view)), its data pulled through the relay; every other row,
  *  and every row on the desktop, keeps the open-on-desktop door. */
-export type AppRowOpen = { open: "web-panel"; view: string } | { open: "desktop" };
-export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool">, surface: MenuSurface): AppRowOpen {
+export type AppRowOpen = { open: "web-panel"; view: string } | { open: "cloud-panel" } | { open: "desktop" };
+export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool" | "cloud">, surface: MenuSurface): AppRowOpen {
   const view = surface === "web" && row.kind === GLYPHH_APP_KIND ? houseViewOf(row.tool) : null;
-  return view ? { open: "web-panel", view } : { open: "desktop" };
+  if (view) return { open: "web-panel", view };
+  // A cloud-installed app opens as a panel on the web — its UI through the
+  // instance proxy — with or without a desktop (his order, 2026-10-05).
+  if (surface === "web" && row.cloud) return { open: "cloud-panel" };
+  return { open: "desktop" };
+}
+
+/** The locus the ⋮ menu keys off, read from a session source: a local
+ *  source (a desktop path) is "local"; anything else — a cloud source, or
+ *  no source at all — is "cloud". */
+export function menuLocusOf(source: { kind?: unknown } | null | undefined): MenuLocus {
+  return source && typeof source === "object" && source.kind === "local" ? "local" : "cloud";
 }
 
 /** The expandable head's text: "Apps · 3", "Agents / CLIs · 6". */
@@ -229,24 +253,34 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   const session = sessionRowsFor(i.session);
   if (session.length) byKind.set("session", { kind: "session", label: SESSION_SECTION_LABEL, rows: session });
   if (i.surface === "web") {
-    const appRows = attached ? glyphhAppsOnly(i.apps ?? []) : [];
+    // APPS = THE INSTALLED APPS, PERIOD (his order, 2026-10-05: "Only
+    // installed apps show period. not tied to desktop or not"): the cloud
+    // instances always, the attached desktop's rows beside them, one row per
+    // slug. No desktop is not a reason to hide the list.
+    const appRows = glyphhAppsOnly([...(i.installed ?? []), ...(attached ? (i.apps ?? []) : [])]);
     byKind.set("apps", {
       kind: "apps",
       label: APPS_SECTION_LABEL,
       collapsible: true,
       count: appRows.length,
-      enabled: attached,
+      enabled: true,
       rows: appRows,
-      note: !attached ? CONNECT_DESKTOP_LINE : appRows.length ? null : NO_APPS_LINE,
-      link: !attached ? { label: CONNECT_DESKTOP_LINK, settingsSub: "devices" } : null,
+      note: appRows.length ? null : NO_APPS_LINE,
+      link: null,
     });
-    const sessions = attached ? [...(i.cliSessions ?? [])].sort((a, b) => (b.mtime || 0) - (a.mtime || 0)) : [];
-    const clis = (i.clis ?? []).map((c) => ({
-      id: c.id,
-      name: c.name,
-      sessions: sessions.filter((s) => s.cli === c.id).slice(0, CLI_SESSIONS_PER_CLI),
-    }));
-    if (clis.length) byKind.set("clis", { kind: "clis", label: CLIS_SECTION_LABEL, collapsible: true, count: clis.length, rows: clis });
+    // AGENTS / CLIs ONLY ON A DESKTOP PATH (his order, 2026-10-05: "Only
+    // show clis -> when a desktop path is chosen. The agent opens in that
+    // path, gateway lane, etc."): the picker on a cloud locus hides the
+    // section; on a desktop path the CLIs list with that desktop's sessions.
+    if (i.locus === "local" && attached) {
+      const sessions = [...(i.cliSessions ?? [])].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+      const clis = (i.clis ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        sessions: sessions.filter((s) => s.cli === c.id).slice(0, CLI_SESSIONS_PER_CLI),
+      }));
+      if (clis.length) byKind.set("clis", { kind: "clis", label: CLIS_SECTION_LABEL, collapsible: true, count: clis.length, rows: clis });
+    }
   }
   const sections: MenuSection[] = [];
   for (const kind of MENU_SECTION_ORDER[i.surface]) {

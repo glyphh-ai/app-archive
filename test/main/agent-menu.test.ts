@@ -15,8 +15,7 @@ import {
   menuFoldState, toggleFold, isExpanded, cliFoldKey,
   CONNECT_DESKTOP_LINE, CONNECT_DESKTOP_LINK, NO_APPS_LINE, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL,
   CLI_SESSIONS_PER_CLI, DESKTOP_CODE_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
-  type MenuAppRow, type MenuCliSession, type MenuSection,
-} from "../../src/renderer/help/agent-menu.js";
+  type MenuAppRow, type MenuCliSession, type MenuSection, menuLocusOf } from "../../src/renderer/help/agent-menu.js";
 import { WEB_TOOL_VIEWS } from "../../src/renderer/help/web-cut.js";
 
 const CLIS = [
@@ -49,7 +48,7 @@ describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen lis
     expect([...MENU_SECTION_ORDER.web].slice(0, MENU_SECTION_ORDER.desktop.length)).toEqual([...MENU_SECTION_ORDER.desktop]);
   });
   it("a full menu on each surface paints in exactly that order", () => {
-    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [] });
+    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [], locus: "local" });
     expect(kinds(web)).toEqual([...MENU_SECTION_ORDER.web]);
     expect(web.sections.map((s) => s.label)).toEqual([TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL, APPS_SECTION_LABEL, CLIS_SECTION_LABEL]);
     const desk = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false } });
@@ -65,7 +64,7 @@ describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen lis
 describe("EXPANDABLE SECTIONS, COLLAPSED ON OPEN (his review, 2026-10-05)", () => {
   it("Apps and Agents / CLIs are the collapsible ones, with a count on the head", () => {
     expect([...COLLAPSIBLE_SECTIONS]).toEqual(["apps", "clis"]);
-    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)] });
+    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)], locus: "local" });
     const a = section(m, "apps")!;
     const c = section(m, "clis")!;
     expect(a.collapsible).toBe(true);
@@ -121,7 +120,7 @@ describe("APPS = ONLY THE GLYPHH APPS THE DESKTOP CAN LOAD (his review, 2026-10-
     expect(a.rows).toEqual([]);
     expect(a.count).toBe(0);
     expect(a.note).toBe(NO_APPS_LINE);
-    expect(NO_APPS_LINE).toBe("No Glyphh apps installed on this desktop");
+    expect(NO_APPS_LINE).toBe("No Glyphh apps installed yet");
     expect(a.link).toBeNull();
   });
   it("two desktops with the same app list it once; a row without a slug is dropped", () => {
@@ -137,7 +136,7 @@ describe("APPS = ONLY THE GLYPHH APPS THE DESKTOP CAN LOAD (his review, 2026-10-
 });
 
 describe("web, attached — a desktop answers", () => {
-  const m = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)] });
+  const m = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)], locus: "local" });
   it("attached, on the first machine", () => {
     expect(m.attached).toBe(true);
     expect(m.machine).toEqual(MAC);
@@ -151,33 +150,53 @@ describe("web, attached — a desktop answers", () => {
   });
   it("a CLI's sessions are capped", () => {
     const many = Array.from({ length: 12 }, (_, i) => sess(`x${i}`, "claude", i));
-    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps: [], clis: CLIS, cliSessions: many });
+    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps: [], clis: CLIS, cliSessions: many, locus: "local" });
     expect(section(mm, "clis")!.rows[0]!.sessions.length).toBe(CLI_SESSIONS_PER_CLI);
     expect(section(mm, "clis")!.rows[0]!.sessions[0]!.id).toBe("x11");
   });
 });
 
-describe("web, not attached — no desktop", () => {
-  const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3)] });
-  it("Apps is present but disabled, with the line and the Devices link, no rows", () => {
+describe("web, not attached — no desktop (his order, 2026-10-05: installed apps show period; CLIs only on a desktop path)", () => {
+  const cloudApp = { slug: "crm", name: "CRM", kind: "glyphh", machineId: "", machineName: "the cloud", cloud: true };
+  const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], apps, installed: [cloudApp], clis: CLIS, cliSessions: [sess("a", "claude", 3)], locus: "cloud" });
+  it("Apps lists the cloud-installed apps, enabled, no Connect line, no link", () => {
     expect(m.attached).toBe(false);
     expect(m.machine).toBeNull();
     const a = section(m, "apps")!;
-    expect(a.enabled).toBe(false);
+    expect(a.enabled).toBe(true);
+    expect(a.rows.map((r) => r.slug)).toEqual(["crm"]);
+    expect(a.rows[0]!.cloud).toBe(true);
+    expect(a.count).toBe(1);
+    expect(a.note).toBeNull();
+    expect(a.link).toBeNull();
+  });
+  it("with nothing installed anywhere the section says so, still enabled", () => {
+    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], apps: [], installed: [], clis: CLIS, cliSessions: [], locus: "cloud" });
+    const a = section(mm, "apps")!;
+    expect(a.enabled).toBe(true);
     expect(a.rows).toEqual([]);
-    expect(a.count).toBe(0);
-    expect(a.note).toBe(CONNECT_DESKTOP_LINE);
-    expect(CONNECT_DESKTOP_LINE).toBe("Connect your desktop to open apps");
-    expect(a.link).toEqual({ label: CONNECT_DESKTOP_LINK, settingsSub: "devices" });
+    expect(a.note).toBe(NO_APPS_LINE);
   });
-  it("the CLIs are still there (cloud terminals), with no desktop sessions under them", () => {
-    const c = section(m, "clis")!;
-    expect(c.rows.map((x) => x.id)).toEqual(CLIS.map((x) => x.id));
-    for (const x of c.rows) expect(x.sessions).toEqual([]);
+  it("no Agents / CLIs on a cloud locus, attached or not", () => {
+    expect(section(m, "clis")).toBeUndefined();
+    const attachedCloud = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3)], locus: "cloud" });
+    expect(section(attachedCloud, "clis")).toBeUndefined();
+    const noLocus = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [] });
+    expect(section(noLocus, "clis")).toBeUndefined();
   });
-  it("the web's Panels never carry the Browser; Artifacts closes the list (his order, 2026-10-05)", () => {
-    expect(section(m, "tools")!.rows.map((t) => t.view)).toEqual([...WEB_TOOL_VIEWS, "artifacts"]);
-    expect(section(m, "tools")!.rows.some((t) => t.view === "preview")).toBe(false);
+  it("a desktop path without a connected desktop shows no CLIs either", () => {
+    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], apps: [], installed: [], clis: CLIS, cliSessions: [], locus: "local" });
+    expect(section(mm, "clis")).toBeUndefined();
+  });
+  it("the installed list and the desktop's rows merge one row per slug; a cloud row opens as a cloud panel, a desktop row on the desktop", () => {
+    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, installed: [cloudApp, { slug: "slides", name: "Slides", kind: "glyphh", machineId: "", machineName: "the cloud", cloud: true }], clis: CLIS, cliSessions: [], locus: "local" });
+    expect(section(mm, "apps")!.rows.map((r) => r.slug)).toEqual(["crm", "slides"]);
+    expect(appRowOpen(cloudApp, "web")).toEqual({ open: "cloud-panel" });
+    expect(appRowOpen({ kind: "glyphh", tool: null, cloud: false }, "web")).toEqual({ open: "desktop" });
+    expect(appRowOpen(cloudApp, "desktop")).toEqual({ open: "desktop" });
+    expect(menuLocusOf({ kind: "local" })).toBe("local");
+    expect(menuLocusOf({ kind: "cloud-repo" })).toBe("cloud");
+    expect(menuLocusOf(null)).toBe("cloud");
   });
 });
 
