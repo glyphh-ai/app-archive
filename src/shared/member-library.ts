@@ -659,10 +659,17 @@ export function scheduleViewOf(id: string, data: ScheduleDataLike, updatedAt: nu
  *  folder, or a chat this store wrote itself). The desktop's publisher stamps
  *  every thread it publishes `source.kind = "local"`, so the ambiguity only
  *  exists for threads born before stamps. */
+/** The cloud workers' session root (kept in step with help/thread-locus.ts). */
+export const CLOUD_WORKSPACE_ROOT = "/data/glyphh-harness/";
+export function isCloudWorkspacePath(p: unknown): boolean {
+  return typeof p === "string" && p.startsWith(CLOUD_WORKSPACE_ROOT);
+}
 export function threadLocus(c: { source?: unknown; workdir?: unknown; messages?: unknown[]; messageCount?: number }): "local" | "cloud" {
-  const src = c.source as { kind?: unknown } | null | undefined;
+  const src = c.source as { kind?: unknown; path?: unknown } | null | undefined;
   const kind = src && typeof src === "object" && typeof src.kind === "string" ? src.kind : "";
+  if (kind === "local" && isCloudWorkspacePath(src?.path)) return "cloud";
   if (kind === "local") return "local";
+  if (isCloudWorkspacePath(c.workdir)) return "cloud";
   if (kind.startsWith("cloud")) return "cloud";
   if (typeof c.workdir === "string" && c.workdir) return "local";
   const adoptedStub = typeof c.messageCount === "number" && c.messageCount > 0 && !(c.messages?.length);

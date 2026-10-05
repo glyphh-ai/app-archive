@@ -15,7 +15,7 @@ vi.mock("../../src/main/glyphh-client.js", () => ({ getClient: () => ({ sessions
 vi.mock("../../src/main/agent-ipc.js", () => ({ listStoredChats: () => [] }));
 vi.mock("../../src/main/app-paths.js", () => ({ userScopedPath: (s: string) => `/tmp/${s}` }));
 
-import { createThreadPublisher, fetchTranscript, projectMessage, threadIndexOf, type ThreadStates, type ThreadsApi } from "../../src/main/thread-publish.js";
+import { madeHere, createThreadPublisher, fetchTranscript, projectMessage, threadIndexOf, type ThreadStates, type ThreadsApi } from "../../src/main/thread-publish.js";
 import type { RelayChat } from "../../src/main/agent-ipc.js";
 
 function fakeSessions(opts: { stale?: (id: string, at: number) => boolean; dead?: string[] } = {}) {
@@ -239,3 +239,21 @@ describe("the transcript url", () => {
     await expect(fetchTranscript("u", async () => ({ ok: false, status: 403, text: async () => "" }))).rejects.toThrow(/403/);
   });
 });
+
+describe("madeHere — the publisher's own threads (his report, 2026-10-05: a cloud session flipped to the desktop)", () => {
+  it("is a thread with a local source, or no source but a folder of its own", () => {
+    expect(madeHere({ source: { kind: "local", path: "/w" } })).toBe(true);
+    expect(madeHere({ workdir: "/w" })).toBe(true);
+    expect(madeHere({ source: null, workdir: "/w" })).toBe(true);
+  });
+  it("is never a cloud thread, nor a server-born one with no source and no folder, even once its messages were fetched", () => {
+    expect(madeHere({ source: { kind: "cloud-new" } })).toBe(false);
+    expect(madeHere({ source: { kind: "cloud-repo", repo: "o/r" }, workdir: "/w" })).toBe(false);
+    expect(madeHere({})).toBe(false);
+    expect(madeHere({ source: null, workdir: "" })).toBe(false);
+    // A "local" stamp over the cloud workers' own session root is a cloud session someone republished.
+    expect(madeHere({ source: { kind: "local", path: "/data/glyphh-harness/sessions/u_c1/workspace" } })).toBe(false);
+    expect(madeHere({ workdir: "/data/glyphh-harness/sessions/u_c1/workspace" })).toBe(false);
+  });
+});
+

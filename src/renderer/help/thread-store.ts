@@ -31,7 +31,7 @@
  */
 
 import { harnessRequest, HarnessHttpError } from "./harness-api.js";
-import { threadLocus } from "./thread-locus.js";
+import { threadLocus, healSource } from "./thread-locus.js";
 import { boundMessages, adoptServerMessages } from "./bound-messages.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
@@ -367,6 +367,14 @@ async function reconcile(): Promise<void> {
     }
   }
 
+  // A flipped record already in the cache heals too (his report, 2026-10-05).
+  for (const c of chatsRef) {
+    const healed = healSource(c.source);
+    if (healed === c.source) continue;
+    c.source = healed;
+    const w = c as { workdir?: unknown };
+    if (typeof w.workdir === "string" && w.workdir.startsWith("/data/glyphh-harness/")) delete w.workdir;
+  }
   const serverById = new Map(serverList.map((m) => [m.id, m]));
   for (const m of serverList) {
     serverSeen.add(m.id); // server-origin — lets us detect a later REMOTE deletion
@@ -379,7 +387,7 @@ async function reconcile(): Promise<void> {
         mode: isMode(m.mode) ? m.mode : "code",
         messages: [], messageCount: m.messageCount,
       };
-      if (m.source != null) adopted.source = m.source;
+      if (m.source != null) adopted.source = healSource(m.source);
       chatsRef.push(adopted);
       snapshot.set(m.id, projection(adopted)); // stub is "synced" — an empty-body save must never push over the server's messages
       changed = true;
@@ -394,7 +402,11 @@ async function reconcile(): Promise<void> {
         // thread has local history on screen paths; keep local on a miss).
         local.title = m.title;
         if (isMode(m.mode)) local.mode = m.mode;
-        if (m.source != null) local.source = m.source;
+        // THE LOCUS IS FIXED AT BIRTH (his rule, 2026-10-04): a server copy
+        // may refresh a born session's source only if it keeps the locus — a
+        // cloud session never becomes a desktop one by adoption, whatever
+        // another surface pushed (his report, 2026-10-05).
+        if (m.source != null && (local.messages.length === 0 || threadLocus({ source: m.source }) === threadLocus(local))) local.source = healSource(m.source);
         local.updatedAt = m.updatedAt;
         local.messageCount = m.messageCount;
         try {

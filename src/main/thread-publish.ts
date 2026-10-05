@@ -36,7 +36,7 @@ import { userScopedPath } from "./app-paths.js";
 import { isAuthenticated } from "./auth.js";
 import { getClient } from "./glyphh-client.js";
 import { listStoredChats, type RelayChat } from "./agent-ipc.js";
-import { threadLocus } from "../shared/member-library.js";
+import { isCloudWorkspacePath, threadLocus } from "../shared/member-library.js";
 import { boundMessages } from "./chat-store-repair.js";
 
 // ── The injectable core ──────────────────────────────────────────────────────
@@ -75,6 +75,24 @@ export function projectMessage(m: unknown): SessionThreadMessage | null {
   if (typeof msg.role !== "string") return null;
   const text = typeof msg.text === "string" && msg.text.length > MAX_TEXT ? `${msg.text.slice(0, MAX_TEXT)}…` : msg.text;
   return { ...msg, role: msg.role, ...(text !== undefined ? { text } : {}) } as SessionThreadMessage;
+}
+
+/** THE PUBLISHER PUBLISHES ONLY WHAT THIS DESKTOP MADE (his report,
+ *  2026-10-05: a cloud session interrupted on the web flipped to his Mac and
+ *  every later turn was refused — "that folder is not one this machine
+ *  granted"). A thread the desktop's rail adopted from the server (a cloud
+ *  session of the web's) sits in main's file too; once its messages were
+ *  fetched it no longer looked like an adopted stub, threadLocus called it
+ *  local, and this publisher pushed it back stamped `kind: "local"` with the
+ *  machine's folder — the web adopted that copy and the session moved. Only
+ *  a thread with a LOCAL source, or no source but a folder of its own, is
+ *  this machine's to publish. */
+export function madeHere(c: { source?: unknown; workdir?: unknown }): boolean {
+  const src = c.source as { kind?: unknown } | null | undefined;
+  const kind = src && typeof src === "object" && typeof src.kind === "string" ? src.kind : "";
+  if (kind === "local") return !isCloudWorkspacePath((src as { path?: unknown }).path);
+  if (kind) return false;
+  return typeof c.workdir === "string" && c.workdir.length > 0 && !isCloudWorkspacePath(c.workdir);
 }
 
 /** The index of a local thread as it rides: the title, the type, the source stamped local. */
@@ -199,7 +217,7 @@ export function createThreadPublisher(deps: PublishDeps) {
     try {
       for (const c of deps.chats()) {
         if (!c.id) continue;
-        if (threadLocus(c) !== "local") { continue; }
+        if (!madeHere(c)) { continue; }
         try { await publishOne(c, states, report); }
         catch (err) {
           if (err instanceof ConnectError || err instanceof AuthError) throw err; // the pass is over
