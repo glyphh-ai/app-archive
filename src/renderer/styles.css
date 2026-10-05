@@ -1753,14 +1753,6 @@ html.glyphh-web body { --rail-strip-w: 38px; }
    2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
 .app-rail-nav-item.web-rail-link { display: none; }
 html.glyphh-web .app-rail-nav-item.web-rail-link { display: flex; }
-/* The wordmark at the rail's top-left, WEB ONLY (his order, 2026-10-05): the
-   console's logo files, swapped by theme. The desktop keeps the traffic lights there. */
-.app-rail-logo { display: none; }
-html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; height: 100%; padding: 0 4px 0 6px; flex: 0 0 auto; }
-.app-rail-logo-img { height: 18px; width: auto; display: none; }
-html.glyphh-web .app-rail-logo-white { display: block; }
-html.glyphh-web[data-theme="light"] .app-rail-logo-white { display: none; }
-html.glyphh-web[data-theme="light"] .app-rail-logo-black { display: block; }
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-header { padding-left: var(--rail-strip-w); }
 .glyphh-web #panel-wc { display: none !important; }
