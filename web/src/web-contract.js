@@ -175,6 +175,20 @@ export function buildContract(client, deps) {
     } catch { return []; }
   };
 
+  /** One menu row off a desktop's `panelApps.list` reply: the apps a panel
+   *  can open (a URL tab, a native app, a Glyphh app), never the system rows. */
+  const desktopAppRow = (a, m) => {
+    if (!a || a.system) return null;
+    const slug = String(a.slug || a.id || '').trim();
+    if (!slug) return null;
+    if (!(a.url || a.execPath || a.appArchetype === 'glyphh-app')) return null;
+    return {
+      slug, name: String(a.name || slug),
+      icon: iconForRow(a) || (typeof a.iconUrl === 'string' && a.iconUrl ? a.iconUrl : null),
+      machineId: String(m?.id || ''), machineName: String(m?.name || m?.app || ''),
+    };
+  };
+
   // THE MEMBER LIBRARY — THE SERVER FIRST (his rule, 2026-10-04: database-
   // as-truth). A workspace or tab the desktop wrote is on the server from its
   // next sync; a web-only member who never installed the desktop has their
@@ -1298,6 +1312,52 @@ export function buildContract(client, deps) {
     // handlers.ts) — the rows the desktop rail draws, with the `>_` + vendor
     // mark, in preload's cliSessionsList shape. No desktop → an empty list.
     cliSessionsList: async () => ({ ok: true, sessions: await desktopRead('cliSessions.list', 'sessions') }),
+
+    // ── THE WEB CUT (his order, 2026-10-05): the agent window's ⋮ menu reaches
+    // the ATTACHED DESKTOP — is one there, what it has installed, and an open
+    // ON it. The web shows nothing of the app itself: the desktop paints the
+    // panel and the web says "Opened on <machine>". No attach client, nothing
+    // attached, a machine that fails to answer → honest empties, never a throw.
+    attachStatus: async () => {
+      const attach = client.attach;
+      if (!attach || typeof attach.status !== 'function') return { attached: false, machines: [] };
+      try {
+        const st = await attach.status();
+        const machines = (Array.isArray(st?.machines) ? st.machines : [])
+          .map((m) => ({ id: String(m?.id || ''), name: String(m?.name || m?.app || '') }))
+          .filter((m) => !!m.id);
+        return { attached: !!st?.attached && machines.length > 0, ...(typeof st?.allowed === 'boolean' ? { allowed: st.allowed } : {}), machines };
+      } catch { return { attached: false, machines: [] }; }
+    },
+    // Each attached desktop's installed apps (`panelApps.list` over the relay —
+    // attach-handlers.ts), trimmed to what a menu row needs and tagged with the
+    // machine that holds it; the art is the row's own bytes, the marketplace
+    // icon, else its favicon through our origin (web-icons.js iconForRow).
+    desktopAppsList: async () => {
+      const attach = client.attach;
+      if (!attach || typeof attach.status !== 'function') return { ok: true, apps: [] };
+      try {
+        const st = await attach.status();
+        const machines = Array.isArray(st?.machines) ? st.machines : [];
+        const lists = await Promise.all(machines.map((m) =>
+          attach.dispatch('panelApps.list', {}, { machineId: m.id })
+            .then((r) => (Array.isArray(r?.apps) ? r.apps : []).map((a) => desktopAppRow(a, m)))
+            .catch(() => [])));
+        return { ok: true, apps: lists.flat().filter((a) => !!a) };
+      } catch (err) { return { ok: false, error: err?.message || String(err), apps: [] }; }
+    },
+    // Open one app ON the desktop (`panels.open {app}` — relay-handlers.ts
+    // reports the open only once the panel is live there).
+    desktopPanelOpen: async ({ app, machineId } = {}) => {
+      const attach = client.attach;
+      if (!attach || typeof attach.dispatch !== 'function') return { ok: false, error: 'no desktop attached' };
+      const slug = String(app || '').trim();
+      if (!slug) return { ok: false, error: 'desktopPanelOpen requires { app }' };
+      try {
+        const r = await attach.dispatch('panels.open', { app: slug }, machineId ? { machineId: String(machineId) } : undefined);
+        return { ok: true, app: String(r?.app || slug), name: String(r?.name || slug) };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
 
     // ── Settings → Devices (his order, 2026-10-04) ─────────────────────────────────
     // main/remote-control.ts's three IPC answers, off the SDK handle: the server's

@@ -420,7 +420,15 @@ void (async () => {
     // The launcher is UP when a page grid has rendered its icons. Wait until
     // it is present AND stable for ~10 frames so the first visible frame is
     // the settled command center, then lift.
-    const wall = document.querySelector(".echo-pages .echo-page-grid");
+    // THE WEB CUT (his order, 2026-10-05): the web boots no wall — its first
+    // settled frame is the AGENT on screen (the card placed, its composer
+    // visible), the same tell the solo panel's reveal waits for.
+    const web = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+    // (The agent itself rides in the body-level holder over the card, so the
+    // card and the composer are checked separately.)
+    const wall = web
+      ? (document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null)
+      : document.querySelector(".echo-pages .echo-page-grid");
     const up = !!wall && wall.getClientRects().length > 0;
     settled = up ? settled + 1 : 0;
     if (settled >= 10 || veilTries++ > 360) {

@@ -13,6 +13,8 @@
  * never left to silently no-op (his order, 2026-10-04).
  */
 
+import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS } from "./web-cut.js";
+
 interface GlyphhWebProbe { has?: (name: string) => boolean }
 
 /** The web target (the bridge stamps both the global and the html class). */
@@ -57,21 +59,32 @@ export async function copyText(text: string): Promise<boolean> {
 /** Settings sub-pages that are the DESKTOP's own: on web their nav rows +
  *  panels hide, a stale deep link lands on General, and a loader that still
  *  runs paints `desktopOnlyCard`. */
-/** Skills and tasks LEFT this set on 2026-10-04, drips and schedules the same
- *  day: the member library is database-as-truth, so the web lists, views and
- *  edits them from the server (web-contract.js). What still needs the machine
- *  — a plugin's Claude Code install, running a task or a schedule now, the
- *  runs on the desktop's clock, remote control — stays here or answers "runs
- *  on your desktop" per action. */
-export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote"]);
+/** Skills, tasks, drips and schedules left this set on 2026-10-04 (the
+ *  member library is database-as-truth, served by web-contract.js) and came
+ *  BACK on 2026-10-05 with the web cut below: the pages still work from the
+ *  server, but building is the desktop's job and the web no longer shows
+ *  them. The library doors in web-contract.js stay for the agent's tools. */
+/** THE WEB CUT (his order, 2026-10-05): "everything for building" leaves the
+ *  web too — the whole Build group (Skills, Agents, Apps, Tasks, plugins) and
+ *  the whole Customize group (Tabs, Workspaces, Drips, Schedules); the lists
+ *  are web-cut.ts's. A deep link to any of them lands on General
+ *  (navigation.ts settingsSubAlias). */
+export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS]);
 
 /** Hide every desktop-only settings row + panel on web (idempotent; the
- *  settings DOM is static in home.html, so this runs once at init). */
+ *  settings DOM is static in home.html, so this runs once at init) — and,
+ *  with the web cut, the Build / Customize group headers, the rail's doors
+ *  into the command center and those pages, and the settings rows that
+ *  govern surfaces the web no longer has (the dock, streamed panels). */
 export function hideDesktopOnlySubs(): void {
   if (!onWeb()) return;
   for (const sub of DESKTOP_ONLY_SUBS) {
     document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"], .settings-panel[data-sub="${sub}"]`)
       .forEach((n) => n.classList.add("hidden"));
+  }
+  for (const id of WEB_HIDDEN_NAV_GROUPS) document.getElementById(id)?.classList.add("hidden");
+  for (const sel of [...WEB_HIDDEN_RAIL, ...WEB_HIDDEN_SETTINGS_ROWS]) {
+    document.querySelectorAll<HTMLElement>(sel).forEach((n) => n.classList.add("hidden"));
   }
 }
 
