@@ -9,7 +9,7 @@ import {
   ARTIFACT_TABS, artifactKind, artifactRender, filterByTab, searchArtifacts, sortNewest, groupByMonth, monthLabel, editedLabel,
   canManage, SHARE_OPTIONS, shareLabel, isLocked, shareLinkOf,
   regionFromDrag, regionToRect, regionIsReal, MIN_REGION_PX, pinPoint, regionLabel,
-  editPrompt, startChatLine, threadText, commentAge, initialOf, orderThreads, pinNumbers,
+  editPrompt, startChatLine, artifactStandingLine, threadText, commentAge, initialOf, orderThreads, pinNumbers,
   type ArtifactMeta, type ArtifactComment,
 } from "../../src/renderer/help/artifact-rules.js";
 
@@ -132,15 +132,22 @@ describe("the drawn region — fractions of the frame", () => {
 });
 
 describe("the messages the panel sends the agent", () => {
-  it("'Send to Glyphh': the artifact, the area and the thread as one edit request", () => {
+  it("'Send to Glyphh': the artifact, the area and the thread as one edit request — the id never shows (his order, 2026-10-05)", () => {
     expect(editPrompt(mascots, { x: 0.12, y: 0.3, w: 0.4, h: 0.1 }, "make the eye bigger"))
-      .toBe("Edit the artifact New-session mascots (a1): in the selected area (12%,30%,40%,10%): make the eye bigger");
-    expect(editPrompt(mascots, null, "retitle it")).toBe("Edit the artifact New-session mascots (a1): retitle it");
+      .toBe("Edit the artifact New-session mascots: in the selected area (12%,30%,40%,10%): make the eye bigger");
+    expect(editPrompt(mascots, null, "retitle it")).toBe("Edit the artifact New-session mascots: retitle it");
     expect(editPrompt(mascots, null, "retitle it", ["and bold", " ", "and blue"]))
-      .toBe("Edit the artifact New-session mascots (a1): retitle it\n- and bold\n- and blue");
+      .toBe("Edit the artifact New-session mascots: retitle it\n- and bold\n- and blue");
+    expect(editPrompt(mascots, null, "x")).not.toContain("a1");
   });
-  it("'Start chat': the first context line of the session", () => {
-    expect(startChatLine(mascots)).toBe("Working from the artifact New-session mascots (a1)");
+  it("'Start chat': the first context line of the session, without the id", () => {
+    expect(startChatLine(mascots)).toBe("Working from the artifact New-session mascots");
+  });
+  it("the id rides as a hidden standing line; none without an artifact", () => {
+    expect(artifactStandingLine(mascots)).toContain("artifact id a1");
+    expect(artifactStandingLine(mascots)).toContain("New-session mascots");
+    expect(artifactStandingLine(null)).toBe("");
+    expect(artifactStandingLine({ id: "", name: "x" })).toBe("");
   });
   it("the thread's text: the opening line and the replies, blanks dropped", () => {
     expect(threadText({ text: "a", replies: [{ text: " " } as ArtifactComment, { text: "b" } as ArtifactComment] })).toEqual(["a", "b"]);

@@ -221,12 +221,22 @@ export function editPrompt(a: Pick<ArtifactMeta, "id" | "name">, region: Comment
   const body = String(text || "").trim();
   const more = replies.map((r) => String(r || "").trim()).filter(Boolean);
   const tail = more.length ? `\n${more.map((r) => `- ${r}`).join("\n")}` : "";
-  return `Edit the artifact ${a.name} (${a.id}):${where} ${body}${tail}`;
+  return `Edit the artifact ${a.name}:${where} ${body}${tail}`;
 }
 
 /** "Start chat": the first context line of the session the viewer opens. */
 export function startChatLine(a: Pick<ArtifactMeta, "id" | "name">): string {
-  return `Working from the artifact ${a.name} (${a.id})`;
+  return `Working from the artifact ${a.name}`;
+}
+
+/** THE ARTIFACT ID IS HIDDEN CONTEXT (his order, 2026-10-05: "no need to put
+ *  the id in the chat… can't that be part of the prompt but hidden from the
+ *  user?"). The visible message names the artifact; this standing line rides
+ *  in the turn's hidden preamble (code.ts steer) so the agent knows which
+ *  record to read or update. '' when the session has no artifact in hand. */
+export function artifactStandingLine(ref: { id: string; name: string } | null | undefined): string {
+  if (!ref || !ref.id) return "";
+  return `The artifact in hand is "${ref.name}" — artifact id ${ref.id}. Read it with artifact_read and apply edits IN PLACE with artifact_publish passing id=${ref.id}; never create a new artifact for an edit, and never show the id to the user.`;
 }
 
 /** The thread's whole text, opening line and replies, for the Send checkbox's preview. */

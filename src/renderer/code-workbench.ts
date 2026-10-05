@@ -5847,7 +5847,8 @@ async function init(): Promise<void> {
      *  composer and goes — on the current session, or a fresh one first.
      *  The instanced desktop hands the prompt to a panel with send: true;
      *  the in-document agent fills the composer and presses Send. */
-    (window as unknown as { __wbSendToAgent?: (text: string, opts?: { newSession?: boolean }) => void }).__wbSendToAgent = (text: string, opts?: { newSession?: boolean }) => {
+    type SendToAgentOpts = { newSession?: boolean; artifact?: { id: string; name: string } };
+    (window as unknown as { __wbSendToAgent?: (text: string, opts?: SendToAgentOpts) => void }).__wbSendToAgent = (text: string, opts?: SendToAgentOpts) => {
       if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "prompt", text, send: true }); return; }
       openAgentForLoop(GLYPHH_LOOP_ID);
       if (opts?.newSession) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
@@ -5856,6 +5857,10 @@ async function init(): Promise<void> {
         const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
         const send = document.getElementById("code-send") as HTMLButtonElement | null;
         if (!ta || !send || ta.disabled) { if (tries++ < 40) window.setTimeout(go, 100); return; }
+        // THE ARTIFACT IN HAND rides the session's hidden steer, not the
+        // visible message (his order, 2026-10-05) — named on the session the
+        // send lands in, right before it types.
+        if (opts?.artifact) (window as unknown as { __glyphhSetArtifactRef?: (r: { id: string; name: string }) => void }).__glyphhSetArtifactRef?.(opts.artifact);
         ta.value = text;
         ta.dispatchEvent(new Event("input", { bubbles: true }));
         send.click();

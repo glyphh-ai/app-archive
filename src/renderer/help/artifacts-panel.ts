@@ -61,7 +61,7 @@ const bridge = (): ArtifactsBridge => ((window as unknown as { glyphh?: Artifact
 
 /** The doors into the agent (code-workbench.ts). */
 interface AgentDoors {
-  __wbSendToAgent?: (text: string, opts?: { newSession?: boolean }) => void;
+  __wbSendToAgent?: (text: string, opts?: { newSession?: boolean; artifact?: { id: string; name: string } }) => void;
 }
 const doors = (): AgentDoors => window as unknown as AgentDoors;
 
@@ -370,6 +370,25 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   let revoke: (() => void) | null = null;
   let threads: ArtifactComment[] = [];
   let commentMode = false;
+  /** THE MINI CHAT (his order, 2026-10-05): "Send to Glyphh" never leaves
+   *  the artifact. The comment is saved, the prompt goes through the seated
+   *  agent (the turn lands on the main thread as any turn does), and the
+   *  reply paints back into the thread's pane as a Glyphh line — a spinner
+   *  while it works. Replies are kept per thread while the panel is open. */
+  const agentReplies = new Map<string, Array<{ text: string; at: number; stopped: boolean }>>();
+  const agentBusy = new Set<string>();
+  const onTurnFinished = (ev: Event): void => {
+    const d = (ev as CustomEvent<{ chatId: string; text: string; stopped: boolean }>).detail;
+    const waiting = [...agentBusy];
+    if (!waiting.length) return;
+    const id = waiting[waiting.length - 1];
+    agentBusy.delete(id);
+    const list = agentReplies.get(id) ?? [];
+    list.push({ text: d?.text || "", at: Date.now(), stopped: !!d?.stopped || !d?.text });
+    agentReplies.set(id, list);
+    paintAgentExchange(id);
+  };
+  document.addEventListener("glyphh-agent:turn-finished", onTurnFinished);
   let activeThread: string | null = null;
 
   function paintViewerHead(): void {
@@ -529,13 +548,45 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     return row;
   }
 
-  function sendToAgent(a: ArtifactMeta, region: CommentRegion | null, lines: string[], note: HTMLElement): void {
+  function sendToAgent(a: ArtifactMeta, threadId: string, region: CommentRegion | null, lines: string[]): void {
     const send = doors().__wbSendToAgent;
     if (!send) { toast("Open the agent to send this", { kind: "error" }); return; }
     const [first, ...rest] = lines;
-    send(editPrompt(a, region, first || "", rest));
-    note.classList.remove("hidden");
-    opts.onSentToAgent?.();
+    agentBusy.add(threadId);
+    paintAgentExchange(threadId);
+    send(editPrompt(a, region, first || "", rest), { artifact: { id: a.id, name: a.name } });
+  }
+
+  /** The thread pane's exchange with Glyphh: every reply so far as a Glyphh
+   *  line, then a one-line spinner while a turn is running. Painted into the
+   *  open pane for that thread, if any. */
+  function paintAgentExchange(threadId: string): void {
+    const pop = stage.querySelector<HTMLElement>(`.artp-pop[data-thread="${CSS.escape(threadId)}"]`);
+    if (!pop) return;
+    const host = pop.querySelector<HTMLElement>(".artp-pop-agent");
+    if (!host) return;
+    host.innerHTML = "";
+    for (const r of agentReplies.get(threadId) ?? []) {
+      const m = el("div", "artp-msg artp-msg-agent");
+      const top = el("div", "artp-msg-top");
+      const av = el("span", "artp-avatar artp-avatar-glyphh", "G");
+      const who = el("span", "artp-msg-who");
+      who.appendChild(el("strong", "", "Glyphh"));
+      who.appendChild(el("small", "", "")).textContent = commentAge(new Date(r.at).toISOString());
+      top.append(av, who);
+      m.appendChild(top);
+      m.appendChild(el("div", "artp-msg-text", "")).textContent = r.stopped && !r.text ? "Glyphh stopped before replying." : r.text;
+      host.appendChild(m);
+    }
+    if (agentBusy.has(threadId)) {
+      const line = el("div", "artp-pop-working");
+      line.appendChild(el("span", "artp-spin"));
+      line.appendChild(el("span", "", "Glyphh is working…"));
+      const openConv = btn("artp-link", "Open conversation");
+      openConv.addEventListener("click", () => opts.onSentToAgent?.());
+      line.appendChild(openConv);
+      host.appendChild(line);
+    }
   }
 
   function threadPopover(t: ArtifactComment, anchor: { x: number; y: number }): void {
@@ -587,12 +638,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     line(t, true);
     for (const r of t.replies ?? []) line(r, false);
     pop.appendChild(msgs);
-    const note = el("div", "artp-pop-note hidden", "");
-    note.append("Glyphh is working on it in the conversation. ");
-    const openConv = btn("artp-link", "Open conversation");
-    openConv.addEventListener("click", () => opts.onSentToAgent?.());
-    note.appendChild(openConv);
-    pop.appendChild(note);
+    pop.appendChild(el("div", "artp-pop-agent"));
     const reply = document.createElement("textarea");
     reply.className = "artp-pop-input";
     reply.rows = 2;
@@ -613,20 +659,29 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
         line(t, true);
         for (const x of t.replies) line(x, false);
       }
-      if (row.wantsAgent()) sendToAgent(a, t.region, threadText(t), note);
+      if (row.wantsAgent()) sendToAgent(a, t.id, t.region, threadText(t));
     };
     reply.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); void submit(); } });
     stage.appendChild(pop);
+    paintAgentExchange(t.id);
     placePopover(pop, anchor);
     reply.focus();
   }
 
-  function openThread(id: string, pin: HTMLElement): void {
+  /** Where a thread's pane opens: beside its pin (his report, 2026-10-05: it
+   *  opened at the page's top-left — paintPins had replaced the pin element,
+   *  so the detached one measured 0,0). The region decides, not the element. */
+  function pinAnchor(t: ArtifactComment): { x: number; y: number } {
+    const { w, h } = stageSize();
+    const p = pinPoint(t.region);
+    return { x: p.x * w, y: p.y * h };
+  }
+  function openThread(id: string, _pin: HTMLElement): void {
     activeThread = id;
     paintPins();
     const t = threads.find((x) => x.id === id);
     if (!t) return;
-    threadPopover(t, { x: pin.offsetLeft, y: pin.offsetTop });
+    threadPopover(t, pinAnchor(t));
   }
 
   /** A fresh region's pin + composer: the first comment of a new thread. */
@@ -669,9 +724,8 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
       pop.remove();
       activeThread = r.data.id;
       paintPins();
-      const live = pins.querySelector<HTMLElement>(`.artp-pin[data-thread="${CSS.escape(r.data.id)}"]`);
-      if (live) threadPopover(r.data, { x: live.offsetLeft, y: live.offsetTop });
-      if (wants) sendToAgent(a, region, [text], stage.querySelector<HTMLElement>(".artp-pop .artp-pop-note") ?? note);
+      threadPopover(r.data, pinAnchor(r.data));
+      if (wants) sendToAgent(a, r.data.id, region, [text]);
     };
     ta.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); void submit(); }
@@ -733,7 +787,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     if (!current) return;
     const send = doors().__wbSendToAgent;
     if (!send) { toast("Open the agent to start a chat", { kind: "error" }); return; }
-    send(startChatLine(current), { newSession: true });
+    send(startChatLine(current), { newSession: true, artifact: { id: current.id, name: current.name } });
     opts.onSentToAgent?.();
   });
   shareBtn.addEventListener("click", () => { if (current) openSharePopover(shareBtn, current, (m) => replaceRow(m)); });

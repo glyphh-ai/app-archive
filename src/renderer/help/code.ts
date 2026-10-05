@@ -64,6 +64,7 @@ import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
 import { pickGreeting } from "./landing-greeting.js";
 import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, type StoredOutputFormat } from "./output-format.js";
+import { artifactStandingLine } from "./artifact-rules.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -127,6 +128,10 @@ interface CodeChat {
    *  Absent = Auto. Artifact adds one standing line to every later turn
    *  (output-format.ts). Local to this surface, like `permission`. */
   outputFormat?: StoredOutputFormat;
+  /** THE ARTIFACT IN HAND (his order, 2026-10-05): set by the artifact
+   *  viewer's "Start chat" / "Send to Glyphh"; its id rides the hidden steer
+   *  (artifact-rules.ts artifactStandingLine), never the visible message. */
+  artifactRef?: { id: string; name: string };
 }
 
 /** THE TWO TYPES. `modeOf` is the single choke point every call site reads:
@@ -4672,7 +4677,7 @@ function send(): void {
   // standing line beside the brief — the same hidden preamble both run paths
   // carry (main's glyphhRun `steer`, the remote prompt's prefix), never the
   // message shown in the thread. Auto adds nothing.
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat)].filter(Boolean).join("\n\n");
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat), artifactStandingLine(c.artifactRef)].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -4993,6 +4998,11 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   if (chat && text && !stopped) void generateSessionTitle(chat);
   markSettled(run?.runId ?? null);   // its late frames belong to nobody
   liveRuns.delete(chatId);
+  // THE TURN'S END IS AN EVENT (his order, 2026-10-05): the artifact viewer's
+  // comment pane runs a mini exchange with the agent without leaving the
+  // artifact — it sends through the seated agent and paints the reply from
+  // here. Detail: the session, the reply text, whether it was stopped.
+  document.dispatchEvent(new CustomEvent("glyphh-agent:turn-finished", { detail: { chatId, text, stopped } }));
   subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
@@ -7292,6 +7302,15 @@ export function initCode(): void {
     go();
   });
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
+  // The artifact viewer names the artifact in hand for the CURRENT session
+  // (code-workbench.ts __wbSendToAgent passes it through before it types).
+  (window as unknown as { __glyphhSetArtifactRef?: (ref: { id: string; name: string } | null) => void }).__glyphhSetArtifactRef = (ref) => {
+    const c = current();
+    if (!c) return;
+    if (ref && ref.id) c.artifactRef = { id: String(ref.id), name: String(ref.name || "") };
+    else delete c.artifactRef;
+    void saveStore();
+  };
   // THE SHELL'S ORDERS (agent-panel:command) — this panel is one instance
   // among many; the host document routes rail clicks and Home sends here.
   panelCommandHandler = (cmd) => {
