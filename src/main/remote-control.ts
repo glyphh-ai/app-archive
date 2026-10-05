@@ -54,6 +54,11 @@ const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
   "layouts.list", "layouts.get", "panelApps.list",
+  // THE HOUSE APPS' READ DOOR (his order, 2026-10-05): the web's own Design /
+  // Slides / Images / Video / Audio / Drive panels read this machine's
+  // app-data through it — read-only, house apps only, fenced in
+  // house-doors.ts (app data is the app's, not a granted folder).
+  "app.call",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME

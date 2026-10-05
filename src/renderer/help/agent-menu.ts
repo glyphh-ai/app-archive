@@ -27,10 +27,15 @@
  *                  connected machine"): the rows of its `panelApps.list` whose
  *                  kind is "glyphh" (an installed bundle — apps-store.ts /
  *                  org-apps.ts toRow); URL tabs, native apps, vendor marks and
- *                  the system rows are out. A click opens the app ON THE
- *                  DESKTOP (`panels.open {app}`) and the web says "Opened on
- *                  <machine>". No desktop → the section stays, disabled, with
- *                  one line and a link to Settings → Devices.
+ *                  the system rows are out. A click on a HOUSE row — a tab
+ *                  whose launchConfig.tool names a built-in work panel
+ *                  (Design, Slides, Images, Video, Audio, Drive) — opens the
+ *                  web's OWN panel, filled over the relay (his order,
+ *                  2026-10-05; help/house-relay.ts, appRowOpen); any other
+ *                  Glyphh app opens ON THE DESKTOP (`panels.open {app}`) and
+ *                  the web says "Opened on <machine>". No desktop → the
+ *                  section stays, disabled, with one line and a link to
+ *                  Settings → Devices.
  *   Agents / CLIs  WEB ONLY, COLLAPSED on every open — the CLI agents as
  *                  built: a click opens a cloud terminal running that CLI on
  *                  the worker; with a desktop attached, its live CLI sessions
@@ -41,6 +46,7 @@
  * pins the behaviours.
  */
 import { WEB_TOOL_VIEWS } from "./web-cut.js";
+import { houseViewOf } from "./house-relay.js";
 
 export type MenuSurface = "web" | "desktop";
 export type MenuMode = "work" | "code";
@@ -94,6 +100,8 @@ export interface MenuAppRow {
   kind?: string;
   /** The art the web can show: a data URL, the marketplace icon, a proxied favicon, or nothing. */
   icon?: string | null;
+  /** A house app's built-in work panel (the tab's launchConfig.tool: "gdesign", "gimage", …); absent otherwise. */
+  tool?: string | null;
   machineId: string;
   machineName: string;
 }
@@ -187,6 +195,16 @@ export function glyphhAppsOnly(rows: ReadonlyArray<MenuAppRow>): MenuAppRow[] {
     out.push(r);
   }
   return out;
+}
+
+/** WHERE AN APPS ROW OPENS (his order, 2026-10-05): on the web a house row —
+ *  a Glyphh app whose tool names a house panel — opens the web's own panel
+ *  (__wbOpenTool(view)), its data pulled through the relay; every other row,
+ *  and every row on the desktop, keeps the open-on-desktop door. */
+export type AppRowOpen = { open: "web-panel"; view: string } | { open: "desktop" };
+export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool">, surface: MenuSurface): AppRowOpen {
+  const view = surface === "web" && row.kind === GLYPHH_APP_KIND ? houseViewOf(row.tool) : null;
+  return view ? { open: "web-panel", view } : { open: "desktop" };
 }
 
 /** The expandable head's text: "Apps · 3", "Agents / CLIs · 6". */

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  agentMenuModel, toolViewsFor, toolRowsFor, sessionRowsFor, openedOnLine, glyphhAppsOnly, sectionHeadLabel,
+  agentMenuModel, appRowOpen, toolViewsFor, toolRowsFor, sessionRowsFor, openedOnLine, glyphhAppsOnly, sectionHeadLabel,
   menuFoldState, toggleFold, isExpanded, cliFoldKey,
   CONNECT_DESKTOP_LINE, CONNECT_DESKTOP_LINK, NO_APPS_LINE, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL,
   CLI_SESSIONS_PER_CLI, DESKTOP_CODE_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
@@ -234,5 +234,40 @@ describe("the toast", () => {
   it("names the machine", () => {
     expect(openedOnLine("Chris's MacBook")).toBe("Opened on Chris's MacBook");
     expect(openedOnLine("")).toBe("Opened on your desktop");
+  });
+});
+
+describe("WHERE AN APPS ROW OPENS (his order, 2026-10-05: Apps → Design opens the web panel, pulled through the relay)", () => {
+  const house = { slug: "design", name: "Design", kind: "glyphh", tool: "gdesign" };
+  const bundle = { slug: "crm", name: "CRM", kind: "glyphh" };
+
+  it("on the web a house row — a Glyphh app whose tool names a house panel — opens the web's OWN panel", () => {
+    expect(appRowOpen(house, "web")).toEqual({ open: "web-panel", view: "gdesign" });
+    for (const [tool, view] of [["gpoint", "gpoint"], ["gimage", "gimage"], ["gvideo", "gvideo"], ["gsound", "gsound"], ["gdrive", "gdrive"]]) {
+      expect(appRowOpen({ kind: "glyphh", tool }, "web")).toEqual({ open: "web-panel", view });
+    }
+  });
+
+  it("a Glyphh app without a house tool keeps today's open-on-desktop door", () => {
+    expect(appRowOpen(bundle, "web")).toEqual({ open: "desktop" });
+    expect(appRowOpen({ ...bundle, tool: null }, "web")).toEqual({ open: "desktop" });
+    // A tool the web cannot host (the streamed Browser) is not a house panel either.
+    expect(appRowOpen({ kind: "glyphh", tool: "preview" }, "web")).toEqual({ open: "desktop" });
+  });
+
+  it("only a Glyphh bundle counts — a URL tab or native app with a tool field is still the desktop's", () => {
+    expect(appRowOpen({ kind: "web", tool: "gdesign" }, "web")).toEqual({ open: "desktop" });
+    expect(appRowOpen({ kind: "native", tool: "gdesign" }, "web")).toEqual({ open: "desktop" });
+  });
+
+  it("the desktop never routes through this: its rows open on the desktop as before", () => {
+    expect(appRowOpen(house, "desktop")).toEqual({ open: "desktop" });
+  });
+
+  it("the model carries the row's tool through to the painter", () => {
+    const m = agentMenuModel({ surface: "web", mode: "work", session: null, machines: [MAC], apps: [{ ...house, machineId: "m1", machineName: MAC.name }, ...apps] });
+    const rows = section(m, "apps")!.rows;
+    expect(rows.find((r) => r.slug === "design")?.tool).toBe("gdesign");
+    expect(rows.find((r) => r.slug === "crm")?.tool).toBeUndefined();
   });
 });

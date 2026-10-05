@@ -4,9 +4,11 @@
  * 2026-10-05: ONE menu on the agent's top row, never an empty dropdown).
  *
  * WEB: the Apps rows come off the attached desktop (web-contract.js
- * desktopAppsList → `panelApps.list` over the relay) and open THERE
- * (desktopPanelOpen → `panels.open {app}`); the web only toasts "Opened on
- * <machine>". The CLI rows open the worker's terminal through the
+ * desktopAppsList → `panelApps.list` over the relay). A HOUSE row (Design,
+ * Slides, Images, Video, Audio, Drive — agent-menu.ts appRowOpen) opens the
+ * web's OWN panel through __wbOpenTool, filled over the relay (his order,
+ * 2026-10-05); any other Glyphh app opens THERE (desktopPanelOpen →
+ * `panels.open {app}`) and the web only toasts "Opened on <machine>". The CLI rows open the worker's terminal through the
  * workbench's own door (__wbOpenAgentCli — a cloud session's CLI runs on its
  * pod); a desktop CLI session under them resumes on the desktop through the
  * rail's own open (help/code.ts sessOpen, handed in).
@@ -25,7 +27,7 @@
 import { hostHas, onWeb } from "./web-surface.js";
 import { toast } from "./toast.js";
 import {
-  agentMenuModel, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
+  agentMenuModel, appRowOpen, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
   type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction,
 } from "./agent-menu.js";
 
@@ -167,8 +169,15 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
       const open = fold(s.kind, s.label, s.count);
       for (const a of s.rows) {
         const b = under(row(appIcon(a), a.name, "wam-app wam-sub"), open);
-        b.title = `Open ${a.name} on ${a.machineName || "your desktop"}`;
-        b.addEventListener("click", () => { close(); void openOnDesktop(a); });
+        const where = appRowOpen(a, m.surface);
+        b.title = where.open === "web-panel"
+          ? `Open ${a.name} here — its files come from ${a.machineName || "your desktop"}`
+          : `Open ${a.name} on ${a.machineName || "your desktop"}`;
+        b.addEventListener("click", () => {
+          close();
+          if (where.open === "web-panel") { shell().__wbOpenTool?.(where.view); return; }
+          void openOnDesktop(a);
+        });
         menu.appendChild(b);
       }
       if (s.note) {

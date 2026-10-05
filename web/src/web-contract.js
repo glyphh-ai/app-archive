@@ -49,6 +49,8 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 // tabs, skills, agents and tasks read the server FIRST and write to it; the
 // desktop pulls what the web wrote on its next sync (member-library-web.js).
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
+// THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
+import { createHouseRelay } from './house-relay-web.js';
 
 /**
  * The canonical EMPTY shape per contract type — the value a cloud read resolves to
@@ -180,15 +182,20 @@ export function buildContract(client, deps) {
    *  can open, each with its KIND (shared/member-library.ts appRowKind:
    *  "glyphh" = an installed Glyphh app bundle, "web" = a URL tab, "native");
    *  the system / navigation rows drop here. The agent menu lists ONLY the
-   *  "glyphh" rows (his review, 2026-10-05; help/agent-menu.ts glyphhAppsOnly). */
+   *  "glyphh" rows (his review, 2026-10-05; help/agent-menu.ts glyphhAppsOnly).
+   *  `tool` is a house app's built-in panel (the tab's launchConfig.tool —
+   *  gdesign, gimage, …): the row then opens the web's own panel, filled over
+   *  the relay (his order, 2026-10-05; help/agent-menu.ts appRowOpen). */
   const desktopAppRow = (a, m) => {
     const kind = appRowKind(a);
     if (!kind) return null;
     const slug = String(a.slug || a.id || '').trim();
     if (!slug) return null;
+    const tool = a.launchConfig && typeof a.launchConfig.tool === 'string' ? a.launchConfig.tool : null;
     return {
       slug, name: String(a.name || slug), kind,
       icon: iconForRow(a) || (typeof a.iconUrl === 'string' && a.iconUrl ? a.iconUrl : null),
+      ...(tool ? { tool } : {}),
       machineId: String(m?.id || ''), machineName: String(m?.name || m?.app || ''),
     };
   };
@@ -202,6 +209,7 @@ export function buildContract(client, deps) {
   // that has not synced yet still shows what it has.
   const library = buildMemberLibrary(client, { desktopRead });
   const { layoutsList, panelAppsList } = library;
+  const house = createHouseRelay({ client });
 
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
@@ -343,30 +351,13 @@ export function buildContract(client, deps) {
     // browser tab cannot do — so `glyphhWeb.has('setBackgroundMode')` is false
     // and Settings → General hides the row (help/settings.ts).
 
-    // ── Glyphh Office · Slides (OfficeSlidesClient) ──────────────────────────────
-    // Same wire shapes as the desktop preload, so the Slides panel (wb-gpoint)
-    // is surface-agnostic: the org's R2 library through the SDK on every surface.
-    gpointList: async () => {
-      try {
-        const decks = (await client.officeSlides.list()).map((m) => ({
-          file: m.file, title: m.title, slides: m.slides,
-          mtime: Date.parse(m.updatedAt) || 0, size: m.sizeBytes,
-        }));
-        return { ok: true, decks };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err), decks: [] }; }
-    },
-    gpointRead: async (file) => {
-      try { return { ok: true, content: (await client.officeSlides.get(file)).html }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gpointDelete: async (file) => {
-      try { await client.officeSlides.delete(file); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gpointWrite: async (file, html) => {
-      try { await client.officeSlides.put(file, html); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
+    // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio, Drive ──────────────
+    // (his order, 2026-10-05): the web's own panels, their files pulled off the
+    // attached desktop over the relay (`app.call` — house-relay-web.js). These
+    // used to read the SERVER's designs / officeSlides / media / officeDrive
+    // APIs, the wrong source now that the desktop is the home of apps. Same
+    // wire shapes as the desktop preload; writes answer the one honest line.
+    ...house,
 
     // ── Glyphh Office · Docs (OfficeDocsClient) — same wire shapes as preload ──
     gdocList: async () => {
@@ -423,46 +414,6 @@ export function buildContract(client, deps) {
       try { await client.officeSheets.delete(file); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
-    designList: async () => {
-      try {
-        const designs = (await client.designs.list()).map((m) => ({
-          file: m.file, title: m.title, size: m.sizeBytes, mtime: Date.parse(m.updatedAt) || 0,
-        }));
-        return { ok: true, designs };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err), designs: [] }; }
-    },
-    designRead: async (file) => {
-      try { const d = await client.designs.get(file); return { ok: true, title: d.title, document: d.document }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    designWrite: async (file, document) => {
-      try { const m = await client.designs.put(file, document); return { ok: true, file: m.file, title: m.title }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    designDelete: async (file) => {
-      try { await client.designs.delete(file); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    designAssetUpload: async (file, input) => {
-      try { return { ok: true, asset: await client.designs.uploadAsset(file, input) }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    designAssetUrl: async (file, assetId) => {
-      try {
-        const d = await client.designs.get(file);
-        const entry = (d.document.assets ?? []).find((x) => x.id === assetId);
-        if (!entry) throw new Error("asset not found");
-        const bytes = await client.designs.assetBytes(file, assetId);
-        let bin = "";
-        const arr = new Uint8Array(bytes);
-        for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
-        return { ok: true, url: `data:${entry.contentType};base64,${btoa(bin)}` };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    designAssetDelete: async (file, assetId) => {
-      try { await client.designs.deleteAsset(file, assetId); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
     memoryBrowse: async (threadId) => {
       try { const r = await client.stator.browse(threadId || undefined); return { ok: true, ...r }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), facts: [], turns: [], window: [] }; }
@@ -485,31 +436,6 @@ export function buildContract(client, deps) {
       try { const r = await client.stator.amend(input); return { ok: true, written: r.written }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
-    mediaList: async (kind, q) => {
-      try { return { ok: true, assets: await client.media.list(kind || undefined, q || undefined) }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), assets: [] }; }
-    },
-    mediaUrl: async (id) => {
-      try {
-        const r = await client.media.playbackUrl(id);
-        if (r.url) return { ok: true, url: r.url };
-        return { ok: false, error: "no direct URL on this surface" };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaDelete: async (id) => {
-      try { await client.media.delete(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaGenerate: async (input) => {
-      try { const r = await client.media.generate(input); return { ok: true, job: r.job, outputKind: r.outputKind }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaJob: async (id) => {
-      try { return { ok: true, job: await client.media.job(id) }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    // Web upload rides the panel's own file input in a later pass — explicit gap.
-    mediaUploadPick: async () => ({ ok: false, error: "uploads ride the desktop for now" }),
     musicArtists: async () => {
       try { return { ok: true, artists: await client.music.artists() }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), artists: [] }; }
@@ -567,53 +493,6 @@ export function buildContract(client, deps) {
     },
     mediaProjectGenerate: async (id, input) => {
       try { const r = await client.media.generateProject(id, input ?? {}); return { ok: true, project: r.project, job: r.job }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaUploadBytes: async (input) => {
-      try {
-        const bytes = new Uint8Array(input.bytes);
-        const ticket = await client.media.uploadTicket({ kind: input.kind, mime: input.mime, title: input.title, sizeBytes: bytes.byteLength, ...(input.meta ? { meta: input.meta } : {}) });
-        if (ticket.url) {
-          const res = await fetch(ticket.url, { method: "PUT", headers: { "content-type": input.mime }, body: bytes });
-          if (!res.ok) throw new Error(`presigned upload failed: ${res.status}`);
-        } else {
-          await client.media.putBytes(ticket.asset.id, bytes);
-        }
-        const done = await client.media.finalize(ticket.asset.id);
-        return { ok: true, id: done.id, title: done.title };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaSave: async (id) => {
-      try {
-        const asset = await client.media.get(id);
-        const bytes = await client.media.bytes(id);
-        const blobUrl = URL.createObjectURL(new Blob([bytes], { type: asset.mime }));
-        const a2 = document.createElement("a");
-        a2.href = blobUrl;
-        a2.download = (asset.title || "media").replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-");
-        a2.click();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
-        return { ok: true };
-      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gdriveList: async (q) => {
-      try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }
-    },
-    gdriveMkdir: async (name, parentId) => {
-      try { return { ok: true, folder: await client.officeDrive.createFolder(name, parentId ?? null) }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gdriveMove: async (kind, file, folderId) => {
-      try { await client.officeDrive.move(kind, file, folderId ?? null); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gdriveFolderRename: async (id, name) => {
-      try { await client.officeDrive.updateFolder(id, { name }); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    gdriveFolderDelete: async (id) => {
-      try { await client.officeDrive.deleteFolder(id); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
     gdocTemplates: async () => {
