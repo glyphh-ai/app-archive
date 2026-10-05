@@ -223,7 +223,11 @@ const CHECK = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" strok
 const PLUS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 
 function iconFor(e: Entry, cls = "conn2-icon"): string {
-  if (e.conn) return `<span class="${cls}">${appIconInner({ connection: { accountId: e.conn.accountId, pipedreamSlug: e.conn.appSlug } }, e.name, "conn2-icon-initial")}</span>`;
+  // A connected row wears PIPEDREAM'S icon (his order, 2026-10-05): the
+  // directory's row for the slug when it is loaded, else the connected-icon
+  // cache (app-icon.ts) — the same art as the Discover cards, never the
+  // domain favicon's generic G.
+  if (e.conn) return `<span class="${cls}">${appIconInner({ iconUrl: e.icon ?? null, connection: { accountId: e.conn.accountId, pipedreamSlug: e.conn.appSlug } }, e.name, "conn2-icon-initial")}</span>`;
   if (e.icon) return `<span class="${cls}"><img src="${escapeHtml(e.icon)}" alt="" /></span>`;
   return `<span class="${cls}"><span class="conn2-icon-initial">${escapeHtml((e.name || "?").charAt(0).toUpperCase())}</span></span>`;
 }
@@ -255,9 +259,10 @@ function render(): void {
   const host = el("conn2-body");
   if (!host) return;
   document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.classList.toggle("active", b.dataset.conn2Tab === tab));
+  noteDirSearchFocus();
   host.textContent = "";
   if (!pdAllowed) host.appendChild(lockedNote());
-  if (tab === "discover") { renderDiscover(host); return; }
+  if (tab === "discover") { renderDiscover(host); refocusDirSearch(); return; }
 
   const q = query.trim().toLowerCase();
   const shown = entries
@@ -382,7 +387,7 @@ export async function renderConnectionTable(
           desc: c.appName || "", type: "Web",
           badge: c.org ? (c.shared ? (c.connected === false ? "Needs your admin" : "Shared") : "Org") : "",
           // A shared account is only usable once an admin has signed into it.
-          connected: c.connected !== false, enabled: true, icon: null, conn: c,
+          connected: c.connected !== false, enabled: true, icon: catalog.find((a) => a.id === c.appSlug)?.icon ?? null, conn: c,
         }
       : {
           key: `dep:${dep.app}`, kind: "pipedream", name: pretty(dep.app), desc: "", type: "Web",
@@ -573,28 +578,52 @@ function dirCard(a: CatalogApp, have: Set<string>): HTMLElement {
 
 /** The directory bar under the breadcrumb: search on the left, "Filter: <x>"
  *  on the right opening the category list. */
+/** ONE BAR, KEPT ACROSS RE-RENDERS (his report, 2026-10-05: "as the input
+ *  refreshes it clears / breaks the user typing"). Every render used to build
+ *  a fresh input and seed it with the query the results were fetched for, so
+ *  whatever was typed after the fetch went out was wiped and the caret lost.
+ *  The input element is now created once and re-attached; while it is being
+ *  typed in its value is never touched, and only the latest onQuery fires. */
+let dirBarEl: HTMLElement | null = null;
+let dirBarOnQuery: (q: string) => void = () => {};
+let dirBarWasFocused = false;
 function dirBar(value: string, onQuery: (q: string) => void, filterLabel: string): HTMLElement {
-  const bar = document.createElement("div");
-  bar.className = "conn2-dir-bar";
-  bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"><span class="conn2-muted">Filter:</span> <span></span></button>`;
-  const input = bar.querySelector("input") as HTMLInputElement;
-  input.value = value;
-  let t: ReturnType<typeof setTimeout> | null = null;
-  input.addEventListener("input", () => { if (t) clearTimeout(t); t = setTimeout(() => onQuery(input.value.trim()), 250); });
-  const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
-  (filter.querySelector("span:last-child") as HTMLElement).textContent = filterLabel;
-  filter.addEventListener("click", () => {
-    if (!categoriesLoaded) { void loadCategories().then(() => filter.click()); return; }
-    openMenu(filter, [
-      { label: "All connectors", onClick: () => void openCategory(null) },
-      ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
-    ]);
-  });
-  return bar;
+  dirBarOnQuery = onQuery;
+  if (!dirBarEl) {
+    const bar = document.createElement("div");
+    bar.className = "conn2-dir-bar";
+    bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"><span class="conn2-muted">Filter:</span> <span></span></button>`;
+    const input = bar.querySelector("input") as HTMLInputElement;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    input.addEventListener("input", () => { if (t) clearTimeout(t); t = setTimeout(() => dirBarOnQuery(input.value.trim()), 250); });
+    const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
+    filter.addEventListener("click", () => {
+      if (!categoriesLoaded) { void loadCategories().then(() => filter.click()); return; }
+      openMenu(filter, [
+        { label: "All connectors", onClick: () => void openCategory(null) },
+        ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
+      ]);
+    });
+    dirBarEl = bar;
+  }
+  const input = dirBarEl.querySelector("input") as HTMLInputElement;
+  // A navigation (tab, category) seeds the box; a render while typing never does.
+  if (!dirBarWasFocused && document.activeElement !== input) input.value = value;
+  (dirBarEl.querySelector(".conn2-filter > span:last-child") as HTMLElement).textContent = filterLabel;
+  return dirBarEl;
+}
+/** Called before a render empties the host: remember whether the box had
+ *  focus, so it is restored (caret at the end) once re-attached — and never
+ *  stolen when it did not. */
+function noteDirSearchFocus(): void {
+  const input = dirBarEl?.querySelector("input") ?? null;
+  dirBarWasFocused = !!input && document.activeElement === input;
 }
 function refocusDirSearch(): void {
-  const again = document.querySelector<HTMLInputElement>(".conn2-dir-search input");
-  if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+  if (!dirBarWasFocused) return;
+  const again = dirBarEl?.querySelector<HTMLInputElement>("input") ?? null;
+  if (again && again.isConnected) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+  dirBarWasFocused = false;
 }
 
 /** A category page: breadcrumb, its own search with the Filter dropdown, the

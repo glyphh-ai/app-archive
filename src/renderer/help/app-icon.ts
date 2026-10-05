@@ -155,13 +155,21 @@ export function appIconUrl(app: IconApp): string {
   if (app.url && !isInternal) {
     try { resolved = resolverUrlFor(new URL(app.url).hostname); }
     catch { resolved = ""; }
-  } else if (!app.url && app.connection?.pipedreamSlug) {
-    const domain = CONNECTOR_DOMAINS[app.connection.pipedreamSlug];
-    if (domain) resolved = resolverUrlFor(domain);
   }
+  // A CONNECTOR ROW WEARS PIPEDREAM'S ICON (his order, 2026-10-05: "why are
+  // they not the icons from the API? Pipedream provides the icons"). The
+  // domain favicon used to win here — gmail.com and calendar.google.com both
+  // resolve to Google's generic G — so a connected Gmail row and the
+  // directory's Gmail card showed different art. The catalog icon is the one
+  // source for every connector surface; the domain favicon is only the
+  // fallback while the catalog has none.
   const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
     ? connectedIconCache[app.connection.pipedreamSlug] || ""
     : "";
+  if (!app.url && !connectedIcon && app.connection?.pipedreamSlug) {
+    const domain = CONNECTOR_DOMAINS[app.connection.pipedreamSlug];
+    if (domain) resolved = resolverUrlFor(domain);
+  }
   const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
   // ONE ENDPOINT PER ENTITY, EVERY SURFACE (Chris: "it is not calling the
   // same endpoint or the images would be the same"). A URL-bearing app ALWAYS
@@ -170,8 +178,9 @@ export function appIconUrl(app: IconApp): string {
   // is exactly why the two surfaces showed different images. Pipedream icons
   // remain only for URL-LESS entries (connector rows), where both surfaces
   // share the same connectorsGetApps seam.
+  if (connectedIcon) return connectedIcon;
   if (resolved) return resolved;
-  return connectedIcon || nativeIcon;
+  return nativeIcon;
 }
 
 /** Inner markup (img + hidden initial fallback, or just the initial) for one
@@ -237,7 +246,12 @@ export async function primeConnectedIcons(
   await Promise.all(slugs.map(async (slug) => {
     try {
       const { apps: catalog } = await yoIcons().connectorsGetApps(slug);
-      connectedIconCache[slug] = catalog.find((a) => a.id === slug)?.icon || null;
+      // Pipedream's search is by name, so an exact id match comes first, then
+      // the same slug spelt with dashes, then the one row a slug search
+      // returned — the catalog icon is what every connector surface wears.
+      const norm = (x: string): string => x.toLowerCase().replace(/-/g, "_");
+      const row = catalog.find((a) => a.id === slug) ?? catalog.find((a) => norm(a.id) === norm(slug)) ?? (catalog.length === 1 ? catalog[0] : undefined);
+      connectedIconCache[slug] = row?.icon || null;
     } catch {
       connectedIconCache[slug] = null;
     }
