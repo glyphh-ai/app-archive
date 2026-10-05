@@ -33,6 +33,7 @@ import cron, { ScheduledTask } from "node-cron";
 import fs from "fs";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
+import { onUserZoneChange, userZone } from "./user-zone.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
@@ -121,13 +122,15 @@ function disarm(slug: string, id: string): void {
   }
 }
 
+/** Armed on the member's zone (user-zone.ts): "0 8 * * *" is 08:00 there,
+ *  the same clock the cloud clock and a pod's cron read. */
 function arm(row: ScheduleRow): void {
   disarm(row.app_slug, row.id);
   const task = cron.schedule(row.cron, () => {
     void fireSchedule(row).catch((err) => {
       console.error(`[glyphh-app] cron "${row.app_slug}/${row.id}" failed:`, err instanceof Error ? err.message : err);
     });
-  });
+  }, { timezone: userZone() });
   armedTasks.set(taskKey(row.app_slug, row.id), task);
 }
 
@@ -269,9 +272,13 @@ export function notifySend(slug: string, appName: string, args: Record<string, u
 
 // ── init ────────────────────────────────────────────────────
 
-/** Wire the host callbacks and re-arm persisted schedules. Idempotent. */
+/** Wire the host callbacks and re-arm persisted schedules; a moved zone
+ *  re-arms them on the new clock. Idempotent. */
 export function initAppServices(d: AppServicesDeps): void {
   const first = !deps;
   deps = d;
-  if (first) armAllSchedules();
+  if (first) {
+    armAllSchedules();
+    onUserZoneChange(() => armAllSchedules());
+  }
 }

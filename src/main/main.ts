@@ -115,6 +115,7 @@ import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerCliAgentsIpc } from "./cli-agents.js";
 import { startCliSessionWatch } from "./cli-session-watch.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
+import { onUserZoneChange } from "./user-zone";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
@@ -1109,6 +1110,8 @@ async function boot() {
   // Agents own schedules too: a parked agent must not fire. Runs AFTER the
   // generic arming, which only knows each row own enabled flag.
   reconcileAgentSchedules();
+  // A zone moved in Settings › Account re-arms every schedule on the new clock.
+  onUserZoneChange(() => { startLoopScheduler(); reconcileAgentSchedules(); });
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();

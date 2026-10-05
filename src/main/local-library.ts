@@ -38,6 +38,7 @@ import { homedir } from "os";
 import { ipcMain } from "electron";
 import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
+import { userZone } from "./user-zone.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
@@ -221,7 +222,8 @@ export function armSchedule(row: ScheduleRow): void {
   // desktop never fires it too. A skill schedule needs an agent here.
   if (row.kind === "task") return;
   if (!row.enabled || !cron.validate(row.cron)) return;
-  const task = cron.schedule(row.cron, () => { void runSchedule(row.id).catch(() => {}); });
+  // On the member's zone (user-zone.ts), the one clock every schedule reads.
+  const task = cron.schedule(row.cron, () => { void runSchedule(row.id).catch(() => {}); }, { timezone: userZone() });
   liveJobs.set(row.id, task);
 }
 

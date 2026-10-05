@@ -19,6 +19,7 @@ import { shell } from "electron";
 import type { DevicePrompt } from "@glyphh/sdk";
 import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
+import { setUserZone } from "./user-zone.js";
 import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, SERVER_FILE_SUFFIX, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
 import { loadPreferences, clearPreferences } from "./stores/preferences-db.js";
 
@@ -482,6 +483,8 @@ async function refreshAccountState(): Promise<HeartbeatResult | null> {
 
   writeIdentitySidecar(identity.userId);
   setActiveUser(identity.userId);
+  // The profile's zone is the clock every schedule here reads (user-zone.ts).
+  if (profile) setUserZone(profile.timezone);
 
   cachedAccount = {
     email: identity.email,
