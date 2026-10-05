@@ -14369,12 +14369,16 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    row hugging the composer: the mark in the ACCENT colour (the home hero's
    own artwork, .dash-mark) and the Ada greeting in the display face. Code
    keeps .code-ghost exactly as it is. */
+/* The greeting row sits LEFT-ALIGNED to the input (his order, 2026-10-05):
+   it spans the same 780px band the input's content does, so the mark's left
+   edge is the input's left edge; the mark is big, the file untouched. */
 .code-ghost.code-ghost-work {
   flex-direction: row;
-  justify-content: center;
-  gap: 14px;
-  margin: 0 auto;
-  padding: 24px 24px 18px;
+  justify-content: flex-start;
+  gap: 18px;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 18px;
   transform: none;
 }
 /* The fresh Work landing centres greeting + composer in the page (his order,
@@ -14390,8 +14394,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .ws-agent-holder .code-agent.work-landing > .code-thread { display: flex; flex-direction: column; justify-content: flex-end; }
 .ws-agent-holder .code-agent.work-landing .code-thread-inner { min-height: 0; flex: 0 0 auto; }
 .code-ghost-mark.code-ghost-mark-accent {
-  width: 36px;
-  height: 44px;             /* the mark's own 165×200 ratio */
+  width: 58px;
+  height: 70px;             /* the mark's own 165×200 ratio */
   margin: 0;
   opacity: 1;
 }
