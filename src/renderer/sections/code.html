@@ -142,6 +142,15 @@
                     <div id="code-mode-wrap" class="code-chipwrap">
                       <button id="code-mode-chip" class="code-chip" type="button"></button>
                     </div>
+                    <!-- The Output chip (his order, 2026-10-05): what shape the
+                         answer takes — Auto, or an artifact. The drop-up is
+                         built by initComposerControls. -->
+                    <div id="code-output-wrap" class="code-chipwrap">
+                      <button id="code-output-chip" class="code-chip code-output-chip" type="button" title="Output" aria-haspopup="menu">
+                        <span>Output</span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
+                      </button>
+                    </div>
                     <!-- Voice input: hidden unless Settings › Voice enables it. Click to
                          record, click to stop → transcribed into the composer. -->
                     <!-- Appears only while the agent is speaking a reply aloud —
