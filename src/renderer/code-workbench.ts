@@ -7546,7 +7546,9 @@ async function init(): Promise<void> {
           u.searchParams.delete("artifact"); u.searchParams.delete("t");
           window.history.replaceState({}, "", u.toString());
           openWebFullPanel("artifacts");
-          void webFullPanel?.open(art);
+          // (read through a widened type: control flow sees only the `null`
+          // initializer here, the open above assigned it)
+          void (webFullPanel as ArtifactsPanelHandle | null)?.open(art);
         }
       } catch { /* a bare stub */ }
     }
