@@ -32,6 +32,7 @@ import {
   type ArtifactAccess, type ArtifactComment, type ArtifactMeta, type ArtifactTab, type CommentRegion,
 } from "./artifact-rules.js";
 import { formatMarkdown } from "../format-markdown.js";
+import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { highlight } from "../highlight.js";
 import { confirmAction, promptAction } from "./shared.js";
 import { toast } from "./toast.js";
@@ -377,6 +378,10 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
    *  while it works. Replies are kept per thread while the panel is open. */
   const agentReplies = new Map<string, Array<{ text: string; at: number; stopped: boolean }>>();
   const agentBusy = new Set<string>();
+  /** The pane's spinner — the house cube (glyphh-spinner.ts), the same one
+   *  every other surface shows (his order, 2026-10-05); one at a time. */
+  let paneSpinner: GlyphhSpinner | null = null;
+  const dropPaneSpinner = (): void => { paneSpinner?.destroy(); paneSpinner = null; };
   const onTurnFinished = (ev: Event): void => {
     const d = (ev as CustomEvent<{ chatId: string; text: string; stopped: boolean }>).detail;
     const waiting = [...agentBusy];
@@ -514,6 +519,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   }
 
   function closePopover(): void {
+    dropPaneSpinner();
     stage.querySelector(".artp-pop")?.remove();
     activeThread = null;
     overlay.querySelector(".artp-region.drawing")?.remove();
@@ -565,6 +571,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     if (!pop) return;
     const host = pop.querySelector<HTMLElement>(".artp-pop-agent");
     if (!host) return;
+    dropPaneSpinner();
     host.innerHTML = "";
     for (const r of agentReplies.get(threadId) ?? []) {
       const m = el("div", "artp-msg artp-msg-agent");
@@ -580,16 +587,21 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     }
     if (agentBusy.has(threadId)) {
       const line = el("div", "artp-pop-working");
-      line.appendChild(el("span", "artp-spin"));
-      line.appendChild(el("span", "", "Glyphh is working…"));
+      paneSpinner = createGlyphhSpinner({ size: 18, phrases: false });
+      paneSpinner.setMeta("Glyphh is working…");
+      line.appendChild(paneSpinner.el);
       const openConv = btn("artp-link", "Open conversation");
       openConv.addEventListener("click", () => opts.onSentToAgent?.());
       line.appendChild(openConv);
       host.appendChild(line);
     }
+    // The pane scrolls to the newest line (it caps its height and scrolls).
+    const scroller = pop.querySelector<HTMLElement>(".artp-pop-scroll");
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
 
   function threadPopover(t: ArtifactComment, anchor: { x: number; y: number }): void {
+    dropPaneSpinner();
     stage.querySelector(".artp-pop")?.remove();
     const a = current!;
     const pop = el("div", "artp-pop");
@@ -637,8 +649,11 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     };
     line(t, true);
     for (const r of t.replies ?? []) line(r, false);
-    pop.appendChild(msgs);
-    pop.appendChild(el("div", "artp-pop-agent"));
+    // The thread + the exchange scroll together under a height cap (his
+    // order, 2026-10-05: "max out at a reasonable height and start scrolling").
+    const scroll = el("div", "artp-pop-scroll");
+    scroll.append(msgs, el("div", "artp-pop-agent"));
+    pop.appendChild(scroll);
     const reply = document.createElement("textarea");
     reply.className = "artp-pop-input";
     reply.rows = 2;

@@ -22061,7 +22061,10 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-lef
 .artp-pop {
   position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 16px); padding: 10px 12px 8px; border-radius: 10px;
   background: var(--surface); border: 1px solid var(--border-2); box-shadow: 0 18px 50px var(--shadow); color: var(--text);
+  /* A pane caps at a reasonable height and scrolls its thread (his order, 2026-10-05). */
+  display: flex; flex-direction: column; max-height: min(70vh, 520px);
 }
+.artp-pop-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -4px; padding-right: 4px; }
 .artp-pop-eyebrow { font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artp-pop-sub { font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
 .artp-pop-msgs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
@@ -22083,9 +22086,9 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-lef
 .artp-pop-agent { display: flex; flex-direction: column; gap: 8px; }
 .artp-pop-agent:not(:empty) { margin-bottom: 8px; }
 .artp-avatar-glyphh { background: var(--accent); color: var(--accent-fg); }
-.artp-pop-working { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 0 26px; font-size: 11.5px; color: var(--text-3); }
-.artp-spin { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--border-2); border-top-color: var(--text); animation: artp-spin 0.8s linear infinite; }
-@keyframes artp-spin { to { transform: rotate(360deg); } }
+/* The house spinner (glyphh-spinner.ts) with its meta line, then the conversation link. */
+.artp-pop-working { display: flex; align-items: center; gap: 8px; margin: 0 0 0 26px; font-size: 11.5px; color: var(--text-3); }
+.artp-pop-working .glyphh-spinner { font-size: 11.5px; }
 .artp-link { border: 0; background: none; padding: 0; color: var(--text-2); text-decoration: underline; font: inherit; font-size: 11.5px; cursor: pointer; }
 .artp-pop-input {
   width: 100%; box-sizing: border-box; resize: none; padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px;

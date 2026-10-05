@@ -401,6 +401,12 @@ function paintChips(): void {
 // lazy landing — no session yet — it is held and stamped at birth, like the
 // pending folder and models.
 let pendingOutputFormat: StoredOutputFormat | null = null;
+/** THE ARTIFACT IN HAND picked before the session exists (the lazy Work
+ *  landing has no chat until the first send): newChat stamps it on the
+ *  session it creates — the send that follows carries the id in its steer.
+ *  Without this the agent was handed the artifact's NAME and tried it as an
+ *  id (his report, 2026-10-05). */
+let pendingArtifactRef: { id: string; name: string } | null = null;
 function currentOutputFormat(): StoredOutputFormat {
   const c = current();
   return outputFormatOf(c ? c.outputFormat : pendingOutputFormat);
@@ -1910,6 +1916,7 @@ function newChat(): void {
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
   // The Output pick made on the lazy landing is this session's (his order, 2026-10-05).
   if (pendingOutputFormat) { c.outputFormat = pendingOutputFormat; pendingOutputFormat = null; }
+  if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
   c.source = pendingSource;
@@ -7317,10 +7324,10 @@ export function initCode(): void {
   // The artifact viewer names the artifact in hand for the CURRENT session
   // (code-workbench.ts __wbSendToAgent passes it through before it types).
   (window as unknown as { __glyphhSetArtifactRef?: (ref: { id: string; name: string } | null) => void }).__glyphhSetArtifactRef = (ref) => {
+    const next = ref && ref.id ? { id: String(ref.id), name: String(ref.name || "") } : null;
     const c = current();
-    if (!c) return;
-    if (ref && ref.id) c.artifactRef = { id: String(ref.id), name: String(ref.name || "") };
-    else delete c.artifactRef;
+    if (!c) { pendingArtifactRef = next; return; }
+    if (next) c.artifactRef = next; else delete c.artifactRef;
     void saveStore();
   };
   // THE SHELL'S ORDERS (agent-panel:command) — this panel is one instance
