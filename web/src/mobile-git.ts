@@ -21,7 +21,7 @@
  *     default branch is the one row.
  */
 import { glyphh } from './glyphh-web.js';
-import type { BranchRow, RepoRow } from './mobile-cloud';
+import { gitCompleteError, pendingLinkInUrl, type BranchRow, type RepoRow } from './mobile-cloud';
 
 interface GitStatus { connected: boolean; login?: string | null; /** A link was started and awaits this member's completion. */ pending?: boolean }
 interface GitDoor {
@@ -56,19 +56,11 @@ export const mobileGit = {
     return { connected: !!s?.connected, login: s?.login ?? null, pending: !!s?.pending };
   },
 
-  /** The words for a failed completion, by the server's status. */
-  completeError(err: unknown): string {
-    const status = (err as { httpStatus?: number } | null)?.httpStatus;
-    if (status === 403) return 'This GitHub link was started by another account';
-    if (status === 404) return 'The GitHub link expired — connect again';
-    return err instanceof Error && err.message ? err.message : 'GitHub could not be linked.';
-  },
+  /** The words for a failed completion — the shared rule (help/cloud-source.ts). */
+  completeError(err: unknown): string { return gitCompleteError(err); },
 
   /** The return from GitHub: `?github=pending&link=<nonce>` on this page. */
-  pendingLinkInUrl(search: string): string | null {
-    const q = new URLSearchParams(search);
-    return q.get('github') === 'pending' ? (q.get('link') || '') : null;
-  },
+  pendingLinkInUrl(search: string): string | null { return pendingLinkInUrl(search); },
 
   async repos(): Promise<RepoRow[]> {
     const list = await git().repos();

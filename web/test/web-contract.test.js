@@ -495,3 +495,57 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
     expect(await buildContract(authedClient(), deps).desktopPanelOpen({ app: 'gmail' })).toEqual({ ok: false, error: 'no desktop attached' });
   });
 });
+
+// ── THE CLOUD SESSION'S CHIPS (his report, 2026-10-05): git + environments ──
+describe('buildContract — the cloud chips\' git + environments doors', () => {
+  const apiErr = (status, msg) => Object.assign(new Error(msg), { httpStatus: status });
+  /** A client whose SDK predates the typed doors (no git.complete / branches,
+   *  no environments): the shims must fall back to the raw http door. */
+  function oldSdk() {
+    const http = {
+      get: vi.fn(async (p) => (p === '/api/environments' ? [{ id: 'e1', name: 'Prod', network: 'trusted', varCount: 2, createdAt: null }] : p.endsWith('/branches') ? [{ name: 'main', default: true }, { name: 'dev', default: false }] : { id: 'e1', name: 'Prod', network: 'trusted', varCount: 1, vars: [{ key: 'A', preview: 'hu•••••' }, { nope: 1 }] })),
+      post: vi.fn(async (p, body) => (p === '/api/git/connect' ? { url: 'https://github.com/apps/glyphh/installations/new?state=s' } : p === '/api/git/connect/complete' ? { connected: true, login: 'chris', installationId: 'i' } : { id: 'e2', name: body.name, network: body.network, varCount: 0, vars: [] })),
+      put: vi.fn(async (p, body) => ({ id: 'e1', name: body.name, network: 'full', varCount: 0, vars: [] })),
+      del: vi.fn(async () => undefined),
+    };
+    return { http, git: { status: vi.fn(async () => ({ connected: false, login: null, pending: true })), repos: vi.fn(async () => [{ id: '1', fullName: 'glyphh-ai/ada', private: true, defaultBranch: 'main' }]), disconnect: vi.fn(async () => undefined) } };
+  }
+  it('reads status, repos and environments to honest shapes, raw http when the SDK is old', async () => {
+    const client = oldSdk();
+    const c = buildContract(client, deps);
+    expect(await c.cloudGitStatus()).toEqual({ connected: false, login: null, pending: true });
+    expect(await c.cloudGitRepos()).toEqual([{ id: '1', fullName: 'glyphh-ai/ada', private: true, defaultBranch: 'main' }]);
+    expect(await c.cloudGitConnect('https://app.glyphh.ai/home')).toEqual({ url: 'https://github.com/apps/glyphh/installations/new?state=s' });
+    expect(client.http.post).toHaveBeenCalledWith('/api/git/connect', { returnTo: 'https://app.glyphh.ai/home' });
+    expect(await c.cloudGitComplete('n0nce')).toEqual({ connected: true, login: 'chris', pending: false });
+    expect(client.http.post).toHaveBeenCalledWith('/api/git/connect/complete', { link: 'n0nce' });
+    expect(await c.cloudGitBranches('glyphh-ai/ada', 'main')).toEqual([{ name: 'main', default: true }, { name: 'dev', default: false }]);
+    expect(client.http.get).toHaveBeenCalledWith('/api/git/repos/glyphh-ai/ada/branches');
+    expect(await c.cloudEnvironmentsList()).toEqual([{ id: 'e1', name: 'Prod', network: 'trusted', varCount: 2 }]);
+    expect(await c.cloudEnvironmentsGet('e1')).toEqual({ id: 'e1', name: 'Prod', network: 'trusted', varCount: 1, vars: [{ key: 'A', preview: 'hu•••••' }] });
+    expect(await c.cloudEnvironmentsCreate({ name: 'Stage', network: 'none', vars: 'A=1' })).toMatchObject({ id: 'e2', name: 'Stage', network: 'none', vars: [] });
+    expect(await c.cloudEnvironmentsUpdate('e1', { name: 'Prod 2' })).toMatchObject({ id: 'e1', name: 'Prod 2' });
+    await c.cloudEnvironmentsDelete('e1');
+    expect(client.http.del).toHaveBeenCalledWith('/api/environments/e1');
+    await c.cloudGitDisconnect();
+    expect(client.git.disconnect).toHaveBeenCalled();
+  });
+  it('uses the typed doors when the SDK has them', async () => {
+    const client = { http: { get: vi.fn(), post: vi.fn() }, git: { complete: vi.fn(async () => ({ connected: true, login: 'c' })), branches: vi.fn(async () => [{ name: 'main', default: true }]) }, environments: { list: vi.fn(async () => [{ id: 'e', name: 'E', network: 'full', varCount: 0 }]) } };
+    const c = buildContract(client, deps);
+    expect(await c.cloudGitComplete()).toEqual({ connected: true, login: 'c', pending: false });
+    expect(client.git.complete).toHaveBeenCalledWith(undefined);
+    expect(await c.cloudGitBranches('a/b', 'main')).toEqual([{ name: 'main', default: true }]);
+    expect(await c.cloudEnvironmentsList()).toEqual([{ id: 'e', name: 'E', network: 'full', varCount: 0 }]);
+    expect(client.http.get).not.toHaveBeenCalled();
+  });
+  it('reads resolve to empties on a miss; a branches door that is missing answers the default branch; writes throw the ApiError', async () => {
+    const boom = vi.fn(async () => { throw apiErr(401, '401'); });
+    const c = buildContract({ http: { get: boom, post: vi.fn(async () => { throw apiErr(403, 'other'); }), put: boom, del: boom }, git: { status: boom, repos: boom } }, deps);
+    expect(await c.cloudGitStatus()).toEqual({ connected: false, login: null, pending: false });
+    expect(await c.cloudGitRepos()).toEqual([]);
+    expect(await c.cloudEnvironmentsList()).toEqual([]);
+    expect(await c.cloudGitBranches('a/b', 'trunk')).toEqual([{ name: 'trunk', default: true }]);
+    await expect(c.cloudGitComplete('x')).rejects.toMatchObject({ httpStatus: 403 });
+  });
+});

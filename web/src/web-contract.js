@@ -233,6 +233,14 @@ export function buildContract(client, deps) {
     return client.harnessViaApi();
   };
   const laneErr = (e) => (e instanceof Error ? e.message : String(e));
+  // A named cloud environment as the renderer reads it (contract/environments.ts
+  // EnvironmentSummary / Environment): the row, and the row + masked vars.
+  const envPath = (id) => `/api/environments/${encodeURIComponent(String(id || ''))}`;
+  const envRow = (r) => ({ id: String(r?.id ?? ''), name: String(r?.name ?? ''), network: r?.network ?? 'full', varCount: Number(r?.varCount ?? 0) });
+  const envDetail = (d) => ({
+    ...envRow(d),
+    vars: (Array.isArray(d?.vars) ? d.vars : []).filter((v) => typeof v?.key === 'string').map((v) => ({ key: String(v.key), preview: String(v.preview ?? '•••••') })),
+  });
   const lane = (run, onError) => async (scope, ...rest) => {
     if (!scope) return onError('no cloud session');
     try { return await run(pod(), String(scope), ...rest); } catch (e) { return onError(laneErr(e)); }
@@ -1247,6 +1255,62 @@ export function buildContract(client, deps) {
         return { ok: true, app: String(r?.app || slug), name: String(r?.name || slug) };
       } catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
+
+    // ── THE CLOUD SESSION'S CHIPS (his report, 2026-10-05: "how does the user
+    // pick a new cloud env or connect github?") — the SDK's `git` and
+    // `environments` resources for help/cloud-chips.ts, the same calls the
+    // phone's doors make (mobile-git.ts, mobile-environments.ts). A bundled
+    // SDK older than the typed doors (git.complete / git.branches /
+    // environments) is served through its raw authenticated `http` instead,
+    // so the renderer works against either. Reads resolve to honest empties;
+    // writes throw the SDK's ApiError (its `httpStatus` names the verdict —
+    // help/cloud-source.ts gitCompleteError / environmentSaveError).
+    cloudGitStatus: async () => {
+      try {
+        const st = await client.git.status();
+        return { connected: !!st?.connected, login: st?.login ?? null, pending: !!st?.pending };
+      } catch { return { connected: false, login: null, pending: false }; }
+    },
+    cloudGitConnect: async (returnTo) => {
+      const r = await client.http.post('/api/git/connect', returnTo ? { returnTo: String(returnTo) } : {});
+      return { url: String(r?.url || '') };
+    },
+    cloudGitComplete: async (link) => {
+      const st = typeof client.git?.complete === 'function'
+        ? await client.git.complete(link || undefined)
+        : await client.http.post('/api/git/connect/complete', link ? { link: String(link) } : {});
+      return { connected: !!st?.connected, login: st?.login ?? null, pending: !!st?.pending };
+    },
+    cloudGitRepos: async () => {
+      try { const list = await client.git.repos(); return Array.isArray(list) ? list : []; }
+      catch { return []; }
+    },
+    // The repo's branches, the default first; a server without the door yet
+    // answers the repo's default branch as the one row.
+    cloudGitBranches: async (repo, defaultBranch) => {
+      const [owner, name] = String(repo || '').split('/');
+      try {
+        const rows = typeof client.git?.branches === 'function'
+          ? await client.git.branches(String(repo))
+          : await client.http.get(`/api/git/repos/${encodeURIComponent(owner || '')}/${encodeURIComponent(name || '')}/branches`);
+        const list = (Array.isArray(rows) ? rows : [])
+          .filter((b) => typeof b?.name === 'string' && b.name)
+          .map((b) => ({ name: String(b.name), default: !!b.default }));
+        if (list.length) return list;
+      } catch { /* no branches door yet */ }
+      return [{ name: String(defaultBranch || 'main'), default: true }];
+    },
+    cloudGitDisconnect: () => client.git.disconnect(),
+    cloudEnvironmentsList: async () => {
+      try {
+        const rows = client.environments ? await client.environments.list() : await client.http.get('/api/environments');
+        return (Array.isArray(rows) ? rows : []).map(envRow).filter((r) => r.id);
+      } catch { return []; }
+    },
+    cloudEnvironmentsGet: async (id) => envDetail(client.environments ? await client.environments.get(String(id)) : await client.http.get(envPath(id))),
+    cloudEnvironmentsCreate: async (input) => envDetail(client.environments ? await client.environments.create(input) : await client.http.post('/api/environments', input)),
+    cloudEnvironmentsUpdate: async (id, input) => envDetail(client.environments ? await client.environments.update(String(id), input) : await client.http.put(envPath(id), input)),
+    cloudEnvironmentsDelete: async (id) => { if (client.environments) await client.environments.delete(String(id)); else await client.http.del(envPath(id)); },
 
     // ── Settings → Devices (his order, 2026-10-04) ─────────────────────────────────
     // main/remote-control.ts's three IPC answers, off the SDK handle: the server's
