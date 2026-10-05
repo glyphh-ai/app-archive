@@ -3262,6 +3262,7 @@ function mountSourceChip(): void {
   if (!onWebTarget() || cloudChips) return;
   cloudChips = createCloudChips({
     getSource: activeSource,
+    getType: () => { const c = current(); return c ? modeOf(c) : typeTab; },
     onPick: pickSource,
     bornLocus,
     machines: () => threadStore.attachedMachines(),

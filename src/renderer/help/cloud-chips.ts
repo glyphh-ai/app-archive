@@ -74,6 +74,8 @@ type GitState = "unknown" | "off" | "connecting" | "on";
 
 export interface CloudChipsOpts {
   getSource: () => Source;
+  /** The session type in view — the repo chip is a Code session's only. */
+  getType: () => "work" | "code";
   onPick: (s: Source) => void;
   /** The open session's locus once it has a turn; null = nothing is born. */
   bornLocus: () => Locus | null;
@@ -127,7 +129,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
 
   const paint = (): void => {
     const m = cloudChipsModel({
-      locus: locus(), born: born(), machineName: machineName(),
+      locus: locus(), type: opts.getType(), born: born(), machineName: machineName(),
       environmentName: environmentName(envId(), environments),
       connected: git === "on", picks: picks(), lockedHint: LOCUS_LOCKED_HINT,
     });

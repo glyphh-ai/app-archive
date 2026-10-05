@@ -78,6 +78,12 @@ describe("the two chips", () => {
     expect(desk.env.label).toBe("Chris's MacBook");
     expect(desk.repo.shown).toBe(false);
   });
+  it("never show the repo chip on a WORK session, even in the cloud (his report, 2026-10-05: a web Work session asked him to connect GitHub)", () => {
+    const work = cloudChipsModel({ locus: "cloud", type: "work", born: false, connected: false, picks: [], lockedHint: LOCUS_LOCKED_HINT });
+    expect(work.repo.shown).toBe(false);
+    const code = cloudChipsModel({ locus: "cloud", type: "code", born: false, connected: false, picks: [], lockedHint: LOCUS_LOCKED_HINT });
+    expect(code.repo.shown).toBe(true);
+  });
   it("are read-only on a born session, and say why", () => {
     const born = cloudChipsModel({ locus: "cloud", born: true, connected: false, picks: two, lockedHint: LOCUS_LOCKED_HINT });
     expect(born.env).toMatchObject({ locked: true, title: LOCUS_LOCKED_HINT.cloud });

@@ -146,6 +146,10 @@ export function folderChipLabel(path: string): string {
  */
 export function cloudChipsModel(input: {
   locus: Locus;
+  /** The session type in view: a WORK session never shows the repo chip
+   *  (his report, 2026-10-05: a web Work session asked him to connect
+   *  GitHub — repositories are a Code session's). Defaults to code. */
+  type?: "work" | "code";
   born: boolean;
   machineName?: string;
   environmentName?: string;
@@ -161,7 +165,7 @@ export function cloudChipsModel(input: {
       title: lock || (input.locus === "cloud" ? "The cloud environment this session runs in" : "The desktop this session runs on"),
     },
     repo: {
-      shown: input.locus === "cloud",
+      shown: input.locus === "cloud" && input.type !== "work",
       label: repoChipLabel(input.picks, input.connected || (input.born && input.picks.length > 0)),
       locked: input.born,
       title: lock || "The GitHub repositories this cloud session checks out",
