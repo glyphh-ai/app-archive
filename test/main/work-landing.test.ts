@@ -92,7 +92,16 @@ describe("the pick", () => {
     expect(renderGreeting("Burning the midnight oil, {name}?", "")).toBe("Burning the midnight oil?");
     expect(renderGreeting("The loom is threaded for the day", "Chris")).toBe("The loom is threaded for the day");
     const flat = Object.values(GREETINGS).flat();
-    expect(flat.some((l) => l.includes("{name}"))).toBe(true);
+    // EVERY line names the reader (his report, 2026-10-05: the name did not come through).
+    for (const l of flat) expect(l).toContain("{name}");
+    for (const l of flat) {
+      const bare = renderGreeting(l, "");
+      expect(bare).not.toContain("{name}");
+      expect(bare).not.toMatch(/\s[?;,]|,\s*$|\s{2,}/);
+      expect(renderGreeting(l, "Chris Timmerman")).toContain("Chris");
+    }
+    expect(renderGreeting("Midday, {name}, and the Engine hums", "")).toBe("Midday, and the Engine hums");
+    expect(renderGreeting("Babbage is asleep, {name}; we are not", "")).toBe("Babbage is asleep; we are not");
     expect(flat.some((l) => /countess|analyst|scientist|sir|lady|madam/i.test(l))).toBe(false);
   });
 

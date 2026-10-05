@@ -17,35 +17,39 @@ export type GreetingBucket = "morning" | "lunch" | "afternoon" | "evening" | "la
 export const GREETING_MAX_CHARS = 40;
 
 export const GREETINGS: Readonly<Record<GreetingBucket, readonly string[]>> = {
+  // EVERY line carries the reader's first name (his report, 2026-10-05: "why
+  // didn't the name come through?" — only four lines named the reader, so
+  // most sessions never showed it). `{name}` renders to the first name; with
+  // none known the vocative drops (renderGreeting).
   morning: [
-    "Good morning — the Engine is warm",
-    "Hey, early bird — Babbage would approve",
+    "Morning, {name} — the Engine is warm",
+    "Early bird, {name} — Babbage approves",
     "Morning, {name} — cards are punched",
-    "The loom is threaded for the day",
+    "The loom is threaded for the day, {name}",
   ],
   lunch: [
-    "Midday, and the Engine hums",
-    "A little poetical science with lunch",
-    "Note G is open — what shall we compute",
-    "The loom weaves on through lunch",
+    "Midday, {name}, and the Engine hums",
+    "Poetical science with lunch, {name}",
+    "Note G is open, {name} — let's compute",
+    "The loom weaves on through lunch, {name}",
   ],
   afternoon: [
-    "Afternoon — the patterns are weaving",
-    "The Engine weaves algebraic patterns",
+    "Afternoon, {name} — patterns weaving",
+    "The Engine weaves on, {name}",
     "Tea, then algebra, {name}",
-    "Still weaving — the loom never tires",
+    "The loom never tires, {name}",
   ],
   evening: [
-    "Good evening — the Engine keeps time",
-    "The lamps are lit in the Engine room",
+    "Evening, {name} — the Engine keeps time",
+    "Lamps lit in the Engine room, {name}",
     "Evening, {name} — one more pattern",
-    "Poetical science, by lamplight",
+    "Poetical science by lamplight, {name}",
   ],
   latenight: [
     "Burning the midnight oil, {name}?",
-    "Late — the Engine never sleeps",
-    "The night shift at the Engine",
-    "Babbage is asleep; we are not",
+    "Late, {name} — the Engine never sleeps",
+    "The night shift at the Engine, {name}",
+    "Babbage is asleep, {name}; we are not",
   ],
 };
 
