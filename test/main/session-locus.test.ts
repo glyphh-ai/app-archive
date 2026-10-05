@@ -10,6 +10,7 @@ import {
   defaultLocus, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
   sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, type RecentsRowLike,
   defaultWebFolder, filterPickerRows, pickerRecent, PICKER_RECENT_MAX,
+  folderAfterPick, canWalkUp,
 } from "../../src/renderer/help/session-locus";
 
 const row = (p: Partial<RecentsRowLike> & { title: string }): RecentsRowLike =>
@@ -191,5 +192,38 @@ describe("the picker's rows — the last five, searchable (his order, 2026-10-04
     const cloudHit = filterPickerRows(rows, "mid");
     expect(cloudHit.cloud.map((c) => c.id)).toEqual(["s-mid"]);
     expect(filterPickerRows(rows, "  ")).toBe(rows);
+  });
+});
+
+describe("the pick is the folder (his report, 2026-10-05: the web picker would not change directories)", () => {
+  it("a local pick with a path IS the folder, whatever the workdir held", () => {
+    expect(folderAfterPick({ kind: "local", path: "/Users/me/code/app/src" }, "/Users/me/code/app")).toBe("/Users/me/code/app/src");
+    expect(folderAfterPick({ kind: "local", path: "/Users/me/code/server" }, "")).toBe("/Users/me/code/server");
+  });
+  it("a machine-only pick keeps the folder it had", () => {
+    expect(folderAfterPick({ kind: "local", path: "" }, "/Users/me/code/app")).toBe("/Users/me/code/app");
+    expect(folderAfterPick({ kind: "local" }, "")).toBe("");
+  });
+  it("a cloud pick clears it — the worker's workspace is the folder", () => {
+    expect(folderAfterPick({ kind: "cloud-new" }, "/Users/me/code/app")).toBe("");
+    expect(folderAfterPick({ kind: "cloud-space", path: "x" }, "/Users/me/code/app")).toBe("");
+  });
+});
+
+describe("walking up in the folder browser (his report, 2026-10-05)", () => {
+  const grant = "/Users/me/code";
+  it("steps up from a sub-folder as far as the grant, never past it", () => {
+    expect(canWalkUp({ path: "/Users/me/code/app/src", parent: "/Users/me/code/app" }, grant)).toBe(true);
+    expect(canWalkUp({ path: "/Users/me/code/app", parent: "/Users/me/code" }, grant)).toBe(true);
+    expect(canWalkUp({ path: "/Users/me/code", parent: "/Users/me" }, grant)).toBe(false);
+    expect(canWalkUp({ path: "/Users/me/codex", parent: "/Users/me" }, grant)).toBe(false);
+  });
+  it("the listing's own parent: null is the first word", () => {
+    expect(canWalkUp({ path: "/Users/me/code", parent: null }, grant)).toBe(false);
+    expect(canWalkUp({ path: "/Users/me/code/app", parent: null }, null)).toBe(false);
+  });
+  it("without a ceiling any parent will do; separators and trailing slashes do not matter", () => {
+    expect(canWalkUp({ path: "/a/b", parent: "/a" }, null)).toBe(true);
+    expect(canWalkUp({ path: "C:\\code\\app", parent: "C:\\code" }, "C:/code/")).toBe(true);
   });
 });

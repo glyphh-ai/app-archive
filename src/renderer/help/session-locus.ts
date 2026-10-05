@@ -206,6 +206,36 @@ export function sourceLocus(source: { kind: string } | null | undefined): Locus 
   return source?.kind === "local" ? "local" : "cloud";
 }
 
+// ── THE PICK IS THE FOLDER ───────────────────────────────────────────────
+
+/**
+ * The folder a source pick leaves on the thread (his report, 2026-10-05:
+ * "the web agent file choose will not let the user change directories"). A
+ * thread's folder is read WORKDIR-first — on the web the desktop's own cwd
+ * lands there over the relay at boot — so a pick that re-stamped only the
+ * SOURCE never showed on the chip and never ran. A local pick with a path IS
+ * the folder; a machine-only pick (no path) keeps what was there; a cloud
+ * pick clears it — the worker's workspace is the folder.
+ */
+export function folderAfterPick(pick: { kind: string; path?: string }, had: string): string {
+  if (pick.kind !== "local") return "";
+  return pick.path || had;
+}
+
+/**
+ * May the folder browser step UP from `listing`? Only while the parent stays
+ * under `root` — the granted folder on the web, the picked root on the
+ * desktop. The listing's own `parent: null` (the desktop's fs.list at a
+ * grant) is the first word; the root is the ceiling when it says more.
+ */
+export function canWalkUp(listing: { path: string; parent: string | null }, root: string | null): boolean {
+  if (!listing.parent) return false;
+  if (!root) return true;
+  const r = normPath(root);
+  const p = normPath(listing.parent);
+  return normPath(listing.path) !== r && (p === r || p.startsWith(`${r}/`));
+}
+
 // ── THE DEFAULT FOLDER ON THE WEB ────────────────────────────────────────
 
 /**
