@@ -50,4 +50,11 @@ describe("pickUtilityModel", () => {
     expect(pickUtilityModel([{ id: "unpriced", modality: "chat" }])).toBeNull();
     expect(pickUtilityModel([{ id: "img", modality: "image", inputUsdPerMTok: 0, outputUsdPerMTok: 0 }])).toBeNull();
   });
+  it("an unpriced 0/0 row (an auto-router) never wins the cheapest pick", () => {
+    expect(pickUtilityModel([
+      { id: "claude-auto", modality: "chat", inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+      { id: "gpt-oss-20b", modality: "chat", inputUsdPerMTok: 0.05, outputUsdPerMTok: 0.2 },
+    ])).toBe("gpt-oss-20b");
+    expect(pickUtilityModel([{ id: "claude-auto", modality: "chat", inputUsdPerMTok: 0, outputUsdPerMTok: 0 }])).toBeNull();
+  });
 });

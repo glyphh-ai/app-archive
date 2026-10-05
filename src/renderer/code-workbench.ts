@@ -988,7 +988,12 @@ async function init(): Promise<void> {
     // Send, a chip, or a tool card used to hand the caret away and leave the
     // guard disarmed for the rest of the turn — that was the hole.
     const granted = Date.now() < termFocusGrantUntil && !!t.closest?.(".xterm");
-    const surrender = (deliberate || granted) && wantsKeyboard(t);
+    // A rename field is focused by the Rename action, not by a press on the
+    // field itself, so it never counts as "pointed"; handing the caret back
+    // to the composer blurred it at once — the commit of an unchanged title
+    // — and both rename doors were dead on the web (found 2026-10-05).
+    const renaming = !!t.closest?.(".code-history-rename, .session-head-rename");
+    const surrender = (deliberate || granted || renaming) && wantsKeyboard(t);
     if (composerHeld && !surrender && restoreComposer()) return;
     if (surrender) composerHeld = false;
 

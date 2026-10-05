@@ -50,7 +50,9 @@ export function pickUtilityModel(rows: readonly UtilityModelRow[] | null | undef
   for (const r of rows) {
     if (!r || !r.id || !TEXT_MODALITIES.has(String(r.modality ?? ""))) continue;
     const cost = utilityCost(r);
-    if (cost === null) continue;
+    // An unpriced row (an auto-router at 0/0) is not "cheapest" — it is
+    // unknown; the server's resolver skips it the same way.
+    if (cost === null || cost <= 0) continue;
     if (!best || cost < best.cost) best = { id: r.id, cost };
   }
   return best?.id ?? null;
