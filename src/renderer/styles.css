@@ -1745,6 +1745,12 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
    2026-10-05: "this icon should be over the right of the left rail edge") —
    after the drag spacer, so it marks the edge it folds. */
 .glyphh-web #rail-collapse-btn { order: 3; }
+/* With the rail folded, the web's strip is ONE button (no traffic lights, no
+   Echo) — the heads that clear it sit at the far left, right after it (his
+   report, 2026-10-05: "these should all be to the far left of the header"). */
+html.glyphh-web body { --rail-strip-w: 38px; }
+html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
+html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-header { padding-left: var(--rail-strip-w); }
 .glyphh-web #panel-wc { display: none !important; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
