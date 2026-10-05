@@ -14,6 +14,7 @@ import {
   STREAMED_PANELS_PREF, STREAMED_PANELS_WARNING, STREAMED_PANELS_CHANGED_EVENT,
   OPEN_STREAMED_PANELS_SETTING_EVENT, nextFlagStep, flagSwitchChecked, flagWarningShown, type FlagStep, type FlagAction,
 } from "./streamed-panels-flag.js";
+import { NOTIFY_PREF, NOTIFY_PREF_CHANGED_EVENT, NOTIFY_PREF_DEFAULT, NOTIFY_PREF_LABELS, NOTIFY_PREFS, readNotifyPref } from "./notify-pref.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
 import { accountApi, fmtUsd } from "./settings-api.js";
@@ -174,6 +175,29 @@ function initSettings() {
           setTimeout(() => row?.classList.remove("set-pref-focus"), 1800);
         }, 60);
       });
+    }
+  }
+
+  // Notifications (help/notify-pref.ts): one select, three words. Turning it
+  // on from HERE is the click a browser wants its permission asked on; the
+  // ask toast's answers (help/notify.ts) repaint the select through the event.
+  {
+    const sel = document.getElementById("set-notifications") as HTMLSelectElement | null;
+    if (sel) {
+      for (const p of NOTIFY_PREFS) {
+        const o = document.createElement("option");
+        o.value = p;
+        o.textContent = NOTIFY_PREF_LABELS[p];
+        sel.appendChild(o);
+      }
+      sel.value = NOTIFY_PREF_DEFAULT;
+      void window.glyphh.getPreference(NOTIFY_PREF, NOTIFY_PREF_DEFAULT).then((v) => { sel.value = readNotifyPref(v); }).catch(() => {});
+      sel.addEventListener("change", () => {
+        const pref = readNotifyPref(sel.value);
+        void window.glyphh.setPreference(NOTIFY_PREF, pref);
+        if (pref === "on") void window.glyphh.notifyPrepare?.();
+      });
+      document.addEventListener(NOTIFY_PREF_CHANGED_EVENT, (e) => { sel.value = readNotifyPref((e as CustomEvent<{ pref?: unknown }>).detail?.pref); });
     }
   }
 

@@ -6403,6 +6403,10 @@ img[src*="github.com"], img[src*="githubassets"], img[data-mark-src*="github.com
 .toast-msg { font-size: 13px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
 .toast-detail { margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--text-3); overflow-wrap: anywhere; }
 
+/* The ask toast's box ("Don't ask me again"): a plain checkbox on the detail's line. */
+.toast-check { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; line-height: 1.4; color: var(--text-3); cursor: pointer; }
+.toast-check input { margin: 0; accent-color: var(--accent); }
+
 .toast-right { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 
 .toast-action {

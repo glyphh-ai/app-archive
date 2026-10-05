@@ -17,6 +17,7 @@ import { hostname } from "node:os";
 import { app } from "electron";
 import { startAttachHost, type AttachHost } from "@glyphh/sdk/runtime";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
+import { notifyAttachTable } from "./notify.js";
 
 let host: AttachHost | null = null;
 
@@ -37,7 +38,9 @@ export function startAttach(opts: AttachStartOptions): void {
     app: "glyphh-desktop",
     version: app.getVersion(),
     name: hostname(),
-    handlers: opts.handlers,
+    // The remote table, and beside it what the server may always call on an
+    // attached desktop: a cloud app's notification for this member (notify.ts).
+    handlers: () => ({ ...opts.handlers(), ...notifyAttachTable() }),
     folders: opts.folders,
     onRefused: (reason) => { stopAttach(); opts.onRefused(reason); },
   });

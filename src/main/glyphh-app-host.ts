@@ -1281,11 +1281,6 @@ function ensureLocalHost(): void {
       const row = await findAppRow(slug);
       return row ? workerSpecFromRow(row) : null;
     },
-    openApp: (slug) => {
-      // Workbench panel beside the agent — OS app windows are retired.
-      // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
-      void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
-    },
   });
 }
 

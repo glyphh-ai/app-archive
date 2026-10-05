@@ -74,6 +74,7 @@ import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installAttachHandlers } from "./attach-handlers";
 import { registerRemoteControlIpc } from "./remote-control";
+import { registerNotifyIpc } from "./notify";
 import { installAttachRunHandlers } from "./attach-run";
 import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
@@ -464,6 +465,8 @@ async function boot() {
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
     registerAgentIpc();
     registerRemoteControlIpc();
+    // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
+    registerNotifyIpc({ openApp: (slug) => { void openAppByRef(slug).catch(() => { /* app no longer resolvable */ }); } });
     registerAgentLiveIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).

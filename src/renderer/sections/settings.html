@@ -128,6 +128,19 @@
                   <input type="checkbox" id="toggle-background-mode" />
                   <span class="toggle-switch"></span>
                 </label>
+                <!-- NOTIFICATIONS (his order, 2026-10-05): what an app's notification
+                     meets — asked about first (a toast with Allow and "Don't ask me
+                     again" where it would have shown), shown, or dropped.
+                     help/notify-pref.ts + help/notify.ts. -->
+                <div class="set-pref-row" id="notifications-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Notifications</div>
+                    <div class="set-pref-desc">When an app wants to notify you: ask first, show it, or keep quiet. On the desktop that is the system notification; on the web, the browser's.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-notifications" class="settings-input"></select>
+                  </div>
+                </div>
                 <!-- STREAMED WEB PANELS (his order, 2026-10-04): a URL app panel or
                      the Browser on the web is a page rendered on a worker and
                      streamed to the tab. Experimental, so OFF by default and a
