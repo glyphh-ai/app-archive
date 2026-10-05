@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>GitHub connected</title>
 <link rel="stylesheet" href="/styles.css" />
+<script>
+  // The member's theme, as the shell stores it (home.ts applyTheme → localStorage
+  // yoTheme), before first paint — so the button is the theme's primary.
+  (function () {
+    var t = 'dark';
+    try { t = localStorage.getItem('yoTheme') || 'dark'; } catch (e) { t = 'dark'; }
+    if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   /* The return from GitHub lands HERE, not in a second copy of the app (his
      report, 2026-10-05: "when it landed back on app.glyphh.ai the page was not
