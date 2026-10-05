@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveRoute, isNestedShellRoute } from './serve-routes.mjs';
 import { WEB_ICON_ROUTE, webIconResponse } from './webicon.mjs';
 import { isAppHostPath, proxyAppHost } from './app-host-proxy.mjs';
+import { artifactRoute, proxyArtifact, viewerPage } from './artifact-proxy.mjs';
 
 // ── Env (web/.env) ────────────────────────────────────────────────────────────
 // A tiny dependency-free .env parse of the CLIENT-SAFE web config. These are
@@ -224,6 +225,19 @@ const server = http.createServer(async (req, res) => {
       cookie: req.headers.cookie || '',
       mobileOnly: MOBILE_ONLY,
     });
+    // THE ARTIFACT PAGES (his order, 2026-10-05): /a/<id> serves the viewer
+    // page with the id stamped in; /raw and /meta ride the proxy to the API
+    // with the /a-scoped session cookie as the bearer (artifact-proxy.mjs).
+    if (route.kind === 'artifact') {
+      const art = artifactRoute(p);
+      if (!art) { res.statusCode = 404; res.end('not found'); return; }
+      if (art.part !== 'page') return proxyArtifact(req, res, APP_HOST_API, art);
+      const html = await readFile(join(ROOT, 'artifact.html'), 'utf8');
+      res.setHeader('content-type', 'text/html; charset=utf-8');
+      res.setHeader('cache-control', 'no-store');
+      res.end(viewerPage(html, art, reqUrl.searchParams.get('t') || ''));
+      return;
+    }
     if (route.kind === 'redirect') {
       // Stripe returns to the OLD platform's /billing route (success/cancel and
       // top-up redirects) — bounce it into the shell with the query intact; the

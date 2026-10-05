@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" class="glyphh-web">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Artifact — Glyphh</title>
+  <!-- THE SHARED ARTIFACT PAGE (his order, 2026-10-05): a direct or public
+       link at /a/<id>. The bytes frame from /a/<id>/raw in a sandbox; the
+       title comes from /a/<id>/meta. "‹ Artifacts" goes to the app. -->
+  <meta name="robots" content="noindex">
+  <style>
+    :root { color-scheme: dark; --bg: #000; --surface: #0d0d0d; --border: #5a5a5a; --text: #fff; --text-2: #eaeaea; --text-3: #c8c8c8; --hover: #1a1a1a; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 "Geist", system-ui, sans-serif; }
+    .head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 6px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .back { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 4px; border-radius: 6px; color: var(--text-2); text-decoration: none; font-weight: 600; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .back:hover { background: var(--hover); color: var(--text); }
+    .back svg { width: 16px; height: 16px; }
+    .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+    .stage { position: absolute; top: 41px; left: 0; right: 0; bottom: 0; }
+    iframe, img, pre { display: block; width: 100%; height: 100%; border: 0; margin: 0; box-sizing: border-box; }
+    img { object-fit: contain; }
+    pre { overflow: auto; padding: 20px 24px; white-space: pre-wrap; font: 12.5px/1.5 "JetBrains Mono", ui-monospace, monospace; }
+    .empty { padding: 32px 24px; color: var(--text-3); }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <a class="back" href="/home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg><span>Artifacts</span></a>
+    <span class="title" id="title">Artifact</span>
+  </div>
+  <div class="stage" id="stage"><div class="empty">Loading…</div></div>
+  <script>
+    (async () => {
+      const cfg = __ARTIFACT__;
+      const q = cfg.t ? `?t=${encodeURIComponent(cfg.t)}` : '';
+      const raw = `/a/${encodeURIComponent(cfg.id)}/raw${q}`;
+      const stage = document.getElementById('stage');
+      let meta = null;
+      try { const r = await fetch(`/a/${encodeURIComponent(cfg.id)}/meta${q}`, { credentials: 'same-origin' }); if (r.ok) { const j = await r.json(); meta = j && j.data ? j.data : j; } } catch {}
+      if (!meta) { stage.innerHTML = '<div class="empty">This artifact is private or no longer exists. Sign in to Glyphh to see your artifacts.</div>'; return; }
+      document.getElementById('title').textContent = meta.name || 'Artifact';
+      document.title = `${meta.name || 'Artifact'} — Glyphh`;
+      const mime = String(meta.mime || '').toLowerCase();
+      stage.innerHTML = '';
+      if (mime.startsWith('image/') && mime !== 'image/svg+xml') { const img = document.createElement('img'); img.src = raw; img.alt = meta.name || ''; stage.appendChild(img); return; }
+      if (mime === 'text/html' || mime === 'application/xhtml+xml' || mime === 'image/svg+xml' || mime === 'application/pdf') {
+        const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = meta.name || ''; f.src = raw; stage.appendChild(f); return;
+      }
+      try { const r = await fetch(raw, { credentials: 'same-origin' }); const pre = document.createElement('pre'); pre.textContent = r.ok ? await r.text() : `HTTP ${r.status}`; stage.appendChild(pre); }
+      catch (e) { stage.innerHTML = '<div class="empty">Couldn’t read the artifact.</div>'; }
+    })();
+  </script>
+</body>
+</html>

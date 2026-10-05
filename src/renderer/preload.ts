@@ -1108,6 +1108,19 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("support-reply", id, body) as Promise<{ ok: boolean; thread?: SupportThreadRow; error?: string }>,
   supportMarkRead: (id: string) =>
     ipcRenderer.invoke("support-mark-read", id) as Promise<{ ok: boolean; error?: string }>,
+  // THE ARTIFACTS PANEL (his order, 2026-10-05): the desktop's transport to
+  // /api/artifacts (artifacts-ipc.ts) — every answer an { ok, data | error }
+  // envelope; the bytes come back base64 so the viewer frames a blob URL.
+  artifactsList: (scope: string) => ipcRenderer.invoke("artifacts-list", scope) as Promise<unknown>,
+  artifactsGet: (id: string) => ipcRenderer.invoke("artifacts-get", id) as Promise<unknown>,
+  artifactsContent: (id: string) => ipcRenderer.invoke("artifacts-content", id) as Promise<unknown>,
+  artifactsUpdate: (id: string, patch: { name?: string; access?: string }) => ipcRenderer.invoke("artifacts-update", id, patch) as Promise<unknown>,
+  artifactsDelete: (id: string) => ipcRenderer.invoke("artifacts-delete", id) as Promise<unknown>,
+  artifactsShare: (id: string, access: string) => ipcRenderer.invoke("artifacts-share", id, access) as Promise<unknown>,
+  artifactsCommentsList: (id: string) => ipcRenderer.invoke("artifacts-comments", id) as Promise<unknown>,
+  artifactsCommentAdd: (id: string, input: { text: string; region?: unknown; parentId?: string }) => ipcRenderer.invoke("artifacts-comment-add", id, input) as Promise<unknown>,
+  artifactsCommentPatch: (id: string, cid: string, patch: { resolved: boolean }) => ipcRenderer.invoke("artifacts-comment-patch", id, cid, patch) as Promise<unknown>,
+  artifactsCommentDelete: (id: string, cid: string) => ipcRenderer.invoke("artifacts-comment-delete", id, cid) as Promise<unknown>,
   orgInfraGet: () => ipcRenderer.invoke("account-org-infra") as Promise<OrgInfraRow>,
   orgChooseInfra: (choice: { region: string; tier: string }) =>
     ipcRenderer.invoke("account-org-choose-infra", choice) as Promise<{ ok: boolean; infra?: OrgInfraRow; error?: string }>,

@@ -115,9 +115,9 @@ const err = (r: { ok: false; error?: string } | undefined, fallback: string): st
 
 /** The web frames the same-origin proxy; the desktop frames the bytes main fetched. */
 const webRawUrl = (id: string): string => `/a/${encodeURIComponent(id)}/raw`;
-function bytesOf(base64: string): Uint8Array {
+function bytesOf(base64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(base64);
-  const out = new Uint8Array(bin.length);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }

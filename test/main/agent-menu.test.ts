@@ -58,7 +58,7 @@ describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen lis
     const deskRows = desk.sections.flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "")));
     const webRows = web.sections.slice(0, 2).flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "")));
     expect(webRows).toEqual(deskRows.filter((l) => l !== "Browser"));
-    expect(deskRows).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Rename", "Pin", "New agent panel", "Delete"]);
+    expect(deskRows).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Artifacts", "Rename", "Pin", "New agent panel", "Delete"]);
   });
 });
 
@@ -175,8 +175,8 @@ describe("web, not attached — no desktop", () => {
     expect(c.rows.map((x) => x.id)).toEqual(CLIS.map((x) => x.id));
     for (const x of c.rows) expect(x.sessions).toEqual([]);
   });
-  it("the web's Panels never carry the Browser", () => {
-    expect(section(m, "tools")!.rows.map((t) => t.view)).toEqual([...WEB_TOOL_VIEWS]);
+  it("the web's Panels never carry the Browser; Artifacts closes the list (his order, 2026-10-05)", () => {
+    expect(section(m, "tools")!.rows.map((t) => t.view)).toEqual([...WEB_TOOL_VIEWS, "artifacts"]);
     expect(section(m, "tools")!.rows.some((t) => t.view === "preview")).toBe(false);
   });
 });
@@ -184,7 +184,7 @@ describe("web, not attached — no desktop", () => {
 describe("ONE menu, both surfaces — the session's type decides the panels (his report, 2026-10-05)", () => {
   it("Code on the desktop: the old Developer-tools list, Browser included", () => {
     expect([...toolViewsFor("desktop", "code")]).toEqual([...DESKTOP_CODE_TOOL_VIEWS]);
-    expect(toolRowsFor("desktop", "code").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents"]);
+    expect(toolRowsFor("desktop", "code").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Artifacts"]);
   });
   it("Work never lists Files / Terminal / Editor / Diff — on either surface", () => {
     for (const surface of ["web", "desktop"] as const) {
@@ -192,8 +192,15 @@ describe("ONE menu, both surfaces — the session's type decides the panels (his
       for (const v of ["files", "terminal", "monaco", "diff"]) expect(views).not.toContain(v);
       expect(views).toContain("agents");
     }
-    expect([...toolViewsFor("desktop", "work")]).toEqual(["preview", "agents"]);
-    expect([...toolViewsFor("web", "work")]).toEqual(["agents"]);
+    expect([...toolViewsFor("desktop", "work")]).toEqual(["preview", "agents", "artifacts"]);
+    expect([...toolViewsFor("web", "work")]).toEqual(["agents", "artifacts"]);
+  });
+  it("⋮ Panels lists Artifacts on both surfaces and for both types, last (his order, 2026-10-05)", () => {
+    for (const surface of ["web", "desktop"] as const) for (const mode of ["work", "code"] as const) {
+      const views = toolViewsFor(surface, mode);
+      expect(views[views.length - 1]).toBe("artifacts");
+      expect(toolRowsFor(surface, mode).map((t) => t.label).pop()).toBe("Artifacts");
+    }
   });
   it("the desktop menu has no Apps / CLIs sections (the wall carries them there)", () => {
     const m = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: true }, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)] });

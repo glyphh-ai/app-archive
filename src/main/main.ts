@@ -98,6 +98,7 @@ import { registerDesignIpc } from "./design";
 import { registerMediaPanelIpc } from "./media-panel";
 import { registerMusicPanelIpc } from "./music-panel";
 import { registerSupportIpc } from "./support-ipc";
+import { registerArtifactsIpc } from "./artifacts-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient, SERVER_URL } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
@@ -1117,6 +1118,8 @@ async function boot() {
 
   // Support (threaded ticketing) — the settings panel's transport.
   registerSupportIpc();
+  // THE ARTIFACTS PANEL (his order, 2026-10-05) — its transport to /api/artifacts.
+  registerArtifactsIpc();
 
   registerAppsIpc({
     layoutManager,

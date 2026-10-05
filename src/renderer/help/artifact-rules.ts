@@ -201,7 +201,7 @@ export function regionIsReal(region: CommentRegion, w: number, h: number): boole
  *  screenshot); a comment with no region pins top-left. */
 export function pinPoint(region: CommentRegion | null): { x: number; y: number } {
   if (!region) return { x: 0, y: 0 };
-  return { x: clamp01(region.x + region.w), y: clamp01(region.y + region.h / 2) };
+  return { x: round4(clamp01(region.x + region.w)), y: round4(clamp01(region.y + region.h / 2)) };
 }
 
 /** "(12%, 30%, 40%, 10%)" — the selected area, as the message names it. */
@@ -217,11 +217,11 @@ export function regionLabel(region: CommentRegion | null): string {
  *  request ("Edit the artifact <name>: in the selected area (<x%,y%,w%,h%>):
  *  <text>"); replies ride under the opening line. */
 export function editPrompt(a: Pick<ArtifactMeta, "id" | "name">, region: CommentRegion | null, text: string, replies: ReadonlyArray<string> = []): string {
-  const where = region ? ` in the selected area (${regionLabel(region)})` : "";
+  const where = region ? ` in the selected area (${regionLabel(region)}):` : "";
   const body = String(text || "").trim();
   const more = replies.map((r) => String(r || "").trim()).filter(Boolean);
   const tail = more.length ? `\n${more.map((r) => `- ${r}`).join("\n")}` : "";
-  return `Edit the artifact ${a.name} (${a.id}):${where}: ${body}${tail}`;
+  return `Edit the artifact ${a.name} (${a.id}):${where} ${body}${tail}`;
 }
 
 /** "Start chat": the first context line of the session the viewer opens. */

@@ -13,7 +13,7 @@
  * regression guard for the blank-screen class of bug.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildContract, NEEDS_DESKTOP, EMPTY, toLoopModels, trimWsState } from '../src/web-contract.js';
+import { buildContract, buildArtifactsWeb, artifactCookieOf, ARTIFACT_COOKIE_PATH, NEEDS_DESKTOP, EMPTY, toLoopModels, trimWsState } from '../src/web-contract.js';
 import { mergeServerFirst } from '../../src/shared/member-library';
 import { seededLibrary } from './helpers/member-library.js';
 
@@ -547,5 +547,77 @@ describe('buildContract — the cloud chips\' git + environments doors', () => {
     expect(await c.cloudEnvironmentsList()).toEqual([]);
     expect(await c.cloudGitBranches('a/b', 'trunk')).toEqual([{ name: 'trunk', default: true }]);
     await expect(c.cloudGitComplete('x')).rejects.toMatchObject({ httpStatus: 403 });
+  });
+});
+
+// ── THE ARTIFACTS PANEL's shims (his order, 2026-10-05) ──────────────────────
+describe('artifacts shims — the typed resource when the SDK has it, else the raw routes; every answer an envelope', () => {
+  const META = { id: 'art_1', name: 'Mascots', mime: 'text/html', sizeBytes: 10, access: 'private', ownerId: 'u1', ownerName: 'Chris', mine: true, createdAt: 'c', updatedAt: 'u', viewUrl: '/a/art_1' };
+  function rawClient() {
+    const calls = [];
+    const http = {
+      get: vi.fn(async (p) => { calls.push(['get', p]); return p.includes('/comments') ? [{ id: 'c1' }] : p.includes('?scope=') ? [META] : META; }),
+      post: vi.fn(async (p, b) => { calls.push(['post', p, b]); return p.endsWith('/share') ? { access: b.access, shareUrl: b.access === 'public' ? 'https://app/a/art_1?t=x' : null } : { id: 'c2', ...b }; }),
+      put: vi.fn(async (p, b) => { calls.push(['put', p, b]); return { ...META, ...b }; }),
+      patch: vi.fn(async (p, b) => { calls.push(['patch', p, b]); return { id: 'c1', ...b }; }),
+      del: vi.fn(async (p) => { calls.push(['del', p]); return {}; }),
+    };
+    return { http, calls, token: vi.fn(async () => 'tok 1') };
+  }
+  it('lists by scope (an unknown scope is all), gets, updates only name/access, deletes, shares', async () => {
+    const c = rawClient();
+    const a = buildArtifactsWeb(c, { document: null });
+    expect(await a.artifactsList('mine')).toEqual({ ok: true, data: [META] });
+    expect(await a.artifactsList('wat')).toEqual({ ok: true, data: [META] });
+    expect(c.calls[0]).toEqual(['get', '/api/artifacts?scope=mine']);
+    expect(c.calls[1]).toEqual(['get', '/api/artifacts?scope=all']);
+    expect(await a.artifactsGet('art 1')).toEqual({ ok: true, data: META });
+    expect(c.calls[2]).toEqual(['get', '/api/artifacts/art%201']);
+    expect((await a.artifactsUpdate('art_1', { name: 'N', access: 'org', mine: false, ownerId: 'x' })).data).toMatchObject({ name: 'N', access: 'org', ownerId: 'u1' });
+    expect(c.calls[3]).toEqual(['put', '/api/artifacts/art_1', { name: 'N', access: 'org' }]);
+    expect(await a.artifactsDelete('art_1')).toEqual({ ok: true, data: {} });
+    expect(c.calls[4]).toEqual(['del', '/api/artifacts/art_1']);
+    expect(await a.artifactsShare('art_1', 'public')).toEqual({ ok: true, data: { access: 'public', shareUrl: 'https://app/a/art_1?t=x' } });
+    expect(c.calls[5]).toEqual(['post', '/api/artifacts/art_1/share', { access: 'public' }]);
+  });
+  it('comments: list, add (region + parent only when given), resolve, delete', async () => {
+    const c = rawClient();
+    const a = buildArtifactsWeb(c, { document: null });
+    expect(await a.artifactsCommentsList('art_1')).toEqual({ ok: true, data: [{ id: 'c1' }] });
+    expect(await a.artifactsCommentAdd('art_1', { text: 'hi', region: { x: 0, y: 0, w: 0.5, h: 0.5 } })).toEqual({ ok: true, data: { id: 'c2', text: 'hi', region: { x: 0, y: 0, w: 0.5, h: 0.5 } } });
+    expect(c.calls[1]).toEqual(['post', '/api/artifacts/art_1/comments', { text: 'hi', region: { x: 0, y: 0, w: 0.5, h: 0.5 } }]);
+    await a.artifactsCommentAdd('art_1', { text: 'reply', parentId: 'c1' });
+    expect(c.calls[2]).toEqual(['post', '/api/artifacts/art_1/comments', { text: 'reply', parentId: 'c1' }]);
+    expect(await a.artifactsCommentPatch('art_1', 'c1', { resolved: true })).toEqual({ ok: true, data: { id: 'c1', resolved: true } });
+    expect(c.calls[3]).toEqual(['patch', '/api/artifacts/art_1/comments/c1', { resolved: true }]);
+    expect(await a.artifactsCommentDelete('art_1', 'c/1')).toEqual({ ok: true, data: {} });
+    expect(c.calls[4]).toEqual(['del', '/api/artifacts/art_1/comments/c%2F1']);
+  });
+  it('a typed client.artifacts resource is preferred over the raw routes', async () => {
+    const c = rawClient();
+    c.artifacts = { list: vi.fn(async () => [META]), get: vi.fn(async () => META), share: vi.fn(async () => ({ access: 'org', shareUrl: null })) };
+    const a = buildArtifactsWeb(c, { document: null });
+    expect((await a.artifactsList('shared')).data).toEqual([META]);
+    expect(c.artifacts.list).toHaveBeenCalledWith({ scope: 'shared' });
+    expect((await a.artifactsShare('art_1', 'org')).data).toEqual({ access: 'org', shareUrl: null });
+    expect(c.http.get).not.toHaveBeenCalled();
+  });
+  it('a rejecting client answers { ok:false, error } — never a throw, never undefined', async () => {
+    const boom = vi.fn(async () => { throw new Error('401 Unauthorized'); });
+    const a = buildArtifactsWeb({ http: { get: boom, post: boom, put: boom, patch: boom, del: boom }, token: boom }, { document: null });
+    for (const r of await Promise.all([a.artifactsList('all'), a.artifactsGet('x'), a.artifactsUpdate('x', {}), a.artifactsDelete('x'), a.artifactsShare('x', 'org'), a.artifactsCommentsList('x'), a.artifactsCommentAdd('x', { text: 't' }), a.artifactsCommentPatch('x', 'c', { resolved: false }), a.artifactsCommentDelete('x', 'c')])) {
+      expect(r).toEqual({ ok: false, error: '401 Unauthorized' });
+    }
+    expect(await a.artifactsViewerPrepare()).toBe(false);
+  });
+  it('the viewer prepare parks the session as a cookie scoped to /a only (the app-host pattern)', async () => {
+    const doc = { cookie: '' };
+    const a = buildArtifactsWeb(rawClient(), { document: doc, secure: true });
+    expect(await a.artifactsViewerPrepare()).toBe(true);
+    expect(doc.cookie).toBe('glyphh_session=tok%201; path=/a; SameSite=Strict; Secure');
+    expect(ARTIFACT_COOKIE_PATH).toBe('/a');
+    expect(artifactCookieOf('t', false)).toBe('glyphh_session=t; path=/a; SameSite=Strict');
+    const none = buildArtifactsWeb({ http: {}, token: async () => '' }, { document: doc });
+    expect(await none.artifactsViewerPrepare()).toBe(false);
   });
 });
