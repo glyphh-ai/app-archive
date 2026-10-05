@@ -644,6 +644,11 @@ export async function runRemoteTurn(
   // the agent and instructs clone-if-absent, so "clone the repo" needs no
   // follow-up question.
   const repo = chat.source?.kind === "cloud-repo" ? String((chat.source as { repo?: string }).repo || "") : "";
+  // The BASE BRANCH the pick named (his direction, 2026-10-05: a developer
+  // picks a repo and a base branch, like Claude Code on the web). It rides
+  // only beside the repo; the front door validates it and the worker's clone
+  // checks it out (SDK RunTurnOptions.branch, rrotor config.branch).
+  const branch = repo && chat.source?.kind === "cloud-repo" ? String((chat.source as { branch?: string }).branch || "").trim() : "";
   // A cloud-space session RE-ENTERS an existing workspace: the run threads on
   // the space's original id so the pod resolves the same folder the space was
   // born with (and the fs panels scope identically — cloud-fs-router/wb-pod).
@@ -659,6 +664,7 @@ export async function runRemoteTurn(
       ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
         ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
       ...(repo ? { repo } : {}),
+      ...(repo && branch ? { branch } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
@@ -676,6 +682,7 @@ export async function runRemoteTurn(
       mode: modeFor(chat),
       ...(workdir ? { workdir } : {}),
       ...(repo ? { repo } : {}),
+      ...(repo && branch ? { branch } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
