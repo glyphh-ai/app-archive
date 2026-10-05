@@ -513,17 +513,20 @@ export function buildMemberLibrary(client, deps = {}) {
       ]);
       // ALREADY YOURS IS NOT THE SAME AS ADDABLE (his report, 2026-09-18): the
       // library row is the honest answer, the hub's `installed` only counts installs.
+      // ON THE WEB ONLY THE LIBRARY ROW SAYS INSTALLED (his report, 2026-10-05: a
+      // plugin read "Added" that was nowhere in his plugins — the hub's flag was
+      // another device's folder install from before plugins were a library kind).
       const have = new Set(mine.map((m) => `${m.kind}:${m.id.toLowerCase()}`));
       const has = (k, slug) => have.has(`${k}:${String(slug || '').toLowerCase()}`);
       const rows = [];
       for (const [k, org] of orgLists) {
         for (const it of org) {
           if (!it.headVersion) continue;
-          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: !!it.installed || has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k, ...(k === 'app' ? { data: appDataOf(it) } : {}) });
+          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k, ...(k === 'app' ? { data: appDataOf(it) } : {}) });
         }
       }
       for (const p of pub.filter((x) => kinds.includes(x.kind))) {
-        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: !!p.installed || has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind, ...(p.kind === 'app' ? { data: appDataOf(p) } : {}) });
+        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind, ...(p.kind === 'app' ? { data: appDataOf(p) } : {}) });
       }
       return ok(rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
     } catch (err) { return fail(err); }
