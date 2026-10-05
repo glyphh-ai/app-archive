@@ -32,10 +32,14 @@ import { placeMenu, type PlaceBox } from "./menu-place.js";
  */
 
 export type Source =
-  | { kind: "cloud-new"; dir?: string }
+  /** `environmentId` rides on the bare workspace too, so the environment pick
+   *  survives while no repo is picked yet (his report, 2026-10-05). */
+  | { kind: "cloud-new"; dir?: string; environmentId?: string }
   /** `environmentId` names the member's cloud environment the session runs in
-   *  (his direction, 2026-10-05: personal environments); absent = Default. */
-  | { kind: "cloud-repo"; repo: string; dir?: string; environmentId?: string }
+   *  (his direction, 2026-10-05: personal environments); absent = Default.
+   *  `branch` is the base branch of `repo` (the first pick); `repos` is the
+   *  whole selection, one base branch each (help/cloud-source.ts). */
+  | { kind: "cloud-repo"; repo: string; dir?: string; environmentId?: string; branch?: string; repos?: Array<{ repo: string; branch: string }> }
   /** An EXISTING cloud workspace (his ask, 2026-08-19): `space` is the thread
    *  id that keyed the pod workspace — the run + the fs panels scope to it,
    *  so a new session re-enters the same folder. `label` is display only. */
@@ -70,8 +74,10 @@ const isWeb = (): boolean =>
   || (typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web"));
 
 // ── SVG glyphs ────────────────────────────────────────────────────────────
-const CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-const CHEV = `<svg class="ws-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
+// Exported for the web's cloud chips (help/cloud-chips.ts) — one check, one
+// chevron, one row builder across every chip drop.
+export const CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+export const CHEV = `<svg class="ws-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
 const FOLDER = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
 
 // ── Label ─────────────────────────────────────────────────────────────────
@@ -687,17 +693,17 @@ const DROP_MAX_PX = 320;
 /** Size a drop-UP to the room ABOVE its chip (never below — a menu that
  *  drops down covers the input the user is about to type in). When the room
  *  is short the menu gets short and SCROLLS; it never overflows. */
-function clampDropUp(menu: HTMLElement, anchor: HTMLElement): void {
+export function clampDropUp(menu: HTMLElement, anchor: HTMLElement, maxPx: number = DROP_MAX_PX): void {
   const a = anchor.getBoundingClientRect();
   const p = placeMenu(
     { left: a.left, top: a.top, width: a.width, height: a.height },
-    { width: menu.offsetWidth, height: DROP_MAX_PX },
+    { width: menu.offsetWidth, height: maxPx },
     placeBoxFor(anchor),
     { side: "above", gap: 8 },
   );
   menu.style.bottom = "";
   menu.style.top = "";
-  menu.style.maxHeight = `${Math.min(DROP_MAX_PX, p.maxHeight)}px`;
+  menu.style.maxHeight = `${Math.min(maxPx, p.maxHeight)}px`;
   menu.style.overflowY = "auto";
 }
 
@@ -853,7 +859,7 @@ export async function probeSources(force = false): Promise<SourceReach> {
   return value;
 }
 /** Mark a row unreachable: not clickable, and it says why. */
-function markUnreachable(row: HTMLElement, why: string): void {
+export function markUnreachable(row: HTMLElement, why: string): void {
   row.classList.add("ws-unreachable");
   row.setAttribute("aria-disabled", "true");
   row.setAttribute("title", why);
@@ -1257,7 +1263,7 @@ function renderLocal(
 }
 
 // ── small builders ────────────────────────────────────────────────────────
-function drillItem(main: string, hint: string, trailingSvg: string): HTMLButtonElement {
+export function drillItem(main: string, hint: string, trailingSvg: string): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "code-drop-item";
@@ -1267,7 +1273,7 @@ function drillItem(main: string, hint: string, trailingSvg: string): HTMLButtonE
   return b;
 }
 
-function backHead(menu: HTMLElement, title: string, onBack: () => void): void {
+export function backHead(menu: HTMLElement, title: string, onBack: () => void): void {
   const head = document.createElement("div");
   head.className = "code-drop-head ws-back-head";
   const back = document.createElement("button");

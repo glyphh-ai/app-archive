@@ -45,6 +45,10 @@ import { mountAgentMenu } from "./agent-menu-ui.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
+// THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
+// the composer, the phone's pair at desktop width; the rules are shared.
+import { createCloudChips, type CloudChips } from "./cloud-chips.js";
+import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf } from "./cloud-source.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -2981,6 +2985,24 @@ function reconcileWebDefaultFolder(): void {
 const SOURCE_PREF = "workspaceSourceCode";
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
 let gitChip: ReturnType<typeof createGitChip> | null = null;
+/** WEB ONLY: the environment + repo chips (help/cloud-chips.ts). */
+let cloudChips: CloudChips | null = null;
+
+/** The open session's locus once it has a turn; null = nothing is born (the
+ *  composer on Home never counts as a born session). */
+function bornLocus(): Locus | null {
+  const c = current();
+  const onHome = document.body.classList.contains("composer-on-home");
+  return c && c.messages.length > 0 && !onHome ? sourceLocus(c.source ?? pendingSource) : null;
+}
+
+/** Why the composer cannot send yet on the WEB's cloud session — '' when it
+ *  can (help/cloud-source.ts: GitHub linked + one repo, unborn only). */
+function cloudSendBlockNow(): string {
+  if (!onWebTarget()) return "";
+  const src = activeSource();
+  return webCloudSendBlock({ surface: "web", locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
+}
 
 /** The source for the ACTIVE surface — the current session's stamped source,
  *  else the pending pick. */
@@ -2995,10 +3017,15 @@ function activeSource(): Source {
 function sameSource(a?: Source, b?: Source): boolean {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind) return false;
-  if (a.kind === "cloud-repo" && b.kind === "cloud-repo") return a.repo === b.repo;
+  // A cloud source is its repos, their base branches and its environment
+  // (his report, 2026-10-05): a branch or environment change is a change.
+  if (a.kind === "cloud-repo" && b.kind === "cloud-repo") {
+    return a.repo === b.repo && (a.branch ?? "") === (b.branch ?? "") && environmentIdOf(a) === environmentIdOf(b)
+      && JSON.stringify(picksOf(a)) === JSON.stringify(picksOf(b));
+  }
   if (a.kind === "cloud-space" && b.kind === "cloud-space") return a.space === b.space;
   if (a.kind === "local" && b.kind === "local") return a.path === b.path && (a.machineId ?? "") === (b.machineId ?? "");
-  return true; // cloud-new === cloud-new
+  return environmentIdOf(a) === environmentIdOf(b); // cloud-new === cloud-new, same environment
 }
 
 /** Repaint EVERY source-dependent surface from the active source: the chip's
@@ -3077,7 +3104,32 @@ function pickSource(next: Source): void {
 /** The source pill is GONE (his order, 2026-09-11): there is no remote —
  *  every session runs on this machine. The source machinery stays internal
  *  (folder/branch resolution rides it); nothing mounts. */
-function mountSourceChip(): void { /* nothing mounts — no remote exists */ }
+function mountSourceChip(): void {
+  // The source pill stays gone. THE WEB mounts its two cloud chips instead
+  // (his report, 2026-10-05): the environment and the repositories, placed
+  // into whichever chips row is on screen by homeChips.
+  if (!onWebTarget() || cloudChips) return;
+  cloudChips = createCloudChips({
+    getSource: activeSource,
+    onPick: pickSource,
+    bornLocus,
+    machines: () => threadStore.attachedMachines(),
+    // A desktop pick is the locus picker's own local pick: the folder the
+    // desktop granted, the last used one first (session-locus.ts).
+    onPickDesktop: (m) => pickSource({ kind: "local", path: defaultWebFolder({ machines: threadStore.attachedMachines(), recents: recentDesktopFolders() }), ...(m.id ? { machineId: m.id } : {}) }),
+    sessionCount: () => chats.filter((c) => sourceLocus(c.source) === "local").length,
+    onChange: () => { paintComposerGate(); },
+  });
+  homeChips();
+  // THE RETURN FROM GITHUB lands here with `?github=pending&link=<nonce>`
+  // (contract/git.ts): finish the link as this member, strip the query so a
+  // reload never completes it twice, and open the repositories.
+  const link = pendingLinkInUrl(window.location.search);
+  if (link !== null) {
+    try { window.history.replaceState({}, "", stripPendingLink(window.location.href)); } catch { /* a bare stub */ }
+    cloudChips.completePendingLink(link);
+  }
+}
 
 /** The composer's resting prompt. */
 function readyPlaceholder(): string {
@@ -3098,17 +3150,25 @@ function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
   const open = workdirReady && !noModelAllowed();
+  // THE WEB'S CLOUD GATE (his rule, 2026-10-05): GitHub linked + a repo
+  // picked before a cloud session is born. The box stays typeable — only
+  // the send is refused, and the line says what to do (the phone's words).
+  const cloudBlock = cloudSendBlockNow();
   ta.disabled = !open;
   ta.placeholder = open
-    ? readyPlaceholder()
+    ? (cloudBlock || readyPlaceholder())
     : noModelAllowed()
       ? "Your organization hasn't allowed any model yet"
       : "Pick a working folder to start — click here to choose";
-  el("code-send")?.toggleAttribute("disabled", !open);
+  const sendBtn = el("code-send");
+  sendBtn?.toggleAttribute("disabled", !open || !!cloudBlock);
+  if (sendBtn) sendBtn.title = cloudBlock || (thinking ? "Stop" : "Send");
   const wrap = document.querySelector(".code-input-wrap");
   wrap?.classList.toggle("gated", !open);
   // With TEXT in the composer (a seeded prompt) the placeholder is
   // invisible — the gate needs its own voice, or the chat just looks dead.
+  // (The cloud gate wears no note: the box stays typeable, the placeholder
+  // and the disabled send carry the line, as on the phone.)
   let note = wrap?.querySelector<HTMLElement>(".code-gate-note") ?? null;
   if (!workdirReady) {
     if (!note && wrap) {
@@ -3176,6 +3236,18 @@ function homeChips(): void {
   // the parent left it wherever it was appended, which put the source chip
   // last in the agent row.
   if (host && sourceChip && host.firstElementChild !== sourceChip.el) host.prepend(sourceChip.el);
+  // THE WEB'S CLOUD CHIPS lead the row: on Home before the folder chip in
+  // the dash row itself (its source slot is `display: contents` — no box for
+  // a drop to hang off), in the agent at the head of the source slot.
+  if (cloudChips) {
+    const [envEl, repoEl] = cloudChips.els;
+    const row = onHome ? document.getElementById("dash-wd-chips") : host;
+    const before = onHome ? document.getElementById("dash-wd-btn") : (host?.firstElementChild ?? null);
+    if (row && (envEl.parentElement !== row || envEl.nextElementSibling !== repoEl)) {
+      row.insertBefore(envEl, before && before !== envEl && before !== repoEl ? before : row.firstChild);
+      envEl.insertAdjacentElement("afterend", repoEl);
+    }
+  }
   // The repo chip sits AFTER the folder, so it anchors off that row's branch
   // mirror rather than the slot itself.
   const mirror = document.getElementById(onHome ? "dash-wd-branch-wrap" : "code-workdir-branch-wrap");
@@ -3251,6 +3323,9 @@ function paintComposerReach(state: "connecting" | "live" | "down", src: Source):
   // is being reached. A source that cannot be reached resolves by falling back
   // (below), never by leaving a dead box behind.
   const blocked = state === "connecting";
+  // The web's cloud gate (his rule, 2026-10-05) outlives the reach paint: a
+  // live cloud source still waits for GitHub + a repo before it can send.
+  const cloudBlock = state === "live" ? cloudSendBlockNow() : "";
   if (ta) {
     ta.disabled = blocked;
     ta.placeholder = state === "connecting"
@@ -3259,9 +3334,10 @@ function paintComposerReach(state: "connecting" | "live" | "down", src: Source):
         ? (src.kind === "local"
             ? "Machine unavailable — pick another source to start"
             : "Cloud unavailable — pick another source to start")
-        : readyPlaceholder();
+        : (cloudBlock || readyPlaceholder());
   }
-  send?.toggleAttribute("disabled", blocked);
+  send?.toggleAttribute("disabled", blocked || !!cloudBlock);
+  if (send && cloudBlock) send.title = cloudBlock;
   wrap?.classList.toggle("gated", blocked);
 }
 
@@ -3392,6 +3468,21 @@ function paintSourceDependents(): void {
   // folder there is nothing for it to pick, and the folder's real git state
   // (branch, or none) is already on the branch chip via paintGitState.
   if (gitChip) gitChip.el.style.display = cloud ? "" : "none";
+  // THE CHIP SET IS ONE RULE, RE-APPLIED ON EVERY PAINT (his report,
+  // 2026-10-05: switching Work → Code and starting a new session left the
+  // folder options hidden) — help/cloud-source.ts composerChipSet from the
+  // surface, the type in view, the locus and whether a desktop is attached.
+  if (onWebTarget() && cloudChips) {
+    const c3 = current();
+    const set = composerChipSet({ surface: "web", type: c3 ? modeOf(c3) : typeTab, locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
+    cloudChips.refresh();
+    const [envEl, repoEl] = cloudChips.els;
+    envEl.classList.toggle("hidden", !set.environment);
+    if (!set.repo) repoEl.classList.add("hidden");
+    for (const id of ["dash-wd-btn", "code-workdir-btn", "dash-wd-branch-wrap", "code-workdir-branch-wrap"]) {
+      document.getElementById(id)?.classList.toggle("hidden", !set.folder);
+    }
+  }
   // WEB: the folder chip shows the SESSION source's folder (the machine's cwd
   // concept doesn't reach a browser) — Home until a pick lands.
   // The folder chip names the folder the session is IN — the last segment of
@@ -4281,6 +4372,10 @@ function send(): void {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text && !pendingAttach.length) return;
+  // A gated cloud session opens the repositories instead of sending (the
+  // phone's move, 2026-10-05) — the send button is already disabled; Enter
+  // lands here too.
+  if (cloudSendBlockNow()) { cloudChips?.openRepos(); return; }
   const fromHome = document.body.classList.contains("composer-on-home");
   const instanced = !!(window as unknown as { __wbAgentInstanced?: () => boolean }).__wbAgentInstanced?.();
   // Sending from the HOME-adopted composer: the footer goes back to the
@@ -4380,6 +4475,11 @@ function send(): void {
   setThinking(true);
   renderHistory();
   renderThread();
+  // THE SESSION IS BORN with this send: its place is fixed from here, so the
+  // web's cloud chips go read-only now (his report, 2026-10-05), not on the
+  // next paint that happens by.
+  cloudChips?.refresh();
+  paintComposerGate();
   // Main assembles the prompt from the store — the save must land first.
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
@@ -6928,6 +7028,12 @@ export function initCode(): void {
   const newSessionInPlace = (): void => {
     currentId = "";
     void saveStore();
+    // THE SURFACE FOLLOWS THE ACTIVE TYPE AGAIN (his report, 2026-10-05: Work
+    // → Code → + New left the folder options hidden). With no thread open the
+    // composer styles from the rail's tab — but the attribute was last written
+    // for the Work thread that was open, and nothing here re-read it, so the
+    // CSS kept the Code chips hidden until some other repaint happened by.
+    syncSpaceAttrs();
     renderHistory();
     renderThread();
     void checkWorkdirGate();
@@ -7073,9 +7179,16 @@ export function initCode(): void {
     const coerce = (v: unknown): Source | null => {
       if (!v || typeof v !== "object") return null;
       const s = v as Source;
-      if (s.kind === "cloud-repo" && s.repo) return { kind: "cloud-repo", repo: String(s.repo) };
+      // The cloud fields ride the stored pick too (his report, 2026-10-05):
+      // the base branch, the whole selection and the environment.
+      const envId = (s as { environmentId?: unknown }).environmentId;
+      const env = typeof envId === "string" && envId ? { environmentId: envId } : {};
+      if (s.kind === "cloud-repo" && s.repo) {
+        const ps = picksOf(s);
+        return { kind: "cloud-repo", repo: String(s.repo), ...(s.branch ? { branch: String(s.branch) } : {}), ...(ps.length ? { repos: ps } : {}), ...env };
+      }
       if (s.kind === "local" && s.path) return { kind: "local", path: String(s.path), ...(s.machineId ? { machineId: s.machineId } : {}) };
-      if (s.kind === "cloud-new") return { kind: "cloud-new" };
+      if (s.kind === "cloud-new") return { kind: "cloud-new", ...env };
       return null;
     };
     const cc = coerce(sc); if (cc) pendingSource = cc;

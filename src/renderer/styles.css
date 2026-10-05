@@ -21845,3 +21845,33 @@ html.glyphh-web #code-reset-open { display: none !important; }
 .code-view-more-menu .wam-fold-btn:hover, .code-view-more-menu .wam-fold-btn:focus-visible { color: var(--text); background: var(--hover); outline: none; }
 .code-view-more-menu .wam-fold-btn .wam-count { font-size: 11px; font-variant-numeric: tabular-nums; }
 .code-view-more-menu .wam-fold-btn .wam-chev { width: 12px; height: 12px; }
+
+/* ── THE WEB'S CLOUD CHIPS (his report, 2026-10-05): the environment + repo
+   pair above the composer (help/cloud-chips.ts), the phone's two chips at
+   desktop width. The chips are row children (the row's wraps clip); their
+   drops hang off the row like the locus picker's. Existing tokens only. */
+.cl-runtime-chip > .cl-chip-ico { width: 13px; height: 13px; flex: none; }
+.cl-runtime-chip.cl-chip-static { pointer-events: none; }
+.cl-runtime-chip.cl-chip-static .ws-chev { display: none; }
+.ws-env-row { display: flex; align-items: center; gap: 4px; }
+.ws-env-row > .code-drop-item { flex: 1; min-width: 0; }
+.ws-env-edit {
+  flex: none; border: 1px solid var(--border); background: none; color: var(--text-3);
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; cursor: pointer; line-height: 1.5;
+}
+.ws-env-edit:hover { color: var(--text); border-color: var(--border-2); }
+.ws-env-count { font-size: 11px; color: var(--text-3); white-space: nowrap; margin-right: 2px; }
+.ws-cloud-drop .ws-env-list { min-height: 0; overflow-y: auto; }
+.ws-cloud-drop .drop-detail { max-width: none; }
+.ws-env-form { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 6px; }
+.ws-env-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-3); }
+.ws-env-field .loop-drop-search { margin: 0; width: 100%; box-sizing: border-box; font-weight: 400; }
+.ws-env-field select.loop-drop-search { appearance: auto; }
+.ws-env-vars { font-family: var(--font-mono); min-height: 96px; resize: vertical; }
+.ws-env-note { font-size: 11px; color: var(--text-3); }
+.ws-env-note a { color: inherit; }
+.ws-env-err { font-size: 11px; color: var(--danger, #e5484d); }
+.ws-env-err:empty { display: none; }
+.ws-env-actions { display: flex; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+.ws-repo-list .ws-sec-label { padding-top: 8px; }
+.ws-repo-foot { flex: 0 0 auto; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
