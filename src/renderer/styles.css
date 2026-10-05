@@ -21047,7 +21047,11 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 .skill-add-btn { min-width: 34px; }
 .skills-kebab { width: 28px; height: 28px; border: none; border-radius: 6px; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; }
 .skills-kebab:hover { background: var(--hover); color: var(--text); }
-.skills-menu { position: fixed; z-index: 10000; }
+/* ABOVE THE SETTINGS MODAL (his report, 2026-10-05: the Skills ⋮ "no longer works" —
+   the modal moved to z-index 99500 with the artifacts work and every menu a settings
+   page appends to the body opened underneath it). One rule for all of them: the row
+   menus, the memory model picker, the webhooks context menu, the models info pop. */
+.skills-menu, .mem-model-menu, .ws-tab-ctx-menu, .mdl-provider-drop.ws-info-pop { position: fixed; z-index: 99600; }
 .layout-agent-cell { flex-direction: column; align-items: stretch; }
 .layout-cell-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 12px; }
 .layout-cell-field { display: flex; flex-direction: column; gap: 4px; }
