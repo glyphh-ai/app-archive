@@ -241,7 +241,8 @@ describe("ONE menu, both surfaces — the session's type decides the panels (his
             const m = agentMenuModel({ surface, mode, session, machines, apps: [], clis: surface === "web" ? CLIS : [], cliSessions: [] });
             expect(m.sections.length).toBeGreaterThan(0);
             for (const s of m.sections) {
-              if (s.kind === "apps") expect(s.rows.length > 0 || !!s.note).toBe(true);
+              // An EMPTY Apps fold is allowed: "Apps · 0" says it, no line under it (his order, 2026-10-05).
+              if (s.kind === "apps") expect(s.note).toBeNull();
               else expect(s.rows.length).toBeGreaterThan(0);
             }
           }
