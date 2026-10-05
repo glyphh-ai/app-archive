@@ -433,6 +433,8 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
   const APP = { id: 'gmail', slug: 'gmail', name: 'Gmail', system: false, url: 'https://mail.google.com', execPath: null, appArchetype: 'web', iconUrl: null, iconDataUrl: 'data:image/png;base64,AAAA' };
   const NATIVE = { id: 'notes', slug: 'notes', name: 'Notes', system: false, url: null, execPath: '/Applications/Notes.app', appArchetype: 'native', iconUrl: 'https://cdn/notes.png' };
   const SYSTEM = { id: 'browser', slug: 'browser', name: 'Browser', system: true, url: null, execPath: null, appArchetype: null };
+  const NAV = { id: 'nav-home', slug: 'home', name: 'Home', system: true, url: null, execPath: null, appArchetype: 'glyphh-nav', isBrowser: true };
+  const GLYPHH = { id: 'slides', slug: 'slides', name: 'Slides', system: false, url: null, execPath: '/Users/c/.glyphh/apps/slides/app.json', appArchetype: 'glyphh-app', iconDataUrl: 'data:image/svg+xml;base64,BBBB' };
   const attachFor = (answers, status = { attached: true, machines: [{ id: 'm1', name: 'MacBook' }, { id: 'm2', app: 'glyphh-cli' }] }) => ({
     status: vi.fn(async () => status),
     dispatch: vi.fn(async (method, params, opts) => {
@@ -452,15 +454,18 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
     expect(await buildContract(authedClient(), deps).attachStatus()).toEqual({ attached: false, machines: [] });
   });
 
-  it('desktopAppsList: every machine\'s panelApps.list rows, menu-shaped and tagged; system rows and a dead machine drop', async () => {
-    const attach = attachFor({ m1: { 'panelApps.list': { apps: [APP, SYSTEM, NATIVE] } }, m2: { 'panelApps.list': new Error('went away') } });
+  it('desktopAppsList: every machine\'s panelApps.list rows, menu-shaped, KINDED and tagged; system / nav rows and a dead machine drop', async () => {
+    const attach = attachFor({ m1: { 'panelApps.list': { apps: [APP, SYSTEM, NAV, GLYPHH, NATIVE] } }, m2: { 'panelApps.list': new Error('went away') } });
     const c = buildContract({ ...authedClient(), attach }, deps);
     const r = await c.desktopAppsList();
     expect(r.ok).toBe(true);
     expect(r.apps).toEqual([
-      { slug: 'gmail', name: 'Gmail', icon: 'data:image/png;base64,AAAA', machineId: 'm1', machineName: 'MacBook' },
-      { slug: 'notes', name: 'Notes', icon: 'https://cdn/notes.png', machineId: 'm1', machineName: 'MacBook' },
+      { slug: 'gmail', name: 'Gmail', kind: 'web', icon: 'data:image/png;base64,AAAA', machineId: 'm1', machineName: 'MacBook' },
+      { slug: 'slides', name: 'Slides', kind: 'glyphh', icon: 'data:image/svg+xml;base64,BBBB', machineId: 'm1', machineName: 'MacBook' },
+      { slug: 'notes', name: 'Notes', kind: 'native', icon: 'https://cdn/notes.png', machineId: 'm1', machineName: 'MacBook' },
     ]);
+    // The agent menu keeps ONLY the glyphh row (help/agent-menu.ts glyphhAppsOnly) — the kind is what it reads.
+    expect(r.apps.filter((a) => a.kind === 'glyphh').map((a) => a.slug)).toEqual(['slides']);
     expect(attach.dispatch).toHaveBeenCalledWith('panelApps.list', {}, { machineId: 'm1' });
     expect(await buildContract(authedClient(), deps).desktopAppsList()).toEqual({ ok: true, apps: [] });
   });

@@ -14,13 +14,19 @@
  * Session rows are the old head kebab's (Rename / Pin / New agent panel /
  * Delete), handed in from code.ts, shown only while a session is open.
  *
+ * THE ORDER IS THE DESKTOP'S (agent-menu.ts MENU_SECTION_ORDER): Panels,
+ * Session first on both surfaces; the web's Apps and Agents / CLIs after
+ * them, as EXPANDABLE HEADS (a chevron and a count), COLLAPSED on every open;
+ * a CLI's desktop sessions nest under its row behind its own chevron.
+ * Keyboard: Enter / Space toggles a head, ← collapses, → expands, ↑ ↓ move.
+ *
  * Every open repaints from the last answer at once and refreshes behind it.
  */
 import { hostHas, onWeb } from "./web-surface.js";
 import { toast } from "./toast.js";
 import {
-  agentMenuModel, openedOnLine,
-  type AgentMenu, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction,
+  agentMenuModel, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
+  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type SessionAction,
 } from "./agent-menu.js";
 
 interface MenuApi {
@@ -65,6 +71,8 @@ const IC = {
   "new-panel": `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>`,
   delete: `<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
 };
+/** The fold chevron (▸ collapsed, rotated to ▾ by the CSS when expanded). */
+const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
 /** The web's last relay answer (machines, apps, CLIs, sessions) — painted at once on the next open. */
 let lastWeb: { machines: MenuMachine[]; apps: MenuAppRow[]; sessions: RailSessionLike[] } | null = null;
@@ -109,6 +117,18 @@ const head = (label: string): HTMLDivElement => {
   h.textContent = label;
   return h;
 };
+/** An EXPANDABLE head: a menu row (the same class as every other row) with
+ *  the chevron, the label and the count; aria-expanded carries the state. */
+const foldHead = (key: string, label: string, count: number, open: boolean): HTMLButtonElement => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "code-view-menu-item code-menu-fold";
+  b.dataset.fold = key;
+  b.setAttribute("aria-expanded", open ? "true" : "false");
+  b.innerHTML = `${CHEV}<span></span>`;
+  (b.querySelector("span") as HTMLElement).textContent = sectionHeadLabel(label, count);
+  return b;
+};
 const sep = (): HTMLDivElement => { const d = document.createElement("div"); d.className = "code-menu-sep"; return d; };
 
 function appIcon(a: MenuAppRow): string {
@@ -122,16 +142,31 @@ function appIcon(a: MenuAppRow): string {
   return IC.app;
 }
 
-/** Paint the model: one block per section, separators between. */
-function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions: RailSessionLike[]): void {
+/** Paint the model: one block per section, separators between. The fold
+ *  state is the menu's own for this open; a toggle repaints in place. */
+function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions: RailSessionLike[], folds: FoldState): void {
   menu.textContent = "";
   const close = (): void => menu.classList.add("hidden");
+  const repaint = (focusKey: string): void => {
+    paint(menu, m, doors, sessions, folds);
+    menu.querySelector<HTMLElement>(`[data-fold="${focusKey}"]`)?.focus();
+  };
+  /** A fold head: click / Enter / Space toggle (a button's own click), the
+   *  rows under it wear `wam-folded` while collapsed. */
+  const fold = (key: string, label: string, count: number): boolean => {
+    const open = isExpanded(folds, key);
+    const h = foldHead(key, label, count, open);
+    h.addEventListener("click", (ev) => { ev.stopPropagation(); toggleFold(folds, key); repaint(key); });
+    menu.appendChild(h);
+    return open;
+  };
+  const under = (b: HTMLElement, open: boolean): HTMLElement => { if (!open) b.classList.add("wam-folded"); return b; };
   m.sections.forEach((s, idx) => {
     if (idx) menu.appendChild(sep());
-    menu.appendChild(head(s.label));
     if (s.kind === "apps") {
+      const open = fold(s.kind, s.label, s.count);
       for (const a of s.rows) {
-        const b = row(appIcon(a), a.name, "wam-app");
+        const b = under(row(appIcon(a), a.name, "wam-app wam-sub"), open);
         b.title = `Open ${a.name} on ${a.machineName || "your desktop"}`;
         b.addEventListener("click", () => { close(); void openOnDesktop(a); });
         menu.appendChild(b);
@@ -153,25 +188,45 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
         menu.appendChild(note);
       }
     } else if (s.kind === "clis") {
+      const open = fold(s.kind, s.label, s.count);
       for (const c of s.rows) {
-        const b = row(IC.cli, c.name, "wam-cli");
+        const b = under(row(IC.cli, c.name, "wam-cli wam-sub"), open);
         b.title = `Open ${c.name} in a cloud terminal`;
         b.addEventListener("click", () => {
           close();
-          const open = shell().__wbOpenAgentCli;
-          if (!open) { console.warn("[agent-menu] no CLI door — the workbench has not booted"); return; }
-          open(c.id);
+          const door = shell().__wbOpenAgentCli;
+          if (!door) { console.warn("[agent-menu] no CLI door — the workbench has not booted"); return; }
+          door(c.id);
         });
+        // The CLI's desktop sessions nest under its row behind ITS OWN
+        // chevron (collapsed): the row still opens the CLI, the chevron only folds.
+        const key = cliFoldKey(c.id);
+        const nested = isExpanded(folds, key);
+        if (c.sessions.length) {
+          const chev = document.createElement("span");
+          chev.className = "wam-fold-btn";
+          chev.setAttribute("role", "button");
+          chev.setAttribute("tabindex", "0");
+          chev.dataset.fold = key;
+          chev.setAttribute("aria-expanded", nested ? "true" : "false");
+          chev.title = `${c.sessions.length} session${c.sessions.length === 1 ? "" : "s"} on ${m.machine?.name || "your desktop"}`;
+          chev.innerHTML = `<span class="wam-count">${c.sessions.length}</span>${CHEV}`;
+          const flip = (ev: Event): void => { ev.stopPropagation(); ev.preventDefault(); toggleFold(folds, key); repaint(key); };
+          chev.addEventListener("click", flip);
+          chev.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") flip(ev); });
+          b.appendChild(chev);
+        }
         menu.appendChild(b);
         for (const sess of c.sessions) {
           const full = sessions.find((x) => x.id === sess.id) ?? { ...sess, origin: "cli" as const };
-          const sb = row(IC.session, sess.title || sess.cwd || sess.id, "wam-sub" + (full.locked ? " locked" : ""));
+          const sb = under(row(IC.session, sess.title || sess.cwd || sess.id, "wam-sub wam-sub2" + (full.locked ? " locked" : "")), open && nested);
           sb.title = `Resume on ${m.machine?.name || "your desktop"}${sess.cwd ? ` · ${sess.cwd}` : ""}`;
           sb.addEventListener("click", () => { close(); doors.openCliSession?.({ ...full, origin: "cli" }); });
           menu.appendChild(sb);
         }
       }
     } else if (s.kind === "tools") {
+      menu.appendChild(head(s.label));
       for (const t of s.rows) {
         const b = row(IC[t.view as keyof typeof IC] ?? IC.app, t.label);
         b.dataset.view = t.view;
@@ -179,6 +234,7 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
         menu.appendChild(b);
       }
     } else {
+      menu.appendChild(head(s.label));
       for (const r of s.rows) {
         const b = row(IC[r.action] ?? IC.session, r.label, `wam-session${r.danger ? " danger" : ""}`);
         b.dataset.action = r.action;
@@ -215,19 +271,45 @@ export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: A
       void openOnDesktop(known ?? { slug: a.slug, name: a.name || a.slug, machineId: machine?.id ?? "", machineName: machine?.name ?? "" });
     };
   }
+  // THE FOLDS: fresh on every open — collapsed (his order, 2026-10-05).
+  let folds: FoldState = menuFoldState();
   const refresh = async (): Promise<void> => {
     const mine = ++seq;
     const read = await readWeb();
     if (mine !== seq) return;   // a later open repainted already
     lastWeb = read;
-    if (!menu.classList.contains("hidden")) paint(menu, modelFor(doors, read), doors, read.sessions);
+    if (!menu.classList.contains("hidden")) paint(menu, modelFor(doors, read), doors, read.sessions, folds);
   };
   moreBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const opening = menu.classList.contains("hidden");
     menu.classList.toggle("hidden");
     if (!opening) return;
-    paint(menu, modelFor(doors, lastWeb), doors, lastWeb?.sessions ?? []);
+    folds = menuFoldState();
+    paint(menu, modelFor(doors, lastWeb), doors, lastWeb?.sessions ?? [], folds);
     if (web) void refresh();
+  });
+  // KEYBOARD: ↑ ↓ move between the visible rows; on a fold head → expands,
+  // ← collapses (Enter / Space are the button's own click); Esc closes.
+  menu.addEventListener("keydown", (ev) => {
+    const rows = Array.from(menu.querySelectorAll<HTMLElement>(".code-view-menu-item:not(.wam-folded), .wam-fold-btn"))
+      .filter((el) => !el.closest(".wam-folded"));
+    const cur = document.activeElement as HTMLElement | null;
+    const at = cur ? rows.indexOf(cur) : -1;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!rows.length) return;
+      const next = ev.key === "ArrowDown" ? (at + 1) % rows.length : (at - 1 + rows.length) % rows.length;
+      rows[next]!.focus();
+      return;
+    }
+    const key = cur?.dataset.fold;
+    if (key && (ev.key === "ArrowRight" || ev.key === "ArrowLeft")) {
+      ev.preventDefault();
+      const open = isExpanded(folds, key);
+      if ((ev.key === "ArrowRight") !== open) { toggleFold(folds, key); paint(menu, modelFor(doors, lastWeb), doors, lastWeb?.sessions ?? [], folds); menu.querySelector<HTMLElement>(`[data-fold="${key}"]`)?.focus(); }
+      return;
+    }
+    if (ev.key === "Escape") { menu.classList.add("hidden"); moreBtn.focus(); }
   });
 }

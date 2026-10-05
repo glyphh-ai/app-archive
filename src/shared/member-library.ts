@@ -224,6 +224,20 @@ export const tabClock = (t: TabRowLike): number => Date.parse(t.updatedAt) || 0;
 /** Native and glyphh apps launch from a local path; every other kind opens a
  *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
  *  tag (isGlyphhAppRow and friends match on it). */
+/** THE KIND OF A LISTED ROW, read back off the projection above (and off a
+ *  cloud instance's row, which carries no local entry): "glyphh" = an
+ *  installed Glyphh app bundle (appArchetype "glyphh-app"), "web" = a URL
+ *  tab, "native" = an OS app; null = a system / navigation row, or nothing a
+ *  panel can open. The web's agent menu lists ONLY the "glyphh" rows (his
+ *  review, 2026-10-05). */
+export function appRowKind(row: { system?: boolean | null; appArchetype?: string | null; url?: string | null; execPath?: string | null }): "glyphh" | "web" | "native" | null {
+  if (!row || row.system) return null;
+  if (row.appArchetype === "glyphh-app") return "glyphh";
+  if (row.appArchetype === "native" || (!row.url && row.execPath)) return "native";
+  if (row.appArchetype === "web" || row.url) return "web";
+  return null;
+}
+
 export function tabRowOf(app: TabRowLike): OrgAppRowLike {
   const required = Array.isArray(app.requiredConnections) ? app.requiredConnections : [];
   return {

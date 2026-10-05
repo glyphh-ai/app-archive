@@ -21796,3 +21796,19 @@ html.glyphh-web #code-reset-open { display: none !important; }
 .code-view-more-menu .code-view-menu-item.wam-sub { padding-left: 30px; font-size: 12px; color: var(--text-2); }
 .code-view-more-menu .code-view-menu-item.wam-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-view-more-menu .code-view-menu-item.wam-sub.locked { opacity: 0.6; }
+/* EXPANDABLE SECTIONS (his review, 2026-10-05): Apps and Agents / CLIs open
+   as a head row — the menu's own row class — with a chevron and a count,
+   collapsed; the rows under a collapsed head are not painted. A CLI row
+   carries its own chevron for the sessions nested under it. */
+.code-view-more-menu .code-view-menu-item.code-menu-fold { font-weight: 600; }
+.code-view-more-menu .wam-chev { transition: transform 0.12s ease; }
+.code-view-more-menu [aria-expanded="true"] > .wam-chev { transform: rotate(90deg); }
+.code-view-more-menu .wam-folded { display: none; }
+.code-view-more-menu .code-view-menu-item.wam-sub2 { padding-left: 46px; }
+.code-view-more-menu .wam-fold-btn {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 6px; border-radius: 4px;
+  color: var(--text-3, var(--text-2)); cursor: pointer; flex: 0 0 auto;
+}
+.code-view-more-menu .wam-fold-btn:hover, .code-view-more-menu .wam-fold-btn:focus-visible { color: var(--text); background: var(--hover); outline: none; }
+.code-view-more-menu .wam-fold-btn .wam-count { font-size: 11px; font-variant-numeric: tabular-nums; }
+.code-view-more-menu .wam-fold-btn .wam-chev { width: 12px; height: 12px; }

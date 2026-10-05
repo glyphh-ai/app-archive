@@ -40,6 +40,7 @@ import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
 import { webIconProxyPath } from '../webicon.mjs';
 import { iconForRow } from './web-icons.js';
+import { appRowKind } from '../../src/shared/member-library';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
@@ -176,14 +177,17 @@ export function buildContract(client, deps) {
   };
 
   /** One menu row off a desktop's `panelApps.list` reply: the apps a panel
-   *  can open (a URL tab, a native app, a Glyphh app), never the system rows. */
+   *  can open, each with its KIND (shared/member-library.ts appRowKind:
+   *  "glyphh" = an installed Glyphh app bundle, "web" = a URL tab, "native");
+   *  the system / navigation rows drop here. The agent menu lists ONLY the
+   *  "glyphh" rows (his review, 2026-10-05; help/agent-menu.ts glyphhAppsOnly). */
   const desktopAppRow = (a, m) => {
-    if (!a || a.system) return null;
+    const kind = appRowKind(a);
+    if (!kind) return null;
     const slug = String(a.slug || a.id || '').trim();
     if (!slug) return null;
-    if (!(a.url || a.execPath || a.appArchetype === 'glyphh-app')) return null;
     return {
-      slug, name: String(a.name || slug),
+      slug, name: String(a.name || slug), kind,
       icon: iconForRow(a) || (typeof a.iconUrl === 'string' && a.iconUrl ? a.iconUrl : null),
       machineId: String(m?.id || ''), machineName: String(m?.name || m?.app || ''),
     };
