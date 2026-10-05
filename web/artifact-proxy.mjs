@@ -61,6 +61,9 @@ export const RAW_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-e
 export function rawResponseHeaders(headers) {
   const out = {};
   for (const k of ['content-type', 'content-length', 'etag', 'last-modified']) if (headers?.[k]) out[k] = headers[k];
+  // A text type with no charset decodes as Latin-1 inside the frame (an em
+  // dash came out as "â€”"): the bytes are UTF-8 — say so.
+  if (/^text\//i.test(String(out['content-type'] || '')) && !/charset=/i.test(out['content-type'])) out['content-type'] = `${out['content-type']}; charset=utf-8`;
   out['content-security-policy'] = RAW_CSP;
   out['x-content-type-options'] = 'nosniff';
   out['cache-control'] = 'private, no-store';

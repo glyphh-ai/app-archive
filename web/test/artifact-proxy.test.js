@@ -56,9 +56,12 @@ describe('what the browser gets for the bytes', () => {
   it('the type and length, a CSP that keeps the page to itself, no sniffing, no caching, no referrer', () => {
     const h = rawResponseHeaders({ 'content-type': 'text/html', 'content-length': '12', etag: '"e"', 'set-cookie': 'x=1', 'x-frame-options': 'DENY' });
     expect(h).toEqual({
-      'content-type': 'text/html', 'content-length': '12', etag: '"e"',
+      'content-type': 'text/html; charset=utf-8', 'content-length': '12', etag: '"e"',
       'content-security-policy': RAW_CSP, 'x-content-type-options': 'nosniff', 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer',
     });
+    expect(rawResponseHeaders({ 'content-type': 'text/markdown' })['content-type']).toBe('text/markdown; charset=utf-8');
+    expect(rawResponseHeaders({ 'content-type': 'text/html; charset=iso-8859-1' })['content-type']).toBe('text/html; charset=iso-8859-1');
+    expect(rawResponseHeaders({ 'content-type': 'image/png' })['content-type']).toBe('image/png');
     expect(RAW_CSP).toContain("connect-src 'none'");
     expect(RAW_CSP).toContain("frame-src 'none'");
     expect(RAW_CSP).toContain("default-src 'none'");
