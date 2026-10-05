@@ -62,6 +62,8 @@ import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
+import { pickGreeting } from "./landing-greeting.js";
+import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, type StoredOutputFormat } from "./output-format.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -121,6 +123,10 @@ interface CodeChat {
    *  Both local-only (thread-store caches them, never pushes them). */
   titleLocked?: boolean;
   titleGenerated?: boolean;
+  /** THE OUTPUT PICK (his order, 2026-10-05): the composer's Output chip.
+   *  Absent = Auto. Artifact adds one standing line to every later turn
+   *  (output-format.ts). Local to this surface, like `permission`. */
+  outputFormat?: StoredOutputFormat;
 }
 
 /** THE TWO TYPES. `modeOf` is the single choke point every call site reads:
@@ -379,6 +385,79 @@ function paintChips(): void {
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
+  paintOutputChip();
+}
+
+// ── The Output chip (his order, 2026-10-05): what shape the answer takes ──
+// One chip beside mode / model / effort; a drop-up in the composer's own
+// `.code-drop-up` style. Auto, and the rows output-format.ts flags live.
+// The pick is the SESSION's (stored on the chat, persisted with it); on the
+// lazy landing — no session yet — it is held and stamped at birth, like the
+// pending folder and models.
+let pendingOutputFormat: StoredOutputFormat | null = null;
+function currentOutputFormat(): StoredOutputFormat {
+  const c = current();
+  return outputFormatOf(c ? c.outputFormat : pendingOutputFormat);
+}
+function paintOutputChip(): void {
+  const oc = el("code-output-chip");
+  if (!oc) return;
+  const id = currentOutputFormat();
+  const label = oc.querySelector<HTMLElement>("span");
+  if (label) label.textContent = outputChipLabel(id);
+  oc.classList.toggle("picked", id !== "auto");
+  oc.title = id === "auto" ? "Output — let Glyphh answer in the thread" : `Output — ${outputChipLabel(id)}`;
+}
+function setOutputFormat(id: StoredOutputFormat): void {
+  const c = current();
+  if (c) { c.outputFormat = id; void saveStore(); }
+  else pendingOutputFormat = id;
+  paintOutputChip();
+}
+function renderOutputMenu(): void {
+  const menu = el("code-output-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  head.textContent = "Output";
+  menu.appendChild(head);
+  const picked = currentOutputFormat();
+  for (const f of liveOutputFormats()) {
+    const item = document.createElement("button");
+    item.className = "code-drop-item code-output-item" + (f.id === picked ? " selected" : "");
+    item.type = "button";
+    item.setAttribute("role", "menuitemradio");
+    item.setAttribute("aria-checked", f.id === picked ? "true" : "false");
+    const icon = document.createElement("span");
+    icon.className = "drop-icon";
+    icon.innerHTML = f.icon;
+    const label = document.createElement("span");
+    label.className = "drop-main";
+    label.textContent = f.label;
+    const hint = document.createElement("span");
+    hint.className = "drop-hint";
+    hint.textContent = f.hint;
+    item.append(icon, label, hint);
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Only the live ids are stored (output-format.ts); the menu lists no other.
+      setOutputFormat(outputFormatOf(f.id));
+      menu.classList.add("hidden");
+      el("code-output-chip")?.focus();
+    });
+    menu.appendChild(item);
+  }
+}
+/** Keyboard on the open menu: arrows move, Enter picks, Esc closes. */
+function outputMenuKeys(menu: HTMLElement, e: KeyboardEvent): void {
+  const rows = Array.from(menu.querySelectorAll<HTMLButtonElement>(".code-drop-item"));
+  if (!rows.length) return;
+  const at = rows.findIndex((r) => r === document.activeElement);
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); menu.classList.add("hidden"); el("code-output-chip")?.focus(); }
+  else if (e.key === "ArrowDown") { e.preventDefault(); rows[(at + 1 + rows.length) % rows.length].focus(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); rows[(at - 1 + rows.length) % rows.length].focus(); }
+  else if (e.key === "Enter" && at >= 0) { e.preventDefault(); rows[at].click(); }
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
@@ -860,6 +939,29 @@ function initComposerControls(): void {
     mm?.classList.toggle("hidden");
     if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
   });
+  // The Output chip's drop-up (his order, 2026-10-05) — the same open rule
+  // as the model picker: one picker at a time, placed by openChipDropUp.
+  const outputWrap = el("code-output-wrap");
+  if (outputWrap) {
+    const omenu = document.createElement("div");
+    omenu.id = "code-output-menu";
+    omenu.className = "code-drop-up code-output-menu hidden";
+    omenu.setAttribute("role", "menu");
+    outputWrap.appendChild(omenu);
+    omenu.addEventListener("keydown", (e) => outputMenuKeys(omenu, e));
+    el("code-output-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = omenu.classList.contains("hidden");
+      if (!opening) { omenu.classList.add("hidden"); return; }
+      renderOutputMenu();
+      omenu.classList.remove("hidden");
+      openChipDropUp(omenu);
+      (omenu.querySelector<HTMLButtonElement>(".code-drop-item.selected") ?? omenu.querySelector<HTMLButtonElement>(".code-drop-item"))?.focus();
+    });
+    el("code-output-chip")?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" && omenu.classList.contains("hidden")) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
+    });
+  }
   const ctxWrap = el("code-ctx-wrap");
   if (ctxWrap) {
     const cpop = document.createElement("div");
@@ -898,6 +1000,7 @@ function initComposerControls(): void {
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
+    if (outputWrap && !outputWrap.contains(t)) el("code-output-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
@@ -930,6 +1033,10 @@ const GHOST_QUOTES = [
   "First, do the loveliest math: care.",
 ];
 let ghostIdx = Math.floor(Math.random() * GHOST_QUOTES.length);
+// The Work landing's greeting seed before a session is born (his order,
+// 2026-10-05): one per document, so the lazy landing greets the same way
+// on every repaint until its first send gives it a session id.
+const landingSeed = `landing-${Date.now().toString(36)}`;
 let ghostTimer: ReturnType<typeof setInterval> | null = null;
 
 // The new-session landing's title mirrors the HOME hero greeting exactly:
@@ -1791,6 +1898,8 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: typeTab, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
+  // The Output pick made on the lazy landing is this session's (his order, 2026-10-05).
+  if (pendingOutputFormat) { c.outputFormat = pendingOutputFormat; pendingOutputFormat = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
   c.source = pendingSource;
@@ -2442,6 +2551,28 @@ function renderThread(): void {
   const c = current();
   // A server-adopted thread paints as soon as its lazily-fetched messages land.
   if (c) hydrateMessagesIfNeeded(c.id);
+  // THE WORK LANDING (his order, 2026-10-05: Claude's new-chat screen, on web
+  // and app): the mark in the accent colour + one Ada-themed, time-of-day
+  // greeting, hugging the composer. ONLY while the thread has no message and
+  // nothing streams — the first send repaints the thread as today, and the
+  // composer never moves. Code keeps the landing below, untouched.
+  const workLanding = (!c || !c.messages.length) && (c ? modeOf(c) : typeTab) === "work" && !(c && liveRuns.has(c.id));
+  if (workLanding) {
+    const ghost = document.createElement("div");
+    ghost.className = "code-ghost code-ghost-work";
+    const mark = document.createElement("div");
+    mark.className = "code-ghost-mark code-ghost-mark-accent";
+    // The mark in the accent colour = the home hero's own artwork (.dash-mark).
+    mark.innerHTML = `<img src="brand/glyphh-mark-purple.png" alt="" draggable="false" />`;
+    const title = document.createElement("div");
+    title.className = "code-ghost-title code-ghost-greeting";
+    // Picked per session id (the landing's own seed before one is born), so
+    // a repaint never flickers to another line.
+    title.textContent = pickGreeting(c?.id ?? landingSeed);
+    ghost.append(mark, title);
+    inner.appendChild(ghost);
+    return;
+  }
   // EVERY agent's empty thread is the SAME: the mascot + a line. Code used to
   // render its own two-column landing here, so the coding agent looked like a
   // different product from Chat and Work — the + New Session screen is where
@@ -4522,7 +4653,11 @@ function send(): void {
   // Speech mode (Settings › Voice): a hidden preamble steering the agent to a
   // short, spoken-style answer. Prepended to the model prompt only — never to
   // the message shown in the thread (already pushed clean above).
-  const steer = briefSteer();
+  // THE OUTPUT PICK (his order, 2026-10-05): an Artifact pick adds its one
+  // standing line beside the brief — the same hidden preamble both run paths
+  // carry (main's glyphhRun `steer`, the remote prompt's prefix), never the
+  // message shown in the thread. Auto adds nothing.
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat)].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -7080,6 +7215,12 @@ export function initCode(): void {
    *  surface work (__wbNewSessionPanel); this empties the thread state first. */
   const newSessionInPlace = (): void => {
     currentId = "";
+    // NEW IS A STATE A RELOAD KEEPS (his report, 2026-10-05: "new isn't
+    // resetting the web page state so a reload goes back to the last
+    // session"): the persisted resume target must clear with it, or boot's
+    // fallback to the last session brings the old thread straight back.
+    lastSession = "";
+    void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
     void saveStore();
     // THE SURFACE FOLLOWS THE ACTIVE TYPE AGAIN (his report, 2026-10-05: Work
     // → Code → + New left the folder options hidden). With no thread open the
