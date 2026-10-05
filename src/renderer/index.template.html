@@ -35,7 +35,9 @@
 <body>
   <!-- Splash screen -->
   <div id="splash">
-    <canvas id="splash-flow" aria-hidden="true"></canvas>
+    <!-- The flowing-streams backdrop (#splash-flow) is OFF (his order, 2026-10-05: "remove the
+         background from the splash screens on app, web, and mobile") — the splash is the
+         logo on the plain ground. The canvas is not mounted; the script below bails. -->
     <button id="splash-close" class="splash-close">&times;</button>
     <div class="splash-content">
       <div class="splash-logo">

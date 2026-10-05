@@ -5401,7 +5401,8 @@ function App() {
       {/* Splash sits on top until the beat is done and auth has resolved. */}
       {showSplash && (
         <div className="m-splash">
-          <SplashFlow />
+          {/* The flowing-streams backdrop is OFF (his order, 2026-10-05): the splash is the logo on the plain ground. Hidden, not deleted. */}
+          {false && <SplashFlow />}
           <img className="m-splash-logo m-splash-logo-black" src="/brand/glyphh-logo-black.png" alt="Glyphh" />
           <img className="m-splash-logo m-splash-logo-white" src="/brand/glyphh-logo-white.png" alt="" />
         </div>
