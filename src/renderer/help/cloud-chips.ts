@@ -95,6 +95,8 @@ export interface CloudChips {
   /** Repaint both from the source + state (labels, the repo chip's
    *  presence, the born lock). */
   refresh: () => void;
+  /** Close any open chip menu — the composer calls it when it hides the chips. */
+  closeMenus: () => void;
   gitConnected: () => boolean;
   /** The GitHub return landing (page load): finish the link as this member,
    *  then open the repositories — or say why it failed. */
@@ -142,6 +144,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
     repoBtn.title = m.repo.title;
     repoBtn.classList.toggle("cl-chip-static", m.repo.locked);
     repoBtn.classList.toggle("hidden", !m.repo.shown);
+    if (menu && (!anchored(envBtn) || (menu.classList.contains("ws-repo-open") && !m.repo.shown))) closeMenu();
   };
 
   const closeMenu = (): void => { menu?.remove(); menu = null; stopPoll(); };
@@ -158,6 +161,11 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
 
   /** One drop, hung off the chips ROW (the anchor's parent), placed like the
    *  locus picker's — drop-up, clamped to the row's clip box. */
+  /** A chip with no box (hidden — a Work session, or the composer's rule
+   *  hid it) anchors nothing: a menu placed against it got max-height 0 and
+   *  an off-screen left, and its overflow painted as a stray scrollbar
+   *  capsule on the Work landing (his report, 2026-10-05). */
+  const anchored = (anchor: HTMLElement): boolean => !anchor.classList.contains("hidden") && anchor.getClientRects().length > 0;
   const openMenu = (anchor: HTMLElement, extraClass = ""): HTMLElement => {
     closeMenu();
     const row = anchor.parentElement || anchor;
@@ -181,6 +189,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
 
   // ── Choose environment ──────────────────────────────────────────────────
   const openEnvironment = (): void => {
+    if (!anchored(envBtn)) return;
     const m = openMenu(envBtn);
     m.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Choose environment</span></div>`);
     const list = document.createElement("div");
@@ -349,6 +358,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
 
   // ── Repositories → Choose base branch ───────────────────────────────────
   const openRepos = (note = ""): void => {
+    if (!anchored(repoBtn)) return;
     const m = openMenu(repoBtn);
     let err = note;
     let query = "";
@@ -567,6 +577,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
   return {
     els: [envBtn, repoBtn],
     refresh: paint,
+    closeMenus: closeMenu,
     gitConnected: () => git === "on",
     completePendingLink: (link) => {
       const d = doors();

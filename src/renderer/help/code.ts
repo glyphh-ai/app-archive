@@ -3631,6 +3631,9 @@ function paintSourceDependents(): void {
     const [envEl, repoEl] = cloudChips.els;
     envEl.classList.toggle("hidden", !set.environment);
     if (!set.repo) repoEl.classList.add("hidden");
+    // A menu anchored to a chip that just hid would paint as a stray
+    // scrollbar capsule (his report, 2026-10-05): it closes with the chip.
+    if (!set.environment || !set.repo) cloudChips.closeMenus();
     for (const id of ["dash-wd-btn", "code-workdir-btn", "dash-wd-branch-wrap", "code-workdir-branch-wrap"]) {
       document.getElementById(id)?.classList.toggle("hidden", !set.folder);
     }
