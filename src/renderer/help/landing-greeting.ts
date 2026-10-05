@@ -20,7 +20,7 @@ export const GREETINGS: Readonly<Record<GreetingBucket, readonly string[]>> = {
   morning: [
     "Good morning — the Engine is warm",
     "Hey, early bird — Babbage would approve",
-    "Morning, Countess — cards are punched",
+    "Morning, poetical scientist — cards are punched",
     "The loom is threaded for the day",
   ],
   lunch: [
@@ -32,17 +32,17 @@ export const GREETINGS: Readonly<Record<GreetingBucket, readonly string[]>> = {
   afternoon: [
     "Afternoon — the patterns are weaving",
     "The Engine weaves algebraic patterns",
-    "Tea, then algebra, Countess",
+    "Tea, then algebra, dear Analyst",
     "Still weaving — the loom never tires",
   ],
   evening: [
     "Good evening — the Engine keeps time",
     "The lamps are lit in the Engine room",
-    "Evening, Countess — one more pattern",
+    "Evening, poetical scientist — one more pattern",
     "Poetical science, by lamplight",
   ],
   latenight: [
-    "Burning the midnight oil, Countess?",
+    "Burning the midnight oil, dear Analyst?",
     "Late — the Engine never sleeps",
     "The night shift at the Engine",
     "Babbage is asleep; we are not",
