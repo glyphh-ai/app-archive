@@ -7080,6 +7080,12 @@ export function initCode(): void {
    *  surface work (__wbNewSessionPanel); this empties the thread state first. */
   const newSessionInPlace = (): void => {
     currentId = "";
+    // NEW IS A STATE A RELOAD KEEPS (his report, 2026-10-05: "new isn't
+    // resetting the web page state so a reload goes back to the last
+    // session"): the persisted resume target must clear with it, or boot's
+    // fallback to the last session brings the old thread straight back.
+    lastSession = "";
+    void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
     void saveStore();
     // THE SURFACE FOLLOWS THE ACTIVE TYPE AGAIN (his report, 2026-10-05: Work
     // → Code → + New left the folder options hidden). With no thread open the
