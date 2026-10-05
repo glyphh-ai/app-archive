@@ -10,7 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { hostHas, onWeb, paintDesktopOnly } from "./web-surface.js";
+import { hostHas, onWeb } from "./web-surface.js";
 import {
   APP_LOCUS_TITLE, appDataBadge, appDataOf, appLocusOf, installButton, installRoute, offersMoveToCloud, type AppData, type AppLocus,
 } from "./app-data-rules.js";
@@ -413,8 +413,10 @@ async function loadSkillsSettings(): Promise<void> {
   // edits them from the server (web-contract.js); the desktop syncs its
   // folders from the same records. APPS are machine bundles still — a browser
   // tab has none, and the page is the one card that says so.
-  if (cfg.kind === "app" && paintDesktopOnly(el("skills-groups"), `Your ${cfg.nouns} live on your desktop`, `Open Glyphh Desktop to manage ${cfg.nouns} — they are folders on that machine, and every loop there reads them.`,
-    Array.from(el("skills-list-view")?.querySelectorAll<HTMLElement>(".skills-head, .skills-tabs") ?? []))) { el("skill-detail-view")?.classList.add("hidden"); el("skills-list-view")?.classList.remove("hidden"); return; }
+  // APPS LIST ON THE WEB TOO (his report, 2026-10-05: "the Build -> Apps page
+  // is not showing in web"): the web's list is the cloud instances and the
+  // installed tab apps (member-library-web.js skillsList), and Install from
+  // Discover routes by the manifest's `data` — nothing here is desktop-only.
   wire();
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");
