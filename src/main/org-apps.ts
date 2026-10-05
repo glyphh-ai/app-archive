@@ -140,10 +140,10 @@ function toRow(app: LocalAppRow, row: OrgAppRow = tabRowOf(app) as OrgAppRow): O
  *  render and the click that follows share one request. */
 export function fetchOrgApps(): Promise<OrgAppRow[]> {
   return appCache.cached(CACHE_KEY, async () => {
-    // THE LIST = INSTANCES (his decision, 2026-10-04): the member's tab rows,
-    // every cloud instance they may open that no row names yet, and an app
-    // from before the cloud once (shared/app-instances.ts mergeAppRows). A
-    // row's local icon still rides from this machine when it has one.
+    // THE LIST = INSTANCES (his decision, 2026-10-04): the member's tab rows
+    // and every cloud instance they may open that no row names yet
+    // (shared/app-instances.ts mergeAppRows). A row's local icon still rides
+    // from this machine when it has one.
     const [tabs, instances] = await Promise.all([appsStore.mine(), listInstances()]);
     const local = new Map(tabs.map((t) => [t.slug.toLowerCase(), t] as const));
     const rows = mergeAppRows(instances, tabs).map((row) => {

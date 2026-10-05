@@ -138,8 +138,8 @@ export function buildMemberLibrary(client, deps = {}) {
   const panelAppsList = async () => {
     const [srv, desk, instances] = await Promise.all([listRows('tab'), desktopRead('panelApps.list', 'apps'), appInstances.listInstances()]);
     const tabs = srv.filter((r) => isTabRow(r.data)).map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
-    // THE LIST = INSTANCES: the server's tabs, every instance no tab names yet,
-    // an app from before the cloud once — then the attached desktops' rows behind.
+    // THE LIST = INSTANCES: the server's tabs, every instance no tab names yet
+    // — then the attached desktops' rows behind.
     const server = mergeAppRows(instances, tabs);
     return mergeServerFirst(server, desk ?? [], (a) => a.slug || a.id);
   };

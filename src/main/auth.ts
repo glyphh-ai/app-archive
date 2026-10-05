@@ -108,6 +108,9 @@ function attachStart(): void {
   // socket so auth stays importable by the stores.
   void import("./library-sync.js").then((m) => m.startLibrarySync()).catch((e) => console.warn("[library-sync] start failed", String(e)));
   void import("./thread-publish.js").then((m) => m.publishThreadsNow()).catch((e) => console.warn("[threads] publish failed", String(e)));
+  // PRE-CLOUD APP FOLDERS ARE DELETED, NO MIGRATION (his word, 2026-10-05):
+  // once per user, the first sign-in after the cut sweeps them.
+  void import("./legacy-app-sweep.js").then((m) => m.runLegacyAppSweep()).catch((e) => console.warn("[legacy-apps] sweep failed", String(e)));
 }
 function attachStop(): void {
   void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined);

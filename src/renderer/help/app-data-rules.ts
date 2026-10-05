@@ -107,11 +107,3 @@ export function appLocusOf(row: { id?: string; data?: unknown; locus?: unknown; 
 }
 
 export const APP_LOCUS_TITLE: Record<AppLocus, string> = { cloud: "Data in the cloud", local: "Data on this desktop" };
-
-/** "Move to the cloud" is for an app from BEFORE the cloud: never for one
- *  whose author said its data is local, never for an instance card. */
-export function offersMoveToCloud(row: { id: string; type?: string; data?: unknown }): boolean {
-  if (row.type !== "app") return false;
-  if (row.id.startsWith("app-instance:")) return false;
-  return !keepsLocalData(appDataOf(row));
-}
