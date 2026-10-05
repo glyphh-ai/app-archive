@@ -1749,6 +1749,10 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
    Echo) — the heads that clear it sit at the far left, right after it (his
    report, 2026-10-05: "these should all be to the far left of the header"). */
 html.glyphh-web body { --rail-strip-w: 38px; }
+/* The rail's Connections and Devices links are WEB ONLY (his order,
+   2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
+.app-rail-nav-item.web-rail-link { display: none; }
+html.glyphh-web .app-rail-nav-item.web-rail-link { display: flex; }
 /* The wordmark at the rail's top-left, WEB ONLY (his order, 2026-10-05): the
    console's logo files, swapped by theme. The desktop keeps the traffic lights there. */
 .app-rail-logo { display: none; }

@@ -13,7 +13,7 @@
  * never left to silently no-op (his order, 2026-10-04).
  */
 
-import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS } from "./web-cut.js";
+import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_DESKTOP_ONLY_EXTRA, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS } from "./web-cut.js";
 
 interface GlyphhWebProbe { has?: (name: string) => boolean }
 
@@ -69,7 +69,7 @@ export async function copyText(text: string): Promise<boolean> {
  *  the whole Customize group (Tabs, Workspaces, Drips, Schedules); the lists
  *  are web-cut.ts's. A deep link to any of them lands on General
  *  (navigation.ts settingsSubAlias). */
-export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS]);
+export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, ...WEB_DESKTOP_ONLY_EXTRA]);
 
 /** Hide every desktop-only settings row + panel on web (idempotent; the
  *  settings DOM is static in home.html, so this runs once at init) — and,
