@@ -107,7 +107,7 @@ describe('the member library folds instances in', () => {
     expect(list.ok).toBe(true);
     expect(list.data.map((c) => c.id).sort()).toEqual(['app-instance:expense-desk', 'app-instance:notes~u1']);
     expect((await lib.skillGet('app-instance:notes~u1')).data.frontmatter.kind).toBe('personal');
-    expect((await lib.skillTab('app-instance:notes~u1')).data).toEqual({ slug: 'notes', name: 'Notes' });
+    expect((await lib.skillTab('app-instance:notes~u1')).data).toEqual({ slug: 'notes', name: 'Notes', cloud: true });   // a cloud app opens as a web panel (his report, 2026-10-05)
     expect((await lib.skillTab('skill:plain')).ok).toBe(false);
     expect((await lib.skillDelete('app-instance:notes~u1')).ok).toBe(true);
     expect(client.dels).toEqual(['/api/app-instances/notes~u1']);
