@@ -1741,6 +1741,10 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
 .glyphh-web #app-rail { padding-top: var(--rail-top-h); }
 .glyphh-web #app-rail-top,
 .glyphh-web #rail-collapsed-strip { padding-left: 6px; }
+/* The collapse toggle sits at the rail's RIGHT edge on the web (his report,
+   2026-10-05: "this icon should be over the right of the left rail edge") —
+   after the drag spacer, so it marks the edge it folds. */
+.glyphh-web #rail-collapse-btn { order: 3; }
 .glyphh-web #panel-wc { display: none !important; }
 /* The Close-layout pill lives inside the now-zero-height strip; re-pin it fixed
    to the top-center of the viewport so it stays visible + clickable on web. */
