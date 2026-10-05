@@ -6693,6 +6693,18 @@ async function init(): Promise<void> {
         (window as unknown as Record<string, ((path: string) => void) | undefined>)[door]?.(p.path);
       });
     }
+    /** THE WEB SHOWS THE AGENT ALONE on + New and on a rail session click
+     *  (his orders, 2026-10-05: "no matter what page is up clicking new in
+     *  the left rail closes whatever is open and shows the new session page",
+     *  "same goes for clicking a session in the left rail, it dumps whatever
+     *  screen is open and shows the session"): the full-screen page and every
+     *  open work panel / app card close. The desktop never takes this path. */
+    const webShowAgentOnly = (): void => {
+      if (!webNewClosesEverything(IS_WEB_TARGET)) return;
+      closeWebFullPanel();
+      for (const x of [...openList]) if (x.card?.isConnected && !isAgentEntry(x)) closeCard(x);
+    };
+    (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly = webShowAgentOnly;
     const activateGlyphh = (_self?: TileEntry): void => {
       // EVERY door is another panel (his ruling, 2026-09-26) and every panel
       // starts on a NEW session (his order, 2026-09-29).
@@ -6704,10 +6716,7 @@ async function init(): Promise<void> {
       // + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05): the
       // full-screen page and every open work panel / app card go first, so
       // the new session page is what shows, whatever was up.
-      if (webNewClosesEverything(IS_WEB_TARGET)) {
-        closeWebFullPanel();
-        for (const x of [...openList]) if (x.card?.isConnected && !isAgentEntry(x)) closeCard(x);
-      }
+      webShowAgentOnly();
       const seated = openList.some((x) => !!x.card?.isConnected && x.tile.kind === "agent");
       if (webNewSessionInPlace(IS_WEB_TARGET, seated)) {
         const fresh = (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession;

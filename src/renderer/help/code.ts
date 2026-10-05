@@ -2316,6 +2316,11 @@ function historyRow(c: CodeChat): HTMLDivElement {
 /** Make a stored session the current one, on screen — the recents row's
  *  click, also the path a Glyphh-loop session takes from the rail. */
 function selectChat(c: CodeChat): void {
+  // A RAIL SESSION CLICK ON THE WEB dumps whatever screen is open — the
+  // full-screen page, every work panel — and shows the session (his order,
+  // 2026-10-05). The workbench owns the panels; code-workbench.ts binds the
+  // door and it is a no-op on the desktop.
+  (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly?.();
   currentId = c.id;
   lastSession = c.id;
   void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
