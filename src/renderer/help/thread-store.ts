@@ -196,6 +196,15 @@ function webTransport(): Transport {
         if (!a) throw new HarnessHttpError(503, "no attached desktop");
         await a.dispatch("sessions.delete", { id }, desktopOpts(id));
         desktopHome.delete(id);
+        // THE SERVER'S COPY GOES TOO (his report, 2026-10-05: deleting over the
+        // relay "is not working" — the session came back). The desktop had
+        // published the thread to the index, and its own tombstone lands later
+        // and best-effort, so the next list adopted the copy right back. A 404
+        // means it was never there, or is already gone.
+        await harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`).catch((err) => {
+          if ((err as { httpStatus?: number })?.httpStatus === 404) return;
+          throw err;
+        });
         return;
       }
       await harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`);
