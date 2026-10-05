@@ -58,6 +58,8 @@ describe('desktop browser (app.glyphh.ai)', () => {
   });
   it('/m is always the mobile shell; files are static', () => {
     expect(resolveRoute({ path: '/m', ua: MAC })).toEqual({ kind: 'mobile' });
+    expect(resolveRoute({ path: '/github/done', ua: MAC })).toEqual({ kind: 'github-done' });
+    expect(resolveRoute({ path: '/github/done', ua: IPHONE, cookie: 'glyphh_logged_in=1' })).toEqual({ kind: 'github-done' });
     expect(resolveRoute({ path: '/styles.css', ua: MAC })).toEqual({ kind: 'static' });
     expect(resolveRoute({ path: '/brand/logo.svg', ua: MAC, cookie: AUTHED })).toEqual({ kind: 'static' });
   });

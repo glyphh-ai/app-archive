@@ -4191,7 +4191,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
     haptic();
     void (async () => {
       let url = '';
-      try { url = await mobileGit.connect(window.location.href); }
+      try { url = await mobileGit.connect(`${window.location.origin}/github/done`); }
       catch (e) { setErr(e instanceof Error && e.message ? e.message : 'GitHub is not reachable right now.'); return; }
       if (!url) { setErr('GitHub is not reachable right now.'); return; }
       window.open(url, '_blank', 'noopener');

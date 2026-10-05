@@ -492,7 +492,9 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
       const d = doors();
       if (!d) { err = "This build can't reach GitHub yet."; draw(); return; }
       err = "";
-      void d.cloudGitConnect(window.location.href)
+      // The return lands on the small connect-done page, not on a second copy
+      // of the app (his report, 2026-10-05); this tab's poll sees the status flip.
+      void d.cloudGitConnect(`${window.location.origin}/github/done`)
         .then(({ url }) => {
           if (!url) { err = "GitHub is not reachable right now."; draw(); return; }
           window.open(url, "_blank", "noopener");
