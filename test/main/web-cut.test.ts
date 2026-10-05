@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   webBootSurfaces, bootsSurface, DESKTOP_BOOT_SURFACES,
-  WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS,
+  WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, WEB_RAIL_LINKS,
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
@@ -64,9 +64,15 @@ describe("settings on the web — everything for building leaves", () => {
   });
   it("what stays is never also hidden", () => {
     for (const sub of WEB_KEPT_SUBS) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(false);
-    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "artifacts", "usage", "mcp", "billing", "support", "connections-cfg"]) {
+    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "artifacts", "usage", "billing", "support", "connections-cfg"]) {
       expect(WEB_KEPT_SUBS).toContain(sub);
     }
+  });
+  it("the MCP Server page is the desktop's (his order, 2026-10-05) and the web rail's menu is Connections, Devices, Artifacts", () => {
+    expect(WEB_KEPT_SUBS).not.toContain("mcp");
+    expect(DESKTOP_ONLY_SUBS.has("mcp")).toBe(true);
+    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Connections", "Devices", "Artifacts"]);
+    for (const l of WEB_RAIL_LINKS) expect(WEB_KEPT_SUBS).toContain(l.sub);
   });
   it("both group headers hide, with the rail's doors and the dock / streamed rows", () => {
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-build", "nav-group-customize"]);

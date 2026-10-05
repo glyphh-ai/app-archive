@@ -47,8 +47,21 @@ export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-
 /** The pages that KEEP showing on the web (the test pins this list against
  *  the hidden ones so a page can never be on both sides). */
 export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
-  "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "mcp", "connections-cfg",
+  "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "connections-cfg",
   "billing", "support", "about",
+]);
+
+/** The MCP Server page is the DESKTOP's local MCP door — it has nothing to
+ *  show on the web (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
+export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
+
+/** The rail's menu on the web, in his order (2026-10-05: "the menu on the
+ *  left should be Connections, Devices, Artifacts"); each opens Settings at
+ *  that page. The desktop's rail keeps Artifacts, Build, Customize. */
+export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
+  { sub: "connections-cfg", label: "Connections" },
+  { sub: "devices", label: "Devices" },
+  { sub: "artifacts", label: "Artifacts" },
 ]);
 
 /** The rail's doors into the command center and the Build/Customize pages —
