@@ -81,7 +81,9 @@ export function placeDropup(anchor: HTMLElement, menu: HTMLElement, frame: { wid
 export function showDropDetail(
   menu: HTMLElement,
   listPane: HTMLElement,
-  detail: { title: string; body: string },
+  /** `body` is text, or a built element (a form — the web's cloud chips,
+   *  his report, 2026-10-05 — slides in the same way a text detail does). */
+  detail: { title: string; body: string | HTMLElement },
 ): void {
   menu.querySelector(".drop-detail")?.remove();
   const pane = document.createElement("div");
@@ -99,7 +101,8 @@ export function showDropDetail(
   head.append(back, title);
   const body = document.createElement("div");
   body.className = "drop-detail-body";
-  body.textContent = detail.body;
+  if (typeof detail.body === "string") body.textContent = detail.body;
+  else body.appendChild(detail.body);
   pane.append(head, body);
   back.addEventListener("click", (ev) => {
     ev.stopPropagation();

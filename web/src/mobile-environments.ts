@@ -11,7 +11,7 @@
  * the text.
  */
 import { glyphh } from './glyphh-web.js';
-import type { EnvironmentNetwork, EnvironmentRow, EnvironmentVarRow } from './mobile-cloud';
+import { environmentSaveError, type EnvironmentNetwork, type EnvironmentRow, type EnvironmentVarRow } from './mobile-cloud';
 
 export interface EnvironmentDetail extends EnvironmentRow { vars: EnvironmentVarRow[] }
 interface CreateInput { name: string; network: EnvironmentNetwork; vars?: string }
@@ -73,13 +73,6 @@ export const mobileEnvironments = {
     if (t) await t.delete(id); else await raw().del<void>(path(id));
   },
 
-  /** The words for a failed save: the SDK's ApiError carries the server's
-   *  message (the bad line, the name clash) and the status. */
-  saveError(err: unknown): string {
-    const status = (err as { httpStatus?: number } | null)?.httpStatus;
-    const said = err instanceof Error ? err.message : '';
-    if (status === 409) return said || 'You already have an environment with that name';
-    if (status === 404) return 'This environment is gone — it was deleted elsewhere';
-    return said || 'The environment could not be saved.';
-  },
+  /** The words for a failed save — the shared rule (help/cloud-source.ts). */
+  saveError(err: unknown): string { return environmentSaveError(err); },
 };
