@@ -439,7 +439,11 @@ export function openSettingsModal(sub?: string): void {
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
       // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
       // Appearance sits right under General (his order, 2026-09-20).
-      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp"]) {
+      // THE WEB CUT (his order, 2026-10-05): Build and Customize are gone on
+      // the web (web-surface.ts hides their rows and headers), so Connections
+      // — the one Build page the web keeps, since a web chat runs with your
+      // connections — moves under Settings, after MCP Server.
+      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp", ...(onWeb() ? ["connections-cfg"] : [])]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -464,7 +468,8 @@ export function openSettingsModal(sub?: string): void {
       if (buildGroup) {
         anchor.after(buildGroup);
         anchor = buildGroup;
-        for (const sub of ["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
+        // Connections stays under Settings on the web (moved there above).
+        for (const sub of ["skills", "agents", "apps", ...(onWeb() ? [] : ["connections-cfg"]), "plugins", "tasks"]) {   // artifacts moved to Settings
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -862,9 +867,9 @@ const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
   // MCP shows EVERYWHERE (his order, 2026-08-25). General/Voice/Appearance
   // hide only on the platform. Every DESKTOP-ONLY sub (web-surface.ts
-  // DESKTOP_ONLY_SUBS: plugins, remote control) lands on General on web; its
-  // nav item + panel are CSS-hidden there. Drips and schedules are library
-  // records since 2026-10-04 and open on web like the rest.
+  // DESKTOP_ONLY_SUBS: plugins, remote control, and since the web cut of
+  // 2026-10-05 the whole Build and Customize groups) lands on General on
+  // web; its nav item + panel are CSS-hidden there.
   if (onWeb() && DESKTOP_ONLY_SUBS.has(target)) {
     return document.body.classList.contains("platform-shell") ? "dash" : "general";
   }

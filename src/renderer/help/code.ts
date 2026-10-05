@@ -41,6 +41,7 @@ import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas } from "./web-surface.js";
+import { mountAgentMenu } from "./agent-menu-ui.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
@@ -2017,48 +2018,11 @@ function togglePin(c: CodeChat): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
 }
 
-/** The open session's pin — the head kebab's Pin item. */
-function toggleCurrentPin(): void {
-  const c = current();
-  if (c) togglePin(c);
-}
 
-let headKebabEl: HTMLDivElement | null = null;
-function closeHeadKebab(): void { headKebabEl?.remove(); headKebabEl = null; }
-
-// Kebab item icons (SessionHeader port: IcRename / IcPin / IcTrash).
-const IC_RENAME = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
-const IC_PIN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
-const IC_TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
-
-function openHeadKebab(anchor: HTMLElement): void {
-  closeHeadKebab();
-  const c = current();
-  // NEVER silent (the house rule): a no-op click reads as a broken button.
-  if (!c) { console.warn("[agent] session kebab: no session yet — nothing to rename/pin/delete"); return; }
-  const m = document.createElement("div");
-  m.className = "code-menu session-head-menu";
-  const mk = (icon: string, label: string, danger: boolean, on: () => void): HTMLButtonElement => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "code-menu-item" + (danger ? " danger" : "");
-    b.innerHTML = `${icon}<span></span>`;
-    (b.querySelector("span") as HTMLElement).textContent = label;
-    b.addEventListener("click", () => { closeHeadKebab(); on(); });
-    return b;
-  };
-  m.append(
-    mk(IC_RENAME, "Rename", false, renameCurrentInline),
-    mk(IC_PIN, c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
-    mk(IC_RENAME, "New agent panel", false, () => { (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance?.(GLYPHH_LOOP); }),
-    mk(IC_TRASH, "Delete", true, () => { void deleteChat(c); }),
-  );
-  const r = anchor.getBoundingClientRect();
-  m.style.top = `${r.bottom + 4}px`;
-  m.style.left = `${Math.max(8, r.right - 150)}px`;
-  document.body.appendChild(m);
-  headKebabEl = m;
-}
+// The head's session actions (Rename / Pin / New agent panel / Delete) live
+// in the agent's ONE ⋮ menu now (help/agent-menu.ts, Session section) — the
+// separate session kebab painted a second ⋮ on Work and did nothing on a
+// fresh session (his report, 2026-10-05).
 
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
@@ -7440,61 +7404,39 @@ export function initCode(): void {
   // LIST, which is reachable from the rail's recents.)
   // ‹ = the terminal hop, nothing else (his order, 2026-09-11: it closed
   // the whole agent). Same handler the >_ icon rides.
-  // DELEGATED, capture-phase (his report, 2026-09-14: the ⋮ did nothing in
-  // a workspace) — the direct listener could miss the button or lose the
-  // click to an overlay handler; capture on document always sees it.
-  document.addEventListener("click", (ev) => {
-    const kebab = (ev.target as HTMLElement).closest?.("#code-session-kebab") as HTMLElement | null;
-    if (kebab) {
-      ev.stopPropagation();
-      if (headKebabEl) { closeHeadKebab(); return; }
-      openHeadKebab(kebab);
-      return;
-    }
-    if (headKebabEl && !(ev.target as HTMLElement).closest?.(".session-head-menu")) closeHeadKebab();
-  }, true);
   // Session controls in the agent head (the coding panel's own header row is
   // hidden): + starts a new session, the clock drops the history list.
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
   const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
   el("code-session-new")?.addEventListener("click", newSessionInPlace);
 
-  // ── Developer tools ⋯ menu (his rule, 2026-08-21): Files/Terminal/Editor/
-  // Browser/Diff/Plan live HERE, right of + new session — off the
-  // command-center wall. Each opens its workbench view via __wbOpenTool. The
-
+  // ── THE ONE ⋮ MENU (his report, 2026-10-05: a new agent on a Work session
+  // showed two ⋮ on its top row, one of them dead). The top-right ⋮
+  // (#code-tools-more, relocated into the head below) is THE menu, on the
+  // web and the desktop: the session's panels (by type — Work carries no
+  // Files/Terminal/Editor/Diff), the open session's actions (the old kebab's
+  // Rename / Pin / New agent panel / Delete), and on the web the attached
+  // desktop's Apps and the Agents / CLIs. help/agent-menu.ts is the model,
+  // help/agent-menu-ui.ts the paint; never an empty dropdown.
   {
-    const TOOLS: Array<{ view: string; label: string; icon: string }> = [
-      { view: "files",    label: "Files",    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
-      { view: "terminal", label: "Terminal", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
-      { view: "monaco",   label: "Editor",   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
-      { view: "preview",  label: "Browser",  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
-      { view: "diff",     label: "Diff",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
-      { view: "plan",     label: "Plan",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
-      // THE SWARM (his order, 2026-09-29): every sub-agent this loop hands work
-      // to, each with its own live feed — the same work panel the rail opens.
-      { view: "agents",   label: "Agents",   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>` },
-    ];
-    const wrap = el("code-tools-wrap");
     const moreBtn = el("code-tools-more");
     const menu = el("code-tools-menu");
-    void wrap;
     if (moreBtn && menu) {
-      menu.innerHTML = TOOLS.map((t) =>
-        `<button class="code-view-menu-item" data-view="${t.view}" type="button">${t.icon}<span>${t.label}</span></button>`).join("");
-      const close = (): void => menu.classList.add("hidden");
-      moreBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        menu.classList.toggle("hidden");
-      });
-      menu.addEventListener("click", (ev) => {
-        const b = (ev.target as HTMLElement).closest<HTMLElement>(".code-view-menu-item");
-        if (!b) return;
-        close();
-        (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(b.dataset.view!);
+      mountAgentMenu(menu, moreBtn, {
+        session: () => { const c = current(); return c ? { pinned: !!c.pinned } : null; },
+        mode: () => { const c = current(); return c ? modeOf(c) : typeTab; },
+        onSession: (action) => {
+          const c = current();
+          if (!c) return;
+          if (action === "rename") renameCurrentInline();
+          else if (action === "pin") togglePin(c);
+          else if (action === "new-panel") (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance?.(GLYPHH_LOOP);
+          else if (action === "delete") void deleteChat(c);
+        },
+        openCliSession: (sess) => sessOpen(sess as RailSession),
       });
       document.addEventListener("pointerdown", (ev) => {
-        if (!menu.classList.contains("hidden") && !(ev.target as HTMLElement).closest("#code-tools-wrap")) close();
+        if (!menu.classList.contains("hidden") && !(ev.target as HTMLElement).closest("#code-tools-wrap")) menu.classList.add("hidden");
       }, true);
     }
   }

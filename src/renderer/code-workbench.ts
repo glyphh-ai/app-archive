@@ -52,6 +52,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable } from "./help/web-cut.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
@@ -357,6 +358,10 @@ const AGENT_INSTANCED = !IS_SOLO_WINDOW && !IS_WEB_TARGET;
 let streamedPanelsOn = false;
 (() => {
   if (typeof window === "undefined") return;
+  // THE WEB CUT (his order, 2026-10-05): no streamed panel is reachable on
+  // the web any more — the flag never turns on there, whatever the pref says
+  // (its Settings row is hidden, web-surface.ts). The desktop reads it as before.
+  if (IS_WEB_TARGET) return;
   type PrefApi = { getPreference?: (k: string, d: unknown) => Promise<unknown>; onPreferenceChanged?: (cb: (key: string, value: unknown) => void) => unknown };
   const g = (window as unknown as { glyphh?: PrefApi }).glyphh;
   try { void g?.getPreference?.(STREAMED_PANELS_PREF, false).then((v) => { streamedPanelsOn = !!v; }).catch(() => {}); } catch { /* no bridge yet */ }
@@ -3174,7 +3179,9 @@ async function init(): Promise<void> {
       // tiles lead while the dock is OFF (his order, 2026-10-04 — the dock's
       // icons as the first items from the top-left), and whatever the dock
       // carries never shows twice.
-      const fromDock = dockEntries();
+      // THE WEB CUT (his order, 2026-10-05): no dock on the web means no dock
+      // tiles leading the pages either — nothing of the wall paints there.
+      const fromDock = bootsSurface(IS_WEB_TARGET, "dock") ? dockEntries() : [];
       const dockOnWall = new Set(document.body.classList.contains(DOCK_OFF_CLASS) ? fromDock : []);
       const list = wallTilesFor<TileEntry>({
         dockEnabled: !document.body.classList.contains(DOCK_OFF_CLASS),
@@ -3751,6 +3758,14 @@ async function init(): Promise<void> {
       }
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
+      // THE WEB CUT (his order, 2026-10-05): the web boots NO WALL — no
+      // tiles, no "Welcome back", no dock, no saved arrangement; the agent
+      // is the page (restoreWallOnce seats it). help/web-cut.ts is the rule.
+      if (!bootsSurface(IS_WEB_TARGET, "wall")) {
+        buildWall([[]]);
+        restoreWallOnce(layouts || [], null);
+        return;
+      }
       buildWall([[...pageTiles, ...rest]]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
@@ -3823,6 +3838,10 @@ async function init(): Promise<void> {
         reveal();
         return;
       }
+      // THE WEB IS THE AGENT (his order, 2026-10-05): no saved wall replay, no
+      // default workspace — the Glyphh agent opens full width and that is the
+      // page. The composer restores its own session as ever.
+      if (!bootsSurface(IS_WEB_TARGET, "wall")) { activateGlyphh(); return; }
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
@@ -4548,6 +4567,8 @@ async function init(): Promise<void> {
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
+      // THE WEB CUT: there is no command center to lift on the web.
+      if (!bootsSurface(IS_WEB_TARGET, "echo")) { console.warn("[web-cut] the command center does not open on the web"); return; }
       if (!openList.length) return;
       setShadow(!shadowPinned, !shadowPinned);
     };
@@ -4770,7 +4791,9 @@ async function init(): Promise<void> {
       const stageR = stage.getBoundingClientRect();
       // The band's outer margins MATCH the 7px inter-panel gap — panels sit
       // as close to the edges as they sit to each other.
-      const margin = 7;
+      // THE WEB CUT: the agent is the page on the web — edge to edge, no band
+      // margin (the dock never paints there; the 7px seams between panels stay).
+      const margin = IS_WEB_TARGET ? 0 : 7;
       // The dock's band — THE SAME measure the stage uses for its pill (help/
       // dock-band.ts). A bar PARKED in the body-level portal layer (panels up,
       // auto-hide off) still sits fixed across the top, so its band is still
@@ -4791,7 +4814,7 @@ async function init(): Promise<void> {
       }
       // Degenerate windows (tiny stage, mid-boot measures) — keep a usable box.
       if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
-      const side = 7;
+      const side = IS_WEB_TARGET ? 0 : 7;
       return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
     }
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
@@ -6814,6 +6837,10 @@ async function init(): Promise<void> {
      *  the dock). Keys are help/dock-items.ts (DOCK_ITEMS). */
     const openDockItem = (key: string): void => {
       const w = window as unknown as { __wbOpenSection?: (s: string) => void; __glyphhOpenSettings?: () => void; __wbEchoShadowPin?: () => void };
+      // THE WEB CUT: the dock never paints on the web, and its command-center
+      // doors (cc, close all, new tab) mean nothing there — only a new agent
+      // session and Settings act (help/web-cut.ts). Never silent.
+      if (IS_WEB_TARGET && !webDockDoorAllowed(key)) { console.warn("[web-cut] dock door refused on the web:", key); return; }
       if (key === "glyphh") {
         // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
         // ALWAYS load a new agent with a new session no matter what… for some
@@ -7147,6 +7174,10 @@ async function init(): Promise<void> {
         // ONE path with the wall's own tiles (activateGlyphh) — the two
         // entries can never disagree.
         if (key === "glyphh-home") { activateGlyphh(); return; }
+        // THE WEB CUT (his order, 2026-10-05): an app opens ON THE DESKTOP
+        // (panels.open over the relay, help/web-agent-menu-ui.ts) — the web
+        // never hosts or streams one. No desktop → that door says so.
+        if (IS_WEB_TARGET) { openAppOnDesktopWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -7679,6 +7710,14 @@ async function init(): Promise<void> {
   /** True when running the app-web target (no Electron <webview>). */
   function isWebTarget(): boolean {
     return !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  }
+
+  /** WEB: an app opens on the attached desktop (web-agent-menu-ui.ts owns the
+   *  relay call + toast); without that door the request is named, never lost. */
+  function openAppOnDesktopWeb(app: { slug?: string; name?: string }): void {
+    const open = (window as unknown as { __glyphhOpenAppOnDesktop?: (a: { slug: string; name: string }) => void }).__glyphhOpenAppOnDesktop;
+    if (!open) { console.warn("[web-cut] no desktop door for app open:", app.slug || app.name || ""); return; }
+    open({ slug: String(app.slug || ""), name: String(app.name || app.slug || "") });
   }
 
   /**
@@ -10642,7 +10681,7 @@ async function init(): Promise<void> {
     __wbToggleAppSwitcher?: () => void;
     __wbOpenSection?: (section: string) => void;
   };
-  wbApp.__wbOpenApp = (app, _newPanel) => openAppCard(app);
+  wbApp.__wbOpenApp = (app, _newPanel) => { if (IS_WEB_TARGET) openAppOnDesktopWeb(app); else openAppCard(app); };
   // The agent dock changes how much width the rails get, but the workbench owns
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
@@ -10823,6 +10862,9 @@ async function init(): Promise<void> {
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
     if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
+    // not reachable on the web from any door (help/web-cut.ts).
+    if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[web-cut] tool refused on the web:", v); return; }
     // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
     // slot beside the panel (his report, 2026-09-26: Files opened inside the
     // agent). The request goes up through main; only the agent's own views

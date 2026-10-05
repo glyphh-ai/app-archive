@@ -427,3 +427,54 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(mergeServerFirst([], [{ k: 'c' }], key)).toEqual([{ k: 'c' }]);
   });
 });
+
+describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached desktop', () => {
+  const deps = { apiUrl: 'https://api.glyphh.ai', isAuthenticated: async () => true, signOut: async () => {} };
+  const APP = { id: 'gmail', slug: 'gmail', name: 'Gmail', system: false, url: 'https://mail.google.com', execPath: null, appArchetype: 'web', iconUrl: null, iconDataUrl: 'data:image/png;base64,AAAA' };
+  const NATIVE = { id: 'notes', slug: 'notes', name: 'Notes', system: false, url: null, execPath: '/Applications/Notes.app', appArchetype: 'native', iconUrl: 'https://cdn/notes.png' };
+  const SYSTEM = { id: 'browser', slug: 'browser', name: 'Browser', system: true, url: null, execPath: null, appArchetype: null };
+  const attachFor = (answers, status = { attached: true, machines: [{ id: 'm1', name: 'MacBook' }, { id: 'm2', app: 'glyphh-cli' }] }) => ({
+    status: vi.fn(async () => status),
+    dispatch: vi.fn(async (method, params, opts) => {
+      const a = answers[opts?.machineId]?.[method];
+      if (a instanceof Error) throw a;
+      return typeof a === 'function' ? a(params) : (a ?? {});
+    }),
+  });
+
+  it('attachStatus: the machines by id + name (the app standing in for a nameless one); none → not attached', async () => {
+    const c = buildContract({ ...authedClient(), attach: attachFor({}) }, deps);
+    expect(await c.attachStatus()).toEqual({ attached: true, machines: [{ id: 'm1', name: 'MacBook' }, { id: 'm2', name: 'glyphh-cli' }] });
+    const none = buildContract({ ...authedClient(), attach: attachFor({}, { attached: false, machines: [] }) }, deps);
+    expect(await none.attachStatus()).toEqual({ attached: false, machines: [] });
+    const dead = buildContract({ ...authedClient(), attach: { status: async () => { throw new Error('offline'); } } }, deps);
+    expect(await dead.attachStatus()).toEqual({ attached: false, machines: [] });
+    expect(await buildContract(authedClient(), deps).attachStatus()).toEqual({ attached: false, machines: [] });
+  });
+
+  it('desktopAppsList: every machine\'s panelApps.list rows, menu-shaped and tagged; system rows and a dead machine drop', async () => {
+    const attach = attachFor({ m1: { 'panelApps.list': { apps: [APP, SYSTEM, NATIVE] } }, m2: { 'panelApps.list': new Error('went away') } });
+    const c = buildContract({ ...authedClient(), attach }, deps);
+    const r = await c.desktopAppsList();
+    expect(r.ok).toBe(true);
+    expect(r.apps).toEqual([
+      { slug: 'gmail', name: 'Gmail', icon: 'data:image/png;base64,AAAA', machineId: 'm1', machineName: 'MacBook' },
+      { slug: 'notes', name: 'Notes', icon: 'https://cdn/notes.png', machineId: 'm1', machineName: 'MacBook' },
+    ]);
+    expect(attach.dispatch).toHaveBeenCalledWith('panelApps.list', {}, { machineId: 'm1' });
+    expect(await buildContract(authedClient(), deps).desktopAppsList()).toEqual({ ok: true, apps: [] });
+  });
+
+  it('desktopPanelOpen: panels.open {app} on the named machine; the desktop\'s refusal rides back', async () => {
+    const attach = attachFor({
+      m1: { 'panels.open': (p) => ({ app: p.app, name: 'Gmail', opened: true }) },
+      m2: { 'panels.open': new Error('Gmail did not open: no panel appeared within 15s') },
+    });
+    const c = buildContract({ ...authedClient(), attach }, deps);
+    expect(await c.desktopPanelOpen({ app: 'gmail', machineId: 'm1' })).toEqual({ ok: true, app: 'gmail', name: 'Gmail' });
+    expect(attach.dispatch).toHaveBeenCalledWith('panels.open', { app: 'gmail' }, { machineId: 'm1' });
+    expect(await c.desktopPanelOpen({ app: 'gmail', machineId: 'm2' })).toMatchObject({ ok: false, error: /did not open/ });
+    expect(await c.desktopPanelOpen({})).toMatchObject({ ok: false, error: /requires/ });
+    expect(await buildContract(authedClient(), deps).desktopPanelOpen({ app: 'gmail' })).toEqual({ ok: false, error: 'no desktop attached' });
+  });
+});

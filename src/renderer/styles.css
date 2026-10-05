@@ -13729,12 +13729,6 @@ select:focus {
   border: 1px solid var(--border-2); border-radius: 6px; padding: 3px 8px; min-width: 160px;
   -webkit-app-region: no-drag;
 }
-.session-head-menu { min-width: 150px; }
-/* Kebab items lead with an icon (SessionHeader: IcRename / IcPin / IcTrash). */
-.session-head-menu .code-menu-item { display: flex; align-items: center; gap: 8px; }
-.session-head-menu .code-menu-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-3); }
-.session-head-menu .code-menu-item.danger svg { color: var(--danger); }
-.session-head-kebab { -webkit-app-region: no-drag; }
 /* New-chat / landing screen: the header STAYS — the code menu (history / +
    new / session kebab / view toggles) lives in the top-right and must be
    reachable from the landing. Only the LEFT side (back / locus / title) is
@@ -17766,7 +17760,6 @@ body:not(.composer-on-home) .code-input,
    lives in the composer's source slot by default; in a layout it moves into
    .session-head-actions (help/code.ts). Flex either way. */
 .code-session-controls { display: inline-flex; align-items: center; gap: 2px; }
-.session-head-actions + #code-session-kebab-wrap { margin-left: 0; }
 /* The history dropdown hangs off its button in the header's left group. */
 .session-head-actions { position: relative; }
 
@@ -17776,7 +17769,6 @@ body:not(.composer-on-home) .code-input,
    "More" menu, so its own kebab hides — but ONLY there: #code-view-more is in
    the DOM on every space (Chat/Work merely hide the toggles), so keying off
    its existence hid the kebab everywhere and Chat/Work lost their menu. */
-body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 .code-view-session-actions { border-top: 1px solid var(--border-2); margin-top: 4px; padding-top: 4px; }
 .code-view-session-actions .danger { color: var(--danger, #e5484d); }
 
@@ -17795,7 +17787,6 @@ body[data-session-space="code"] #code-session-kebab-wrap { display: none; }
 .session-head-actions { display: inline-flex; flex-direction: row; align-items: center; }
 .session-head-actions #code-session-history { order: 1; }
 .session-head-actions #code-session-new { order: 2; }
-.session-head-actions #code-session-kebab-wrap { order: 3; }
 
 /* Layout editor: the agent tabs at the top — same pill as the new-session
    screen, so "which agent rides this layout" reads identically. */
@@ -20166,7 +20157,6 @@ body.platform-rail-collapsed .rail-row-launch { display: none; }
    shows even on a fresh landing so there is always something to rename. ── */
 body.echo-agent-in-layout .code-agent-head .session-head-chev,
 body.echo-agent-in-layout .code-agent-head .session-head-locus,
-body.echo-agent-in-layout #code-session-kebab-wrap,
 body.echo-agent-in-layout #code-agent-lock { display: none !important; }
 body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { display: inline-flex; }
 
@@ -21761,3 +21751,48 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    put under the head; the two sections scroll beneath it. */
 .ws-locus-drop .ws-locus-search { flex: 0 0 auto; margin: 0 0 6px; width: 100%; box-sizing: border-box; }
 .ws-locus-drop .ws-locus-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* ── THE WEB CUT (his order, 2026-10-05): app.glyphh.ai boots the Glyphh agent
+   and nothing for building. The command center never paints — no wall (the
+   tiles, the "Welcome back" page, the search pill, the page arrows), no dock
+   (its layer, its hot strip), no layout bar, no veil — and the agent's card
+   drops its chrome so the panel's edge is the page's edge, exactly as the
+   solo panel does. The rail keeps sessions, search, filter and the user chip;
+   its doors into Echo / Build / Customize are hidden by web-surface.ts. The
+   `glyphh-web` class is on <html> before the first paint (web/src/bridge.js),
+   so nothing here flashes. help/web-cut.ts is the rule these rules draw. ── */
+html.glyphh-web .echo-stage .echo-pages,
+html.glyphh-web .echo-stage .echo-page-dots,
+html.glyphh-web .echo-stage .echo-search-wrap,
+html.glyphh-web .echo-stage .echo-page-arrow,
+html.glyphh-web .echo-topbar,
+html.glyphh-web .echo-dock,
+html.glyphh-web #echo-dock-layer,
+html.glyphh-web .echo-dock-hotstrip,
+html.glyphh-web .echo-layout-bar,
+html.glyphh-web .echo-veil { display: none !important; }
+html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
+html.glyphh-web .echo-card.echo-agent-card > .echo-card-head { display: none; }
+/* The composer's command-center and reset buttons open what the web no longer has. */
+html.glyphh-web #code-cc-open,
+html.glyphh-web #code-reset-open { display: none !important; }
+
+/* The agent window's top-right ⋮ on the web (help/web-agent-menu-ui.ts):
+   three sections — Apps, Agents / CLIs, Panels — in the same menu frame. */
+.code-view-more-menu.web-agent-menu { min-width: 240px; max-width: 320px; max-height: min(88vh, 760px); overflow: auto; }
+.code-view-more-menu .code-menu-head {
+  padding: 8px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-3, var(--text-2)); user-select: none;
+}
+.code-view-more-menu .code-menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+.code-view-more-menu .code-menu-note { padding: 6px 10px 8px; font-size: 12px; color: var(--text-2); line-height: 1.4; }
+.code-view-more-menu .code-menu-note.disabled { opacity: 0.7; }
+.code-view-more-menu .code-menu-link {
+  background: none; border: 0; padding: 0; margin: 0; cursor: pointer; font: inherit; color: var(--text);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.code-view-more-menu .code-menu-link:hover { color: var(--accent-light, var(--text)); }
+.code-view-more-menu .code-view-menu-item .wam-icon { width: 16px; height: 16px; border-radius: 4px; object-fit: cover; flex: 0 0 auto; }
+.code-view-more-menu .code-view-menu-item.wam-sub { padding-left: 30px; font-size: 12px; color: var(--text-2); }
+.code-view-more-menu .code-view-menu-item.wam-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-view-more-menu .code-view-menu-item.wam-sub.locked { opacity: 0.6; }
