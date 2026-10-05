@@ -36,7 +36,9 @@ import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 // The chat ⇄ CLI-session binding rules — pure, shared, and under test.
-import { sessionDisplayTitle } from "./session-title.js";
+import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBody, fetchSessionTitle } from "./session-title.js";
+import { pickUtilityModel } from "./utility-model.js";
+import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
@@ -109,6 +111,12 @@ interface CodeChat {
    *  `models`: the workspace that opened it (or a pick made while current)
    *  binds it; other sessions run their own loops untouched. */
   loop?: string;
+  /** GENERATED TITLES (his order, 2026-10-05: do the same as Claude's titles).
+   *  `titleLocked`: the member renamed it by hand — never overwritten.
+   *  `titleGenerated`: the one side request was made (in flight or done).
+   *  Both local-only (thread-store caches them, never pushes them). */
+  titleLocked?: boolean;
+  titleGenerated?: boolean;
 }
 
 /** THE TWO TYPES. `modeOf` is the single choke point every call site reads:
@@ -429,7 +437,13 @@ function adoptSessionMode(chatId: string, mode: string): void {
 // One lane since the CLI era ended (2026-09-28): the org's gateway, the
 // member's key, the org's allow-list. No seeded catalog, no plan gate here —
 // the server decided when it minted the key.
-interface AvailModel { id: string; name: string; providerSlug: string; /** Takes an effort (the dial); absent = yes. */ reasoning?: boolean }
+interface AvailModel {
+  id: string; name: string; providerSlug: string; /** Takes an effort (the dial); absent = yes. */ reasoning?: boolean;
+  /** The utility-model rule reads these (help/utility-model.ts): the console's
+   *  Utility flag, else the cheapest chat row by price. Carried from the
+   *  server's available row by main (loop-models.ts) and the web contract. */
+  modality?: string; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number;
+}
 let availModels: AvailModel[] = [];
 let modelSource: "gateway" | "none" = "none";
 function modelsForLoop(): AvailModel[] {
@@ -1913,6 +1927,7 @@ function beginRename(chat: CodeChat, label: HTMLElement): void {
     const t = field.value.trim();
     if (t && t !== chat.title) {
       chat.title = t;
+      chat.titleLocked = true;   // a hand name is never overwritten by a generated one
       void saveStore();
       // The coding tile's header/dropdown follow this event.
       window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
@@ -2011,7 +2026,7 @@ function renameCurrentInline(): void {
     if (done) return; done = true;
     const t = field.value.trim();
     if (t && t !== c.title) {
-      c.title = t; void saveStore();
+      c.title = t; c.titleLocked = true; void saveStore();
       window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
       renderHistory();
     }
@@ -4328,7 +4343,7 @@ function send(): void {
     if (!current()) newChat();
     const cc = current()!;
     cc.messages.push({ role: "user", text, at: Date.now() });
-    if (cc.title === "New session") cc.title = text.length > 42 ? text.slice(0, 42) + "…" : text;
+    if (cc.title === "New session") cc.title = placeholderTitle(text);
     ta.value = "";
     autoGrow(ta);
     void window.glyphh.execCommand(text.slice(1).trim());
@@ -4359,8 +4374,10 @@ function send(): void {
   paintAttachChips();
   c.messages.push({ role: "user", text, at: Date.now(), ...(attachments.length ? { attachments } : {}) });
   if (c.title === "New session") {
+    // The instant placeholder; the generated title replaces it after the
+    // first reply (finishRun → generateSessionTitle).
     const t = text || attachments.map((a) => a.name).join(", ");
-    c.title = t.length > 42 ? t.slice(0, 42) + "…" : t;
+    c.title = placeholderTitle(t);
   }
   ta.value = "";
   autoGrow(ta);
@@ -4671,6 +4688,37 @@ function maybeBudgetPrompt(chatId: string, text: string): void {
   }
 }
 
+/** THE GENERATED TITLE (his order, 2026-10-05: do the same as Claude's
+ *  titles). After the FIRST reply of a thread lands, ONE small side request
+ *  through the Router asks the utility model (help/utility-model.ts: the
+ *  console's flagged model, else the cheapest chat row — never the session's
+ *  own) for a 3–6 word title, and it replaces the truncated-prompt placeholder
+ *  on the thread record — so the rail, the recents and the phone all show it
+ *  (saveStore pushes the title; renderHistory repaints). Every rule is pure
+ *  (session-title.ts); this is the one impure seam. It never throws, never
+ *  touches the transcript or the run ledger, and is billed as an ordinary
+ *  member call. */
+async function generateSessionTitle(chat: CodeChat): Promise<void> {
+  try {
+    const may = mayGenerateTitle(chat);
+    if (!may.ok) return;
+    const model = pickUtilityModel(availModels);
+    if (!model) return;   // nothing configured → the placeholder stands
+    chat.titleGenerated = true;   // once per thread, in flight or done
+    const before = chat.title;
+    const token = await harnessToken();
+    if (!token) return;
+    const title = await fetchSessionTitle({ apiUrl: harnessApiUrl(), token, body: titleRequestBody(model, may.prompt, may.reply) });
+    // Still the placeholder? A rename (here or on another surface) wins.
+    if (!title || chat.titleLocked || chat.title !== before) return;
+    chat.title = title;
+    void saveStore();
+    renderHistory();
+  } catch (err) {
+    console.warn("[title] generation skipped:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 function finishRun(chatId: string, text: string, stopped = false): void {
   void refreshSpend(true);   // a turn spent money: the banner re-reads where it stands
   const run = liveRuns.get(chatId);
@@ -4688,6 +4736,8 @@ function finishRun(chatId: string, text: string, stopped = false): void {
     });
   }
   void saveStore();
+  // The first reply landed: ask for the session's title (never blocks the turn).
+  if (chat && text && !stopped) void generateSessionTitle(chat);
   markSettled(run?.runId ?? null);   // its late frames belong to nobody
   liveRuns.delete(chatId);
   subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn

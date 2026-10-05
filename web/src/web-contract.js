@@ -91,6 +91,12 @@ export function toLoopModels(rows) {
       id: m.name, name: m.autoRouter ? 'Auto' : m.name, providerSlug: m.autoRouter ? 'auto' : m.providerSlug,
       ...(typeof m.reasoning === 'boolean' ? { reasoning: m.reasoning } : {}),
       ...(typeof m.freePlan === 'boolean' ? { freePlan: m.freePlan } : {}),
+      // The utility-model rule reads these (renderer help/utility-model.ts, his
+      // order 2026-10-05): the console's Utility flag, else the cheapest by price.
+      modality: m.modality,
+      ...(typeof m.utility === 'boolean' ? { utility: m.utility } : {}),
+      ...(typeof m.inputUsdPerMTok === 'number' ? { inputUsdPerMTok: m.inputUsdPerMTok } : {}),
+      ...(typeof m.outputUsdPerMTok === 'number' ? { outputUsdPerMTok: m.outputUsdPerMTok } : {}),
     }))
     .filter((m) => {
       const key = String(m.name ?? m.id).trim().toLowerCase();

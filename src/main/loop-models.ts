@@ -30,6 +30,13 @@ export interface LoopModel {
   reasoning?: boolean;
   /** On the Free plan's list (the server's flag; nothing in the app shows it). */
   freePlan?: boolean;
+  /** THE UTILITY-MODEL RULE reads these (renderer help/utility-model.ts, his
+   *  order 2026-10-05: side requests ride the console's flagged Utility model,
+   *  else the cheapest chat row by price — never the session's model). */
+  modality?: string;
+  utility?: boolean;
+  inputUsdPerMTok?: number;
+  outputUsdPerMTok?: number;
 }
 export interface LoopModelsResult {
   ok: boolean;
@@ -80,13 +87,17 @@ export async function listLoopModels(force = false): Promise<LoopModelsResult> {
     // endpoint publishes the public name and applies the TEAM's list — the same
     // list the member's key is authorized against.
     const creds = await gatewayCreds().catch(() => null);
-    const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean; reasoning?: boolean; freePlan?: boolean }>;
+    const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean; reasoning?: boolean; freePlan?: boolean; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number }>;
     const models = dedupeByName(rows
       .filter((m) => m.modality === "chat")
       .map((m): LoopModel => ({
         id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug,
         ...(typeof m.reasoning === "boolean" ? { reasoning: m.reasoning } : {}),
         ...(typeof m.freePlan === "boolean" ? { freePlan: m.freePlan } : {}),
+        modality: m.modality,
+        ...(typeof m.utility === "boolean" ? { utility: m.utility } : {}),
+        ...(typeof m.inputUsdPerMTok === "number" ? { inputUsdPerMTok: m.inputUsdPerMTok } : {}),
+        ...(typeof m.outputUsdPerMTok === "number" ? { outputUsdPerMTok: m.outputUsdPerMTok } : {}),
       })))
       .sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
     value = { ok: true, source: "gateway", baseUrl: creds?.baseUrl ?? null, models };
