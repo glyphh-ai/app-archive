@@ -372,7 +372,9 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
       if (view.kind === "branch") { drawBranch(view.repo, view.rows); place(repoBtn); return; }
       const ps = picks();
       m.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span></span></div>`);
-      (m.querySelector(".code-drop-head span") as HTMLElement).textContent = git === "on" ? `Repositories (${ps.length})` : "Repositories";
+      // The count is how many repositories LIST here, not how many are picked
+      // (his report, 2026-10-05: "(0)" over a list of one).
+      (m.querySelector(".code-drop-head span") as HTMLElement).textContent = git === "on" && repos ? `Repositories (${repos.length})` : "Repositories";
       if (git === "on") {
         const search = document.createElement("input");
         search.type = "text";
