@@ -122,19 +122,25 @@ export function webNewClosesEverything(web: boolean): boolean {
   return web;
 }
 
-/** THE ECHO ICON AT THE RAIL'S TOP-LEFT ON THE WEB (his order, 2026-10-05:
- *  "the top left of the app web should have the echo icon -> when clicked
- *  the echo overlay shows but only the workspaces render"). The wordmark
- *  that sat there leaves (WEB_HIDDEN_RAIL carries its selector); the
- *  desktop's own Echo buttons (#rail-echo-btn, and the collapsed strip's
- *  twin) STAY on the web — the CSS seats #rail-echo-btn first in the top
- *  strip (webRailEchoLeads). The desktop is untouched: its wordmark never showed, its Echo
- *  button keeps its place. */
+/** THE RAIL HEADER ON THE WEB IS THE DESKTOP'S (his order, 2026-10-05:
+ *  "the left rail in web should work the same as the app. The icons should
+ *  stay with the logo fixed in the same spot… In the web instead of the
+ *  traffic lights you keep the logo in that spot."): the wordmark sits where
+ *  the desktop's traffic lights sit, then the SAME two icons in the same
+ *  order — Collapse, then Echo — at the same x whether the rail is open or
+ *  collapsed, so a hand that knows where they are never misses. The
+ *  desktop's own Echo buttons (#rail-echo-btn and the collapsed strip's
+ *  twin) stay on the web. */
 export const WEB_RAIL_WORDMARK = ".app-rail-logo";
 export const WEB_RAIL_ECHO_BUTTONS: ReadonlyArray<string> = Object.freeze(["#rail-echo-btn", "#rail-echo-btn-strip"]);
-/** Does the Echo button lead the rail's top strip (top-left) here? Web
- *  only — the desktop keeps it at the strip's right, after Collapse. */
-export function webRailEchoLeads(web: boolean): boolean {
+/** The rail header's order on both hosts: the chrome spot (traffic lights on
+ *  the desktop, the wordmark on the web), then Collapse, then Echo. */
+export const RAIL_HEADER_ORDER: ReadonlyArray<string> = Object.freeze(["chrome", "collapse", "echo"]);
+export function webRailHeaderOrder(web: boolean): ReadonlyArray<string> {
+  return web ? RAIL_HEADER_ORDER : RAIL_HEADER_ORDER;
+}
+/** Does the wordmark hold the chrome spot here? Web only. */
+export function webRailWordmark(web: boolean): boolean {
   return web;
 }
 
@@ -158,7 +164,7 @@ export function webEchoOpens(web: boolean): boolean {
  *  selectors, applied by web-surface.ts). Build and Customize left this list
  *  on 2026-10-05: they are the rail's full-screen pages now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
-  "#rail-more-toggle", WEB_RAIL_WORDMARK,
+  "#rail-more-toggle",
 ]);
 
 /** Settings rows that govern surfaces the web no longer has: the dock

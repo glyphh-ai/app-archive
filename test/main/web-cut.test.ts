@@ -12,9 +12,8 @@ import {
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
   webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
-  WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailEchoLeads, webEchoSurface, webEchoOpens, webCloseAllOpensNew,
-  webLayoutCells, webWorkspaceOpenLines, workspaceOpenClosesHosts, LAYOUT_AGENT_CELL, type WebLayoutApp,
-} from "../../src/renderer/help/web-cut.js";
+  WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailWordmark, webEchoSurface, webEchoOpens, webCloseAllOpensNew,
+  webLayoutCells, webWorkspaceOpenLines, workspaceOpenClosesHosts, LAYOUT_AGENT_CELL, type WebLayoutApp, RAIL_HEADER_ORDER, webRailHeaderOrder } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
 describe("webBootSurfaces — what the home shell boots into", () => {
@@ -83,9 +82,14 @@ describe("settings on the web — everything for building leaves", () => {
       expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
     }
   });
-  it("both group headers hide in Settings, with the rail's More and the dock / streamed rows — but NOT the rail's Build / Customize, and NOT the Echo buttons (his order, 2026-10-05: the Echo icon leads the rail)", () => {
+  it("both group headers hide in Settings, with the rail's More and the dock / streamed rows — but NOT the rail's Build / Customize, NOT the Echo buttons and NOT the wordmark (his order, 2026-10-05: the logo holds the traffic lights' spot, the icons stay fixed beside it)", () => {
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-build", "nav-group-customize"]);
-    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", WEB_RAIL_WORDMARK]);
+    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle"]);
+    expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
+    expect(webRailWordmark(true)).toBe(true);
+    expect(webRailWordmark(false)).toBe(false);
+    expect([...RAIL_HEADER_ORDER]).toEqual(["chrome", "collapse", "echo"]);
+    expect([...webRailHeaderOrder(true)]).toEqual([...webRailHeaderOrder(false)]);
     for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="build"]');
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="customize"]');
@@ -207,9 +211,9 @@ describe("THE ECHO ICON AT THE RAIL'S TOP-LEFT ON THE WEB (his order, 2026-10-05
   it("the wordmark leaves (hidden by selector), the desktop's two Echo buttons stay, and Echo leads the strip on the web only", () => {
     expect(WEB_RAIL_WORDMARK).toBe(".app-rail-logo");
     expect([...WEB_RAIL_ECHO_BUTTONS]).toEqual(["#rail-echo-btn", "#rail-echo-btn-strip"]);
-    expect(WEB_HIDDEN_RAIL).toContain(WEB_RAIL_WORDMARK);
-    expect(webRailEchoLeads(true)).toBe(true);
-    expect(webRailEchoLeads(false)).toBe(false);
+    expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
+    expect(webRailWordmark(true)).toBe(true);
+    expect(webRailWordmark(false)).toBe(false);
   });
   it("the web's Echo is the workspaces-only overlay: search yes, dock no, workspace tiles only — opened on the web, never the desktop's rule", () => {
     expect(webEchoSurface()).toEqual({ search: true, dock: false, tiles: "workspaces" });

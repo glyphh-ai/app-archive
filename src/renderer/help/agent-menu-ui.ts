@@ -29,6 +29,7 @@
  * Every open repaints from the last answer at once and refreshes behind it.
  */
 import { hostHas, onWeb } from "./web-surface.js";
+import { toolViewIcon } from "./layouts.js";
 import { toast } from "./toast.js";
 import {
   agentMenuModel, appRowOpen, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
@@ -194,6 +195,13 @@ function appIcon(a: MenuAppRow): string {
     img.alt = "";
     img.src = a.icon;
     return img.outerHTML;
+  }
+  // A HOUSE APP WEARS ITS OWN MARK (his order, 2026-10-05: "apps should
+  // carry the icon from the apps into this dropdown") — the same coloured
+  // mark the Skills page paints for its tool (layouts.ts toolViewIcon).
+  if (a.tool) {
+    const mark = toolViewIcon(a.tool);
+    if (mark) return `<span class="wam-icon wam-mark">${mark}</span>`;
   }
   return IC.app;
 }
