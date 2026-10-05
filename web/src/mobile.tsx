@@ -58,6 +58,7 @@ import { mobileEnvironments } from './mobile-environments';
 import { cloudSessions } from './cloud-sessions';
 import type { Source } from '../../src/renderer/help/code-source-chip';
 import { gateAfter, IDLE_GATE, mayPin, SETTLE_MS, type FollowGate } from './mobile-scroll-follow';
+import { themeToApply } from './mobile-theme';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -2748,6 +2749,8 @@ const THEMES: { id: string; name: string; desc?: string }[] = [
   { id: 'system', name: 'System', desc: 'Match your device' },
   { id: 'light', name: 'Light' },
   { id: 'dark', name: 'Dark' },
+  { id: 'modern-dark', name: 'Modern Dark' },
+  { id: 'modern-light', name: 'Modern Light' },
   { id: 'purple', name: 'Purple' },
   { id: 'aurora', name: 'Aurora' },
   { id: 'prism', name: 'Prism' },
@@ -2835,7 +2838,12 @@ function VoiceTray() {
 
 function AppearanceTray() {
   const [theme, setTheme] = useState(currentTheme);
-  const pick = (t: string) => { haptic(); setTheme(t); applyTheme(t); };
+  // A pick here is the member's theme EVERYWHERE: it writes the server
+  // preference the web and the desktop read (mobile-theme.ts).
+  const pick = (t: string) => {
+    haptic(); setTheme(t); applyTheme(t);
+    void (glyphh() as { profile: { setPrefs: (p: Record<string, unknown>) => Promise<unknown> } }).profile.setPrefs({ theme: t }).catch(() => { /* offline: the device keeps it */ });
+  };
   const sysResolved = (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
   // Escape hatch to the FULL desktop site (iPad + tablets). `/m` is a SEPARATE
   // bundle from the desktop shell — a CSS breakpoint can't switch it — so this
@@ -4373,6 +4381,15 @@ function App() {
   const [envForm, setEnvForm] = useState<{ open: boolean; editing: EnvironmentRow | null }>({ open: false, editing: null });
   const loadEnvironments = () => { void mobileEnvironments.list().then(setEnvironments); };
   useEffect(() => { if (authState === 'in') loadEnvironments(); }, [authState]);
+  // THE MEMBER'S THEME, from the server preference the web and the desktop
+  // read (his report, 2026-10-05: purple buttons on the phone only — it
+  // painted a device-local default while the web painted his Modern Dark).
+  useEffect(() => {
+    if (authState !== 'in') return;
+    glyphh().profile.prefs()
+      .then((p: Record<string, unknown>) => { const t = themeToApply(p.theme, currentTheme()); if (t !== currentTheme()) applyTheme(t); })
+      .catch(() => { /* offline: the device's own theme stands */ });
+  }, [authState]);
   useEffect(() => { if (envOpen) loadEnvironments(); }, [envOpen]);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
