@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cloudSource, cloudSendBlock, picksOf, isCloudKind, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
-  toggleRepo, setBranch, groupRepos, splitRepo, mergeThreads, sessionSubline, sessionMark, toStoredMessages, defaultLocus,
+  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, splitRepo, mergeThreads, sessionSubline, sessionMark, toStoredMessages, defaultLocus,
 } from '../src/mobile-cloud.ts';
 
 // The phone's cloud lane (his direction, 2026-10-05): the web's labels and
@@ -66,12 +66,18 @@ describe('the repositories sheet', () => {
     expect(toggleRepo(picks, server)).toEqual([{ repo: 'glyphh-ai/ada', branch: 'main' }]);
     expect(setBranch(picks, 'glyphh-ai/ada', 'feat/x')[1]).toEqual({ repo: 'glyphh-ai/ada', branch: 'feat/x' });
   });
-  it('groups by owner, alphabetical, with a substring search', () => {
+  it('groups by account in the server\'s order (the member\'s own first), with a substring search across every account', () => {
     const g = groupRepos([server, other, ada]);
-    expect(g.map((x) => x.owner)).toEqual(['acme', 'glyphh-ai']);
-    expect(g[1].repos.map((r) => r.fullName)).toEqual(['glyphh-ai/ada', 'glyphh-ai/server']);
-    expect(groupRepos([server, other, ada], 'SERV')).toEqual([{ owner: 'glyphh-ai', repos: [server] }]);
+    expect(g.map((x) => x.account)).toEqual(['glyphh-ai', 'acme']);
+    expect(g[0].repos.map((r) => r.fullName)).toEqual(['glyphh-ai/ada', 'glyphh-ai/server']);
+    expect(groupRepos([server, other, ada], 'SERV')).toEqual([{ account: 'glyphh-ai', repos: [server] }]);
     expect(splitRepo('glyphh-ai/ada')).toEqual({ owner: 'glyphh-ai', name: 'ada' });
+    expect(accountHeaders([server, ada])).toBe(false);
+    expect(accountHeaders([server, other])).toBe(true);
+    const mine = { id: '9002', account: 'timmetim', type: 'User', url: 'https://github.com/settings/installations/9002' };
+    const org = { id: '9001', account: 'glyphh-ai', type: 'Organization', url: 'https://github.com/organizations/glyphh-ai/settings/installations/9001' };
+    expect(manageRows({ installations: [mine, org] }).map((r) => r.url)).toEqual([mine.url, org.url]);
+    expect(manageRows({ installations: [org] }).map((r) => [r.label, r.url])).toEqual([['Manage repository access…', org.url]]);
   });
 });
 

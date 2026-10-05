@@ -26,9 +26,10 @@ export { defaultLocus, LOCUS_LOCKED_HINT };
 export {
   cloudSource, sourceForPicks, environmentIdOf, cloudSendBlock, picksOf, isCloudKind, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
   NETWORK_OPTIONS, networkLabel, environmentName, environmentSubline, parseDotenv, environmentFormError, maskedDotenv, environmentSaveError,
-  toggleRepo, setBranch, groupRepos, splitRepo, pendingLinkInUrl, stripPendingLink, gitCompleteError,
-  DEFAULT_ENVIRONMENT_ID, DEFAULT_ENVIRONMENT_NAME, ENV_NAME_MAX, ENV_VARS_CAP, ENV_VARS_BYTES_CAP,
+  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, splitRepo, pendingLinkInUrl, stripPendingLink, gitCompleteError,
+  DEFAULT_ENVIRONMENT_ID, DEFAULT_ENVIRONMENT_NAME, ENV_NAME_MAX, ENV_VARS_CAP, ENV_VARS_BYTES_CAP, MANAGE_FALLBACK_URL,
   type RepoRow, type RepoPick, type BranchRow, type CloudSource, type EnvironmentNetwork, type EnvironmentRow, type EnvironmentVarRow,
+  type GitInstallationRow, type ManageRow,
 } from '../../src/renderer/help/cloud-source';
 
 const lastSeg = (p: string): string => p.split('/').filter(Boolean).pop() || p;

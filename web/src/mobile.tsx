@@ -10,7 +10,7 @@
 
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { GHOST_QUOTES, SETTINGS_GROUPS,
   type SpaceId, type Recent, type Message } from './mock';
 // Real auth + client — the same SDK wiring app-web uses (localStorage token store,
@@ -46,7 +46,7 @@ import { resolveDefaultModel } from './default-model';
 // locus rule (session-locus.ts) and the web's SDK calls, nothing new.
 import {
   cloudSource, cloudSendBlock, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
-  toggleRepo, setBranch, groupRepos, splitRepo, mergeThreads, sessionSubline, sessionMark,
+  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, splitRepo, mergeThreads, sessionSubline, sessionMark,
   toStoredMessages, picksOf, isCloudKind, defaultLocus, LOCUS_LOCKED_HINT,
   environmentIdOf, environmentName, environmentSubline, environmentFormError, maskedDotenv, NETWORK_OPTIONS, DEFAULT_ENVIRONMENT_ID,
   type RepoPick, type RepoRow, type BranchRow, type CloudSource, type Locus, type ListedThread, type EnvironmentRow, type EnvironmentNetwork,
@@ -4158,6 +4158,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
   useEffect(() => { if (open && note) setErr(note); }, [open, note]);
   const [query, setQuery] = useState('');
   const [branchFor, setBranchFor] = useState('');               // the pick whose branches panel 2 lists
+  const [manage, setManage] = useState(() => manageRows(null));  // the manage doors, one per installation when several
   const [branches, setBranches] = useState<BranchRow[] | null>(null);
   const pollRef = useRef<AbortController | null>(null);
 
@@ -4179,7 +4180,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
     void mobileGit.status().then((st) => {
       if (!on) return;
       setGit(st.connected ? 'on' : 'off');
-      if (st.installationUrl) setManageUrl(st.installationUrl);
+      setManage(manageRows(st));
       if (st.connected) void loadRepos();
     });
     return () => { on = false; };
@@ -4219,6 +4220,7 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
 
   const selected = picks.map((p) => (repos ?? []).find((r) => r.fullName === p.repo) ?? { id: p.repo, fullName: p.repo, private: false, defaultBranch: p.branch });
   const groups = groupRepos((repos ?? []).filter((r) => !picks.some((p) => p.repo === r.fullName)), query);
+  const headed = accountHeaders(repos ?? []);
   const repoRow = (r: RepoRow, on: boolean) => {
     const { owner, name } = splitRepo(r.fullName);
     return (
@@ -4276,13 +4278,21 @@ function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note 
                     ? <div className="m-list-note">Loading…</div>
                     : groups.length === 0
                     ? <div className="m-list-note">{repos.length ? (query ? 'No repositories match.' : 'Every repository is selected.') : 'No repositories found — grant the Glyphh app some on GitHub.'}</div>
-                    : groups.map((g) => <div key={g.owner} className="m-sel-group">{g.repos.map((r) => repoRow(r, false))}</div>)}
+                    : groups.map((g) => (
+                      <Fragment key={g.account}>
+                        {/* A header per account only when the member reaches more than one (their own first). */}
+                        {headed && <div className="m-code-label">{g.account}</div>}
+                        <div className="m-sel-group">{g.repos.map((r) => repoRow(r, false))}</div>
+                      </Fragment>
+                    ))}
                   <div className="m-sel-group">
-                    {/* A GitHub App only lists repos its installation was granted — the
-                        web's two account rows, verbatim. */}
-                    <button className="m-opt" onClick={() => { haptic(); window.open(manageUrl || 'https://github.com/settings/installations', '_blank', 'noopener'); }}>
-                      <span className="m-opt-text"><span className="m-opt-name">Manage repository access…</span><span className="m-opt-desc">Grant the Glyphh app more repositories on GitHub</span></span><Icon name="external" />
-                    </button>
+                    {/* A GitHub App only lists repos its installations were granted — one
+                        manage row per installation when there are several, the web's rows verbatim. */}
+                    {manage.map((row) => (
+                      <button key={row.url} className="m-opt" onClick={() => { haptic(); window.open(row.url, '_blank', 'noopener'); }}>
+                        <span className="m-opt-text"><span className="m-opt-name">{row.label}</span><span className="m-opt-desc">{row.hint}</span></span><Icon name="external" />
+                      </button>
+                    ))}
                     <button className="m-opt" onClick={disconnect} disabled={locked}>
                       <span className="m-opt-text"><span className="m-opt-name">Disconnect GitHub</span><span className="m-opt-desc">Unlink this account (repos stop listing here)</span></span>
                     </button>
@@ -4369,7 +4379,6 @@ function App() {
   const [reposOpen, setReposOpen] = useState(false);
   const [git, setGit] = useState<GitState>('unknown');
   // GitHub's settings page for this installation — where repositories change (his report, 2026-10-05).
-  const [manageUrl, setManageUrl] = useState('');
   const [gitNote, setGitNote] = useState('');   // the return landing's verdict, for the repos sheet
   const [picks, setPicksState] = useState<RepoPick[]>(() => { try { return picksOf({ repos: JSON.parse(localStorage.getItem('yoCloudPicks') || '[]') }); } catch { return []; } });
   const setPicks = (p: RepoPick[]) => { setPicksState(p); try { localStorage.setItem('yoCloudPicks', JSON.stringify(p)); } catch { /* */ } };
@@ -5106,7 +5115,7 @@ function App() {
         .then((st) => { if (!on) return; setGit(st.connected ? 'on' : 'off'); setGitNote(''); if (st.connected) setReposOpen(true); })
         .catch((err: unknown) => { if (!on) return; setGit('off'); setGitNote(mobileGit.completeError(err)); setReposOpen(true); });
     } else {
-      void mobileGit.status().then((st) => { if (on) { setGit(st.connected ? 'on' : 'off'); if (st.installationUrl) setManageUrl(st.installationUrl); } });
+      void mobileGit.status().then((st) => { if (on) setGit(st.connected ? 'on' : 'off'); });
     }
     // Attached desktops (Code strip). POLL it — a one-shot fetch goes stale the
     // instant the socket reconnects (a server restart drops the attach WS, the
