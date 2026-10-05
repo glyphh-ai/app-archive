@@ -859,6 +859,8 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     },
     destroy: () => {
       document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("glyphh-agent:turn-finished", onTurnFinished);
+      dropPaneSpinner();
       ro?.disconnect();
       revoke?.();
       document.querySelector(".artp-share-pop")?.remove();
