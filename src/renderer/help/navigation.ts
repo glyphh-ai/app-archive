@@ -4,7 +4,6 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
-import { webGroupTabs } from "./web-cut.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
@@ -338,6 +337,75 @@ function onSettingsModalKey(e: KeyboardEvent): void {
   closeSettingsModal();
 }
 
+/** THE APP'S SETTINGS NAV SHAPE, idempotent (moves are moves; a row already
+ *  in place stays). Runs when the modal opens AND when a Build / Customize
+ *  group page builds its tabs (his report, 2026-10-05: the web's Build page
+ *  listed Artifacts — the row sits in the Build group in settings.html and
+ *  only moved under Settings once the modal had opened, so a group page
+ *  built first listed it on either host). */
+function arrangeAppSettingsNav(): void {
+  // DESKTOP nav shape (his spec, 2026-08-25): the Settings group (General,
+  // Appearance, Account, Voice, MCP Server), then an Organization group
+  // holding Usage + Billing, and the user chip pinned at the rail's bottom.
+  if (!document.body.classList.contains("platform-shell")) {
+    const nav = document.querySelector<HTMLElement>(".settings-nav");
+    const groups = Array.from(nav?.querySelectorAll(".settings-nav-group") ?? []);
+    const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
+    if (settingsGroup && nav) {
+      let anchor: Element = settingsGroup;
+      const pick = (sub: string): Element | null =>
+        nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
+      // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
+      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
+      // Appearance sits right under General (his order, 2026-09-20).
+      // Connections lives in BUILD on both hosts (his order, 2026-10-05: the
+      // web's Build page is the desktop's, tab for tab).
+      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp"]) {
+        const item = pick(sub);
+        if (item) { anchor.after(item); anchor = item; }
+      }
+      let orgGroup = nav.querySelector("#app-nav-group-org");
+      if (!orgGroup) {
+        orgGroup = document.createElement("div");
+        orgGroup.id = "app-nav-group-org";
+        orgGroup.className = "settings-nav-group";
+        orgGroup.textContent = "Organization";
+      }
+      anchor.after(orgGroup);
+      anchor = orgGroup;
+      for (const sub of ["billing"]) {
+        const item = pick(sub);
+        if (item) { anchor.after(item); anchor = item; }
+      }
+      // A header with nothing under it is not drawn (his report, 2026-09-29):
+      // Billing is its only item and is org_admin's alone.
+      orgGroup.classList.toggle("hidden", !!document.getElementById("nav-billing")?.classList.contains("hidden"));
+      // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
+      const buildGroup = nav.querySelector("#nav-group-build");
+      if (buildGroup) {
+        anchor.after(buildGroup);
+        anchor = buildGroup;
+        for (const sub of ["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
+          const item = pick(sub);
+          if (item) { anchor.after(item); anchor = item; }
+        }
+      }
+      // CUSTOMIZE follows Build (his order, 2026-09-16): Workspaces, Drips.
+      const customizeGroup = nav.querySelector("#nav-group-customize");
+      if (customizeGroup) {
+        anchor.after(customizeGroup);
+        anchor = customizeGroup;
+        for (const sub of ["tabs", "layouts", "drips", "schedules"]) {
+          const item = pick(sub);
+          if (item) { anchor.after(item); anchor = item; }
+        }
+      }
+      wireAppUserChip(nav as HTMLElement);
+    }
+  }
+
+}
+
 export function openSettingsModal(sub?: string): void {
   // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
   // the SAME settings modal as desktop. The platform page keeps its own
@@ -426,68 +494,7 @@ export function openSettingsModal(sub?: string): void {
 
   document.addEventListener("keydown", onSettingsModalKey, true);
 
-  // DESKTOP nav shape (his spec, 2026-08-25): the Settings group (General,
-  // Appearance, Account, Voice, MCP Server), then an Organization group
-  // holding Usage + Billing, and the user chip pinned at the rail's bottom.
-  if (!document.body.classList.contains("platform-shell")) {
-    const nav = overlay.querySelector(".settings-nav");
-    const groups = Array.from(nav?.querySelectorAll(".settings-nav-group") ?? []);
-    const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
-    if (settingsGroup && nav) {
-      let anchor: Element = settingsGroup;
-      const pick = (sub: string): Element | null =>
-        nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
-      // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
-      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
-      // Appearance sits right under General (his order, 2026-09-20).
-      // THE WEB CUT (his order, 2026-10-05): Build and Customize are gone on
-      // the web (web-surface.ts hides their rows and headers), so Connections
-      // — the one Build page the web keeps, since a web chat runs with your
-      // connections — moves under Settings, after MCP Server.
-      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp", ...(onWeb() ? ["connections-cfg"] : [])]) {
-        const item = pick(sub);
-        if (item) { anchor.after(item); anchor = item; }
-      }
-      let orgGroup = nav.querySelector("#app-nav-group-org");
-      if (!orgGroup) {
-        orgGroup = document.createElement("div");
-        orgGroup.id = "app-nav-group-org";
-        orgGroup.className = "settings-nav-group";
-        orgGroup.textContent = "Organization";
-      }
-      anchor.after(orgGroup);
-      anchor = orgGroup;
-      for (const sub of ["billing"]) {
-        const item = pick(sub);
-        if (item) { anchor.after(item); anchor = item; }
-      }
-      // A header with nothing under it is not drawn (his report, 2026-09-29):
-      // Billing is its only item and is org_admin's alone.
-      orgGroup.classList.toggle("hidden", !!document.getElementById("nav-billing")?.classList.contains("hidden"));
-      // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
-      const buildGroup = nav.querySelector("#nav-group-build");
-      if (buildGroup) {
-        anchor.after(buildGroup);
-        anchor = buildGroup;
-        // Connections stays under Settings on the web (moved there above).
-        for (const sub of ["skills", "agents", "apps", ...(onWeb() ? [] : ["connections-cfg"]), "plugins", "tasks"]) {   // artifacts moved to Settings
-          const item = pick(sub);
-          if (item) { anchor.after(item); anchor = item; }
-        }
-      }
-      // CUSTOMIZE follows Build (his order, 2026-09-16): Workspaces, Drips.
-      const customizeGroup = nav.querySelector("#nav-group-customize");
-      if (customizeGroup) {
-        anchor.after(customizeGroup);
-        anchor = customizeGroup;
-        for (const sub of ["tabs", "layouts", "drips", "schedules"]) {
-          const item = pick(sub);
-          if (item) { anchor.after(item); anchor = item; }
-        }
-      }
-      wireAppUserChip(nav as HTMLElement);
-    }
-  }
+  arrangeAppSettingsNav();
 
   // RAIL SEARCH (app only; his spec, 2026-08-24): type → a popup under the
   // box lists matching sections and individual settings; clicking opens the
@@ -943,16 +950,14 @@ const groupLastSub: Record<string, string> = {};
 function groupTabs(group: string): Array<{ sub: string; label: string }> {
   const head = document.getElementById(`nav-group-${group}`);
   const out: Array<{ sub: string; label: string }> = [];
-  // THE WEB'S FULL-SCREEN BUILD / CUSTOMIZE (his order, 2026-10-05): the
-  // group's nav rows are CSS-hidden there by the web cut, so the page lists
-  // the group's pages from web-cut.ts (they read the server member library)
-  // and takes only each row's label from the nav.
-  const webSubs = onWeb() ? webGroupTabs(group) : null;
+  // ONE RULE ON BOTH HOSTS (his order, 2026-10-05: "why is the web build tab
+  // different than the desktop one?"): the tabs are the group's nav rows that
+  // are not `.hidden`. The web cut marks its rows WEB_CUT_ROW_CLASS, never
+  // `.hidden` (web-surface.ts), so the web page lists exactly the desktop's.
   for (let el = head?.nextElementSibling; el && !el.classList.contains("settings-nav-group"); el = el.nextElementSibling) {
     const b = el as HTMLElement;
     const sub = b.dataset.sub;
-    if (!sub) continue;
-    if (webSubs ? !webSubs.includes(sub) : b.classList.contains("hidden")) continue;
+    if (!sub || b.classList.contains("hidden")) continue;
     out.push({ sub, label: b.querySelector("span")?.textContent?.trim() || sub });
   }
   return out;
@@ -964,6 +969,7 @@ export function loadSettingsGroup(group: string): void {
   const strip = sec?.querySelector<HTMLElement>(".settings-group-tabs");
   const host = sec?.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
   if (!sec || !strip || !host) return;
+  arrangeAppSettingsNav();
   const tabs = groupTabs(group);
   if (!tabs.length) { host.innerHTML = `<div class="ws-empty">Nothing to show here yet.</div>`; return; }
   strip.innerHTML = "";

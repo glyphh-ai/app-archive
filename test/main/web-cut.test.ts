@@ -11,7 +11,7 @@ import {
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
-  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, webGroupTabs, webGroupPanelKept,
+  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -107,12 +107,12 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build
     expect(Object.keys(WEB_FULL_SCREEN_TITLES).sort()).toEqual([...webFullScreenPanels].sort());
     expect(webFullScreenTitle("wat")).toBe("wat");
   });
-  it("the full-screen Build / Customize pages carry the groups' tabs (they read the server member library); their panels stay mounted on the web", () => {
-    expect([...webGroupTabs("build")]).toEqual([...WEB_BUILD_SUBS]);
-    expect([...webGroupTabs("customize")]).toEqual([...WEB_CUSTOMIZE_SUBS]);
-    expect([...webGroupTabs("artifacts")]).toEqual([]);
-    for (const sub of [...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS]) expect(webGroupPanelKept(sub)).toBe(true);
-    for (const sub of ["remote", "mcp", "general"]) expect(webGroupPanelKept(sub)).toBe(false);
+  it("the full-screen Build / Customize pages own the desktop's group rows — Connections included — and never hide them (the tabs are read from the same rows on both hosts)", () => {
+    expect([...WEB_GROUP_ROWS]).toEqual([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
+    for (const sub of WEB_GROUP_ROWS) expect(webGroupPanelKept(sub)).toBe(true);
+    for (const sub of ["remote", "mcp", "general", "artifacts"]) expect(webGroupPanelKept(sub)).toBe(false);
+    expect(WEB_CUT_ROW_CLASS).toBe("web-cut-row");
+    expect(WEB_CUT_ROW_CLASS).not.toBe("hidden");
   });
   it("the lists are frozen", () => {
     expect(Object.isFrozen(webFullScreenPanels)).toBe(true);

@@ -87,25 +87,21 @@ export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
 
-/** THE BUILD AND CUSTOMIZE PAGES ON THE WEB read the SERVER member library
- *  (web-contract.js / member-library-web.js) the way the desktop's library
- *  sync does, so the full-screen Build page carries the same tabs the
- *  desktop's does; the rows are CSS-hidden in Settings by the web cut, so
- *  the group page lists them from here instead of from the nav. Apps and
- *  Plugins stay in the list: those pages paint the desktopOnlyCard line
- *  themselves (they are machine bundles). */
-export const WEB_GROUP_TABS: Readonly<Record<string, ReadonlyArray<string>>> = Object.freeze({
-  build: WEB_BUILD_SUBS,
-  customize: WEB_CUSTOMIZE_SUBS,
-});
-/** The settings subs a web group page adopts as tabs; [] for a group the web has no page for. */
-export function webGroupTabs(group: string): ReadonlyArray<string> {
-  return WEB_GROUP_TABS[group] ?? Object.freeze([]);
-}
-/** Is this settings panel kept MOUNTED (not CSS-hidden) on the web because a
- *  full-screen group page adopts it? Its nav row still hides. */
+/** THE BUILD AND CUSTOMIZE PAGES ON THE WEB ARE THE DESKTOP'S (his order,
+ *  2026-10-05: "why is the web build tab different than the desktop one?").
+ *  A group page lists its tabs ONE way on both hosts: the group's nav rows
+ *  that are not `.hidden` (navigation.ts groupTabs) — Skills, Agents,
+ *  Connections, Plugins for Build; Tabs, Workspaces, Drips, Schedules for
+ *  Customize. The web cut therefore never marks those rows `.hidden`: it
+ *  marks them WEB_CUT_ROW_CLASS (CSS-hidden in the Settings nav only), and
+ *  their panels stay mounted for the full-screen page to adopt. */
+export const WEB_CUT_ROW_CLASS = "web-cut-row";
+/** The settings rows the full-screen group pages own on the web. */
+export const WEB_GROUP_ROWS: ReadonlyArray<string> = Object.freeze([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
+/** Is this settings row a group page's on the web — its panel stays MOUNTED
+ *  (not CSS-hidden) and its nav row wears WEB_CUT_ROW_CLASS, never `.hidden`? */
 export function webGroupPanelKept(sub: string): boolean {
-  return WEB_BUILD_SUBS.includes(sub) || WEB_CUSTOMIZE_SUBS.includes(sub);
+  return WEB_GROUP_ROWS.includes(sub);
 }
 
 /** The rail's doors into the command center — hidden on web (ids and
