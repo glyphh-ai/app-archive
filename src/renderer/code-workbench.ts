@@ -52,7 +52,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webRestorePlan, webWallMemory } from "./help/web-cut.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
@@ -429,8 +429,12 @@ const legacyKey = (k: unknown): string => {
   }
   return KEY_ALIASES[s] ?? s;
 };
-type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string };
-type WallState = { layout: string | null; cards: WallCard[] };
+type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string; solo?: boolean };
+/** `agentAt` — the agent card's seat among the cards (how many precede it)
+ *  — and a tool card's `solo` (driven to a side, its own column) are written
+ *  by the WEB only (help/web-cut.ts webWallMemory; his order, 2026-10-05).
+ *  The desktop never writes or reads them. */
+type WallState = { layout: string | null; cards: WallCard[]; agentAt?: number | null };
 
 // ── Browser panel: start page + error pages ─────────────────────────────
 //
@@ -1482,6 +1486,10 @@ async function init(): Promise<void> {
     refreshForCwd(): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents"): void;
+    /** The web's wall restore (his order, 2026-10-05): open these tool
+     *  panels in order (a `solo` one owns its column, as the edge-drop left
+     *  it), then reseat the agent card at `agentAt` of the open order. */
+    restoreWebWall(open: Array<{ toolView: string; solo?: boolean }>, agentAt: number): void;
     /** Open (or re-front) the terminal card and type a command into its shell:
      *  straight into a live pty, or as the first command of one still booting. */
     openTerminalWith(cmd: string): void;
@@ -3759,11 +3767,13 @@ async function init(): Promise<void> {
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
       // THE WEB CUT (his order, 2026-10-05): the web boots NO WALL — no
-      // tiles, no "Welcome back", no dock, no saved arrangement; the agent
-      // is the page (restoreWallOnce seats it). help/web-cut.ts is the rule.
+      // tiles, no "Welcome back", no dock; the agent is the page
+      // (restoreWallOnce seats it). THE SAVED STATE RIDES ALONG (his order,
+      // 2026-10-05: the web remembers its open panels across a refresh and
+      // a login) — restoreWallOnce replays what the web can host.
       if (!bootsSurface(IS_WEB_TARGET, "wall")) {
         buildWall([[]]);
-        restoreWallOnce(layouts || [], null);
+        restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
       buildWall([[...pageTiles, ...rest]]);
@@ -3783,20 +3793,29 @@ async function init(): Promise<void> {
     function serializeWall(): WallState {
       if (echoLayoutName) return { layout: echoLayoutName, cards: [] };
       const cards: WallCard[] = [];
+      let agentAt: number | null = null;
       for (const e of openList) {
         const t = e.tile;
+        // The agent's SEAT: how many saved cards precede it (web only, below).
+        if (t.kind === "agent" && agentAt === null) agentAt = cards.length;
         if (t.kind === "agent" || t.slug === "glyphh-home") continue;
         if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
         // A CLI agent card is NOT a bare terminal — losing the id here is why
         // a reopened app "reverted to claude" (his report, 2026-09-10).
         else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
-        else if (t.kind === "tool" && t.toolView) cards.push({ kind: "tool", toolView: t.toolView });
+        else if (t.kind === "tool" && t.toolView) {
+          cards.push(webWallMemory(IS_WEB_TARGET) && e.flowSolo === true ? { kind: "tool", toolView: t.toolView, solo: true } : { kind: "tool", toolView: t.toolView });
+        }
         // An agent PANEL instance is the agent (his ruling, 2026-09-26) — the
         // boot opens a fresh one; replaying yesterday's beside it doubled them.
         else if (t.slug && t.slug.startsWith("agent-panel:")) continue;
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
-      return { layout: null, cards };
+      // THE WEB writes the agent's seat beside the cards (his order,
+      // 2026-10-05: the panels AND the agent come back where they were);
+      // the desktop's state is byte-identical to before.
+      if (!webWallMemory(IS_WEB_TARGET)) return { layout: null, cards };
+      return { layout: null, cards, agentAt };
     }
     function scheduleWallSave(): void {
       // Gate: never write until the boot restore has run, or the agent card
@@ -3838,10 +3857,24 @@ async function init(): Promise<void> {
         reveal();
         return;
       }
-      // THE WEB IS THE AGENT (his order, 2026-10-05): no saved wall replay, no
-      // default workspace — the Glyphh agent opens full width and that is the
-      // page. The composer restores its own session as ever.
-      if (!bootsSurface(IS_WEB_TARGET, "wall")) { activateGlyphh(); return; }
+      // THE WEB IS THE AGENT (his order, 2026-10-05): no default workspace —
+      // the Glyphh agent is the page. The composer restores its own session
+      // as ever. AND THE WEB REMEMBERS (his order, 2026-10-05: open panels
+      // come back after a refresh and a login): the saved tool panels reopen
+      // in their order with the agent back in its seat — help/web-cut.ts
+      // webRestorePlan decides; what the web cannot host is named, never
+      // replayed. A panel opened before the session restores fills once it
+      // does (wb.onCwdChanged → refreshForCwd, webFsReady's retry) — the
+      // desktop's own boot order.
+      if (!bootsSurface(IS_WEB_TARGET, "wall")) {
+        activateGlyphh();
+        const plan = webRestorePlan(saved);
+        for (const why of plan.skipped) console.warn("[web-cut] saved panel not restored on the web:", why);
+        if (!echoCtl || !plan.open.length) return;
+        try { echoCtl.restoreWebWall(plan.open.map((c) => ({ toolView: String(c.toolView), solo: c.solo === true })), plan.agentAt); }
+        catch (e) { console.warn("[web-cut] wall restore stopped:", (e as Error)?.message || e); }
+        return;
+      }
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
@@ -4713,6 +4746,10 @@ async function init(): Promise<void> {
             card.classList.remove("echo-card-dragging");
             document.body.classList.remove("echo-drag");
             layoutCards();
+            // A MOVE IS STATE on the web (his order, 2026-10-05): the new
+            // order persists like an open or a close. The desktop's saves
+            // are untouched (help/web-cut.ts webWallMemory).
+            if (webWallMemory(IS_WEB_TARGET)) scheduleWallSave();
           }
         };
         head.addEventListener("pointermove", move);
@@ -7251,6 +7288,18 @@ async function init(): Promise<void> {
       },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
+      restoreWebWall: (open, agentAt) => {
+        for (const c of open) {
+          const entry = getOrOpenTool(c.toolView as Parameters<typeof getOrOpenTool>[0]);
+          if (c.solo) entry.flowSolo = true;
+        }
+        const i = openList.findIndex((x) => x.tile.kind === "agent");
+        if (i >= 0) {
+          const [agent] = openList.splice(i, 1);
+          openList.splice(Math.max(0, Math.min(Math.trunc(agentAt), openList.length)), 0, agent);
+        }
+        layoutCards();
+      },
       openTerminalWith: (cmd) => {
         const entry = getOrOpenTool("terminal");
         let tries = 0;

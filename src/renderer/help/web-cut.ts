@@ -114,3 +114,58 @@ export function agentCardMovable(web: boolean): boolean {
 export function webNewSessionInPlace(web: boolean, agentSeated: boolean): boolean {
   return web && agentSeated;
 }
+
+/** THE WEB REMEMBERS ITS PANELS (his order, 2026-10-05: "on the web when the
+ *  user opens work panels and apps the ui should remember that state, even
+ *  after refresh and login / logout"). The desktop saves its open cards to
+ *  the server-side `echoWallState` preference (per user, so a login brings
+ *  it back) and replays them at boot; the web cut threw that state away at
+ *  boot (restoreWallOnce(…, null)) and showed the agent alone. Now the web
+ *  replays what it can HOST — the in-document tool panels (WEB_TOOL_VIEWS)
+ *  in their saved order, a card driven to a side (`solo`) back in its own
+ *  column, the agent card back in its seat — and names
+ *  what it cannot (a layout, an app card, a section, a CLI agent, a
+ *  streamed panel) instead of crashing or faking it. The desktop never
+ *  takes this path (its branch already restores). */
+export type WebWallCard = { kind: string; toolView?: string; slug?: string; section?: string; agent?: string; name?: string; solo?: boolean };
+export type WebWallState = { layout?: string | null; cards?: WebWallCard[] | null; agentAt?: number | null };
+
+/** Can the web host this saved card? Only a tool panel the agent's ⋮ menu
+ *  offers on the web (files, terminal, monaco, diff, plan, agents). */
+export function webRestorableCard(card: WebWallCard | null | undefined): boolean {
+  return !!card && card.kind === "tool" && typeof card.toolView === "string" && webToolAllowed(card.toolView);
+}
+
+/** Why a saved card stays closed on the web — one line naming it, for the
+ *  console.warn that replaces a silent drop. */
+export function webCardSkipReason(card: WebWallCard | null | undefined): string {
+  if (!card || typeof card !== "object") return "a malformed card";
+  if (card.kind === "tool") return `the ${card.toolView || "unnamed"} panel (not hosted on the web)`;
+  if (card.kind === "app") return `the app card "${card.name || card.slug || "unnamed"}" (apps open on the desktop)`;
+  if (card.kind === "section") return `the section "${card.section || "unnamed"}" (desktop only)`;
+  if (card.kind === "agent") return `the CLI agent "${card.name || card.agent || "unnamed"}" (desktop only)`;
+  return `a "${card.kind}" card (unknown kind)`;
+}
+
+/** The web's replay of a saved wall: the tool panels to open, in order; the
+ *  cards it skips, named; and the agent card's seat among the opened panels
+ *  (its index, clamped — a seat saved beside panels that no longer open
+ *  still lands). A layout opens nothing: the web boots no wall. */
+export function webRestorePlan(saved: WebWallState | null | undefined): { open: WebWallCard[]; skipped: string[]; agentAt: number } {
+  if (!saved || typeof saved !== "object") return { open: [], skipped: [], agentAt: 0 };
+  if (saved.layout) return { open: [], skipped: [`the layout "${saved.layout}" (the web boots no wall)`], agentAt: 0 };
+  const open: WebWallCard[] = [];
+  const skipped: string[] = [];
+  for (const c of Array.isArray(saved.cards) ? saved.cards : []) {
+    if (webRestorableCard(c)) open.push(c); else skipped.push(webCardSkipReason(c));
+  }
+  const at = typeof saved.agentAt === "number" && Number.isFinite(saved.agentAt) ? Math.trunc(saved.agentAt) : 0;
+  return { open, skipped, agentAt: Math.max(0, Math.min(at, open.length)) };
+}
+
+/** Does this surface keep the wall's memory the web way — the agent's seat
+ *  written beside the cards, and a drag (reorder / drive to a side) saved
+ *  like an open or a close? The desktop keeps its own saves untouched. */
+export function webWallMemory(web: boolean): boolean {
+  return web;
+}
