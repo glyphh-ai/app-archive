@@ -15,7 +15,11 @@
  *               skillUpdates / skillStandings / skillShares / skillWithdraw / skillVersions /
  *               skillVersionFiles / skillCategoriesSet / skillPublish — the same server
  *               routes main/hub-ipc.ts reads; INSTALL = a put into this library
- *               (his report, 2026-10-05: Discover was empty on the web)
+ *               (his report, 2026-10-05: Discover was empty on the web) — an APP
+ *               installs where its author said (his verdict, 2026-10-05): `data:
+ *               cloud` = this member's instance (from-hub); `local` = ONLY through
+ *               a connected desktop (`apps.install` over the relay), else the one
+ *               line; `per-home` = both, the cloud alone with no desktop
  *   agents      libraryAgentsList / libraryAgentGet / libraryAgentCreate / libraryAgentUpdate / libraryAgentDelete
  *   tasks       tasksSpecs / taskSpec / taskSlotSet
  *   drips       dripsList / dripsSave / dripsDelete
@@ -32,13 +36,12 @@ import {
   hubPayloadFiles, isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
   layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId,
 } from '../../src/shared/member-library';
-import { mergeAppRows } from '../../src/shared/app-instances';
+import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
+import { appDataOf, installRoute } from '../../src/renderer/help/app-data-rules.ts';
 import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
 export const NEEDS_DESKTOP = 'This runs on your desktop. Open the Glyphh desktop app for it — the record itself is here, synced from the server.';
-/** An APP is a bundle on the machine, not a library record: its Add on the web says so. */
-export const APP_INSTALLS_ON_DESKTOP = 'Apps install on your desktop — open Glyphh Desktop to add this app.';
 
 const ok = (data) => ({ ok: true, data });
 const fail = (err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) });
@@ -478,11 +481,11 @@ export function buildMemberLibrary(client, deps = {}) {
       for (const [k, org] of orgLists) {
         for (const it of org) {
           if (!it.headVersion) continue;
-          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: !!it.installed || has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k });
+          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: !!it.installed || has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k, ...(k === 'app' ? { data: appDataOf(it) } : {}) });
         }
       }
       for (const p of pub.filter((x) => kinds.includes(x.kind))) {
-        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: !!p.installed || has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind });
+        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: !!p.installed || has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind, ...(p.kind === 'app' ? { data: appDataOf(p) } : {}) });
       }
       return ok(rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
     } catch (err) { return fail(err); }
@@ -508,17 +511,51 @@ export function buildMemberLibrary(client, deps = {}) {
     if (!meta) throw new Error(`that ${kind} is no longer available to you`);
     return meta;
   };
+  /** The first connected desktop, for a local-data app's install (house-relay-web.js asks the same). */
+  const attachedMachine = async () => {
+    try {
+      const st = await client?.attach?.status?.();
+      const list = Array.isArray(st?.machines) ? st.machines : [];
+      return st?.attached && list.length ? { id: String(list[0].id || ''), name: String(list[0].name || list[0].app || '') } : null;
+    } catch { return null; }
+  };
+  /** AN APP INSTALLS WHERE ITS AUTHOR SAID (his verdict, 2026-10-05): the
+   *  manifest's `data` and a connected desktop decide (app-data-rules.ts
+   *  installRoute) — the user never picks. Cloud → this member's instance,
+   *  made server-side; local → the desktop's local host over the relay, or
+   *  the one line; per-home → both, the cloud alone with no desktop. */
+  const appInstall = async (from, itemId, meta) => {
+    const machine = await attachedMachine();
+    const route = installRoute(appDataOf(meta), 'web', !!machine);
+    if (route.disabled) return { ok: false, error: route.disabled };
+    let id = null;
+    if (route.cloud) {
+      const inst = await appInstances.installFromHub(itemId);
+      id = instanceCardId(inst.key);
+    }
+    if (route.local === 'relay') {
+      try {
+        const r = await client.attach.dispatch('apps.install', { itemId, from }, { machineId: machine.id });
+        if (!route.cloud) id = r && typeof r === 'object' && typeof r.id === 'string' ? r.id : `app:${meta.slug}`;
+      } catch (err) {
+        if (!route.cloud) return fail(err);
+        // The cloud copy stands; the desktop's is reported, not a failure.
+        return ok({ id, warning: `installed in the cloud; your desktop did not take it: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+    return ok({ id, ...(machine && route.local === 'relay' ? { machine: machine.name } : {}) });
+  };
   /** INSTALL = A PUT INTO THIS LIBRARY (his rule, 2026-10-04; his report,
    *  2026-10-05): the hub item's files go to R2 under the member's record,
    *  the record carries where it came from, and the desktop's sync lands it
-   *  as a folder on the machine. An app is not a record — it says so. */
+   *  as a folder on the machine. An app goes where its author said (appInstall). */
   const skillInstall = async (ref, kind) => {
     try {
       const k = kindOf(kind);
-      if (k === 'app') return { ok: false, error: APP_INSTALLS_ON_DESKTOP };
       const [from, itemId] = String(ref).split(':', 2);
       if (from !== 'org' && from !== 'glyphh') return { ok: false, error: `not a hub item: ${ref}` };
       const meta = await catalogMeta(from, k, itemId);
+      if (k === 'app') return await appInstall(from, itemId, meta);
       const base = baseFor(from, k, itemId);
       const files = hubPayloadFiles(meta.slug, meta.description || '', await payloadOf(base));
       if (k === 'plugin' && !files['.claude-plugin/plugin.json']) return { ok: false, error: 'a plugin needs .claude-plugin/plugin.json' };

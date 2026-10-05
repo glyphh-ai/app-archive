@@ -30,6 +30,12 @@ vi.mock("../../src/main/org-apps.js", () => ({ fetchOrgApps: async () => [TAB] }
 // The house door's real stores (office store, deck cache, media library) are
 // house-deps.ts's; the door itself is pinned bare in house-doors.test.ts.
 vi.mock("../../src/main/house-deps.js", () => ({ realHouseDeps: () => ({ listDesigns: async () => [{ file: "brand.json", title: "Brand", size: 1, mtime: 2 }] }) }));
+// The hub install itself (hub-ipc.ts installHubItem) is the desktop's own door;
+// here only that apps.install hands it the item, routed as an app.
+const hubInstalls: Array<[string, string]> = [];
+vi.mock("../../src/main/hub-ipc.js", () => ({
+  installHubItem: async (ref: string, kind: string) => { hubInstalls.push([ref, kind]); return { id: `app:${ref.split(":")[1]}` }; },
+}));
 vi.mock("../../src/main/cli-agents.js", () => ({
   listCliSessions: () => [
     { id: "s-claude", cli: "claude", title: "fix the sync bug", cwd: "/Users/me/code/app", mtime: 20 },
@@ -60,6 +66,16 @@ describe("the Customize libraries over the attach socket", () => {
   it("registers the three reads beside the sessions.* four", () => {
     for (const m of ["sessions.list", "sessions.get", "layouts.list", "layouts.get", "panelApps.list", "cliSessions.list"]) expect(handlers.has(m)).toBe(true);
     expect(handlers.has("layouts.save")).toBe(false);
+  });
+
+  it("apps.install installs a hub app on this machine through the desktop's own hub door (his verdict, 2026-10-05: a local-data app installs only on a desktop)", async () => {
+    const h = handlers.get("apps.install")!;
+    expect(await h({ itemId: "pub-9", from: "glyphh" })).toEqual({ id: "app:pub-9" });
+    expect(await h({ itemId: "org-3", from: "org" })).toEqual({ id: "app:org-3" });
+    // No `from` reads as the Glyphh catalog; a stray word never becomes a route.
+    expect(await h({ itemId: "pub-1", from: "../../etc" })).toEqual({ id: "app:pub-1" });
+    expect(hubInstalls).toEqual([["glyphh:pub-9", "app"], ["org:org-3", "app"], ["glyphh:pub-1", "app"]]);
+    await expect(h({})).rejects.toThrow(/requires \{ itemId \}/);
   });
 
   it("cliSessions.list hands the web the vendor CLIs' sessions with their resume handles (his report, 2026-10-04)", async () => {

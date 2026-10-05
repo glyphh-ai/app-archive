@@ -59,6 +59,10 @@ const PASS_THROUGH = [
   // app-data through it — read-only, house apps only, fenced in
   // house-doors.ts (app data is the app's, not a granted folder).
   "app.call",
+  // A LOCAL-DATA HUB APP INSTALLS ON THIS MACHINE from the web (his verdict,
+  // 2026-10-05): `{itemId, from}` names the hub item — no path, no app data;
+  // the server allowlists the same name (attach.py REMOTE_METHODS).
+  "apps.install",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME

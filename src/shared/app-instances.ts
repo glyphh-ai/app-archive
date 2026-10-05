@@ -25,6 +25,10 @@
 import { tabRowOf, type OrgAppRowLike, type TabRowLike } from "./member-library.js";
 
 export type InstanceKind = "org" | "personal";
+/** WHERE AN APP'S DATA LIVES — the author's word in the manifest (his
+ *  verdict, 2026-10-05; the rules are renderer/help/app-data-rules.ts). */
+export type AppData = "cloud" | "local" | "per-home";
+export const appDataOfManifest = (m: { data?: unknown } | null | undefined): AppData => (m?.data === "local" || m?.data === "per-home" ? m.data : "cloud");
 export type InstanceStatus = "pending" | "ready" | "stopped" | "error";
 
 /** One row of `GET /api/app-instances` (the server's Instance.summary()). */
@@ -38,7 +42,7 @@ export interface AppInstanceSummary {
   members: string[];
   orgConnectionId: string | null;
   bundle: { sha256: string; bytes?: number };
-  manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string };
+  manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string; data?: AppData | string };
   /** `/app-host/<key>/` — the proxy prefix the server answers for it. */
   url: string;
 }
@@ -59,6 +63,8 @@ export interface BundleManifestLike {
   release?: { version: string; notes?: string | null; channel?: "dev" | "live"; releasedAt?: string | null };
   /** The bundle's icon.svg as a data URL, when the installer read one. */
   iconUrl?: string;
+  /** Where the app's data lives (default cloud). */
+  data?: AppData | string;
 }
 
 /** `POST /api/app-instances` body. */
@@ -115,6 +121,8 @@ export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "man
     window: (manifest?.window ?? null) as Record<string, unknown> | null,
     // An installed app is a chromeless panel (his rule, 2026-08-20).
     workbench: true,
+    // The author's word on where the data lives rides the row to every surface.
+    data: appDataOfManifest(manifest ?? inst.manifest),
     ...(manifest?.release ? { release: manifest.release } : {}),
     ...(typeof manifest?.iconUrl === "string" ? { iconUrl: manifest.iconUrl } : {}),
   };
@@ -228,6 +236,9 @@ export interface InstanceCard {
   tool: null;
   /** Not a folder: the instance it stands for. */
   instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[] };
+  /** Its data is in the cloud (the Apps page's mark), as its author declared. */
+  locus: "cloud";
+  data: AppData;
 }
 
 export const instanceCardId = (key: string): string => `${INSTANCE_CARD_PREFIX}${key}`;
@@ -252,6 +263,8 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     icon: null,
     tool: null,
     instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools },
+    locus: "cloud",
+    data: appDataOfManifest(inst.manifest),
   };
 }
 

@@ -20,6 +20,7 @@ import { CLI_MARK_URLS } from "./help/cli-marks.js";
 import { formatMarkdown } from "./format-markdown.js";
 import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
+import { isLocalAppAnswer, LOCAL_APP_DESKTOP_OFFLINE } from "./help/app-data-rules.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { podCliCommand, terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
 import { panelFsRoute, type PanelFsRoute } from "./help/panel-fs-route.js";
@@ -7940,7 +7941,7 @@ async function init(): Promise<void> {
    * working "Try again" — never a dead iframe pointed at a URL that serves
    * nothing. Shared by the Echo card and the rail-slot holder.
    */
-  function mountGlyphhAppWebState(name: string): HTMLElement {
+  function mountGlyphhAppWebState(name: string, answer?: { ok: boolean; localApp?: boolean; error?: string } | null): HTMLElement {
     const el = document.createElement("div");
     el.className = "ws-glyphh-app-state";
     el.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
@@ -7949,6 +7950,16 @@ async function init(): Promise<void> {
       el.querySelector<HTMLButtonElement>("[data-app-retry]")?.addEventListener("click", () => { void check(); });
     };
     const check = async (): Promise<void> => {
+      // A LOCAL-DATA APP (his verdict, 2026-10-05: "Local is local"): its UI
+      // runs on the desktop — this version carries no webview panel over the
+      // relay — so the card says so honestly; with the desktop gone, that it
+      // is offline, and a retry asks again.
+      if (isLocalAppAnswer(answer)) {
+        const offline = answer.error === LOCAL_APP_DESKTOP_OFFLINE;
+        render(offline ? "desktop-offline" : "failed", `${name}: ${answer.error}.`, offline);
+        if (offline) answer = null; // a retry probes the desktop afresh
+        return;
+      }
       el.innerHTML = `<div style="color:var(--text-2);font:13px system-ui,sans-serif">Checking your desktop…</div>`;
       const client = relaySdk();
       if (!client) {
@@ -7991,7 +8002,7 @@ async function init(): Promise<void> {
       frame.style.cssText = "flex:1 1 auto;min-height:0;width:100%;border:0;background:var(--bg-2)";
       return frame;
     };
-    const open = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string) => Promise<{ ok: boolean; fileUrl?: string; error?: string }> } }).glyphh?.glyphhAppPreviewOpen;
+    const open = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string) => Promise<{ ok: boolean; fileUrl?: string; error?: string; localApp?: boolean }> } }).glyphh?.glyphhAppPreviewOpen;
     if (slot.url) {
       holder.appendChild(frameOf(slot.url));
     } else if (typeof open === "function") {
@@ -8002,7 +8013,7 @@ async function init(): Promise<void> {
       void open(slot.slug).then((res) => {
         if (!holder.isConnected) return;
         wait.remove();
-        holder.appendChild(res?.ok && res.fileUrl ? frameOf(res.fileUrl) : mountGlyphhAppWebState(slot.name));
+        holder.appendChild(res?.ok && res.fileUrl ? frameOf(res.fileUrl) : mountGlyphhAppWebState(slot.name, res));
       }).catch(() => { if (holder.isConnected) { wait.remove(); holder.appendChild(mountGlyphhAppWebState(slot.name)); } });
     } else {
       holder.appendChild(mountGlyphhAppWebState(slot.name));

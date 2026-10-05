@@ -25,7 +25,8 @@ import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { registerBundleApp, unregisterBundleApp, moveLocalAppToCloud } from "./glyphh-app-host.js";
 import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId } from "./app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, listInstances } from "./app-instances.js";
+import { appDataOfManifest, type AppData } from "../shared/app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -66,6 +67,10 @@ export interface SkillSummary {
   icon?: string | null;
   /** An app that IS a built-in work panel names its view here ("gdesign"). */
   tool?: string | null;
+  /** An app: where its data lives, as its author declared (app.json `data`). */
+  data?: AppData;
+  /** An app: where its data sits on this machine's view — the Apps page's mark. */
+  locus?: "cloud" | "local";
 }
 export interface SkillFile { path: string; size: number }
 export interface SkillDetail extends SkillSummary {
@@ -189,27 +194,29 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   let updatedAt = "";
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
   const type = bundleType(dir, frontmatter.type);
-  const { icon, tool } = bundleMarks(dir, type);
+  const { icon, tool, data } = bundleMarks(dir, type);
   const id = idOf(source, name);
   return {
     id, source, type, name: frontmatter.name || name, description: frontmatter.description || "",
     author: frontmatter.author || frontmatter.from || installedAuthor(id), enabled, dir, fileCount: walk(dir).length, updatedAt,
-    icon, tool,
+    icon, tool, ...(type === "app" ? { data } : {}),
   };
 }
 
 /** What an app or task manifest says about how it LOOKS and what it opens: the
  *  icon.svg it ships, and the built-in panel it is (an app with a `tool` wears
  *  that panel's mark when it ships no icon of its own). */
-export function bundleMarks(dir: string, type: BundleType): { icon: string | null; tool: string | null } {
-  if (type !== "app" && type !== "task") return { icon: null, tool: null };
+export function bundleMarks(dir: string, type: BundleType): { icon: string | null; tool: string | null; data: AppData } {
+  if (type !== "app" && type !== "task") return { icon: null, tool: null, data: "cloud" };
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown; tool?: unknown };
+    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown; tool?: unknown; data?: unknown };
     const tool = typeof m.tool === "string" && m.tool ? m.tool : null;
-    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return { icon: null, tool };
+    // The author's word on where the app's data lives (app-data-rules.ts).
+    const data = appDataOfManifest(m);
+    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return { icon: null, tool, data };
     const svg = fs.readFileSync(safeJoin(dir, m.icon), "utf-8");
-    return { icon: svg.includes("<svg") && svg.length < 64_000 ? svg : null, tool };
-  } catch { return { icon: null, tool: null }; }
+    return { icon: svg.includes("<svg") && svg.length < 64_000 ? svg : null, tool, data };
+  } catch { return { icon: null, tool: null, data: "cloud" }; }
 }
 
 /** The target a CLI-directory symlink points at, or "" when it is not a link. */
@@ -976,6 +983,16 @@ export function registerSkillsIpc(): void {
       // join the page; one whose slug is a bundle folder here IS that card.
       if (kinds.includes("app")) {
         const folders = new Set(rows.filter((r) => r.source === "app").map((r) => r.id.slice(r.id.indexOf(":") + 1).toLowerCase()));
+        // WHERE EACH APP'S DATA SITS (his verdict, 2026-10-05), for the page's
+        // mark: a folder whose author said local / per-home is this machine's;
+        // a folder that stands for an instance is the cloud's; a folder from
+        // before the cloud is this machine's too (and offers the move).
+        const cloudSlugs = new Set((await listInstances().catch(() => [])).map((i) => i.slug));
+        for (const r of rows) {
+          if (r.source !== "app") continue;
+          const slug = r.id.slice(r.id.indexOf(":") + 1).toLowerCase();
+          r.locus = r.data === "local" || r.data === "per-home" ? "local" : cloudSlugs.has(slug) ? "cloud" : "local";
+        }
         rows.push(...await instanceCards(folders));
       }
       return { ok: true, data: rows };
