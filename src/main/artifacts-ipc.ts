@@ -66,10 +66,11 @@ export function registerArtifactsIpc(): void {
   ipcMain.handle("artifacts-delete", (_e, id: string) => run(() => getClient().http.del(pathOf(id))));
   ipcMain.handle("artifacts-share", (_e, id: string, access: string) => run(() => getClient().http.post(pathOf(id, "/share"), { access: String(access || "private") })));
   ipcMain.handle("artifacts-comments", (_e, id: string) => run(() => getClient().http.get(pathOf(id, "/comments"))));
-  ipcMain.handle("artifacts-comment-add", (_e, id: string, input: { text: string; region?: unknown; parentId?: string }) => {
+  ipcMain.handle("artifacts-comment-add", (_e, id: string, input: { text: string; region?: unknown; parentId?: string; agent?: boolean }) => {
     const body: Record<string, unknown> = { text: String(input?.text || "") };
     if (input?.region) body.region = input.region;
     if (input?.parentId) body.parentId = String(input.parentId);
+    if (input?.agent === true) body.agent = true;
     return run(() => getClient().http.post(pathOf(id, "/comments"), body));
   });
   ipcMain.handle("artifacts-comment-patch", (_e, id: string, cid: string, patch: { resolved: boolean }) =>

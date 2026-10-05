@@ -51,7 +51,7 @@ export interface ArtifactsBridge {
   artifactsDelete?: (id: string) => Promise<Env<unknown>>;
   artifactsShare?: (id: string, access: ArtifactAccess) => Promise<Env<{ access: ArtifactAccess; shareUrl: string | null }>>;
   artifactsCommentsList?: (id: string) => Promise<Env<ArtifactComment[]>>;
-  artifactsCommentAdd?: (id: string, input: { text: string; region?: CommentRegion | null; parentId?: string }) => Promise<Env<ArtifactComment>>;
+  artifactsCommentAdd?: (id: string, input: { text: string; region?: CommentRegion | null; parentId?: string; agent?: boolean }) => Promise<Env<ArtifactComment>>;
   artifactsCommentPatch?: (id: string, cid: string, patch: { resolved: boolean }) => Promise<Env<ArtifactComment>>;
   artifactsCommentDelete?: (id: string, cid: string) => Promise<Env<unknown>>;
   /** WEB: parks the session as the `/a`-scoped cookie the proxy turns into the bearer. */
@@ -62,7 +62,7 @@ const bridge = (): ArtifactsBridge => ((window as unknown as { glyphh?: Artifact
 
 /** The doors into the agent (code-workbench.ts). */
 interface AgentDoors {
-  __wbSendToAgent?: (text: string, opts?: { newSession?: boolean; artifact?: { id: string; name: string } }) => void;
+  __wbSendToAgent?: (text: string, opts?: { newSession?: boolean; artifact?: { id: string; name: string } }) => Promise<boolean> | void;
 }
 const doors = (): AgentDoors => window as unknown as AgentDoors;
 
@@ -388,8 +388,32 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     if (!waiting.length) return;
     const id = waiting[waiting.length - 1];
     agentBusy.delete(id);
+    const text = d?.text || "";
+    const stopped = !!d?.stopped || !text;
+    // GLYPHH'S REPLY PERSISTS WITH THE THREAD (his order, 2026-10-05: closing
+    // the artifact and reopening the comment showed no response): posted back
+    // as a reply flagged agent, so every reader sees it, now and later.
+    const a = current;
+    const add = bridge().artifactsCommentAdd;
+    if (!stopped && a && add) {
+      void add(a.id, { text, parentId: id, agent: true }).then((r) => {
+        if (r.ok) {
+          const t = threads.find((x) => x.id === id);
+          if (t) t.replies = [...(t.replies ?? []), r.data];
+          const open = stage.querySelector<HTMLElement>(`.artp-pop[data-thread="${CSS.escape(id)}"]`);
+          if (open && t) threadPopover(t, pinAnchor(t));
+          else paintAgentExchange(id);
+        } else {
+          const list = agentReplies.get(id) ?? [];
+          list.push({ text, at: Date.now(), stopped: false });
+          agentReplies.set(id, list);
+          paintAgentExchange(id);
+        }
+      });
+      return;
+    }
     const list = agentReplies.get(id) ?? [];
-    list.push({ text: d?.text || "", at: Date.now(), stopped: !!d?.stopped || !d?.text });
+    list.push({ text, at: Date.now(), stopped });
     agentReplies.set(id, list);
     paintAgentExchange(id);
   };
@@ -560,7 +584,13 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     const [first, ...rest] = lines;
     agentBusy.add(threadId);
     paintAgentExchange(threadId);
-    send(editPrompt(a, region, first || "", rest), { artifact: { id: a.id, name: a.name } });
+    void Promise.resolve(send(editPrompt(a, region, first || "", rest), { artifact: { id: a.id, name: a.name } })).then((sent) => {
+      if (sent !== false) return;
+      // The agent was mid-turn and the send never left: say so, stop waiting.
+      agentBusy.delete(threadId);
+      paintAgentExchange(threadId);
+      toast("Glyphh is busy with another turn — send again when it finishes", { kind: "error" });
+    });
   }
 
   /** The thread pane's exchange with Glyphh: every reply so far as a Glyphh
@@ -610,11 +640,12 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     const msgs = el("div", "artp-pop-msgs");
     const line = (c: ArtifactComment, first: boolean): void => {
       const m = el("div", "artp-msg");
-      const av = el("span", "artp-avatar");
-      if (c.author?.avatarUrl) { const img = document.createElement("img"); img.src = c.author.avatarUrl; img.alt = ""; av.appendChild(img); }
+      const av = el("span", c.agent ? "artp-avatar artp-avatar-glyphh" : "artp-avatar");
+      if (c.agent) av.textContent = "G";
+      else if (c.author?.avatarUrl) { const img = document.createElement("img"); img.src = c.author.avatarUrl; img.alt = ""; av.appendChild(img); }
       else av.textContent = initialOf(c.author?.name || "");
       const who = el("span", "artp-msg-who");
-      who.appendChild(el("strong", "", "")).textContent = c.author?.name || "Someone";
+      who.appendChild(el("strong", "", "")).textContent = c.agent ? "Glyphh" : (c.author?.name || "Someone");
       who.appendChild(el("small", "", "")).textContent = commentAge(c.createdAt);
       const top = el("div", "artp-msg-top");
       top.append(av, who);

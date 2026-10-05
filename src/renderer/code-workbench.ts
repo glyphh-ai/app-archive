@@ -5848,15 +5848,18 @@ async function init(): Promise<void> {
      *  The instanced desktop hands the prompt to a panel with send: true;
      *  the in-document agent fills the composer and presses Send. */
     type SendToAgentOpts = { newSession?: boolean; artifact?: { id: string; name: string } };
-    (window as unknown as { __wbSendToAgent?: (text: string, opts?: SendToAgentOpts) => void }).__wbSendToAgent = (text: string, opts?: SendToAgentOpts) => {
-      if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "prompt", text, send: true }); return; }
+    // ANSWERS WHETHER IT SENT (his report, 2026-10-05: a comment sent while
+    // the agent was mid-turn was dropped on the floor — the composer was
+    // disabled — and the pane waited forever). The caller hears false.
+    (window as unknown as { __wbSendToAgent?: (text: string, opts?: SendToAgentOpts) => Promise<boolean> }).__wbSendToAgent = (text: string, opts?: SendToAgentOpts) => new Promise<boolean>((resolve) => {
+      if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "prompt", text, send: true }); resolve(true); return; }
       openAgentForLoop(GLYPHH_LOOP_ID);
       if (opts?.newSession) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
       let tries = 0;
       const go = (): void => {
         const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
         const send = document.getElementById("code-send") as HTMLButtonElement | null;
-        if (!ta || !send || ta.disabled) { if (tries++ < 40) window.setTimeout(go, 100); return; }
+        if (!ta || !send || ta.disabled) { if (tries++ < 40) window.setTimeout(go, 100); else resolve(false); return; }
         // THE ARTIFACT IN HAND rides the session's hidden steer, not the
         // visible message (his order, 2026-10-05) — named on the session the
         // send lands in, right before it types.
@@ -5864,9 +5867,10 @@ async function init(): Promise<void> {
         ta.value = text;
         ta.dispatchEvent(new Event("input", { bubbles: true }));
         send.click();
+        resolve(true);
       };
       window.setTimeout(go, opts?.newSession ? 220 : 120);
-    };
+    });
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
       if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }

@@ -1523,6 +1523,7 @@ export function buildArtifactsWeb(client, deps = {}) {
       const body = { text: String(input?.text || '') };
       if (input?.region) body.region = input.region;
       if (input?.parentId) body.parentId = String(input.parentId);
+      if (input?.agent === true) body.agent = true;
       const cm = a()?.comments;
       return cm?.add ? cm.add(String(id), body) : client.http.post(path(id, '/comments'), body);
     }),

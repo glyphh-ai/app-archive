@@ -47,6 +47,8 @@ export interface ArtifactComment {
   resolved: boolean;
   createdAt: string;
   replies: ArtifactComment[];
+  /** Glyphh's own reply in the thread (posted back by this client). */
+  agent?: boolean;
 }
 
 export type ArtifactTab = "all" | "mine" | "shared";
