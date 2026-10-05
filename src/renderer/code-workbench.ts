@@ -53,6 +53,7 @@ import {
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
 import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webRestorePlan, webWallMemory } from "./help/web-cut.js";
+import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
@@ -9679,9 +9680,12 @@ async function init(): Promise<void> {
   // back into the new body via appendChild so the editor isn't torn down.
   function terminalTheme(): Record<string, string> {
     const styles = getComputedStyle(document.body);
-    const bg = styles.getPropertyValue("--ws-bg-card").trim() || "#1e1e1e";
-    const fg = styles.getPropertyValue("--ws-text").trim() || "#d4d4d4";
-    const accent = styles.getPropertyValue("--ws-accent").trim() || "#a855f7";
+    // AS HEX, always (his report, 2026-10-05: an oklch() token reached xterm's
+    // canvas renderer and threw "Unexpected fillStyle color format" on the
+    // web). help/css-color.ts paints anything the browser can and reads bytes.
+    const bg = cssColorToHex(styles.getPropertyValue("--ws-bg-card"), "#1e1e1e");
+    const fg = cssColorToHex(styles.getPropertyValue("--ws-text"), "#d4d4d4");
+    const accent = cssColorToHex(styles.getPropertyValue("--ws-accent"), "#a855f7");
     // THE ANSI 16 follow the theme too — CLIs (claude/codex/gemini, git,
     // ls) draw with these, so retheming the palette IS retheming the CLI.
     const light = appIsLight();

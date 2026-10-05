@@ -1621,15 +1621,9 @@ function SplashFlow() {
           ctx!.shadowBlur = 0;
         }
       }
+      // The streams stay; the centre vignette is gone here as on the desktop
+      // (his order, 2026-10-05: "remove it but leave the effect on the background").
       ctx!.globalCompositeOperation = 'source-over';
-      if (document.documentElement.getAttribute('data-theme') !== 'light') {
-        const vg = ctx!.createRadialGradient(w / 2, h * 0.46, 0, w / 2, h * 0.46, h * 0.62);
-        vg.addColorStop(0, 'rgba(8, 6, 12, 0.6)');
-        vg.addColorStop(0.55, 'rgba(8, 6, 12, 0.12)');
-        vg.addColorStop(1, 'rgba(8, 6, 12, 0)');
-        ctx!.fillStyle = vg;
-        ctx!.fillRect(0, 0, w, h);
-      }
       if (reduced) running = false;
     }
     raf = requestAnimationFrame(frame);
