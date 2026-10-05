@@ -52,7 +52,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle } from "./help/web-cut.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
@@ -6701,6 +6701,13 @@ async function init(): Promise<void> {
       // seated, + New starts the new session IN it (help/web-cut.ts
       // webNewSessionInPlace; his report, 2026-10-05: + New did nothing —
       // this open found the card and only repainted it).
+      // + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05): the
+      // full-screen page and every open work panel / app card go first, so
+      // the new session page is what shows, whatever was up.
+      if (webNewClosesEverything(IS_WEB_TARGET)) {
+        closeWebFullPanel();
+        for (const x of [...openList]) if (x.card?.isConnected && !isAgentEntry(x)) closeCard(x);
+      }
       const seated = openList.some((x) => !!x.card?.isConnected && x.tile.kind === "agent");
       if (webNewSessionInPlace(IS_WEB_TARGET, seated)) {
         const fresh = (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession;

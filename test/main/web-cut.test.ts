@@ -11,7 +11,7 @@ import {
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
-  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept,
+  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -113,6 +113,10 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build
     for (const sub of ["remote", "mcp", "general", "artifacts"]) expect(webGroupPanelKept(sub)).toBe(false);
     expect(WEB_CUT_ROW_CLASS).toBe("web-cut-row");
     expect(WEB_CUT_ROW_CLASS).not.toBe("hidden");
+  });
+  it("+ New on the web closes everything first; the desktop keeps its panels (his order, 2026-10-05)", () => {
+    expect(webNewClosesEverything(true)).toBe(true);
+    expect(webNewClosesEverything(false)).toBe(false);
   });
   it("the lists are frozen", () => {
     expect(Object.isFrozen(webFullScreenPanels)).toBe(true);

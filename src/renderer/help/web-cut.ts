@@ -104,6 +104,15 @@ export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
 
+/** + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05: "no matter
+ *  what page is up clicking new in the left rail closes whatever is open and
+ *  shows the new session page"): the full-screen page, every open work
+ *  panel and app card go, and the fresh session is what shows. The desktop
+ *  keeps its panels (New there is another panel on a new session). */
+export function webNewClosesEverything(web: boolean): boolean {
+  return web;
+}
+
 /** The rail's doors into the command center — hidden on web (ids and
  *  selectors, applied by web-surface.ts). Build and Customize left this list
  *  on 2026-10-05: they are the rail's full-screen pages now. */
