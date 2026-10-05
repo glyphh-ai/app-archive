@@ -106,7 +106,8 @@ describe('skills on web — files through the presigned URLs, the record re-put'
     expect(JSON.parse(stored.get('task.json'))).toMatchObject({ name: 'my-task', program: 'run.js' });
     expect(api.rows.get('task:my-task').data).toMatchObject({ type: 'task', enabled: true, manifest: { name: 'my-task' } });
     expect(await lib.skillCreate('My Task!', 'task')).toMatchObject({ ok: false, error: /already exists/ });
-    expect(await lib.skillCreate('x', 'plugin')).toEqual({ ok: false, error: NEEDS_DESKTOP });
+    // A plugin is a record too since 2026-10-05 (his report): the desktop's template, put here.
+    expect(await lib.skillCreate('x', 'plugin')).toMatchObject({ ok: true, data: { id: 'plugin:x', type: 'plugin', fileCount: 3 } });
   });
 
   it('skillSetEnabled and skillDelete write the server; the machine actions answer so', async () => {
@@ -225,5 +226,220 @@ describe('schedules on web — the record, with the runs left to the desktop clo
     expect(await lib.scheduleDelete('s1')).toEqual({ ok: true, data: { deleted: true } });   // already gone: fine
     const stale = buildMemberLibrary({ memberLibrary: seed() }, { now: () => 500 });
     expect(await stale.scheduleSetEnabled('s2', true)).toMatchObject({ ok: false, error: /newer copy/ });
+  });
+});
+
+// ── THE HUB ON THE WEB (his report, 2026-10-05: "Nothing to discover yet" on
+// every Build tab; "why can't plugins be installed on the web?") ─────────────
+import { APP_INSTALLS_ON_DESKTOP } from '../src/member-library-web.js';
+
+/** The control plane's hub routes as `client.http`: every call is recorded. */
+function fakeHttp(routes) {
+  const calls = [];
+  const call = (method) => vi.fn(async (path, body) => {
+    calls.push({ method, path, body });
+    const h = routes[`${method} ${path}`] ?? routes[`${method} ${path.split('?')[0]}`];
+    if (h === undefined) { const e = new Error(`stub: ${method} ${path}`); e.httpStatus = 404; throw e; }
+    return typeof h === 'function' ? h(body, path) : h;
+  });
+  return { calls, get: call('GET'), post: call('POST'), put: call('PUT'), del: call('DELETE') };
+}
+const PUB = [
+  { id: 'pub-1', slug: 'notes-pro', name: 'Notes Pro', description: 'Better notes', sourceOrg: 'Glyphh', installed: false, installs: 12, version: 2, updatedAt: '2026-10-02T00:00:00.000Z', createdAt: '2026-09-30T00:00:00.000Z', kind: 'skill', categories: ['productivity'], icon: null },
+  { id: 'pub-2', slug: 'weekly', name: 'Weekly digest', description: 'Mail digest', sourceOrg: 'Glyphh', installed: false, installs: 3, version: 1, updatedAt: '2026-10-01T00:00:00.000Z', createdAt: '2026-10-01T00:00:00.000Z', kind: 'task', categories: ['productivity'], icon: '<svg/>' },
+  { id: 'pub-3', slug: 'glyphh', name: 'Glyphh', description: 'The Glyphh plugin', sourceOrg: 'Glyphh', installed: false, installs: 40, version: 3, updatedAt: '2026-10-04T00:00:00.000Z', createdAt: '2026-09-20T00:00:00.000Z', kind: 'plugin', categories: ['apps'], icon: null },
+  { id: 'pub-4', slug: 'crm', name: 'CRM', description: 'An app', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-29T00:00:00.000Z', createdAt: '2026-09-29T00:00:00.000Z', kind: 'app', categories: [], icon: null },
+];
+const ORG_SKILLS = [
+  { id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', installed: false, installs: 1, headVersion: 1, pendingVersion: 2, rejectedVersion: null, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null },
+  { id: 'org-2', slug: 'draft', name: 'draft', description: 'On the desk', author: 'Bob', installed: false, installs: 0, headVersion: null, pendingVersion: 1, rejectedVersion: null, updatedAt: '2026-10-03T00:00:00.000Z', categories: [] },
+];
+const PLUGIN_JSON = JSON.stringify({ name: 'glyphh', description: 'The Glyphh plugin', version: '0.3.0' });
+const TASK_JSON = JSON.stringify({ name: 'weekly', program: 'run.js', slots: { main: { agent: null } }, schedule: '0 9 * * 1', dependencies: { connections: [] } });
+const hubRoutes = () => ({
+  'GET /api/hub/public': PUB,
+  'GET /api/hub/categories': [{ id: 'productivity', label: 'Productivity' }, { id: 'apps', label: 'Apps' }],
+  'GET /api/library/skill': ORG_SKILLS,
+  'GET /api/library/task': [],
+  'GET /api/library/plugin': [],
+  'GET /api/library/app': [],
+  'GET /api/hub/public/pub-1/payload': { files: { 'SKILL.md': '---\nname: notes-pro\ndescription: Better notes\n---\n\nDo it.\n', 'scripts/run.sh': 'echo hi\n', 'assets/shot.png': 'data:image/png;base64,iVBORw0KGgo=' } },
+  'GET /api/hub/public/pub-2/payload': { files: { 'SKILL.md': '---\nname: weekly\ndescription: Mail digest\n---\n\nRun weekly.\n', 'task.json': TASK_JSON, 'run.js': 'module.exports = async () => ({});\n' } },
+  'GET /api/hub/public/pub-3/payload': { files: { '.claude-plugin/plugin.json': PLUGIN_JSON, 'README.md': '# glyphh\n', 'skills/glyphh/SKILL.md': '---\nname: glyphh\ndescription: Drive Glyphh\n---\n\nUse the tools.\n' } },
+  'GET /api/library/skill/org-1/payload': { prompt: 'Body from the org.\n', code: 'console.log(1)\n' },
+  'POST /api/hub/public/pub-1/install': {}, 'POST /api/hub/public/pub-2/install': {}, 'POST /api/hub/public/pub-3/install': {}, 'POST /api/library/skill/org-1/install': {},
+  'GET /api/library/skill/org-1/versions': [{ version: 2, notes: 'v2', created_at: '2026-10-03', status: 'rejected', review_summary: 'too long' }, { version: 1, notes: 'first', created_at: '2026-10-01' }],
+  'GET /api/library/skill/org-1/payload?version=1': { files: { 'SKILL.md': 'v1 text' } },
+  'DELETE /api/library/skill/org-1/submission': { withdrawn: 2 },
+  'POST /api/library/skill/org-1/categories': {},
+  'POST /api/library/skill/promote': { version: 3, status: 'pending' },
+});
+const hubLib = (seed = fakeLibrary(), routes = hubRoutes(), deps = {}) => {
+  const http = fakeHttp(routes);
+  const lib = buildMemberLibrary({ memberLibrary: seed, http }, { now: () => 9_000, ...deps });
+  return { lib, http, api: seed };
+};
+
+describe('Discover on web — the same catalog reads as hub-ipc', () => {
+  it('skillsDiscover lists the org items with a live version and the Glyphh catalog items of the asked kinds, newest first, in hub-ipc\'s row shape', async () => {
+    const { lib, http } = hubLib();
+    const r = await lib.skillsDiscover(['skill', 'task', 'plugin']);
+    expect(r.ok).toBe(true);
+    expect(r.data.map((d) => d.ref)).toEqual(['glyphh:pub-3', 'org:org-1', 'glyphh:pub-1', 'glyphh:pub-2']);
+    expect(r.data[1]).toEqual({ ref: 'org:org-1', from: 'org', id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', version: 1, installed: false, installs: 1, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null, type: 'skill' });
+    expect(r.data[0]).toMatchObject({ from: 'glyphh', author: 'Glyphh', version: 3, installs: 40, type: 'plugin', icon: null });
+    expect(r.data[3]).toMatchObject({ type: 'task', icon: '<svg/>' });
+    expect(http.calls.filter((c) => c.method === 'GET').map((c) => c.path).sort()).toEqual(['/api/hub/public', '/api/library/plugin', '/api/library/skill', '/api/library/task']);
+    // Only the asked kinds: the Plugins page sees the plugin alone, the app never (no app home here).
+    expect((await lib.skillsDiscover('plugin')).data.map((d) => d.ref)).toEqual(['glyphh:pub-3']);
+    expect((await lib.skillsDiscover(['skill', 'app', 'task'])).data.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4']);
+  });
+
+  it('already yours is not addable: a library row with the item\'s slug marks it installed', async () => {
+    const seed = fakeLibrary({ plugin: [{ id: 'glyphh', updatedAt: 1, data: { name: 'glyphh', type: 'plugin', enabled: true } }] });
+    const { lib } = hubLib(seed);
+    const rows = (await lib.skillsDiscover(['skill', 'plugin'])).data;
+    expect(rows.find((d) => d.ref === 'glyphh:pub-3').installed).toBe(true);
+    expect(rows.find((d) => d.ref === 'glyphh:pub-1').installed).toBe(false);
+  });
+
+  it('a hub that does not answer is an empty list, not an error; hubCategories and skillHubFiles read their routes', async () => {
+    const { lib } = hubLib(fakeLibrary(), { 'GET /api/hub/categories': [{ id: 'x', label: 'X' }] });
+    expect(await lib.skillsDiscover('skill')).toEqual({ ok: true, data: [] });
+    expect(await lib.hubCategories()).toEqual({ ok: true, data: [{ id: 'x', label: 'X' }] });
+    const { lib: lib2 } = hubLib();
+    expect((await lib2.skillHubFiles('glyphh:pub-3', 'plugin')).data).toHaveProperty(['.claude-plugin/plugin.json'], PLUGIN_JSON);
+    // The legacy { prompt, code } payload becomes a SKILL.md and a script, as on the desktop.
+    expect((await lib2.skillHubFiles('org:org-1', 'skill')).data).toEqual({ 'SKILL.md': '---\nname: skill\ndescription: \n---\n\nBody from the org.\n', 'scripts/program.js': 'console.log(1)\n' });
+  });
+});
+
+describe('Install on web = a put into the member library (his rule, 2026-10-04)', () => {
+  it('a Glyphh catalog skill: the record (data + manifest + origin) is put at this clock, every file lands on R2, the hub counts the install', async () => {
+    const { stored, fetchImpl } = fakeR2();
+    const { lib, http, api } = hubLib(fakeLibrary(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillInstall('glyphh:pub-1', 'skill')).toEqual({ ok: true, data: { id: 'glyphh:notes-pro' } });
+    const [kind, id, body] = api.put.mock.calls[0];
+    expect([kind, id, body.updatedAt]).toEqual(['skill', 'notes-pro', 9_000]);
+    expect(body.data).toMatchObject({ name: 'notes-pro', description: 'Better notes', type: 'skill', enabled: true, body: '\nDo it.\n', frontmatter: { name: 'notes-pro' } });
+    expect(body.data.origin).toMatchObject({ from: 'glyphh', itemId: 'pub-1', kind: 'skill', slug: 'notes-pro', version: 2, author: 'Glyphh', files: ['SKILL.md', 'scripts/run.sh', 'assets/shot.png'] });
+    expect(body.files.map((f) => f.path)).toEqual(['SKILL.md', 'scripts/run.sh', 'assets/shot.png']);
+    for (const f of body.files) expect(f).toMatchObject({ mtime: 9_000, sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(stored.get('scripts/run.sh')).toBe('echo hi\n');
+    // A screenshot rides the hub as a data URL and lands as the bytes it was (installSkill does the same).
+    expect(body.files.find((f) => f.path === 'assets/shot.png').size).toBe(8);
+    expect(http.calls.at(-1)).toEqual({ method: 'POST', path: '/api/hub/public/pub-1/install', body: {} });
+    // It is under "Your skills" at once, by its publisher.
+    const mine = (await lib.skillsList(['skill', 'app', 'task'])).data;
+    expect(mine).toEqual([expect.objectContaining({ id: 'glyphh:notes-pro', source: 'glyphh', type: 'skill', name: 'notes-pro', author: 'Glyphh', enabled: true })]);
+    expect((await lib.skillGet('glyphh:notes-pro')).data).toMatchObject({ fileCount: 3, author: 'Glyphh' });
+    expect((await lib.skillsDiscover('skill')).data.find((d) => d.ref === 'glyphh:pub-1').installed).toBe(true);
+  });
+
+  it('an org task: kind task, the manifest off task.json, the origin from the org with its author', async () => {
+    const { fetchImpl } = fakeR2();
+    const { lib, api } = hubLib(fakeLibrary(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillInstall('glyphh:pub-2', 'task')).toEqual({ ok: true, data: { id: 'task:weekly' } });
+    const [kind, id, body] = api.put.mock.calls[0];
+    expect([kind, id]).toEqual(['task', 'weekly']);
+    expect(body.data).toMatchObject({ type: 'task', manifest: JSON.parse(TASK_JSON), origin: { from: 'glyphh', itemId: 'pub-2', version: 1 } });
+    expect((await lib.tasksSpecs()).data[0]).toMatchObject({ slug: 'weekly', schedule: '0 9 * * 1', program: 'run.js' });
+    expect(await lib.skillInstall('org:org-1', 'skill')).toEqual({ ok: true, data: { id: 'glyphh:notes' } });
+    expect(api.put.mock.calls[1][2].data).toMatchObject({ name: 'notes', description: 'Keep notes', origin: { from: 'org', itemId: 'org-1', version: 1, author: 'Ada' } });
+  });
+
+  it('a PLUGIN: kind plugin, its name and description off .claude-plugin/plugin.json, listed on the Plugins page as plugin:<slug>', async () => {
+    const { stored, fetchImpl } = fakeR2();
+    const { lib, api } = hubLib(fakeLibrary(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillInstall('glyphh:pub-3', 'plugin')).toEqual({ ok: true, data: { id: 'plugin:glyphh' } });
+    const [kind, id, body] = api.put.mock.calls[0];
+    expect([kind, id]).toEqual(['plugin', 'glyphh']);
+    expect(body.data).toMatchObject({ name: 'glyphh', description: 'The Glyphh plugin', type: 'plugin', enabled: true, manifest: JSON.parse(PLUGIN_JSON), origin: { kind: 'plugin', version: 3 } });
+    expect(body.files.map((f) => f.path)).toEqual(['.claude-plugin/plugin.json', 'README.md', 'skills/glyphh/SKILL.md']);
+    expect(stored.get('.claude-plugin/plugin.json')).toBe(PLUGIN_JSON);
+    expect((await lib.skillsList('plugin')).data).toEqual([expect.objectContaining({ id: 'plugin:glyphh', source: 'plugin', type: 'plugin', name: 'glyphh', author: 'Glyphh' })]);
+    expect((await lib.skillGet('plugin:glyphh')).data).toMatchObject({ id: 'plugin:glyphh', files: [{ path: '.claude-plugin/plugin.json' }, { path: 'README.md' }, { path: 'skills/glyphh/SKILL.md' }] });
+    // A payload without the plugin manifest is refused, as installSkill refuses it.
+    const bad = hubLib(fakeLibrary(), { ...hubRoutes(), 'GET /api/hub/public/pub-3/payload': { files: { 'README.md': 'x' } } }, { fetchImpl });
+    expect(await bad.lib.skillInstall('glyphh:pub-3', 'plugin')).toEqual({ ok: false, error: 'a plugin needs .claude-plugin/plugin.json' });
+  });
+
+  it('an app says it installs on the desktop; a vanished item says so; a reinstall drops what the last install wrote and the payload lost', async () => {
+    const { fetchImpl } = fakeR2();
+    const { lib, api } = hubLib(fakeLibrary(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillInstall('glyphh:pub-4', 'app')).toEqual({ ok: false, error: APP_INSTALLS_ON_DESKTOP });
+    expect(await lib.skillInstall('glyphh:gone', 'skill')).toEqual({ ok: false, error: 'that skill is no longer available to you' });
+    expect(api.put).not.toHaveBeenCalled();
+    await lib.skillInstall('glyphh:pub-1', 'skill');
+    const item = api.rows.get('skill:notes-pro');
+    api.rows.set('skill:notes-pro', { ...item, files: [...item.files, { path: 'notes/mine.md', size: 2, mtime: 1, sha256: 'z' }], data: { ...item.data, origin: { ...item.data.origin, files: ['SKILL.md', 'scripts/run.sh', 'assets/shot.png', 'old.txt'] } } });
+    api.rows.get('skill:notes-pro').files.push({ path: 'old.txt', size: 1, mtime: 1, sha256: 'o' });
+    expect((await lib.skillInstall('glyphh:pub-1', 'skill')).ok).toBe(true);
+    const again = api.put.mock.calls.at(-1)[2];
+    expect(again.files.map((f) => f.path).sort()).toEqual(['SKILL.md', 'assets/shot.png', 'notes/mine.md', 'scripts/run.sh']);
+    expect(again.updatedAt).toBeGreaterThan(9_000);
+  });
+});
+
+describe('standings, updates, shares, versions and publish on web', () => {
+  const installed = () => fakeLibrary({
+    skill: [{ id: 'notes-pro', updatedAt: 100, data: { name: 'notes-pro', description: 'Better notes', frontmatter: {}, body: '', enabled: true, type: 'skill', origin: { from: 'glyphh', itemId: 'pub-1', kind: 'skill', slug: 'notes-pro', version: 1, files: ['SKILL.md', 'old.txt'], installedAt: '', author: 'Glyphh' } },
+      files: [{ path: 'SKILL.md', size: 5, mtime: 100, sha256: 'a' }, { path: 'old.txt', size: 1, mtime: 100, sha256: 'b' }, { path: 'mine.md', size: 1, mtime: 100, sha256: 'c' }] },
+    { id: 'notes', updatedAt: 100, data: { name: 'notes', description: 'Keep notes', frontmatter: { author: 'me' }, body: 'Mine.\n', enabled: true, type: 'skill' }, files: [{ path: 'SKILL.md', size: 5, mtime: 100, sha256: 'a' }] }],
+    plugin: [{ id: 'glyphh', updatedAt: 100, data: { name: 'glyphh', type: 'plugin', enabled: true, origin: { from: 'glyphh', itemId: 'pub-3', kind: 'plugin', slug: 'glyphh', version: 3, files: [], installedAt: '', author: 'Glyphh' } }, files: [] }],
+  });
+
+  it('skillStandings: the recorded origin, else the catalog row with the slug (version 0 = take whatever the catalog has); skillUpdates = what moved past', async () => {
+    const { lib } = hubLib(installed());
+    expect((await lib.skillStandings()).data).toEqual({
+      'glyphh:notes-pro': { from: 'glyphh', sourceName: 'the Glyphh catalog', name: 'Notes Pro', have: 1, latest: 2 },
+      'glyphh:notes': { from: 'org', sourceName: "your organization's hub", name: 'notes', have: 0, latest: 1 },
+      'plugin:glyphh': { from: 'glyphh', sourceName: 'the Glyphh catalog', name: 'Glyphh', have: 3, latest: 3 },
+    });
+    expect((await lib.skillUpdates()).data).toEqual({ 'glyphh:notes-pro': { have: 1, latest: 2, name: 'Notes Pro' }, 'glyphh:notes': { have: 0, latest: 1, name: 'notes' } });
+  });
+
+  it('skillUpdate takes the catalog\'s version: the payload\'s files, minus what the last install wrote and the payload dropped, plus what the member added', async () => {
+    const { fetchImpl } = fakeR2();
+    const { lib, api } = hubLib(installed(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillUpdate('glyphh:notes-pro')).toEqual({ ok: true, data: { version: 2 } });
+    const body = api.put.mock.calls[0][2];
+    expect(body.files.map((f) => f.path).sort()).toEqual(['SKILL.md', 'assets/shot.png', 'mine.md', 'scripts/run.sh']);
+    expect(body.data.origin).toMatchObject({ itemId: 'pub-1', version: 2, files: ['SKILL.md', 'scripts/run.sh', 'assets/shot.png'] });
+    expect(await lib.skillUpdate('glyphh:nope')).toMatchObject({ ok: false });
+  });
+
+  it('skillShares / skillWithdraw / skillVersions / skillVersionFiles / skillCategoriesSet read and write the org hub\'s routes', async () => {
+    const { lib, http } = hubLib(installed());
+    expect((await lib.skillShares()).data).toEqual({ 'glyphh:notes': { head: 1, pending: 2, rejected: null } });
+    expect(await lib.skillWithdraw('glyphh:notes')).toEqual({ ok: true, data: { withdrawn: 2 } });
+    expect(await lib.skillWithdraw('glyphh:notes-pro')).toEqual({ ok: false, error: "this one isn't on your organization's hub" });
+    expect((await lib.skillVersions('glyphh:notes')).data).toEqual({
+      itemId: 'org-1', kind: 'skill', head: 1, pending: 2, categories: ['memory'],
+      versions: [{ version: 2, notes: 'v2', createdAt: '2026-10-03', status: 'rejected', reviewSummary: 'too long' }, { version: 1, notes: 'first', createdAt: '2026-10-01', status: 'approved', reviewSummary: '' }],
+      declined: { version: 2, summary: 'too long' },
+    });
+    expect((await lib.skillVersions('glyphh:notes-pro')).data).toEqual({ itemId: null, kind: 'skill', versions: [], head: null, pending: null, declined: null, categories: [] });
+    expect(await lib.skillVersionFiles('org-1', 1, 'skill')).toEqual({ ok: true, data: { 'SKILL.md': 'v1 text' } });
+    expect(await lib.skillCategoriesSet('org-1', 'skill', ['memory', '', 'apps'])).toEqual({ ok: true, data: ['memory', 'apps'] });
+    expect(http.calls.at(-1)).toEqual({ method: 'POST', path: '/api/library/skill/org-1/categories', body: { categories: ['memory', 'apps'] } });
+  });
+
+  it('skillPublish promotes the record\'s files, read back off R2, as text; a binary file stops it', async () => {
+    const md = '---\nname: notes\ndescription: Keep notes\n---\n\nMine.\n';
+    const { fetchImpl } = fakeR2({ 'SKILL.md': md });
+    const { lib, http } = hubLib(installed(), hubRoutes(), { fetchImpl });
+    expect(await lib.skillPublish('glyphh:notes', 'first share')).toEqual({ ok: true, data: { version: 3, status: 'pending' } });
+    expect(http.calls.at(-1)).toEqual({ method: 'POST', path: '/api/library/skill/promote', body: { slug: 'notes', name: 'notes', description: 'Keep notes', notes: 'first share', payload: { files: { 'SKILL.md': md }, prompt: '\nMine.\n', manifest: { author: 'me' } } } });
+    const bin = fakeR2({ 'SKILL.md': 'ok\u0000bin' });
+    expect(await hubLib(installed(), hubRoutes(), { fetchImpl: bin.fetchImpl }).lib.skillPublish('glyphh:notes')).toMatchObject({ ok: false, error: /binary/ });
+  });
+
+  it('skillCreate on the Plugins page writes the desktop\'s plugin template', async () => {
+    const { fetchImpl, stored } = fakeR2();
+    const lib = buildMemberLibrary({ memberLibrary: fakeLibrary() }, { fetchImpl, now: () => 9_000 });
+    const r = await lib.skillCreate('My Plugin', 'plugin');
+    expect(r.data).toMatchObject({ id: 'plugin:my-plugin', type: 'plugin', name: 'my-plugin', description: 'What this plugin is for, in one line.', fileCount: 3 });
+    expect([...stored.keys()].sort()).toEqual(['.claude-plugin/plugin.json', 'README.md', 'skills/my-plugin/SKILL.md']);
   });
 });

@@ -27,6 +27,11 @@
  * No electron, no fs: the web bundle imports this file.
  */
 
+/** The kinds the desktop's sync walks. `plugin` is a library kind on the
+ *  server and the web since 2026-10-05 (his report: "why can't plugins be
+ *  installed on the web?"), see BundleKind; it joins this union — and the
+ *  SDK's MemberLibraryKind, which this one is handed to in library-sync-core
+ *  — with the desktop's plugin adapter. */
 export type MemberLibraryKind = "workspace" | "tab" | "skill" | "agent" | "task" | "drip" | "schedule";
 
 /** A row as the server lists it. `deletedAt` arrives as a number (epoch ms) on
@@ -414,15 +419,33 @@ export interface LibraryFileLike { path: string; size: number; mtime: number; sh
 
 /** The `data` of a skill or task record — what a list or a detail page reads
  *  WITHOUT downloading the folder. The folder itself is the `files` manifest. */
+/** The folder kinds the library holds: a skill, a task, a plugin. */
+export type BundleKind = "skill" | "task" | "plugin";
+
+/** Where an installed bundle came from (the desktop's `bundleSource:` pref,
+ *  carried in the record on the web — his report, 2026-10-05). */
+export interface BundleOriginLike {
+  from: "org" | "glyphh";
+  itemId: string;
+  kind: string;
+  slug: string;
+  version: number;
+  files: string[];
+  installedAt: string;
+  author?: string;
+}
+
 export interface BundleDataLike {
   name: string;
   description: string;
   frontmatter: Record<string, string>;
   body: string;
   enabled: boolean;
-  type: "skill" | "task";
-  /** Tasks: task.json, verbatim. */
+  type: BundleKind;
+  /** Tasks: task.json, verbatim. Plugins: .claude-plugin/plugin.json. */
   manifest?: Record<string, unknown> | null;
+  /** Installed from the hub: which catalog item, at which version. */
+  origin?: BundleOriginLike | null;
 }
 
 /** Frontmatter is a flat YAML block between --- fences: `key: value` lines.
@@ -448,15 +471,31 @@ export function parseSkillMd(text: string): { frontmatter: Record<string, string
   return { frontmatter: fm, body: text.slice(m[0].length) };
 }
 
-/** The record's `data` from a bundle's SKILL.md (+ task.json for a task). */
-export function bundleDataOf(kind: "skill" | "task", name: string, skillMd: string, enabled: boolean, manifest: Record<string, unknown> | null = null): BundleDataLike {
+/** The record's `data` from a bundle's SKILL.md (+ task.json for a task; a
+ *  plugin has no root SKILL.md — its name and description come off
+ *  .claude-plugin/plugin.json, passed as the manifest). */
+export function bundleDataOf(kind: BundleKind, name: string, skillMd: string, enabled: boolean, manifest: Record<string, unknown> | null = null): BundleDataLike {
   const { frontmatter, body } = parseSkillMd(skillMd);
+  const m = kind === "plugin" && manifest ? manifest : {};
   return {
-    name: frontmatter.name || name,
-    description: frontmatter.description || "",
+    name: frontmatter.name || (typeof m.name === "string" ? m.name : "") || name,
+    description: frontmatter.description || (typeof m.description === "string" ? m.description : ""),
     frontmatter, body, enabled, type: kind,
-    ...(kind === "task" ? { manifest } : {}),
+    ...(kind === "task" || kind === "plugin" ? { manifest } : {}),
   };
+}
+
+/** The hub payload ({ files } today; { prompt, code } before) as folder files
+ *  — the same projection as main/skills-fs.filesFromHubPayload, here so the
+ *  web installs what the desktop installs (his report, 2026-10-05). */
+export function hubPayloadFiles(name: string, description: string, p: Record<string, unknown>): Record<string, string> {
+  const files = (p.files && typeof p.files === "object" ? p.files : null) as Record<string, string> | null;
+  if (files && Object.keys(files).length) return files;
+  const body = typeof p.prompt === "string" ? p.prompt : "";
+  const fm = `---\nname: ${name}\ndescription: ${description.replace(/\n/g, " ")}\n---\n\n`;
+  const out: Record<string, string> = { "SKILL.md": fm + body };
+  if (typeof p.code === "string" && p.code.trim()) out["scripts/program.js"] = p.code;
+  return out;
 }
 
 /** The manifest's identity — what "the files changed" means for the clock. */
@@ -468,9 +507,9 @@ export function filesSignature(files: readonly LibraryFileLike[]): string {
 export const filesClock = (files: readonly LibraryFileLike[]): number => files.reduce((m, f) => Math.max(m, Number(f.mtime) || 0), 0);
 
 /** The Skills page's row id for a library record: the desktop's `<source>:<name>`. */
-export const bundlePageId = (kind: "skill" | "task", id: string): string => `${kind === "task" ? "task" : "glyphh"}:${id}`;
+export const bundlePageId = (kind: BundleKind, id: string): string => `${kind === "task" ? "task" : kind === "plugin" ? "plugin" : "glyphh"}:${id}`;
 /** …and back: which kind and record a page id names (null for the homes the server does not hold). */
-export function bundleOfPageId(pageId: string): { kind: "skill" | "task"; id: string } | null {
+export function bundleOfPageId(pageId: string): { kind: BundleKind; id: string } | null {
   const cut = pageId.indexOf(":");
   if (cut < 0) return null;
   const source = pageId.slice(0, cut);
@@ -478,18 +517,20 @@ export function bundleOfPageId(pageId: string): { kind: "skill" | "task"; id: st
   if (!id) return null;
   if (source === "glyphh") return { kind: "skill", id };
   if (source === "task") return { kind: "task", id };
+  if (source === "plugin") return { kind: "plugin", id };
   return null;
 }
 
-/** The Skills page's list row (settings-skills' SkillRow) from a record. */
-export function bundleRowOf(kind: "skill" | "task", id: string, data: BundleDataLike, updatedAt: number, fileCount: number): Record<string, unknown> {
+/** The Skills page's list row (settings-skills' SkillRow) from a record. An
+ *  installed bundle is BY its publisher (the origin's author), never "you". */
+export function bundleRowOf(kind: BundleKind, id: string, data: BundleDataLike, updatedAt: number, fileCount: number): Record<string, unknown> {
   return {
     id: bundlePageId(kind, id),
-    source: kind === "task" ? "task" : "glyphh",
+    source: kind === "task" ? "task" : kind === "plugin" ? "plugin" : "glyphh",
     type: kind,
     name: data.name || id,
     description: data.description || "",
-    author: data.frontmatter?.author || data.frontmatter?.from || "",
+    author: data.frontmatter?.author || data.frontmatter?.from || data.origin?.author || "",
     enabled: data.enabled !== false,
     dir: "",
     fileCount,
