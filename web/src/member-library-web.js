@@ -216,8 +216,14 @@ export function buildMemberLibrary(client, deps = {}) {
   const tabCard = async (pageId) => {
     const slug = String(pageId).slice(TAB_CARD.length);
     const t = (await tabApps()).find((x) => x.slug === slug);
-    if (!t) throw new Error(`no app ${slug}`);
-    return t;
+    if (t) return t;
+    // The merged list (server tabs + the attached desktop's rows) as the
+    // fallback: a row the desktop reported but the server has not synced yet
+    // (his report, 2026-10-05: "no app audio").
+    const merged = (await panelAppsList().catch(() => [])).find((x) => String(x.slug || x.id || '').toLowerCase() === slug.toLowerCase());
+    if (!merged) throw new Error(`no app ${slug}`);
+    const cfg = merged.launchConfig ?? merged.config ?? null;
+    return { slug, name: String(merged.name || slug), description: String(merged.description || ''), config: cfg, nativeRef: merged.execPath ?? merged.nativeRef ?? null, updatedAt: new Date(now()).toISOString() };
   };
   const skillsList = async (kind) => {
     const asked = Array.isArray(kind) ? kind : [kind ?? 'skill'];
@@ -773,10 +779,20 @@ export function buildMemberLibrary(client, deps = {}) {
 
   /** An instance's card opens as its tab; anything else needs the desktop's folder. */
   const skillTab = async (pageId) => {
-    // A tab app's card IS its tab already: open it by slug.
-    if (isTabCardId(pageId)) { try { const t = await tabCard(pageId); return ok({ slug: t.slug, name: t.name }); } catch (err) { return fail(err); } }
+    // OPEN ON THE WEB OPENS THE WEB PANEL (his report, 2026-10-05: Open
+    // "opens the local desktop and then opens that app there instead of
+    // opening the web panel"): a house app's tab answers its TOOL so the
+    // page opens the built-in panel here; a cloud instance's tab is marked
+    // `cloud` so the page opens it as a web panel, never on the desktop.
+    if (isTabCardId(pageId)) {
+      try {
+        const t = await tabCard(pageId);
+        const tool = t.config && typeof t.config === 'object' && typeof t.config.tool === 'string' ? t.config.tool : null;
+        return ok({ slug: t.slug, name: t.name, ...(tool ? { tool } : {}), cloud: !t.nativeRef });
+      } catch (err) { return fail(err); }
+    }
     if (!appInstances.isInstanceCardId(String(pageId))) return { ok: false, error: NEEDS_DESKTOP };
-    try { return ok(await appInstances.tab(pageId)); } catch (err) { return fail(err); }
+    try { return ok({ ...(await appInstances.tab(pageId)), cloud: true }); } catch (err) { return fail(err); }
   };
 
   return {

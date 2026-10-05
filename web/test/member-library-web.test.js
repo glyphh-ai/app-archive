@@ -516,7 +516,7 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);
     expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', locus: 'cloud', data: 'cloud', author: 'you' });
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
-    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive' } });
+    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: true } });
     expect((await lib.skillsList('skill')).data).toEqual([]);
   });
 });

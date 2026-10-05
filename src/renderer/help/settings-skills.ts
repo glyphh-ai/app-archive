@@ -1009,7 +1009,7 @@ async function runNow(btn: HTMLButtonElement): Promise<void> {
 async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   if (!current) return;
   btn.disabled = true;
-  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string };
+  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string; cloud?: boolean }; error?: string };
   const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
   btn.disabled = false;
   const tab = r.data;
@@ -1020,7 +1020,9 @@ async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   // workbench and wait for its bridge — calling the bridge directly was a
   // silent no-op whenever the workbench had not mounted yet.
   if (tab.tool) { openWorkPanelInWorkbench("__wbOpenTool", tab.tool); return; }
-  openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true });
+  // A cloud app opens as a web panel on the web (his report, 2026-10-05);
+  // anything else keeps the desktop door.
+  openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true, ...(tab.cloud ? { cloud: true } : {}) });
 }
 
 function parseFrontmatter(text: string): { frontmatter: Record<string, string>; body: string } {

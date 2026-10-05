@@ -6922,14 +6922,14 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  other out-of-workbench entry point. Same cold-safe mechanics as
  *  openUrlInWorkbench, but the caller passes the real slug and the glyphh
  *  flag (a glyphh app has no url until deployed; the workbench resolves it). */
-export function openAppInWorkbench(app: { slug: string; name: string; url?: string | null; glyphh?: boolean; workbench?: boolean }): void {
+export function openAppInWorkbench(app: { slug: string; name: string; url?: string | null; glyphh?: boolean; workbench?: boolean; cloud?: boolean }): void {
   showWorkspaceSurface();
   const w = window as unknown as {
     __initCodeWorkbench?: () => void;
-    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }, newPanel?: boolean) => void;
+    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; cloud?: boolean }, newPanel?: boolean) => void;
   };
   w.__initCodeWorkbench?.();
-  const ref = { slug: app.slug, name: app.name, url: app.url || "", glyphh: app.glyphh || undefined, workbench: app.workbench || undefined };
+  const ref = { slug: app.slug, name: app.name, url: app.url || "", glyphh: app.glyphh || undefined, workbench: app.workbench || undefined , ...(app.cloud ? { cloud: true } : {}) };
   let tries = 0;
   const open = (): void => {
     if (w.__wbOpenApp) { w.__wbOpenApp(ref); return; }
