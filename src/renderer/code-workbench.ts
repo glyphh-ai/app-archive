@@ -52,7 +52,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace } from "./help/web-cut.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
@@ -4615,7 +4615,11 @@ async function init(): Promise<void> {
         if (t.closest("button, input, .ws-app-chrome")) return;
         if (card.classList.contains("expanded")) return;
         if (gridRects()?.has(e)) return;
-        if (isAgentEntry(e)) return;   // the agent (chat or CLI) owns its column — never reflowed
+        // The agent (chat or CLI) owns its column — never reflowed by a drag
+        // on the desktop. ON THE WEB it is a movable panel like the rest (his
+        // review, 2026-10-05; help/web-cut.ts agentCardMovable): it reorders
+        // and drives to a side, still solo in its column (flowColumns).
+        if (isAgentEntry(e) && !agentCardMovable(IS_WEB_TARGET)) return;
         const startX = ev.clientX, startY = ev.clientY;
         let dragging = false;
         // Capture keeps the stream flowing over iframes/webviews; a pointer
@@ -4652,7 +4656,7 @@ async function init(): Promise<void> {
             .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
           if (!over) return;
           const target = openList.find((x) => x.card === over);
-          if (!target || isAgentEntry(target) || gridRects()?.has(target)) return;
+          if (!target || (isAgentEntry(target) && !agentCardMovable(IS_WEB_TARGET)) || gridRects()?.has(target)) return;
           const from = openList.indexOf(e);
           const to = openList.indexOf(target);
           if (from < 0 || to < 0 || from === to) return;
@@ -6614,6 +6618,16 @@ async function init(): Promise<void> {
       // EVERY door is another panel (his ruling, 2026-09-26) and every panel
       // starts on a NEW session (his order, 2026-09-29).
       if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
+      // THE WEB'S ONE AGENT is in-document and never instanced: with it
+      // seated, + New starts the new session IN it (help/web-cut.ts
+      // webNewSessionInPlace; his report, 2026-10-05: + New did nothing —
+      // this open found the card and only repainted it).
+      const seated = openList.some((x) => !!x.card?.isConnected && x.tile.kind === "agent");
+      if (webNewSessionInPlace(IS_WEB_TARGET, seated)) {
+        const fresh = (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession;
+        if (fresh) { fresh(); return; }
+        console.warn("[web-cut] + New: the agent panel has not bound __glyphhNewSession yet");
+      }
       openAgentForLoop(GLYPHH_LOOP_ID);
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.

@@ -6011,6 +6011,8 @@ function renderRailSessions(): void {
 
 /** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
  *  search on top, the rail's grouping, rows with pin + delete icons. */
+/** The recents dropdown's one width (help/menu-place.ts caps it to the room). */
+export const SESSION_MENU_WIDTH = 360;
 function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: string; pool?: RailSession[]; onPick: (sess: RailSession) => void }): void {
   document.querySelector(".wb-session-menu")?.remove();
   const menu = document.createElement("div");
@@ -6131,7 +6133,11 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
     }
   };
   paint();
-  placeDropup(anchor, menu);
+  // ONE FIXED WIDTH on every open, whatever the rows say (they ellipsize);
+  // the height is the room's and the LIST scrolls under the pinned search
+  // and type switch (his report, 2026-10-05: the recents ran past the
+  // menu's bottom clipped, and the menu re-sized with its content).
+  placeDropup(anchor, menu, { width: SESSION_MENU_WIDTH, scrollEl: listHost });
   const dismiss = (e: MouseEvent): void => {
     if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
   };

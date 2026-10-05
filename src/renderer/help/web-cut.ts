@@ -89,3 +89,28 @@ export const WEB_UNREACHABLE_VIEWS: ReadonlyArray<string> = Object.freeze(["prev
 export function webToolReachable(view: string): boolean {
   return !WEB_UNREACHABLE_VIEWS.includes(view);
 }
+
+/** THE PANELS MOVE ON THE WEB — THE AGENT TOO (his review of the web cut,
+ *  2026-10-05: "the panels are not movable", then "the glyphh agent panel
+ *  should be draggable too… like it was before, not fixed in place"). The
+ *  web seats the agent as a card and nothing else is on the page, so with
+ *  its head hidden there was nothing to grab, and the flow's drag refused
+ *  the agent as a source and as a swap target. On the web the agent card is
+ *  a movable flow panel like any other: its head is the drag handle, it
+ *  reorders among the panels and drives to a side, and the seams resize it.
+ *  It still owns its column — nothing stacks under it. The desktop keeps its
+ *  own rule (the agent never reflowed by a drag), untouched. */
+export function agentCardMovable(web: boolean): boolean {
+  return web;
+}
+
+/** + NEW ON THE WEB (his report, 2026-10-05: the rail's + New did nothing).
+ *  The web's one agent is in-document and never instanced, so the desktop's
+ *  "another panel, told to start clean" has no panel to mint: `activateGlyphh`
+ *  found the seated card and only repainted it. With the agent seated the
+ *  web starts the new session IN that card (help/code.ts newSessionInPlace,
+ *  bound as __glyphhNewSession); with none seated it opens the agent as
+ *  before. The desktop is untouched (always false). */
+export function webNewSessionInPlace(web: boolean, agentSeated: boolean): boolean {
+  return web && agentSeated;
+}

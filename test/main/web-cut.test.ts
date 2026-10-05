@@ -9,6 +9,7 @@ import {
   webBootSurfaces, bootsSurface, DESKTOP_BOOT_SURFACES,
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS,
   webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
+  agentCardMovable, webNewSessionInPlace,
 } from "../../src/renderer/help/web-cut.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -73,5 +74,25 @@ describe("settings on the web — everything for building leaves", () => {
     expect(WEB_HIDDEN_RAIL).toContain('.app-rail-nav-item[data-settings-sub="build"]');
     expect(WEB_HIDDEN_RAIL).toContain('.app-rail-nav-item[data-settings-sub="customize"]');
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#show-dock-row", "#streamed-panels-row"]);
+  });
+});
+
+describe("the panels move on the web — the agent too (his review, 2026-10-05)", () => {
+  it("on the web the agent card is a movable flow panel (drag source and swap target)", () => {
+    expect(agentCardMovable(true)).toBe(true);
+  });
+  it("the desktop keeps its own rule — the agent is never reflowed by a drag there", () => {
+    expect(agentCardMovable(false)).toBe(false);
+  });
+});
+
+describe("+ New on the web (his report, 2026-10-05: the rail's + New did nothing)", () => {
+  it("with the web's one agent seated, + New starts the new session IN it", () => {
+    expect(webNewSessionInPlace(true, true)).toBe(true);
+  });
+  it("with no agent seated the web opens the agent as before; the desktop never takes this path", () => {
+    expect(webNewSessionInPlace(true, false)).toBe(false);
+    expect(webNewSessionInPlace(false, true)).toBe(false);
+    expect(webNewSessionInPlace(false, false)).toBe(false);
   });
 });

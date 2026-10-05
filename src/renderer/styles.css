@@ -15446,8 +15446,11 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
 /* History dropdown rows: title | pin | delete. */
 .wb-session-menu {
-  /* WIDER but constrained (his ask, 2026-08-20) — sections + search need room. */
-  min-width: 340px; max-width: min(480px, 92vw); max-height: 60vh;
+  /* ONE FIXED WIDTH on every open (his report, 2026-10-05: it re-sized with
+     its rows) — help/code.ts SESSION_MENU_WIDTH, capped to the room by
+     help/menu-place.ts; the rows ellipsize. The height is the room's (the
+     placement sets it) and the LIST scrolls under the pinned search + tabs. */
+  width: 360px; min-width: 0; max-width: 360px; max-height: 60vh;
   display: flex; flex-direction: column; overflow: hidden;
   z-index: 400; padding: 4px;
   background: var(--surface);
@@ -15456,9 +15459,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .wb-session-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
-.wb-session-search { padding: 2px 2px 6px; }
+.wb-session-search { padding: 2px 2px 6px; flex: 0 0 auto; }
 .wb-session-search .repo-drop-search { width: 100%; box-sizing: border-box; }
-.wb-session-list { overflow-y: auto; min-height: 0; }
+.wb-session-menu .wb-session-tabs { flex: 0 0 auto; }
+.wb-session-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .wb-session-menu .code-history-sec { padding: 8px 8px 4px; }
 .wb-session-row:hover { background: var(--hover); }
 .wb-session-row.selected .wb-session-title {
@@ -21778,7 +21782,12 @@ html.glyphh-web .echo-dock-hotstrip,
 html.glyphh-web .echo-layout-bar,
 html.glyphh-web .echo-veil { display: none !important; }
 html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
-html.glyphh-web .echo-card.echo-agent-card > .echo-card-head { display: none; }
+/* THE AGENT MOVES ON THE WEB TOO (his review, 2026-10-05: "the glyphh agent
+   panel should be draggable too… not fixed in place"). Its head stays — it is
+   the drag handle, as on every other flow panel (code-workbench.ts
+   wireCardDrag, help/web-cut.ts agentCardMovable); only its close goes: the
+   agent is the page, closing it would leave nothing. */
+html.glyphh-web .echo-card.echo-agent-card > .echo-card-head .echo-card-close { display: none; }
 /* The composer's command-center and reset buttons open what the web no longer has. */
 html.glyphh-web #code-cc-open,
 html.glyphh-web #code-reset-open { display: none !important; }
@@ -21802,3 +21811,19 @@ html.glyphh-web #code-reset-open { display: none !important; }
 .code-view-more-menu .code-view-menu-item.wam-sub { padding-left: 30px; font-size: 12px; color: var(--text-2); }
 .code-view-more-menu .code-view-menu-item.wam-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-view-more-menu .code-view-menu-item.wam-sub.locked { opacity: 0.6; }
+/* EXPANDABLE SECTIONS (his review, 2026-10-05): Apps and Agents / CLIs open
+   as a head row — the menu's own row class — with a chevron and a count,
+   collapsed; the rows under a collapsed head are not painted. A CLI row
+   carries its own chevron for the sessions nested under it. */
+.code-view-more-menu .code-view-menu-item.code-menu-fold { font-weight: 600; }
+.code-view-more-menu .wam-chev { transition: transform 0.12s ease; }
+.code-view-more-menu [aria-expanded="true"] > .wam-chev { transform: rotate(90deg); }
+.code-view-more-menu .wam-folded { display: none; }
+.code-view-more-menu .code-view-menu-item.wam-sub2 { padding-left: 46px; }
+.code-view-more-menu .wam-fold-btn {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 6px; border-radius: 4px;
+  color: var(--text-3, var(--text-2)); cursor: pointer; flex: 0 0 auto;
+}
+.code-view-more-menu .wam-fold-btn:hover, .code-view-more-menu .wam-fold-btn:focus-visible { color: var(--text); background: var(--hover); outline: none; }
+.code-view-more-menu .wam-fold-btn .wam-count { font-size: 11px; font-variant-numeric: tabular-nums; }
+.code-view-more-menu .wam-fold-btn .wam-chev { width: 12px; height: 12px; }

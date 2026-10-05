@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  appRowKind,
   agentClock, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
   filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
   normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
@@ -153,5 +154,21 @@ describe("schedules (the record both surfaces build)", () => {
       args: '{"n":1}', createdAt: new Date(5_000).toISOString(), updatedAt: 5_000, lastRunAt: null, lastStatus: null, lastError: null,
     });
     expect(scheduleViewOf("s1", { ...data, agentId: "a" }, 5_000).agentName).toBe("a");
+  });
+});
+
+describe("appRowKind — what kind of row a desktop's panelApps.list hands over", () => {
+  it("a Glyphh app bundle is \"glyphh\"; a URL tab \"web\"; an OS app \"native\"", () => {
+    expect(appRowKind({ system: false, appArchetype: "glyphh-app", url: null, execPath: "/x/app.json" })).toBe("glyphh");
+    expect(appRowKind({ system: false, appArchetype: "glyphh-app", url: null, execPath: null })).toBe("glyphh");   // a cloud instance, no local entry
+    expect(appRowKind({ system: false, appArchetype: "web", url: "https://mail.google.com", execPath: null })).toBe("web");
+    expect(appRowKind({ system: false, appArchetype: null, url: "https://linear.app", execPath: null })).toBe("web");
+    expect(appRowKind({ system: false, appArchetype: "native", url: null, execPath: "/Applications/Notes.app" })).toBe("native");
+    expect(appRowKind({ system: false, appArchetype: null, url: null, execPath: "/Applications/Notes.app" })).toBe("native");
+  });
+  it("the system rows (the Glyphh self row, the nav rows) and an unopenable row are null", () => {
+    expect(appRowKind({ system: true, appArchetype: "glyphh-self", url: null, execPath: null })).toBeNull();
+    expect(appRowKind({ system: true, appArchetype: "glyphh-nav", url: null, execPath: null })).toBeNull();
+    expect(appRowKind({ system: false, appArchetype: null, url: null, execPath: null })).toBeNull();
   });
 });

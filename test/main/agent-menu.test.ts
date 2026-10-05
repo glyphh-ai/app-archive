@@ -1,17 +1,20 @@
 /**
  * agent-menu.test.ts — the agent window's ONE ⋮ menu, as data
- * (src/renderer/help/agent-menu.ts; his orders, 2026-10-05): on the web,
- * attached → Apps enabled with the desktop's rows and each CLI's desktop
- * sessions; not attached → Apps disabled with the one line and the Devices
- * link; the CLIs are always there. On both surfaces: Work never lists
- * Files / Terminal / Editor / Diff, the Session section exists only for an
- * open session, and no section is ever empty.
+ * (src/renderer/help/agent-menu.ts; his orders, 2026-10-05, and his review of
+ * the web cut the same day): THE ORDER IS THE DESKTOP'S on both surfaces —
+ * one frozen list, the desktop's a prefix of the web's; Apps and Agents /
+ * CLIs are expandable sections, COLLAPSED on every open; Apps lists ONLY the
+ * Glyphh apps the attached desktop can load; not attached → Apps disabled
+ * with the one line and the Devices link. Work never lists Files / Terminal /
+ * Editor / Diff, the Session section exists only for an open session, and no
+ * section is ever empty.
  */
 import { describe, it, expect } from "vitest";
 import {
-  agentMenuModel, toolViewsFor, toolRowsFor, sessionRowsFor, openedOnLine,
+  agentMenuModel, toolViewsFor, toolRowsFor, sessionRowsFor, openedOnLine, glyphhAppsOnly, sectionHeadLabel,
+  menuFoldState, toggleFold, isExpanded, cliFoldKey,
   CONNECT_DESKTOP_LINE, CONNECT_DESKTOP_LINK, NO_APPS_LINE, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL,
-  CLI_SESSIONS_PER_CLI, DESKTOP_CODE_TOOL_VIEWS,
+  CLI_SESSIONS_PER_CLI, DESKTOP_CODE_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
   type MenuAppRow, type MenuCliSession, type MenuSection,
 } from "../../src/renderer/help/agent-menu.js";
 import { WEB_TOOL_VIEWS } from "../../src/renderer/help/web-cut.js";
@@ -21,31 +24,123 @@ const CLIS = [
   { id: "copilot", name: "Copilot" }, { id: "cursor", name: "Cursor" }, { id: "glyphh", name: "Glyphh CLI" },
 ];
 const MAC = { id: "m1", name: "Chris's MacBook" };
+/** What the desktop's panelApps.list hands over, kinded by web-contract.js: two Glyphh bundles among URL tabs and a native app. */
 const apps: MenuAppRow[] = [
-  { slug: "gmail", name: "Gmail", icon: "data:image/png;base64,AAAA", machineId: "m1", machineName: MAC.name },
-  { slug: "linear", name: "Linear", icon: null, machineId: "m1", machineName: MAC.name },
-  { slug: "notes", name: "Notes", icon: "/webicon?u=x", machineId: "m1", machineName: MAC.name },
+  { slug: "gmail", name: "Gmail", kind: "web", icon: "/webicon?u=x", machineId: "m1", machineName: MAC.name },
+  { slug: "slides", name: "Slides", kind: "glyphh", icon: "data:image/png;base64,AAAA", machineId: "m1", machineName: MAC.name },
+  { slug: "linear", name: "Linear", kind: "web", icon: null, machineId: "m1", machineName: MAC.name },
+  { slug: "notes", name: "Notes", kind: "native", icon: null, machineId: "m1", machineName: MAC.name },
+  { slug: "crm", name: "CRM", kind: "glyphh", icon: null, machineId: "m1", machineName: MAC.name },
 ];
 const sess = (id: string, cli: string, mtime: number): MenuCliSession => ({ id, cli, title: `s-${id}`, cwd: "/w", mtime });
 const section = <K extends MenuSection["kind"]>(m: { sections: MenuSection[] }, kind: K): Extract<MenuSection, { kind: K }> | undefined =>
   m.sections.find((s): s is Extract<MenuSection, { kind: K }> => s.kind === kind);
 const kinds = (m: { sections: MenuSection[] }): string[] => m.sections.map((s) => s.kind);
 
-describe("web, attached — a desktop answers", () => {
-  const m = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)] });
-  it("the sections, in order: Apps, Agents / CLIs, Panels, Session", () => {
-    expect(kinds(m)).toEqual(["apps", "clis", "tools", "session"]);
-    expect(m.sections.map((s) => s.label)).toEqual([APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL]);
+describe("THE ORDER IS THE DESKTOP'S (his review, 2026-10-05) — one frozen list for both surfaces", () => {
+  it("the frozen lists: desktop = Panels, Session; web = the same first, then Apps, Agents / CLIs", () => {
+    expect([...MENU_SECTION_ORDER.desktop]).toEqual(["tools", "session"]);
+    expect([...MENU_SECTION_ORDER.web]).toEqual(["tools", "session", "apps", "clis"]);
+    expect(Object.isFrozen(MENU_SECTION_ORDER)).toBe(true);
+    expect(Object.isFrozen(MENU_SECTION_ORDER.web)).toBe(true);
+    expect(Object.isFrozen(MENU_SECTION_ORDER.desktop)).toBe(true);
   });
-  it("Apps is enabled with the desktop's rows, icons carried, no note", () => {
-    expect(m.attached).toBe(true);
-    expect(m.machine).toEqual(MAC);
+  it("the desktop's order is a PREFIX of the web's — the first rows are identical", () => {
+    expect([...MENU_SECTION_ORDER.web].slice(0, MENU_SECTION_ORDER.desktop.length)).toEqual([...MENU_SECTION_ORDER.desktop]);
+  });
+  it("a full menu on each surface paints in exactly that order", () => {
+    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [] });
+    expect(kinds(web)).toEqual([...MENU_SECTION_ORDER.web]);
+    expect(web.sections.map((s) => s.label)).toEqual([TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL, APPS_SECTION_LABEL, CLIS_SECTION_LABEL]);
+    const desk = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false } });
+    expect(kinds(desk)).toEqual([...MENU_SECTION_ORDER.desktop]);
+    // The desktop's rows, verbatim, lead the web's menu (Browser aside — a streamed panel the web never reaches).
+    const deskRows = desk.sections.flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "")));
+    const webRows = web.sections.slice(0, 2).flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "")));
+    expect(webRows).toEqual(deskRows.filter((l) => l !== "Browser"));
+    expect(deskRows).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Rename", "Pin", "New agent panel", "Delete"]);
+  });
+});
+
+describe("EXPANDABLE SECTIONS, COLLAPSED ON OPEN (his review, 2026-10-05)", () => {
+  it("Apps and Agents / CLIs are the collapsible ones, with a count on the head", () => {
+    expect([...COLLAPSIBLE_SECTIONS]).toEqual(["apps", "clis"]);
+    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)] });
+    const a = section(m, "apps")!;
+    const c = section(m, "clis")!;
+    expect(a.collapsible).toBe(true);
+    expect(c.collapsible).toBe(true);
+    expect(a.count).toBe(2);
+    expect(c.count).toBe(6);
+    expect(sectionHeadLabel(a.label, a.count)).toBe("Apps · 2");
+    expect(sectionHeadLabel(c.label, c.count)).toBe("Agents / CLIs · 6");
+    expect(section(m, "tools")).not.toHaveProperty("collapsible");
+  });
+  it("a fresh open expands nothing; a toggle opens one fold and a second closes it", () => {
+    const folds = menuFoldState();
+    for (const k of ["apps", "clis", cliFoldKey("claude")]) expect(isExpanded(folds, k)).toBe(false);
+    expect(toggleFold(folds, "apps")).toBe(true);
+    expect(isExpanded(folds, "apps")).toBe(true);
+    expect(isExpanded(folds, "clis")).toBe(false);
+    expect(toggleFold(folds, "apps")).toBe(false);
+    expect(isExpanded(folds, "apps")).toBe(false);
+  });
+  it("a CLI's nested sessions fold under their own key, independent of the section's", () => {
+    const folds = menuFoldState();
+    toggleFold(folds, "clis");
+    expect(isExpanded(folds, cliFoldKey("claude"))).toBe(false);
+    toggleFold(folds, cliFoldKey("claude"));
+    expect(isExpanded(folds, cliFoldKey("claude"))).toBe(true);
+    expect(isExpanded(folds, cliFoldKey("codex"))).toBe(false);
+    // The next open starts collapsed again — a new state, not the old one.
+    expect(menuFoldState().size).toBe(0);
+  });
+});
+
+describe("APPS = ONLY THE GLYPHH APPS THE DESKTOP CAN LOAD (his review, 2026-10-05)", () => {
+  it("the filter keeps kind \"glyphh\" rows only: URL tabs, native apps and unkinded rows drop", () => {
+    expect(GLYPHH_APP_KIND).toBe("glyphh");
+    expect(glyphhAppsOnly(apps).map((r) => r.slug)).toEqual(["slides", "crm"]);
+    expect(glyphhAppsOnly([{ slug: "x", name: "X", machineId: "m1", machineName: "" }])).toEqual([]);
+    expect(glyphhAppsOnly([{ slug: "x", name: "X", kind: "glyphh-app", machineId: "m1", machineName: "" }])).toEqual([]);
+  });
+  it("the section carries the bundle's icon and the machine; its count is the kept rows'", () => {
+    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [] });
     const a = section(m, "apps")!;
     expect(a.enabled).toBe(true);
-    expect(a.rows.map((r) => r.slug)).toEqual(["gmail", "linear", "notes"]);
+    expect(a.rows.map((r) => r.slug)).toEqual(["slides", "crm"]);
     expect(a.rows[0]!.icon).toMatch(/^data:image/);
+    expect(a.rows[0]!.machineName).toBe(MAC.name);
+    expect(a.count).toBe(2);
     expect(a.note).toBeNull();
+  });
+  it("an attached desktop with URL tabs but no Glyphh app says so, still enabled", () => {
+    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps: apps.filter((r) => r.kind !== "glyphh"), clis: CLIS, cliSessions: [] });
+    const a = section(mm, "apps")!;
+    expect(a.enabled).toBe(true);
+    expect(a.rows).toEqual([]);
+    expect(a.count).toBe(0);
+    expect(a.note).toBe(NO_APPS_LINE);
+    expect(NO_APPS_LINE).toBe("No Glyphh apps installed on this desktop");
     expect(a.link).toBeNull();
+  });
+  it("two desktops with the same app list it once; a row without a slug is dropped", () => {
+    const mm = agentMenuModel({
+      surface: "web", mode: "code", session: null,
+      machines: [MAC, { id: "m2", name: "Other" }],
+      apps: [...apps, { slug: "Slides", name: "Slides", kind: "glyphh", machineId: "m2", machineName: "Other" }, { slug: "", name: "ghost", kind: "glyphh", machineId: "m2", machineName: "Other" }],
+      clis: CLIS, cliSessions: [],
+    });
+    expect(section(mm, "apps")!.rows.map((r) => r.slug)).toEqual(["slides", "crm"]);
+    expect(mm.machine).toEqual(MAC);
+  });
+});
+
+describe("web, attached — a desktop answers", () => {
+  const m = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], apps, clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)] });
+  it("attached, on the first machine", () => {
+    expect(m.attached).toBe(true);
+    expect(m.machine).toEqual(MAC);
   });
   it("every CLI is listed, in order, with its own desktop sessions newest first", () => {
     const c = section(m, "clis")!;
@@ -60,24 +155,6 @@ describe("web, attached — a desktop answers", () => {
     expect(section(mm, "clis")!.rows[0]!.sessions.length).toBe(CLI_SESSIONS_PER_CLI);
     expect(section(mm, "clis")!.rows[0]!.sessions[0]!.id).toBe("x11");
   });
-  it("an attached desktop with nothing installed says so, still enabled", () => {
-    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps: [], clis: CLIS, cliSessions: [] });
-    const a = section(mm, "apps")!;
-    expect(a.enabled).toBe(true);
-    expect(a.rows).toEqual([]);
-    expect(a.note).toBe(NO_APPS_LINE);
-    expect(a.link).toBeNull();
-  });
-  it("two desktops with the same app list it once; a row without a slug is dropped", () => {
-    const mm = agentMenuModel({
-      surface: "web", mode: "code", session: null,
-      machines: [MAC, { id: "m2", name: "Other" }],
-      apps: [...apps, { slug: "Gmail", name: "Gmail", machineId: "m2", machineName: "Other" }, { slug: "", name: "ghost", machineId: "m2", machineName: "Other" }],
-      clis: CLIS, cliSessions: [],
-    });
-    expect(section(mm, "apps")!.rows.map((r) => r.slug)).toEqual(["gmail", "linear", "notes"]);
-    expect(mm.machine).toEqual(MAC);
-  });
 });
 
 describe("web, not attached — no desktop", () => {
@@ -88,6 +165,7 @@ describe("web, not attached — no desktop", () => {
     const a = section(m, "apps")!;
     expect(a.enabled).toBe(false);
     expect(a.rows).toEqual([]);
+    expect(a.count).toBe(0);
     expect(a.note).toBe(CONNECT_DESKTOP_LINE);
     expect(CONNECT_DESKTOP_LINE).toBe("Connect your desktop to open apps");
     expect(a.link).toEqual({ label: CONNECT_DESKTOP_LINK, settingsSub: "devices" });
@@ -148,7 +226,7 @@ describe("ONE menu, both surfaces — the session's type decides the panels (his
   });
   it("a web menu with no CLI rows yet drops the section rather than heading nothing", () => {
     const m = agentMenuModel({ surface: "web", mode: "work", session: null, machines: [], apps: [], clis: [], cliSessions: [] });
-    expect(kinds(m)).toEqual(["apps", "tools"]);
+    expect(kinds(m)).toEqual(["tools", "apps"]);
   });
 });
 
