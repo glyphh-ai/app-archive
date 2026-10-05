@@ -333,6 +333,8 @@ export interface PanelAppInput {
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
 /** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
 interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string }
+/** A notification as main/notify.ts hands it to the workbench (mirrors AppNotification). */
+interface AppNotification { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }
 /** The library kinds a bundle can be: every one of them is a skill, the
  *  kind says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
@@ -561,6 +563,16 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("remote-control:changed", h);
     return () => { ipcRenderer.removeListener("remote-control:changed", h); };
   },
+  // Notifications (main/notify.ts): a cloud app's over the attach link or a
+  // local app's from this host, met by the member's pref in the workbench;
+  // what it decides to show comes back as the OS notification.
+  onNotify: (cb: (n: AppNotification) => void) => {
+    const h = (_e: unknown, n: AppNotification) => cb(n);
+    ipcRenderer.on("notify:incoming", h);
+    return () => { ipcRenderer.removeListener("notify:incoming", h); };
+  },
+  notifyShow: (n: AppNotification) => ipcRenderer.invoke("notify:show", n) as Promise<{ shown: boolean }>,
+  notifyPrepare: () => ipcRenderer.invoke("notify:prepare") as Promise<boolean>,
   // Fires in every panel when a preference is changed anywhere — lets forms
   // (e.g. Settings → Agent Defaults) reflect a change made elsewhere live.
   /** The server's model list or the org's defaults moved (main/model-watch.ts). */

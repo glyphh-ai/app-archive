@@ -12,7 +12,10 @@
  *
  * Use it for what just happened: `toastOk("Design installed")`,
  * `toastError("Couldn't install that", detail)`. Anything that needs an
- * answer is still a modal (confirmAction / confirmChoice), never a toast.
+ * answer is still a modal (confirmAction / confirmChoice), never a toast —
+ * with one exception he named (2026-10-05): an app asking to notify the
+ * member rides a toast with an Allow action and a "Don't ask me again" box
+ * (`check`), where the notification itself would have shown.
  */
 
 export type ToastKind = "ok" | "error" | "info";
@@ -23,8 +26,20 @@ export interface ToastOptions {
   detail?: string;
   /** One action, e.g. "Open" or "Undo". Dismisses the toast when taken. */
   action?: { label: string; onPick: () => void };
+  /** A checkbox under the message ("Don't ask me again"); read it with the
+   *  handle's `checked()` from the action or from `onDismiss`. */
+  check?: { label: string };
+  /** The toast went without the action: ✕, its clock, or the stack's cap. */
+  onDismiss?: () => void;
   /** Override the default life: ok/info 5s, error 12s. 0 keeps it until dismissed. */
   timeoutMs?: number;
+}
+
+export interface ToastHandle {
+  update: (message: string, o?: ToastOptions) => void;
+  close: () => void;
+  /** The `check` box's state (false without one). */
+  checked: () => boolean;
 }
 
 const STACK_ID = "toast-stack";
@@ -53,9 +68,13 @@ function stack(): HTMLElement {
   return host;
 }
 
+/** A toast that asked something: told once, the moment it starts going. */
+const onGone = new WeakMap<HTMLElement, () => void>();
+
 function dismiss(node: HTMLElement): void {
   if (!node.isConnected || node.dataset.going === "1") return;
   node.dataset.going = "1";
+  onGone.get(node)?.();
   node.classList.add("going");
   const done = (): void => node.remove();
   node.addEventListener("animationend", done, { once: true });
@@ -67,16 +86,20 @@ function dismiss(node: HTMLElement): void {
  * Say what just happened. Returns a handle so a long job can update its own
  * line ("Installing…" → "Installed") instead of stacking two toasts.
  */
-export function toast(message: string, opts: ToastOptions = {}): { update: (message: string, o?: ToastOptions) => void; close: () => void } {
+export function toast(message: string, opts: ToastOptions = {}): ToastHandle {
   const kind: ToastKind = opts.kind ?? "info";
   const host = stack();
   const node = document.createElement("div");
   node.className = `toast toast-${kind}`;
-  node.innerHTML = `<span class="toast-mark"></span><div class="toast-body"><div class="toast-msg"></div><div class="toast-detail hidden"></div></div><div class="toast-right"></div>`;
+  node.innerHTML = `<span class="toast-mark"></span><div class="toast-body"><div class="toast-msg"></div><div class="toast-detail hidden"></div><label class="toast-check hidden"><input type="checkbox" /><span></span></label></div><div class="toast-right"></div>`;
   const markEl = node.querySelector(".toast-mark") as HTMLElement;
   const msgEl = node.querySelector(".toast-msg") as HTMLElement;
   const detailEl = node.querySelector(".toast-detail") as HTMLElement;
+  const checkEl = node.querySelector(".toast-check") as HTMLElement;
+  const boxEl = checkEl.querySelector("input") as HTMLInputElement;
   const rightEl = node.querySelector(".toast-right") as HTMLElement;
+  // The action, once taken, is the answer: a dismissal after it says nothing.
+  let answered = false;
 
   let timer = 0;
   const arm = (ms: number): void => {
@@ -90,13 +113,15 @@ export function toast(message: string, opts: ToastOptions = {}): { update: (mess
     msgEl.textContent = text;
     detailEl.textContent = o.detail ?? "";
     detailEl.classList.toggle("hidden", !o.detail);
+    (checkEl.querySelector("span") as HTMLElement).textContent = o.check?.label ?? "";
+    checkEl.classList.toggle("hidden", !o.check);
     rightEl.textContent = "";
     if (o.action) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "toast-action";
       btn.textContent = o.action.label;
-      btn.addEventListener("click", (e) => { e.stopPropagation(); o.action?.onPick(); dismiss(node); });
+      btn.addEventListener("click", (e) => { e.stopPropagation(); answered = true; o.action?.onPick(); dismiss(node); });
       rightEl.appendChild(btn);
     }
     const x = document.createElement("button");
@@ -113,6 +138,9 @@ export function toast(message: string, opts: ToastOptions = {}): { update: (mess
   // Reading it is not dismissing it: the clock stops while the pointer is on it.
   node.addEventListener("mouseenter", () => window.clearTimeout(timer));
   node.addEventListener("mouseleave", () => arm(opts.timeoutMs ?? LIFE[kind]));
+  // However it goes — ✕, the clock, the cap, close() — a toast that asked
+  // something and got no action tells its caller so, once.
+  if (opts.onDismiss) onGone.set(node, () => { if (!answered) { answered = true; opts.onDismiss?.(); } });
 
   paint(message, opts);
   host.appendChild(node);
@@ -123,6 +151,7 @@ export function toast(message: string, opts: ToastOptions = {}): { update: (mess
   return {
     update: (text: string, o: ToastOptions = {}) => { if (node.isConnected) paint(text, { ...opts, ...o }); },
     close: () => dismiss(node),
+    checked: () => boxEl.checked,
   };
 }
 

@@ -23,11 +23,10 @@
  * ~/.glyphh/app-data/<slug>/data.sqlite and its schedules are keyed by slug. Apps
  * cannot name another app's resources; there is no cross-app surface at all.
  *
- * The host injects resolveApp/openApp at init (initAppServices) so this module
+ * The host injects resolveApp at init (initAppServices) so this module
  * never imports glyphh-app-host — host → services → worker, no cycles.
  */
 
-import { Notification } from "electron";
 import Database from "better-sqlite3";
 import cron, { ScheduledTask } from "node-cron";
 import fs from "fs";
@@ -37,14 +36,13 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { getClient } from "./glyphh-client.js";
+import { appNotification, handToWorkbench } from "./notify.js";
 
 // ── wiring (injected by glyphh-app-host at startup) ─────────
 
 interface AppServicesDeps {
   /** Saved-app row → worker spec, or null if the app is gone/has no worker. */
   resolveApp: (slug: string) => Promise<AppWorkerSpec | null>;
-  /** Open the app's UI window (notification click). */
-  openApp: (slug: string) => void;
 }
 
 let deps: AppServicesDeps | null = null;
@@ -255,16 +253,10 @@ export async function connectorCall(_declared: Set<string>, _args: Record<string
 
 // ── notifications (notify.send) ─────────────────────────────
 
+/** A local app's notification meets the member's pref in the workbench
+ *  (main/notify.ts): shown, asked about, or dropped there. */
 export function notifySend(slug: string, appName: string, args: Record<string, unknown>): { shown: boolean } {
-  const title = String(args.title || appName || "Glyphh").slice(0, 120);
-  const body = String(args.body || "").slice(0, 500);
-  if (!Notification.isSupported()) return { shown: false };
-  const n = new Notification({ title, body });
-  n.on("click", () => {
-    try { requireDeps().openApp(slug); } catch { /* app may be gone */ }
-  });
-  n.show();
-  return { shown: true };
+  return handToWorkbench(appNotification("local", { ...args, app: appName || slug, slug }, appName || "Glyphh"));
 }
 
 // ── init ────────────────────────────────────────────────────

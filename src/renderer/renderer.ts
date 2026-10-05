@@ -358,6 +358,10 @@ declare global {
       attachDevicesList?: () => Promise<{ source: "devices" | "status"; allowed?: boolean; devices: Array<Record<string, unknown>>; blocked: Array<Record<string, unknown>> }>;
       attachDeviceDisconnect?: (machineId: string) => Promise<{ disconnected: boolean; device?: string; hours?: number }>;
       attachDeviceAllow?: (device: string) => Promise<{ allowed: boolean }>;
+      // Notifications (help/notify.ts): the host's door for one, and the OS/browser notification it asks for.
+      onNotify?: (cb: (n: { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }) => void) => () => void;
+      notifyShow?: (n: { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }) => Promise<{ shown: boolean }>;
+      notifyPrepare?: () => Promise<boolean>;
       onPreferenceChanged: (cb: (key: string, value: unknown) => void) => void;
       onboardingComplete: () => Promise<void>;
 

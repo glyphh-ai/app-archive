@@ -11,6 +11,7 @@ import { initSearchClears } from "./search-clear.js";
 // ONE NOTIFICATION STACK for the whole panel, and the bridge the workbench
 // bundle reaches it through: imported here so it exists from the first paint.
 import "./help/toast.js";
+import { installNotifications } from "./help/notify.js";
 import { installAutofillGuard } from "./autofill-guard.js";
 import { hostHas, onWeb } from "./help/web-surface.js";
 
@@ -37,6 +38,8 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", as
 
 initHelp();
 initSearchClears();
+// A notification's door (help/notify.ts): shown, asked about, or dropped by the member's pref.
+installNotifications();
 installAutofillGuard();
 window.glyphh.refreshAuth?.().catch(() => {});
 

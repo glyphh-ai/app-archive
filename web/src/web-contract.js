@@ -51,6 +51,7 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 // THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
 import { createHouseRelay } from './house-relay-web.js';
+import { askBrowserNotificationPermission, showBrowserNotification, watchNotifications } from './notify-web.js';
 
 /**
  * The canonical EMPTY shape per contract type — the value a cloud read resolves to
@@ -1549,6 +1550,15 @@ export function buildArtifactsWeb(client, deps = {}) {
         return true;
       } catch { return false; }
     },
+
+    // ── Notifications (his order, 2026-10-05; notify-web.js) ─────────────────
+    // A cloud app's notification reaches the tab as a `notify` push on a relay
+    // socket kept up for it; the workbench meets the member's pref and asks for
+    // the browser's own notification back through notifyShow. A local app's
+    // notify.send never happens on the web (no local host).
+    onNotify: (cb) => watchNotifications(() => client.token(), cb),
+    notifyShow: async (n) => showBrowserNotification(n),
+    notifyPrepare: () => askBrowserNotificationPermission(),
   };
 }
 /** The cookie line the viewer writes: scoped to the artifact proxy path. */
