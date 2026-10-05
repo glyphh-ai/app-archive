@@ -41,6 +41,7 @@ export const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !
 // bridge injected — it loads its own bundle — but it still needs the client-safe
 // config so the SDK knows the API url.
 export const MOBILE_ROUTES = new Set(['/m', '/m/']);
+export const GITHUB_DONE_ROUTE = '/github/done';
 
 export const isPhoneUserAgent = (ua) => /iPhone|iPod|Android.+Mobile/i.test(String(ua || ''));
 export const hasAuthedCookie = (cookie) => /(?:^|;\s*)glyphh_logged_in=1\b/.test(String(cookie || ''));
@@ -52,6 +53,7 @@ const hasExt = (p) => /\.[a-z0-9]+$/i.test(p);
  * @param {{ path: string, ua?: string, cookie?: string, mobileOnly?: boolean }} req
  * @returns {{ kind: 'redirect', location: string }
  *         | { kind: 'mobile' }                       — the mobile shell (mobile.html)
+ *         | { kind: 'github-done' }                  — the GitHub connect return page
  *         | { kind: 'login', nested: boolean }       — the login shell (index.html, home.html fallback)
  *         | { kind: 'app' }                          — the command center (home.html, /home)
  *         | { kind: 'platform' }                     — the admin surface (home.html, /platform)
@@ -70,6 +72,10 @@ export function resolveRoute({ path, ua = '', cookie = '', mobileOnly = false })
   // top-up redirects) — bounce it into the shell; the caller keeps the query
   // intact; the shell opens the Billing tab from those params.
   if (p === '/billing' || p === '/billing/') return { kind: 'redirect', location: '/platform' };
+  // The return from GitHub's connect flow (his report, 2026-10-05): a small
+  // page that completes the link and closes itself — on every device, before
+  // the phone routing, so no shell boots in the second tab.
+  if (p === GITHUB_DONE_ROUTE) return { kind: 'github-done' };
   // The OAuth consent screen is web-boot's, on every device: the mobile shell has
   // no consent view, so handing a phone mobile.html here would swallow the
   // authorization request and strand the MCP client mid-flow.

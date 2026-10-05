@@ -237,6 +237,8 @@ const server = http.createServer(async (req, res) => {
     const isMobileShell = route.kind === 'mobile';
     if (isMobileShell) {
       p = '/mobile.html';
+    } else if (route.kind === 'github-done') {
+      p = '/github-done.html';
     } else if (route.kind === 'login') {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
     } else if (route.kind === 'app' || route.kind === 'platform') {
