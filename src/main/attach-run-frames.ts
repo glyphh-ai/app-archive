@@ -12,20 +12,35 @@ export interface RelayChatMessage { role: "system" | "user" | "assistant"; conte
  *  wire mapping. `data` carries the emit payload (minus seq/runId/at). */
 export function toWireFrame(channel: string, data: Record<string, unknown>, seq: number, runId: string, now: number = Date.now()): Record<string, unknown> | null {
   const base = { seq, runId, at: now };
-  // A SUB-AGENT's text and steps (tagged `agent`) are its own feed: spliced
-  // into the relayed reply they read as the parent's answer. The phone has no
-  // swarm view yet, so they do not ride the wire.
-  if (data.agent && (channel === "glyphh-agent:delta" || channel === "glyphh-agent:tool")) return null;
+  // A SUB-AGENT's frames ride the wire WITH their `agent` tag (his report,
+  // 2026-10-05: "on the web the agents stream is not coming through to the
+  // Agents work panel"): the web renders them under the child the way the
+  // desktop's Agents panel does, and never in the parent's bubble — every
+  // consumer keys on the tag (remote-run.ts dispatchFrame, isChildFrame).
+  const tag = data.agent && typeof data.agent === "object" ? { agent: data.agent } : {};
   switch (channel) {
     // The user's prompt as the FIRST frame of a run, so an observing surface
     // renders the turn's user message.
     case "glyphh-agent:prompt": return { ...base, type: "prompt", text: data.text ?? "" };
-    case "glyphh-agent:delta": return { ...base, type: "delta", delta: data.delta ?? "" };
+    case "glyphh-agent:delta": return { ...base, type: "delta", delta: data.delta ?? "", ...tag };
+    // The model's thinking: the fold above the answer (code.ts thinkingEl).
+    case "glyphh-agent:thinking": return { ...base, type: "thinking", text: data.text ?? "", ...tag };
     case "glyphh-agent:tool": return { ...base, ...data, type: "tool" };
+    // A sub-agent's life: `start` (who, on what model, asked what) and `done`
+    // (how it ended). The swarm view is built from these plus the tagged frames.
+    case "glyphh-agent:agent": {
+      if (!data.agent || typeof data.agent !== "object") return null;
+      return {
+        ...base, type: "agent", phase: data.phase === "done" ? "done" : "start", agent: data.agent,
+        ...(data.task !== undefined ? { task: data.task } : {}),
+        ...(data.failed !== undefined ? { failed: !!data.failed } : {}),
+        ...(data.summary !== undefined ? { summary: data.summary } : {}),
+      };
+    }
     case "glyphh-agent:progress": return { ...base, type: "progress", inTokens: data.inTokens ?? 0, outTokens: data.outTokens ?? 0 };
     // The contract's credits frame carries DOLLARS (credits are dead, 2026-09-20).
     case "glyphh-agent:credits": return { ...base, type: "credits", usd: Number(data.usd ?? 0) || 0 };
-    case "glyphh-agent:approval": return { ...base, type: "approval", id: data.id, kind: data.kind, title: data.title, detail: data.detail };
+    case "glyphh-agent:approval": return { ...base, type: "approval", id: data.id, kind: data.kind, title: data.title, detail: data.detail, ...tag };
     case "glyphh-agent:ask": return { ...base, type: "ask", id: data.id, questions: data.questions };
     case "glyphh-agent:setup": return { ...base, ...data, type: "setup" };
     case "glyphh-agent:permission": return { ...base, type: "permission", permission: data.permission };

@@ -26,7 +26,7 @@ import {
 import { buildContract } from './web-contract.js';
 import { installErrorSurface } from './web-errors.js';
 import { createWbRelay } from './wb-relay.js';
-import { createWbPod, createWbSelector } from './wb-pod.js';
+import { createWbPod, createWbSelector, wbLocus } from './wb-pod.js';
 
 const client = glyphh();
 const noop = () => {};
@@ -71,7 +71,7 @@ const bridge = new Proxy({}, {
 // unreachable far side (desktop offline / pod asleep) renders the panels'
 // designed offline states.
 const wb = createWbSelector({
-  relay: createWbRelay({ client, apiUrl: API_URL, isAuthenticated }),
+  relay: createWbRelay({ client, apiUrl: API_URL, isAuthenticated, getRoot: () => wbLocus().folder }),
   pod: createWbPod({ client, isAuthenticated }),
 });
 

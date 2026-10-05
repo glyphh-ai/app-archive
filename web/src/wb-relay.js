@@ -7,7 +7,15 @@
  *   · calls  → `client.attach.dispatch(method, params)` (the server relays to
  *     the signed-in user's own machine — the same transport the web folder
  *     picker already rides for fs.list / fs.gitInfo / fs.mkdir). The machine
- *     side is relay-fs.ts (fs.cwd/listDir/read/write/gitDiff/search).
+ *     side is relay-fs.ts (fs.cwd/listDir/read/write/delete/rename/search/
+ *     gitDiff/r2Diff, git.status), fenced to the folders the desktop granted
+ *     for remote control (remote-control.ts); the server allowlists the same
+ *     names (attach.py REMOTE_METHODS).
+ *   · root   → THE SESSION'S FOLDER (his report, 2026-10-05: the panels must
+ *     paint the desktop session's files): `getRoot()` names the current local
+ *     session's folder (wb-pod.js's locus); the panels root there, and the
+ *     desktop's own working folder (fs.cwd) is the fallback when no session
+ *     names one. The web never moves the desktop's folder.
  *   · watch  → one /ws/panel socket (the socket the remote terminal uses)
  *     subscribed to a private channel; the desktop's debounced workdir watcher
  *     forwards {fs-changed|git-changed|cwd-changed} pushes on it, feeding
@@ -28,7 +36,7 @@
 const noop = () => {};
 const msg = (e) => (e instanceof Error ? e.message : String(e));
 
-export function createWbRelay({ client, apiUrl, isAuthenticated }) {
+export function createWbRelay({ client, apiUrl, isAuthenticated, getRoot = () => '' }) {
   // No desktop attached ⇒ every dispatch 409s (boot-time console noise).
   // Check the attach status once, cache briefly, and short-circuit locally;
   // callers already treat a throw as "relay unavailable".
@@ -95,7 +103,9 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
           if (d.type === 'fs-changed' && typeof d.path === 'string') emit(fileSubs, d.path);
           else if (d.type === 'git-changed') emit(gitSubs);
           else if (d.type === 'cwd-changed' && typeof d.cwd === 'string') {
-            if (d.cwd !== lastCwd) { lastCwd = d.cwd; emit(cwdSubs, d.cwd); }
+            // The desktop moved its folder: only a session with no folder of
+            // its own follows it.
+            if (!getRoot() && d.cwd !== lastCwd) { lastCwd = d.cwd; emit(cwdSubs, d.cwd); }
           }
         };
       }).catch(reject);
@@ -117,7 +127,7 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
       if (!st || !st.attached) throw new Error('desktop offline');
       if (!sock || sock.readyState > 1) await openSocket();
       const ack = await dispatch('fs.watch', { channel });
-      if (ack && typeof ack.cwd === 'string' && ack.cwd && ack.cwd !== lastCwd) {
+      if (!getRoot() && ack && typeof ack.cwd === 'string' && ack.cwd && ack.cwd !== lastCwd) {
         lastCwd = ack.cwd;
         emit(cwdSubs, ack.cwd);
       }
@@ -156,6 +166,8 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
     convertPreview: async () => ({ error: 'no-converter' }),
 
     getCwd: async () => {
+      const root = getRoot();
+      if (root) { lastCwd = root; return root; }
       try {
         const r = await dispatch('fs.cwd');
         const c = r && typeof r.cwd === 'string' ? r.cwd : '';
@@ -164,14 +176,18 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
       } catch { return ''; }
     },
     getCwdExplicit: async () => {
+      const root = getRoot();
+      if (root) return root;
       try {
         const r = await dispatch('fs.cwd');
         return r && typeof r.explicit === 'string' ? r.explicit : null;
       } catch { return null; }
     },
     // The web can't move the desktop's working folder (that stays a decision
-    // made AT the machine) — report the current one unchanged.
+    // made AT the machine) — report the session's root, else the current one.
     setCwd: async () => {
+      const root = getRoot();
+      if (root) return root;
       try { const r = await dispatch('fs.cwd'); return r && typeof r.cwd === 'string' ? r.cwd : ''; }
       catch { return ''; }
     },
@@ -199,9 +215,13 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
       try { return await dispatch('fs.write', { path, content }); }
       catch (e) { return { ok: false, error: msg(e) }; }
     },
-    gitDiff: async (root) => {
-      try { return await dispatch('fs.gitDiff', { root }); }
+    gitDiff: async (root, file) => {
+      try { return await dispatch('fs.gitDiff', { root, ...(file ? { file } : {}) }); }
       catch (e) { return { text: '', error: msg(e) }; }
+    },
+    gitStatus: async (root) => {
+      try { return await dispatch('git.status', { path: root }); }
+      catch (e) { return { entries: [], error: msg(e) }; }
     },
     r2Diff: async (root) => {
       try { return await dispatch('fs.r2Diff', { root }); }
@@ -218,9 +238,15 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
         return { ok: true };
       } catch (e) { return { ok: false, error: msg(e) }; }
     },
-    // Not exposed by the machine relay (yet) — say so, never pretend.
-    deletePath: async () => ({ ok: false, error: 'Not available from the web yet — delete on your desktop.' }),
-    renamePath: async () => ({ ok: false, error: 'Not available from the web yet — rename on your desktop.' }),
+    // Delete goes to the desktop's OS trash (recoverable), the way files:delete does.
+    deletePath: async (path) => {
+      try { return await dispatch('fs.delete', { path }); }
+      catch (e) { return { ok: false, error: msg(e) }; }
+    },
+    renamePath: async (path, to) => {
+      try { return await dispatch('fs.rename', { path, to }); }
+      catch (e) { return { ok: false, error: msg(e) }; }
+    },
 
     onCwdChanged: (cb) => subscribe(cwdSubs, cb),
     onFileChanged: (cb) => subscribe(fileSubs, cb),

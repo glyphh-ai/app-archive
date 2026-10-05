@@ -37,10 +37,26 @@ describe("toWireFrame — every glyphh-agent:* event maps to its HarnessWireFram
     expect(wf("glyphh-agent:prompt", { text: "hi" })).toMatchObject({ type: "prompt", text: "hi" });
     expect(wf("glyphh-agent:mystery", { x: 1 })).toBeNull();
   });
-  it("keeps a sub-agent's text and steps off the relayed reply", () => {
-    expect(wf("glyphh-agent:delta", { delta: "swarm", agent: "a1" })).toBeNull();
-    expect(wf("glyphh-agent:tool", { phase: "start", name: "read", agent: "a1" })).toBeNull();
-    expect(wf("glyphh-agent:delta", { delta: "parent" })).toMatchObject({ type: "delta", delta: "parent" });
+  // THE SWARM RIDES THE WIRE (his report, 2026-10-05: "on the web the agents
+  // stream is not coming through to the Agents work panel").
+  const child = { childId: "r1#1", slug: "researcher", name: "Researcher", model: "cheap" };
+  it("a sub-agent's delta, thinking, tool and approval ride WITH their agent tag", () => {
+    expect(wf("glyphh-agent:delta", { delta: "swarm", agent: child })).toEqual({ type: "delta", delta: "swarm", agent: child, seq: 0, runId: "r1", at: AT });
+    expect(wf("glyphh-agent:thinking", { text: "hmm", agent: child })).toMatchObject({ type: "thinking", text: "hmm", agent: child });
+    expect(wf("glyphh-agent:tool", { phase: "start", name: "read", title: "read a.ts", agent: child })).toMatchObject({ type: "tool", phase: "start", name: "read", title: "read a.ts", agent: child });
+    expect(wf("glyphh-agent:approval", { id: "apr-2", kind: "command", title: "rm", detail: "d", agent: child })).toMatchObject({ type: "approval", id: "apr-2", agent: child });
+  });
+  it("the parent's frames carry no tag, and its thinking rides as its own frame", () => {
+    expect(wf("glyphh-agent:delta", { delta: "parent" })).toEqual({ type: "delta", delta: "parent", seq: 0, runId: "r1", at: AT });
+    expect(wf("glyphh-agent:thinking", { text: "let me see" })).toEqual({ type: "thinking", text: "let me see", seq: 0, runId: "r1", at: AT });
+    expect(wf("glyphh-agent:thinking", {})).toMatchObject({ type: "thinking", text: "" });
+    expect(wf("glyphh-agent:delta", { delta: "x", agent: "not-a-ref" })).not.toHaveProperty("agent");
+  });
+  it("an agent's start and done become `agent` frames: who, on what, asked what, and how it ended", () => {
+    expect(wf("glyphh-agent:agent", { phase: "start", agent: child, task: "find pricing" })).toEqual({ type: "agent", phase: "start", agent: child, task: "find pricing", seq: 0, runId: "r1", at: AT });
+    expect(wf("glyphh-agent:agent", { phase: "done", agent: child, failed: true, summary: "403" })).toEqual({ type: "agent", phase: "done", agent: child, failed: true, summary: "403", seq: 0, runId: "r1", at: AT });
+    expect(wf("glyphh-agent:agent", { phase: "done", agent: child, failed: 0, summary: "ok" })).toMatchObject({ failed: false });
+    expect(wf("glyphh-agent:agent", { phase: "start" })).toBeNull();
   });
 });
 

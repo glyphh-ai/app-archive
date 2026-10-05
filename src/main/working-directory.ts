@@ -478,13 +478,47 @@ export async function writeWorkdirFile(filePath: string, content: string): Promi
   }
 }
 
+/** Delete = move to the OS trash (recoverable), never a hard unlink. (files:delete) */
+export async function deleteWorkdirPath(target: string): Promise<{ ok: boolean; error?: string }> {
+  if (typeof target !== "string" || !target) return { ok: false, error: "missing path" };
+  try { await shell.trashItem(target); return { ok: true }; }
+  catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+}
+
+/** Rename or move within the tree. (files:rename) */
+export async function renameWorkdirPath(oldPath: string, newPath: string): Promise<{ ok: boolean; error?: string }> {
+  if (typeof oldPath !== "string" || !oldPath || typeof newPath !== "string" || !newPath) {
+    return { ok: false, error: "missing path" };
+  }
+  try { await fs.rename(oldPath, newPath); return { ok: true }; }
+  catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+}
+
+/** `git status --porcelain` of the tree: the branch and every changed path with
+ *  its two-letter status (index, worktree), untracked as `??`. Read-only. */
+export async function gitStatusWorkdir(root: string): Promise<{ branch?: string; entries: Array<{ status: string; path: string }>; error?: string }> {
+  if (typeof root !== "string" || !root) return { entries: [], error: "missing root" };
+  try {
+    const { stdout } = await execFileP("git", ["status", "--porcelain=v1", "--branch", "--untracked-files=all"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+    const lines = stdout.split("\n").filter(Boolean);
+    const head = lines[0]?.startsWith("## ") ? lines.shift()!.slice(3) : "";
+    const branch = head.split("...")[0]?.trim();
+    const entries = lines.slice(0, 2000).map((l) => ({ status: l.slice(0, 2), path: l.slice(3).split(" -> ").pop() ?? l.slice(3) }));
+    return { ...(branch && !branch.startsWith("HEAD") ? { branch } : {}), entries };
+  } catch (err) {
+    const msg = err instanceof Error ? (err as Error & { stderr?: string }).stderr || err.message : String(err);
+    return { entries: [], error: /not a git repository/i.test(msg) ? "not a git repo" : (msg.split("\n")[0] || "git error") };
+  }
+}
+
 /** `git diff HEAD` NEVER shows untracked files — exactly what the agent
  *  creates all day. Synthesize an added-file diff per untracked file
  *  (`diff --no-index /dev/null <f>` exits 1 WITH the diff on stdout) and
- *  append. Read-only: never stages, never touches the index. */
-async function untrackedAsDiff(root: string): Promise<string> {
+ *  append. Read-only: never stages, never touches the index. `file` narrows
+ *  it to one path. */
+async function untrackedAsDiff(root: string, file?: string): Promise<string> {
   try {
-    const { stdout } = await execFileP("git", ["ls-files", "--others", "--exclude-standard"], { cwd: root });
+    const { stdout } = await execFileP("git", ["ls-files", "--others", "--exclude-standard", ...(file ? ["--", file] : [])], { cwd: root });
     const files = stdout.split("\n").filter(Boolean).slice(0, 200);
     let text = "";
     for (const f of files) {
@@ -503,8 +537,8 @@ async function untrackedAsDiff(root: string): Promise<string> {
 
 /** Unified git diff of the working tree (staged + unstaged + untracked).
  *  Returns "" when clean; probes first so a non-repo gets a clean message.
- *  (files:git-diff) */
-export async function gitDiffWorkdir(root: string): Promise<{ text: string; error?: string }> {
+ *  `file` (a path relative to the root) narrows it to one file. (files:git-diff) */
+export async function gitDiffWorkdir(root: string, file?: string): Promise<{ text: string; error?: string }> {
   if (typeof root !== "string" || !root) return { text: "", error: "missing root" };
   try {
     const probe = await execFileP("git", ["rev-parse", "--is-inside-work-tree"], { cwd: root });
@@ -512,9 +546,10 @@ export async function gitDiffWorkdir(root: string): Promise<{ text: string; erro
   } catch {
     return { text: "", error: "not a git repo" };
   }
+  const only = file ? ["--", file] : [];
   try {
-    const { stdout } = await execFileP("git", ["diff", "HEAD"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-    return { text: stdout + (await untrackedAsDiff(root)) };
+    const { stdout } = await execFileP("git", ["diff", "HEAD", ...only], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+    return { text: stdout + (await untrackedAsDiff(root, file)) };
   } catch (err) {
     // Initial commit (no HEAD) is a normal state — show staged + unstaged.
     const msg = err instanceof Error
@@ -522,8 +557,8 @@ export async function gitDiffWorkdir(root: string): Promise<{ text: string; erro
       : String(err);
     if (/unknown revision|ambiguous argument 'HEAD'|bad revision/i.test(msg)) {
       try {
-        const { stdout } = await execFileP("git", ["diff"], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
-        return { text: stdout + (await untrackedAsDiff(root)) };
+        const { stdout } = await execFileP("git", ["diff", ...only], { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+        return { text: stdout + (await untrackedAsDiff(root, file)) };
       } catch (err2) {
         const msg2 = err2 instanceof Error
           ? (err2 as Error & { stderr?: string }).stderr || err2.message
@@ -640,19 +675,8 @@ export function registerWorkingDirectoryIpc(deps: {
     try { await fs.mkdir(dirPath, { recursive: true }); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  // Delete = move to the OS trash (recoverable), never a hard unlink.
-  ipcMain.handle("files:delete", async (_e, target: string) => {
-    if (typeof target !== "string" || !target) return { ok: false, error: "missing path" };
-    try { await shell.trashItem(target); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("files:rename", async (_e, oldPath: string, newPath: string) => {
-    if (typeof oldPath !== "string" || !oldPath || typeof newPath !== "string" || !newPath) {
-      return { ok: false, error: "missing path" };
-    }
-    try { await fs.rename(oldPath, newPath); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
+  ipcMain.handle("files:delete", (_e, target: string) => deleteWorkdirPath(target));
+  ipcMain.handle("files:rename", (_e, oldPath: string, newPath: string) => renameWorkdirPath(oldPath, newPath));
 
   // ── Rich file preview — platform-aware ──────────────────────────────────
   // Native viewer: macOS gets Quick Look (renders pptx/docx/key/xlsx without

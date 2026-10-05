@@ -51,6 +51,7 @@ import {
   type RemoteChat, type AttachHandle, stopRunById,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
+import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
@@ -1175,6 +1176,16 @@ function observeIfRunning(chat: CodeChat): void {
         queueStreamPaint(chatId);
       },
       // The owning surface flipped the mode mid-run — adopt it so our chip agrees.
+      // The model's thinking rides the relay too: the fold above the answer.
+      onThinking: (text) => {
+        const r = liveRuns.get(chatId);
+        if (!r) return;
+        r.thinking = (r.thinking ?? "") + text;
+        queueStreamPaint(chatId);
+      },
+      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
+      // Agents panel's rows here, never this thread's bubble.
+      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       // The run settled — land it, but KEEP the observer: the watcher keeps polling and
       // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
@@ -4553,6 +4564,16 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         paintAskDock();
       },
       // A mode change from another surface viewing this same session — adopt it.
+      // The model's thinking rides the relay too: the fold above the answer.
+      onThinking: (text) => {
+        const r = liveRuns.get(chatId);
+        if (!r) return;
+        r.thinking = (r.thinking ?? "") + text;
+        queueStreamPaint(chatId);
+      },
+      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
+      // Agents panel's rows here, never this thread's bubble.
+      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       onDone: (text) => { finishRun(chatId, text); },
       onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
@@ -4683,6 +4704,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   void saveStore();
   markSettled(run?.runId ?? null);   // its late frames belong to nobody
   liveRuns.delete(chatId);
+  subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)

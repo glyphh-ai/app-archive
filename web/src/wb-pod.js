@@ -39,12 +39,14 @@ const msg = (e) => (e instanceof Error ? e.message : String(e));
 
 // ── The session locus (fed by web-contract.js's session-cache write path) ────
 
-let locus = { chatId: '', cloud: false, local: false, scope: '' };
+let locus = { chatId: '', cloud: false, local: false, scope: '', folder: '' };
 
 /** The current session's locus: which chat is current, does it run in the
- *  cloud (same rule as code.ts: remote ⇔ source present and not "local"), and
- *  is it BOUND TO A MACHINE (`local`: a local source — the web terminal then
- *  rides the desktop relay instead of the worker pty). */
+ *  cloud (same rule as code.ts: remote ⇔ source present and not "local"), is
+ *  it BOUND TO A MACHINE (`local`: a local source — the web terminal then
+ *  rides the desktop relay instead of the worker pty), and which FOLDER on
+ *  that machine it works in (`folder`: the thread's workdir, else its local
+ *  source's path — code.ts threadFolder) so the relay-backed panels root there. */
 export const wbLocus = () => ({ ...locus });
 
 /**
@@ -64,8 +66,9 @@ export function noteSessionsSnapshot(chats, currentId) {
   const cloud = r.route === 'cloud';
   const local = !!(c && c.source && c.source.kind === 'local');
   const scope = cloud ? r.scope : '';
-  if (id === locus.chatId && cloud === locus.cloud && local === locus.local && scope === locus.scope) return;
-  locus = { chatId: id, cloud, local, scope };
+  const folder = !cloud && c ? String(c.workdir || (local && c.source.path) || '') : '';
+  if (id === locus.chatId && cloud === locus.cloud && local === locus.local && scope === locus.scope && folder === locus.folder) return;
+  locus = { chatId: id, cloud, local, scope, folder };
   try {
     window.dispatchEvent(new CustomEvent('glyphh:wb-locus-changed', { detail: { ...locus } }));
   } catch { /* bare test stubs — the selector reads wbLocus() lazily anyway */ }
@@ -261,10 +264,11 @@ export function createWbPod({ client, isAuthenticated, getScope = () => (locus.c
  * new transport's cwd is announced so the workbench re-roots its panels in
  * place (its existing onCwdChanged path).
  */
-export function createWbSelector({ relay, pod, isCloud = () => locus.cloud }) {
+export function createWbSelector({ relay, pod, isCloud = () => locus.cloud, getRoot = () => locus.folder }) {
   const subs = { file: new Set(), git: new Set(), cwd: new Set() };
   const total = () => subs.file.size + subs.git.size + subs.cwd.size;
   let activeKind = isCloud() ? 'pod' : 'relay';
+  let lastRoot = getRoot();
   const active = () => (activeKind === 'pod' ? pod : relay);
   let unbinds = [];
 
@@ -289,11 +293,17 @@ export function createWbSelector({ relay, pod, isCloud = () => locus.cloud }) {
 
   function onLocusChanged() {
     const next = isCloud() ? 'pod' : 'relay';
-    if (next === activeKind) return;
+    const root = getRoot();
+    // A switch between two DESKTOP sessions in different folders re-roots the
+    // same transport (his report, 2026-10-05: the panels must show the
+    // session's files); a transport flip re-binds the live subscriptions.
+    const rerooted = next === 'relay' && root !== lastRoot;
+    lastRoot = root;
+    if (next === activeKind && !rerooted) return;
+    const flipped = next !== activeKind;
     activeKind = next;
     if (total() > 0) {
-      unbind();
-      bind();
+      if (flipped) { unbind(); bind(); }
       // Re-root the workbench onto the new transport's folder — its existing
       // cwd-changed path re-lists Files / re-fetches Diff in place.
       void active().getCwd().then((cwd) => { if (cwd) emit(subs.cwd, cwd); }).catch(() => {});

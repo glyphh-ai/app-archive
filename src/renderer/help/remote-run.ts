@@ -37,11 +37,13 @@ import type { Source } from "./code-source-chip.js";
 
 /** A harness frame as it rides `glyphh.harness/v1` (SDK contract/harness.ts —
  *  itself the desktop's glyphh-agent frame vocabulary, enveloped). */
-type HarnessWireFrame = (
+export type HarnessWireFrame = (
   | { type: "prompt"; text: string }
   | { type: "open-app"; ref?: string; url?: string }
   | { type: "delta"; delta: string }
-  | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string }
+  | { type: "thinking"; text: string }
+  | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string }
+  | { type: "agent"; phase: "start" | "done"; agent: SubAgentRef; task?: string; failed?: boolean; summary?: string }
   | { type: "progress"; inTokens: number; outTokens: number }
   | { type: "credits"; usd: number }
   | { type: "approval"; id: string; kind: string; title: string; detail: string }
@@ -50,7 +52,18 @@ type HarnessWireFrame = (
   | { type: "permission"; permission: RemotePermission }
   | { type: "done"; stopped: boolean }
   | { type: "error"; error: string }
-) & { seq: number; runId: string; at: number };
+) & { seq: number; runId: string; at: number; /** Set on a SUB-AGENT's frame: whose feed it belongs to. */ agent?: SubAgentRef };
+
+/** A sub-agent as the engine names it on every frame of its work. */
+export interface SubAgentRef { childId: string; slug: string; name: string; model: string }
+
+/** A frame that belongs to the swarm view, not the thread: a child's own
+ *  delta / thinking / tool / approval (tagged `agent`), or the `agent`
+ *  start/done frame itself. */
+export type SubAgentWireFrame = HarnessWireFrame & { agent: SubAgentRef };
+
+const childOf = (frame: HarnessWireFrame): SubAgentRef | null =>
+  frame.agent && typeof frame.agent === "object" && typeof frame.agent.childId === "string" ? frame.agent : null;
 
 interface HarnessRunHandle {
   readonly whenStarted: Promise<{ runId: string; sessionId: string; wire: string }>;
@@ -398,6 +411,15 @@ export interface RemoteRunCallbacks {
    *  dollars + duration footer. */
   onUsage?: (u: { usd?: number; inTokens?: number; outTokens?: number }) => void;
   onToken?: (delta: string) => void;
+  /** The model's thinking, streamed — the fold above the answer (code.ts
+   *  thinkingEl); the local path's `glyphh-agent:thinking`. */
+  onThinking?: (text: string) => void;
+  /** A SUB-AGENT's frame (tagged `agent`), or an agent start/done. The thread
+   *  never sees these (a child's words would read as the parent's answer);
+   *  the Agents work panel builds the swarm view from them (subagent-feed.ts).
+   *  A child's approval ALSO reaches onApproval, titled with the child's name:
+   *  the person is the only one who can answer it. */
+  onAgentFrame?: (frame: SubAgentWireFrame) => void;
   onAnswer?: (fullText: string) => void;
   /** The turn's USER prompt — the run's first frame. Only surfaces OBSERVING a run
    *  started elsewhere render this (the initiating surface already has its own bubble,
@@ -439,12 +461,19 @@ export type RemoteRunOutcome =
  *  onApproval/onAsk) still gets an honest breadcrumb and rides the POD's timeout
  *  (approval → denied after ~2min; ask → answered empty after ~10min, the agent
  *  re-plans). progress/credits/setup: no UI mapping. */
-function dispatchFrame(
+export function dispatchFrame(
   frame: HarnessWireFrame,
   cb: RemoteRunCallbacks,
   state: { text: string; error: string | null },
   run: HarnessRunHandle,
 ): void {
+  // THE SWARM'S FRAMES (his report, 2026-10-05: the web's Agents panel showed
+  // nothing): a child's frames and the agent start/done go to the feed, and a
+  // child's delta/thinking/tool stop here — never the parent's bubble. Its
+  // approval goes on to the dock below, named.
+  const child = childOf(frame);
+  if (child || frame.type === "agent") cb.onAgentFrame?.(frame as SubAgentWireFrame);
+  if (frame.type === "agent" || (child && frame.type !== "approval")) return;
   switch (frame.type) {
     case "open-app":
       cb.onOpenApp?.({ ...(frame.ref ? { ref: frame.ref } : {}), ...(frame.url ? { url: frame.url } : {}) });
@@ -456,6 +485,9 @@ function dispatchFrame(
       state.text += frame.delta;
       cb.onToken?.(frame.delta);
       cb.onAnswer?.(state.text);
+      return;
+    case "thinking":
+      cb.onThinking?.(frame.text);
       return;
     case "tool":
       if (frame.phase === "start") {
@@ -498,7 +530,7 @@ function dispatchFrame(
       // the safe direction for a countdown the user acts on.
       const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
       pending.set(frame.id, { run, kind: "approval", deadline });
-      cb.onApproval({ id: frame.id, kind: frame.kind, title: frame.title, detail: frame.detail, deadline });
+      cb.onApproval({ id: frame.id, kind: frame.kind, title: child ? `${child.name}: ${frame.title}` : frame.title, detail: frame.detail, deadline });
       return;
     }
     case "ask": {

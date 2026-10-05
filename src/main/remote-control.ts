@@ -26,6 +26,8 @@ import { BrowserWindow, dialog, ipcMain } from "electron";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { killAllRelayPtys } from "./relay-pty.js";
 import { gitStateOf } from "./attach-handlers.js";
+import { relayFsTable } from "./relay-fs.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
 import { getPreference, loadPreferences, setPreference } from "./stores/preferences-db.js";
@@ -45,7 +47,9 @@ export interface RemoteControlView extends RemoteControlSetting {
  *  web terminal's pty.input/resize/close name a pty this door opened (relay-
  *  pty.ts keys them by id); only pty.open takes a path, guarded below.
  *  layouts.list/get and panelApps.list are the Customize libraries app.glyphh.ai
- *  reads off this machine (attach-handlers.ts) — reads, no path, no write. */
+ *  reads off this machine (attach-handlers.ts) — reads, no path, no write.
+ *  The fs and git doors are NOT here: they take paths, so remoteTable builds
+ *  them around the grant guard (relay-fs.ts relayFsTable). */
 const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
@@ -129,6 +133,18 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
   };
   const table: Record<string, (params: unknown) => Promise<unknown>> = {};
   for (const m of PASS_THROUGH) table[m] = (p) => dispatch(m, p);
+
+  // THE FILE AND GIT DOORS (his report, 2026-10-05: "neither is the file
+  // system, or diff data"): the web's Files / Diff / Editor read and write a
+  // desktop session through relay-fs.ts's table — the desktop's own files:*
+  // implementations — fenced HERE to the granted folders, reads included: the
+  // folder is the sandbox. fs.cwd never names a folder outside the grants.
+  const fsDoor = relayFsTable(guard, () => {
+    const wd = realOr(resolve(getWorkingDirectory()));
+    const cwd = inGranted(wd, folders()) ? wd : (folders().map(realOr)[0] ?? "");
+    return { cwd, explicit: cwd || null };
+  });
+  for (const [m, h] of Object.entries(fsDoor)) table[m] = async (p) => h(p);
 
   table["sessions.put"] = async (p) => {
     const workdir = str(p, "workdir");

@@ -66,7 +66,7 @@ describe('the CLI tile, per locus', () => {
     noteSessionsSnapshot([{ id: 'a', source: { kind: 'cloud-new' } }, { id: 'b', source: { kind: 'local', machineId: 'm1' } }], 'b');
     expect(wbLocus().local).toBe(true);
     noteSessionsSnapshot([], '');
-    expect(wbLocus()).toEqual({ chatId: '', cloud: false, local: false, scope: '' });
+    expect(wbLocus()).toEqual({ chatId: '', cloud: false, local: false, scope: '', folder: '' });
     // The locus routes the fs/git transports only; the Terminal tile decides
     // its far side from the session's source itself (help/terminal-target.ts,
     // one rule for the desktop and the web), so the selector exposes no locus().

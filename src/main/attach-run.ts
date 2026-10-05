@@ -51,7 +51,8 @@ function makeSink(runId: string, chatId: string): WebContents {
       rec.frames.push(frame as Record<string, unknown> & { seq: number });
       if (rec.frames.length > RING_CAP) rec.frames.splice(0, rec.frames.length - RING_CAP);
       const t = (frame as { type?: string }).type;
-      if (t === "delta") answer += String((frame as { delta?: string }).delta ?? "");
+      // A sub-agent's delta is tagged; the parent's answer is the untagged text.
+      if (t === "delta" && !(frame as { agent?: unknown }).agent) answer += String((frame as { delta?: string }).delta ?? "");
       if (t === "done") appendStoredMessage(chatId, { role: "assistant", text: answer });
       if (t === "done" || t === "error") {
         rec.status = t === "done" ? "done" : "error";

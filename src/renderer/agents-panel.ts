@@ -10,7 +10,10 @@
  * row: its state dot, its name, the model it runs on, what it was asked, and —
  * expanded — its own feed as it works, every tool it runs with the result. A
  * swarm leaves with its parent's turn. The definitions are Settings → Build →
- * Agents (help/settings-agents.ts); the source here is main's ledger.
+ * Agents (help/settings-agents.ts). TWO SOURCES, one list: main's ledger (a
+ * local turn on this desktop, over IPC) and the renderer's own feed
+ * (help/subagent-feed.ts — a turn that arrives as relay frames: the web
+ * driving the attached desktop, a cloud run, an observed run).
  *
  * A working agent opens itself; one that finished folds unless the person
  * opened it. The person's own open/closed choice always wins over that rule.
@@ -18,6 +21,7 @@
 
 import { formatMarkdown } from "./format-markdown.js";
 import { stepEl, type ToolDetail } from "./help/tool-view.js";
+import { subAgentFeed } from "./help/subagent-feed.js";
 
 interface FeedText { at: number; kind: "text"; text: string }
 interface FeedTool {
@@ -252,15 +256,20 @@ export function mountAgentsPanel(body: HTMLElement): () => void {
     }
   };
 
+  let fromMain: unknown[] = [];
+  let fromFeed: unknown[] = subAgentFeed.list();
+  const merge = (): void => { runs = asRuns([...fromMain, ...fromFeed]).sort((a, b) => a.startedAt - b.startedAt); paint(); };
   let off: (() => void) | undefined;
+  let offFeed: (() => void) | undefined;
   let tick = 0;
-  const unmount = (): void => { off?.(); off = undefined; window.clearInterval(tick); };
+  const unmount = (): void => { off?.(); off = undefined; offFeed?.(); offFeed = undefined; window.clearInterval(tick); };
   // A work panel's body is torn down by whoever closes the card; the panel
   // lets go of its subscription and its clock the moment it is out of the page,
   // so a closed panel never keeps repainting into nothing.
   const alive = (): boolean => { if (body.isConnected) return true; unmount(); return false; };
-  off = api().onSubAgentsUpdate?.((raw) => { if (!alive()) return; runs = asRuns(raw); paint(); });
-  void api().subAgentsList?.().then((raw) => { if (!alive()) return; runs = asRuns(raw ?? []); paint(); }).catch(() => { if (alive()) paint(); });
+  off = api().onSubAgentsUpdate?.((raw) => { if (!alive()) return; fromMain = Array.isArray(raw) ? raw : []; merge(); });
+  offFeed = subAgentFeed.subscribe((rows) => { if (!alive()) return; fromFeed = rows; merge(); });
+  void api().subAgentsList?.().then((raw) => { if (!alive()) return; fromMain = Array.isArray(raw) ? raw : []; merge(); }).catch(() => { if (alive()) paint(); });
   // The elapsed clocks tick in place — a full repaint every second would take
   // the person's text selection and scroll with it.
   tick = window.setInterval(() => {
@@ -271,6 +280,6 @@ export function mountAgentsPanel(body: HTMLElement): () => void {
       if (meta) meta.textContent = metaText(r);
     }
   }, 1000);
-  paint();
+  merge();
   return unmount;
 }
