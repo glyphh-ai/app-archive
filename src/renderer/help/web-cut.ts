@@ -122,11 +122,43 @@ export function webNewClosesEverything(web: boolean): boolean {
   return web;
 }
 
+/** THE ECHO ICON AT THE RAIL'S TOP-LEFT ON THE WEB (his order, 2026-10-05:
+ *  "the top left of the app web should have the echo icon -> when clicked
+ *  the echo overlay shows but only the workspaces render"). The wordmark
+ *  that sat there leaves (WEB_HIDDEN_RAIL carries its selector); the
+ *  desktop's own Echo buttons (#rail-echo-btn, and the collapsed strip's
+ *  twin) STAY on the web — the CSS seats #rail-echo-btn first in the top
+ *  strip (webRailEchoLeads). The desktop is untouched: its wordmark never showed, its Echo
+ *  button keeps its place. */
+export const WEB_RAIL_WORDMARK = ".app-rail-logo";
+export const WEB_RAIL_ECHO_BUTTONS: ReadonlyArray<string> = Object.freeze(["#rail-echo-btn", "#rail-echo-btn-strip"]);
+/** Does the Echo button lead the rail's top strip (top-left) here? Web
+ *  only — the desktop keeps it at the strip's right, after Collapse. */
+export function webRailEchoLeads(web: boolean): boolean {
+  return web;
+}
+
+/** THE WEB'S ECHO IS THE WORKSPACES ONLY (his order, 2026-10-05): the same
+ *  overlay the desktop lifts (the wall over the open cards), but on the web
+ *  its grid holds ONLY the member's workspace tiles — no dock, no app, tool,
+ *  section or CLI tiles — and the search at the top filters those. The wall
+ *  and the dock still never BOOT on the web (bootsSurface stays false for
+ *  them); this is the one surface the web's Echo button opens. */
+export type WebEchoSurface = { search: boolean; dock: boolean; tiles: "workspaces" };
+export function webEchoSurface(): Readonly<WebEchoSurface> {
+  return Object.freeze({ search: true, dock: false, tiles: "workspaces" as const });
+}
+/** Does the Echo button open the workspaces-only overlay here? Web only —
+ *  the desktop's button opens the whole command center as ever. */
+export function webEchoOpens(web: boolean): boolean {
+  return web;
+}
+
 /** The rail's doors into the command center — hidden on web (ids and
  *  selectors, applied by web-surface.ts). Build and Customize left this list
  *  on 2026-10-05: they are the rail's full-screen pages now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
-  "#rail-echo-btn", "#rail-echo-btn-strip", "#rail-more-toggle",
+  "#rail-more-toggle", WEB_RAIL_WORDMARK,
 ]);
 
 /** Settings rows that govern surfaces the web no longer has: the dock
@@ -239,4 +271,84 @@ export function webRestorePlan(saved: WebWallState | null | undefined): { open: 
  *  like an open or a close? The desktop keeps its own saves untouched. */
 export function webWallMemory(web: boolean): boolean {
   return web;
+}
+
+/** CLOSE ALL PANELS ON THE WEB OPENS A NEW SESSION (his order, 2026-10-05:
+ *  "close all panels in web -> closes all panels -> opens new either work
+ *  or code depending on what was opened last"). Every card closes; on the
+ *  web the agent then starts a fresh session in place in the rail's current
+ *  type (its type tab is "what was opened last"). The desktop only closes. */
+export function webCloseAllOpensNew(web: boolean): boolean {
+  return web;
+}
+
+// ── WORKSPACES ON THE WEB (his order, 2026-10-05: "the web can still have
+// these they just render only apps and panels that are truly web native") ──
+
+/** A workspace cell as the layout rows carry it: `tool:<view>` or an app's id / slug. */
+export type WebLayoutCellIn = { panelId: string };
+/** An installed-app row as the web's ⋮ menu reads it (agent-menu-ui.ts
+ *  installedRowsOf): kind "glyphh" = a Glyphh app bundle; `cloud` = a
+ *  personal instance / a row the attached desktop did not report. */
+export type WebLayoutApp = { slug: string; id?: string; name?: string; kind?: string; cloud?: boolean };
+/** `agent` = the layout's Glyphh agent cell (tool:coding): on the web the
+ *  agent is always seated, so the cell is kept and opens nothing new. */
+export type WebLayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" };
+/** The layout's own Glyphh agent cell. */
+export const LAYOUT_AGENT_CELL = "tool:coding";
+export type WebLayoutPlan = { keep: WebLayoutKeep[]; skipped: string[] };
+
+/** THE WEB-NATIVE RULE: a tool cell stays when its view is one the web's
+ *  ⋮ menu hosts in-document (WEB_TOOL_VIEWS — Artifacts is a full-screen
+ *  page on the web, never a grid panel); an app cell stays when its row is
+ *  a Glyphh app installed in the CLOUD. Native apps, URL tabs, desktop-only
+ *  Glyphh apps, the streamed Browser, a CLI agent's cell and unknown ids
+ *  are dropped, each named on one line. The Glyphh agent's own cell is
+ *  kept as is — the web's agent is already seated. */
+export function webLayoutCells(cells: ReadonlyArray<WebLayoutCellIn>, apps: ReadonlyArray<WebLayoutApp>): WebLayoutPlan {
+  const keep: WebLayoutKeep[] = [];
+  const skipped: string[] = [];
+  const rowOf = (id: string): WebLayoutApp | undefined => {
+    const k = id.toLowerCase();
+    return apps.find((a) => (a.slug || "").toLowerCase() === k || (a.id || "").toLowerCase() === k);
+  };
+  for (const c of cells) {
+    const id = String(c?.panelId ?? "").trim();
+    if (!id) { skipped.push("an empty cell"); continue; }
+    if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
+    if (id.toLowerCase().startsWith("agent:")) { skipped.push(`the CLI agent "${id.slice(6)}" (desktop only)`); continue; }
+    if (id.startsWith("tool:")) {
+      const view = id.slice(5);
+      if (webToolAllowed(view)) keep.push({ kind: "tool", view });
+      else skipped.push(`the ${view || "unnamed"} panel (not hosted on the web)`);
+      continue;
+    }
+    const row = rowOf(id);
+    const name = row?.name || row?.slug || id;
+    if (!row) { skipped.push(`the app "${id}" (not in your library)`); continue; }
+    if (row.kind === "native") { skipped.push(`the app "${name}" (desktop only)`); continue; }
+    if (row.kind !== "glyphh") { skipped.push(`the tab "${name}" (opens on the desktop)`); continue; }
+    if (!row.cloud) { skipped.push(`the app "${name}" (installed on the desktop)`); continue; }
+    keep.push({ kind: "app", slug: row.slug || id, name });
+  }
+  return { keep, skipped };
+}
+
+/** The toasts after a workspace opens on the web: nothing kept → one error
+ *  line; something skipped → one line listing what. Both null = quiet. */
+export function webWorkspaceOpenLines(name: string, plan: WebLayoutPlan): { error: string | null; info: string | null } {
+  const error = plan.keep.length ? null : `Nothing in "${name}" runs on the web`;
+  const info = plan.skipped.length && plan.keep.length ? `Skipped on the web: ${plan.skipped.join(", ")}` : null;
+  return { error, info };
+}
+
+/** OPEN WORKSPACE CLOSES ITS HOST FIRST (his order, 2026-10-05: "workspace
+ *  -> edit -> open workspace -> close the customize or settings menu and open
+ *  the workspace"): what the Workspaces page's Open button closes before the
+ *  workspace opens — on the web the full-screen Customize panel; on the
+ *  desktop the Settings modal or the Customize work panel, whichever hosts
+ *  the page. */
+export type WorkspaceOpenHost = "web-full-panel" | "settings-modal" | "customize-panel";
+export function workspaceOpenClosesHosts(web: boolean): ReadonlyArray<WorkspaceOpenHost> {
+  return web ? Object.freeze(["web-full-panel"] as WorkspaceOpenHost[]) : Object.freeze(["settings-modal", "customize-panel"] as WorkspaceOpenHost[]);
 }

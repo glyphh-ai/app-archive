@@ -3,7 +3,8 @@
  */
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
-import { keepIfHost } from "./web-surface.js";
+import { keepIfHost, onWeb } from "./web-surface.js";
+import { workspaceOpenClosesHosts } from "./web-cut.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
@@ -44,6 +45,18 @@ async function remapLayoutTileKey(from: string, to: string): Promise<void> {
   } catch { /* best effort — the workspace still opens, just off the dock */ }
 }
 
+/** The Workspaces page's hosts, closed before a workspace opens (the rule
+ *  is web-cut.ts workspaceOpenClosesHosts; each door is a no-op when that
+ *  host is not up). */
+function closeWorkspaceHosts(): void {
+  const w = window as unknown as { __wbCloseWebFullPanel?: () => void; __wbClosePage?: (section: string) => void };
+  for (const host of workspaceOpenClosesHosts(onWeb())) {
+    if (host === "web-full-panel") w.__wbCloseWebFullPanel?.();
+    else if (host === "settings-modal") closeSettingsModal();
+    else if (host === "customize-panel") w.__wbClosePage?.("customize");
+  }
+}
+
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
  *  web app; native/unresolved panels are skipped (they can't run in a
@@ -52,9 +65,12 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.glyphh.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  // Opening a layout LEAVES settings — drop the modal (no-op when absent) so
-  // the workbench isn't hidden behind it.
-  closeSettingsModal();
+  // OPEN WORKSPACE CLOSES ITS HOST FIRST (his order, 2026-10-05: "workspace
+  // -> edit -> open workspace -> close the customize or settings menu and
+  // open the workspace"): whatever hosts this page goes before the open —
+  // the web's full-screen Customize panel; the desktop's Settings modal or
+  // its Customize work panel (web-cut.ts workspaceOpenClosesHosts).
+  closeWorkspaceHosts();
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The

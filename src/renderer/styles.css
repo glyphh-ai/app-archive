@@ -1759,8 +1759,12 @@ html.glyphh-web body[data-session-space="work"] #code-tools-more { display: none
 /* The wordmark at the rail's top-left, WEB ONLY and BIG (his order, 2026-10-05):
    the console's own file; the desktop keeps its traffic lights there. */
 .app-rail-logo { display: none; }
-html.glyphh-web .app-rail-logo { display: inline-flex; align-items: center; height: 100%; padding: 0 6px 0 8px; flex: 0 0 auto; }
-html.glyphh-web .app-rail-logo-img { height: 30px; width: auto; display: block; }
+/* THE ECHO ICON LEADS THE RAIL ON THE WEB (his order, 2026-10-05: "the top
+   left of the app web should have the echo icon"; web-cut.ts
+   webRailEchoLeads — the wordmark that sat there is WEB_HIDDEN_RAIL now).
+   The desktop's strip is untouched: Collapse, then Echo at the right. */
+html.glyphh-web #rail-echo-btn { order: -1; width: 30px; height: 30px; }
+html.glyphh-web #rail-echo-btn svg { width: 18px; height: 18px; }
 /* The rail's Connections and Devices links are WEB ONLY (his order,
    2026-10-05); the desktop's rail keeps Artifacts, Build, Customize. */
 html.glyphh-web body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
@@ -17904,6 +17908,13 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
 .echo-topbar-stacked { max-width: 92%; }
+/* THE WEB'S ECHO = WORKSPACES ONLY (his order, 2026-10-05; web-cut.ts
+   webEchoSurface: search yes, dock no): the dock and its hot strip never
+   paint, the search pill sits at the top, the grid starts under it. */
+.ws-echo-body.web-echo .echo-topbar, .ws-echo-body.web-echo .echo-dock-hotstrip { display: none !important; }
+html.glyphh-web #echo-dock-layer { display: none !important; }
+.ws-echo-body.web-echo .echo-search-wrap { top: 28px; }
+.ws-echo-body.web-echo .echo-page-grid { padding-top: calc(28px + 44px + 26px); }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
