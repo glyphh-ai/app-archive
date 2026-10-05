@@ -29,6 +29,12 @@ export interface PlanGates {
   connectionsAllowed?: boolean;
   /** Memory overrides (his order, 2026-09-19): member = the user's choice, on / off = forced. */
   memoryPolicy?: { inject?: "member" | "on" | "off"; capture?: "member" | "on" | "off"; sensitive?: "member" | "on" | "off" };
+  /** THE UTILITY MODEL (his order, 2026-10-05): the shared chat model the
+   *  small side jobs (the session title) run on — the console's flagged row,
+   *  else the cheapest by price, resolved server-side. Absent on an older
+   *  server → the renderer's own pick over the available list
+   *  (help/utility-model.ts, the same rule). */
+  utilityModel?: string | null;
 }
 
 /** Locked-down defaults: what a failed read answers, so an offline client

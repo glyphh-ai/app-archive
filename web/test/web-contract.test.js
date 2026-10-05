@@ -211,11 +211,23 @@ describe('the composer model list + plan gates on web (main/loop-models.ts parit
   ];
   it('toLoopModels: chat only, Auto named, deduped, provider-then-name order, flags kept', () => {
     expect(toLoopModels(rows)).toEqual([
-      { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5', providerSlug: 'anthropic' },
-      { id: 'auto', name: 'Auto', providerSlug: 'auto' },
-      { id: 'gpt-5', name: 'gpt-5', providerSlug: 'openai', reasoning: true, freePlan: false },
+      { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5', providerSlug: 'anthropic', modality: 'chat' },
+      { id: 'auto', name: 'Auto', providerSlug: 'auto', modality: 'chat' },
+      { id: 'gpt-5', name: 'gpt-5', providerSlug: 'openai', reasoning: true, freePlan: false, modality: 'chat' },
     ]);
     expect(toLoopModels(null)).toEqual([]);
+  });
+  // The utility-model rule (his order, 2026-10-05) reads the console's flag and
+  // the prices off the composer's own rows — carried through, never re-fetched.
+  it('toLoopModels carries utility + prices for the utility-model rule', () => {
+    const priced = [
+      { id: 'm1', name: 'claude-haiku-4-5', providerSlug: 'anthropic', modality: 'chat', inputUsdPerMTok: 0.8, outputUsdPerMTok: 4, utility: true },
+      { id: 'm2', name: 'claude-sonnet-4-5', providerSlug: 'anthropic', modality: 'chat', inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
+    ];
+    expect(toLoopModels(priced)).toEqual([
+      { id: 'claude-haiku-4-5', name: 'claude-haiku-4-5', providerSlug: 'anthropic', modality: 'chat', utility: true, inputUsdPerMTok: 0.8, outputUsdPerMTok: 4 },
+      { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5', providerSlug: 'anthropic', modality: 'chat', inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
+    ]);
   });
   it('loopModels answers the preload shape, cached 60 s, force bypasses', async () => {
     const available = vi.fn(async () => rows);
