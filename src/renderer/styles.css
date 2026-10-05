@@ -15440,8 +15440,11 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
 /* History dropdown rows: title | pin | delete. */
 .wb-session-menu {
-  /* WIDER but constrained (his ask, 2026-08-20) — sections + search need room. */
-  min-width: 340px; max-width: min(480px, 92vw); max-height: 60vh;
+  /* ONE FIXED WIDTH on every open (his report, 2026-10-05: it re-sized with
+     its rows) — help/code.ts SESSION_MENU_WIDTH, capped to the room by
+     help/menu-place.ts; the rows ellipsize. The height is the room's (the
+     placement sets it) and the LIST scrolls under the pinned search + tabs. */
+  width: 360px; min-width: 0; max-width: 360px; max-height: 60vh;
   display: flex; flex-direction: column; overflow: hidden;
   z-index: 400; padding: 4px;
   background: var(--surface);
@@ -15450,9 +15453,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .wb-session-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
-.wb-session-search { padding: 2px 2px 6px; }
+.wb-session-search { padding: 2px 2px 6px; flex: 0 0 auto; }
 .wb-session-search .repo-drop-search { width: 100%; box-sizing: border-box; }
-.wb-session-list { overflow-y: auto; min-height: 0; }
+.wb-session-menu .wb-session-tabs { flex: 0 0 auto; }
+.wb-session-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .wb-session-menu .code-history-sec { padding: 8px 8px 4px; }
 .wb-session-row:hover { background: var(--hover); }
 .wb-session-row.selected .wb-session-title {

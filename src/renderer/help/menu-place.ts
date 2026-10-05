@@ -39,6 +39,25 @@ export interface PlaceOptions {
   gap?: number;
   /** The breathing room kept from every edge of the box. Default 8. */
   margin?: number;
+  /** ONE FIXED WIDTH, whatever the content measures (his report, 2026-10-05:
+   *  the recents dropdown re-sized with its rows). Capped to the room. */
+  width?: number;
+  /** The region that scrolls INSIDE the menu (its list) — the menu itself
+   *  then keeps its overflow hidden and its pinned rows (search, tabs) stay
+   *  put. Without it the whole menu scrolls. */
+  scrollEl?: HTMLElement;
+}
+
+/** The frame a placed menu wears: its width (the fixed one, capped to the
+ *  room, or null = whatever it measures) and its height cap, and which part
+ *  scrolls. Pure — placeFixedMenu applies it; the test pins it. */
+export interface MenuFrame { width: number | null; maxHeight: number; scroll: "menu" | "region" }
+export function menuFrame(p: Pick<Placement, "maxWidth" | "maxHeight">, opts: { width?: number; scrollRegion?: boolean }): MenuFrame {
+  return {
+    width: opts.width != null ? Math.min(opts.width, p.maxWidth) : null,
+    maxHeight: p.maxHeight,
+    scroll: opts.scrollRegion ? "region" : "menu",
+  };
 }
 
 export interface Placement {
@@ -113,13 +132,15 @@ export function placeFixedMenu(anchor: HTMLElement, menu: HTMLElement, opts: Pla
   menu.style.visibility = "hidden";   // measure before showing
   if (!menu.isConnected) document.body.appendChild(menu);
   const box = viewportBox();
-  const measured = menu.offsetWidth;
+  // A fixed width is the menu's size from the start — the rows never set it.
+  const measured = opts.width ?? menu.offsetWidth;
   const p = placeMenu(
     { left: r.left, top: r.top, width: r.width, height: r.height },
     { width: measured, height: menu.offsetHeight },
     box,
     opts,
   );
+  const frame = menuFrame(p, { ...(opts.width != null ? { width: opts.width } : {}), scrollRegion: !!opts.scrollEl });
   menu.style.left = `${p.left}px`;
   menu.style.top = `${p.top}px`;
   menu.style.right = "auto";
@@ -127,13 +148,23 @@ export function placeFixedMenu(anchor: HTMLElement, menu: HTMLElement, opts: Pla
   // A menu wider than the room is capped to it. CSS min-width beats
   // max-width, so a stylesheet `min-width: 340px` has to be overridden too,
   // or the cap does nothing in a panel narrower than that.
-  if (measured > p.maxWidth) {
+  if (frame.width != null) {
+    menu.style.minWidth = "0";
+    menu.style.width = `${frame.width}px`;
+    menu.style.maxWidth = `${frame.width}px`;
+  } else if (measured > p.maxWidth) {
     menu.style.minWidth = "0";
     menu.style.width = `${p.maxWidth}px`;
     menu.style.maxWidth = `${p.maxWidth}px`;
   }
-  menu.style.maxHeight = `${p.maxHeight}px`;
-  menu.style.overflowY = "auto";
+  menu.style.maxHeight = `${frame.maxHeight}px`;
+  if (frame.scroll === "region" && opts.scrollEl) {
+    menu.style.overflowY = "hidden";
+    opts.scrollEl.style.minHeight = "0";
+    opts.scrollEl.style.overflowY = "auto";
+  } else {
+    menu.style.overflowY = "auto";
+  }
   menu.dataset.side = p.side;
   menu.dataset.align = p.align;
   menu.style.visibility = "";

@@ -4,7 +4,7 @@
  * the right). Pure: anchor rect + menu size + box → placement.
  */
 import { describe, expect, it } from "vitest";
-import { placeMenu } from "../../src/renderer/help/menu-place";
+import { placeMenu, menuFrame } from "../../src/renderer/help/menu-place";
 
 const box = { left: 0, top: 0, width: 1000, height: 800 };
 const menu = { width: 300, height: 200 };
@@ -73,5 +73,34 @@ describe("placeMenu — vertical", () => {
     const p = placeMenu({ left: 100, top: 70, width: 40, height: 20 }, menu, short);
     expect(p.top).toBeGreaterThanOrEqual(8);
     expect(p.top + Math.min(200, p.maxHeight)).toBeLessThanOrEqual(150 - 8);
+  });
+});
+
+describe("menuFrame — the recents dropdown's frame (his report, 2026-10-05: it did not scroll and its width followed its rows)", () => {
+  const roomy = placeMenu({ left: 100, top: 100, width: 40, height: 20 }, { width: 500, height: 2000 }, box, { width: 360 });
+  it("ONE fixed width whatever the content measures — the same on every open", () => {
+    expect(menuFrame(roomy, { width: 360 }).width).toBe(360);
+    const narrowContent = placeMenu({ left: 100, top: 100, width: 40, height: 20 }, { width: 120, height: 200 }, box, { width: 360 });
+    expect(menuFrame(narrowContent, { width: 360 }).width).toBe(360);
+    // placeMenu placed it by that width, not by the content's.
+    expect(roomy.left + 360).toBeLessThanOrEqual(box.width - 8);
+  });
+  it("the fixed width is still capped to the room", () => {
+    const narrow = { left: 0, top: 0, width: 300, height: 800 };
+    const p = placeMenu({ left: 10, top: 100, width: 40, height: 20 }, { width: 360, height: 200 }, narrow, { width: 360 });
+    expect(menuFrame(p, { width: 360 }).width).toBe(300 - 16);
+  });
+  it("without a fixed width the menu keeps what it measures", () => {
+    expect(menuFrame(roomy, {}).width).toBeNull();
+  });
+  it("the height is capped to the room on the side it opened — a list taller than that scrolls", () => {
+    const f = menuFrame(roomy, { width: 360, scrollRegion: true });
+    expect(f.maxHeight).toBe(roomy.maxHeight);
+    expect(f.maxHeight).toBeLessThan(2000);
+    expect(f.maxHeight).toBeGreaterThan(0);
+  });
+  it("the LIST region scrolls (search + type switch stay pinned); without one the whole menu does", () => {
+    expect(menuFrame(roomy, { width: 360, scrollRegion: true }).scroll).toBe("region");
+    expect(menuFrame(roomy, { width: 360 }).scroll).toBe("menu");
   });
 });

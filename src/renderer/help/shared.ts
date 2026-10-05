@@ -64,8 +64,8 @@ export function cssVar(name: string): string {
  * Appends the menu to <body> if it isn't mounted, and measures before
  * showing so the first paint lands in place.
  */
-export function placeDropup(anchor: HTMLElement, menu: HTMLElement): void {
-  placeFixedMenu(anchor, menu, { align: "right", side: "auto", gap: 6 });
+export function placeDropup(anchor: HTMLElement, menu: HTMLElement, frame: { width?: number; scrollEl?: HTMLElement } = {}): void {
+  placeFixedMenu(anchor, menu, { align: "right", side: "auto", gap: 6, ...frame });
 }
 
 // ── Drop-up detail pane ────────────────────────────────────
