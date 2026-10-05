@@ -36,10 +36,23 @@ import { Markdown, copyText, ToolActionRow, DiffBadge, fileFromTitle, summarize,
 // panel-stream.ts — see mobile-panel.ts for the /ws/panel + WebRTC + input port).
 import { mountMobilePanel, type MobilePanelHandle, type PanelState } from './mobile-panel';
 import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
-// The chat list lives on the member's desktop (v1: no server thread store, no
-// cloud worker) — read and written over the attach socket.
+// A desktop session's chat lives on the member's desktop — read and written
+// over the attach socket; a cloud session's on the server's thread store
+// (cloud-sessions.ts, below).
 import { desktopSessions } from './desktop-sessions';
 import { resolveDefaultModel } from './default-model';
+// THE CLOUD LANE on app.glyphh.ai on a phone (his direction, 2026-10-05): a
+// Code session on a cloud worker with a GitHub repo checked out — the web's
+// locus rule (session-locus.ts) and the web's SDK calls, nothing new.
+import {
+  cloudSource, cloudSendBlock, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
+  toggleRepo, setBranch, groupRepos, splitRepo, mergeThreads, sessionSubline, sessionMark,
+  toStoredMessages, picksOf, isCloudKind, defaultLocus, LOCUS_LOCKED_HINT,
+  type RepoPick, type RepoRow, type BranchRow, type CloudSource, type Locus, type ListedThread,
+} from './mobile-cloud';
+import { mobileGit } from './mobile-git';
+import { cloudSessions } from './cloud-sessions';
+import type { Source } from '../../src/renderer/help/code-source-chip';
 
 // Point the reused engine at OUR authenticated client so provisioning + streaming
 // share one session. (glyphh() is a lazily-built singleton — safe at module load.)
@@ -64,12 +77,15 @@ const RUN_STREAM = false;
  *  2026-09-30). The tray's code stays for a hardened return. */
 const STREAMED_PANELS = false;
 /** A session's LOCUS is an IMMUTABLE fact, persisted by session id: it is
- *  FOREVER a specific desktop (+ working folder). An old `cloud` entry on this
- *  device reads as no locus (v1 has no cloud workers). It NEVER flips. Only the
- *  connection STATUS (alive/idle) is dynamic and derived separately. The machine is
- *  keyed by NAME (its per-connection id changes on every reconnect — keying on that
- *  caused the flicker). */
-type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string };
+ *  FOREVER a specific desktop (+ working folder) or FOREVER the cloud (+ the
+ *  repos it checked out — his direction, 2026-10-05). It NEVER flips — the
+ *  web's rule (session-locus.ts). Only the connection STATUS (alive/idle) is
+ *  dynamic and derived separately. The machine is keyed by NAME (its
+ *  per-connection id changes on every reconnect — keying on that caused the
+ *  flicker). A pre-2026-10-05 `cloud` entry without a source reads as none. */
+type SavedLocus =
+  | { kind: 'local'; machineId?: string; machineName?: string; path: string }
+  | { kind: 'cloud'; source: CloudSource };
 const LOCUS_KEY = 'yoSources';
 function loadLocus(): Record<string, SavedLocus> {
   try { return JSON.parse(localStorage.getItem(LOCUS_KEY) || '{}'); } catch { return {}; }
@@ -88,6 +104,9 @@ function chatFor(id: string): RemoteChat {
     c = { id, mode: 'code' };
     const l = locusOf(id);
     if (l?.kind === 'local') c.source = { kind: 'local', ...(l.machineId ? { machineId: l.machineId } : {}), path: l.path };
+    // A cloud session carries its repos verbatim — remote-run reads `kind`
+    // + `repo` (the first pick, the one the worker checks out).
+    else if (l?.kind === 'cloud' && l.source?.kind === 'cloud-repo') c.source = l.source as Source;
     remoteChats.set(id, c);
   }
   return c;
@@ -202,7 +221,8 @@ type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'b
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
   | 'sliders' | 'grid' | 'perms' | 'voice'
   | 'camera' | 'image' | 'filedoc' | 'tick' | 'external' | 'pin' | 'chats' | 'pencil' | 'trash'
-  | 'swap' | 'loop' | 'contrast' | 'help' | 'key' | 'building' | 'users';
+  | 'swap' | 'loop' | 'contrast' | 'help' | 'key' | 'building' | 'users'
+  | 'hand' | 'github';
 
 /* ── Icons (stroke = currentColor, so they inherit the token color) ───────── */
 const ICON: Record<IconName, React.ReactNode> = {
@@ -259,6 +279,10 @@ const ICON: Record<IconName, React.ReactNode> = {
   key: <><circle cx="7.5" cy="15.5" r="4" /><path d="M10.3 12.7L20 3" /><path d="M16 7l3 3" /><path d="M13 10l2.5 2.5" /></>,
   building: <><rect x="4" y="3" width="16" height="18" rx="1.5" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M10 21v-4h4v4" /></>,
   users: <><circle cx="9" cy="9" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.4a3 3 0 0 1 0 5.5M20.5 19a5.5 5.5 0 0 0-4-5.3" /></>,
+  // The sessions list's "waiting for you" mark (his target screen, 2026-10-05).
+  hand: <><path d="M18 11V6.5a1.5 1.5 0 0 0-3 0V11" /><path d="M15 10.5V4.5a1.5 1.5 0 0 0-3 0V11" /><path d="M12 10.5V5.5a1.5 1.5 0 0 0-3 0V12" /><path d="M9 11.5V8.5a1.5 1.5 0 0 0-3 0V15a6 6 0 0 0 12 0v-4" /></>,
+  // The GitHub mark (filled, like `contrast`) on the repo chip.
+  github: <path fill="currentColor" stroke="none" d="M12 1.6a10.4 10.4 0 0 0-3.3 20.3c.5.1.7-.2.7-.5v-1.8c-2.9.6-3.5-1.4-3.5-1.4-.5-1.2-1.2-1.5-1.2-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1.1 1.6 1.1.9 1.6 2.5 1.1 3.1.9.1-.7.4-1.1.7-1.4-2.3-.3-4.8-1.2-4.8-5.2 0-1.1.4-2.1 1.1-2.8-.1-.3-.5-1.3.1-2.8 0 0 .9-.3 2.9 1.1a10 10 0 0 1 5.2 0c2-1.4 2.9-1.1 2.9-1.1.6 1.5.2 2.5.1 2.8.7.7 1.1 1.7 1.1 2.8 0 4-2.5 4.9-4.8 5.2.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.4 10.4 0 0 0 12 1.6z" />,
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -328,7 +352,7 @@ const AGENT_ROLES: RoleItem[] = [{ name: 'agent', label: 'Agent', modelId: null,
    session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
    `mode` field is still written as "code" for server compatibility, but nothing
    here branches on it. ────── */
-interface ThreadMeta { id: string; title: string; mode?: string; source?: { kind?: string; path?: string; machineId?: string; machineName?: string } | null; createdAt: number; updatedAt: number; messageCount: number; }
+type ThreadMeta = ListedThread;
 interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
 
 /** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
@@ -384,7 +408,7 @@ function OrgSwitch() {
   );
 }
 
-function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user, iconOf }: {
+function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user, iconOf, whereOf }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
   onAllSessions: () => void;
@@ -393,6 +417,8 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
   onArtifacts: () => void;
   /** The session's locus glyph — the same laptop/cloud the All Sessions list shows. */
   iconOf?: (id: string) => 'laptop' | 'cloud';
+  /** Where it runs — the desktop's name, or `Cloud · <repo>` (the web's label). */
+  whereOf?: (id: string) => string;
   onConnections: () => void;
   onApps: () => void;
   user: DisplayUser;
@@ -425,9 +451,12 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
         <div className="m-recents-label">Recents</div>
         <div className="m-recents-list">
           {recents.map((r) => (
-            <button key={r.id} className="m-recent" onClick={() => onOpenRecent(r)}>
+            <button key={r.id} className="m-recent" title={whereOf?.(r.id)} onClick={() => onOpenRecent(r)}>
               {iconOf && <span className="m-recent-locus"><Icon name={iconOf(r.id)} /></span>}
-              <span className="m-recent-title">{r.title}</span>
+              <span className="m-recent-text">
+                <span className="m-recent-title">{r.title}</span>
+                {whereOf && <span className="m-recent-where">{whereOf(r.id)}</span>}
+              </span>
             </button>
           ))}
           <button className="m-all-chats" onClick={onAllSessions}>
@@ -452,7 +481,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles, chips, sendBlock }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -469,7 +498,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
     });
   }, []);
   useEffect(() => { voiceCtl.bind({ onText: onDictate, onSend: onVoiceSend }); });
-  const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting;
+  const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting && !sendBlock;
   const submit = () => { if (canSend) onSend(); };
   const onMic = () => {
     void (async () => {
@@ -486,6 +515,17 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
   };
   return (
     <div className="m-composer">
+      {/* Environment · repos (or folder) — the place is picked HERE, before
+          the first send; locked once the session has run. */}
+      <div className="m-env-row">
+        {chips.map((c) => (
+          <button key={c.id} className={'m-tool-pill m-env-chip' + (c.locked ? ' m-env-chip-locked' : '')} onClick={() => { haptic(); c.onClick(); }}>
+            <span className="m-env-chip-ico"><Icon name={c.icon} />{c.live && <i className="m-dev-dot" />}</span>
+            <span>{c.label}</span>
+          </button>
+        ))}
+      </div>
+      {sendBlock && <div className="m-send-block">{sendBlock}</div>}
       {micErr && (
         <div className="m-mic-err" role="alert" onClick={() => voiceCtl.clearError()}>
           <Icon name="mic" /><span>{micErr}</span><Icon name="close" />
@@ -567,7 +607,7 @@ function Ghost() {
 
 /* ── Header filter: a dropdown under the funnel — "All <things>" (checked) vs
    "Pinned". Closes on outside tap. Used by Chats / Work / Code. ──────────── */
-function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName }) {
+function FilterMenu({ allLabel, allIcon, trigger = 'filter' }: { allLabel: string; allIcon: IconName; trigger?: IconName }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pinned'>('all');
   const ref = useRef<HTMLDivElement>(null);
@@ -585,7 +625,7 @@ function FilterMenu({ allLabel, allIcon }: { allLabel: string; allIcon: IconName
   );
   return (
     <div className="m-filter" ref={ref}>
-      <button className="m-chats-icon" aria-label="Filter" onClick={() => { haptic(); setOpen((v) => !v); }}><Icon name="filter" /></button>
+      <button className="m-chats-icon" aria-label="Filter" onClick={() => { haptic(); setOpen((v) => !v); }}><Icon name={trigger} /></button>
       {open && (
         <div className="m-filter-menu" role="menu">
           {row('all', allIcon, allLabel)}
@@ -614,19 +654,33 @@ interface AttachedMachine { id?: string; app: string; version?: string; name?: s
    the top, then every session — pinned-first, then time-sorted — each row
    carrying a small cloud/local marker (the only per-session distinction now).
    Built like the old Code view; Chats/Work/Code are collapsed into this. ──── */
-function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, onMenu, onOpen, onOpenDesktop, onNewSession, onSearch }: {
+/** What a list row says about where it runs (mobile-cloud.ts sessionSubline). */
+interface SessionWhere { locus: Locus; subline: string; live: boolean }
+
+function HomeList({ desktops, sessions, pinnedIds, loading, activity, whereOf, onMenu, onOpen, onOpenDesktop, onAddDevice, onNewSession, onSearch }: {
   desktops: AttachedMachine[];
   sessions: Recent[];
   pinnedIds: Set<string>;
   loading: boolean;
   activity: Record<string, 'working' | 'waiting'>;
-  sourceOf: (id: string) => { local: boolean; name?: string; connected: boolean };
+  whereOf: (id: string) => SessionWhere;
   onMenu: () => void;
   onOpen: (s: Recent) => void;
   onOpenDesktop: (d: AttachedMachine) => void;
+  onAddDevice: () => void;
   onNewSession: () => void;
   onSearch: () => void;
 }) {
+  // The row's status mark: an open circle idle, an arc running, a hand when
+  // the agent waits for you (his target screen, 2026-10-05).
+  const mark = (id: string) => {
+    const m = sessionMark(activity[id]);
+    return (
+      <span className="m-cl-mark" data-mark={m} aria-label={m === 'running' ? 'Running' : m === 'waiting' ? 'Waiting for you' : 'Idle'}>
+        <Icon name={m === 'running' ? 'progress' : m === 'waiting' ? 'hand' : 'circle'} />
+      </span>
+    );
+  };
   return (
     <div className="m-code">
       {/* Header + footer reuse the chats classes — identical transparency,
@@ -635,56 +689,53 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, sourceOf, 
       <div className="m-chats-fade m-chats-fade-bottom" />
       <header className="m-chats-head">
         <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
-        <span className="m-chats-title">Sessions</span>
-        <FilterMenu allLabel="All sessions" allIcon="code" />
+        <span className="m-chats-title">Code</span>
+        <FilterMenu allLabel="All sessions" allIcon="code" trigger="sliders" />
       </header>
       <div className="m-code-scroll">
-        <div className="m-code-label">Desktops</div>
-        <div className="m-desktops">
+        {/* Devices — one chip per attached desktop; the + leads to the
+            environment sheet (a device attaches from the desktop's own
+            Settings → Remote control). */}
+        <div className="m-cl-sect">
+          <span className="m-code-label">Devices</span>
+          <button className="m-cl-add" aria-label="Add a device" onClick={onAddDevice}><Icon name="plus" /></button>
+        </div>
+        <div className="m-devices">
           {desktops.length === 0
-            ? <div className="m-list-note">{desktopSessions.orgOff() ? 'Remote control is off for your organization.' : 'No computer has remote control on'}</div>
+            ? <div className="m-list-note m-list-note-tight">{desktopSessions.orgOff() ? 'Remote control is off for your organization.' : 'No computer has remote control on'}</div>
             : desktops.map((d) => (
-              <button key={d.id || d.name || d.app} className="m-desktop" data-status="connected" onClick={() => onOpenDesktop(d)}>
-                <span className="m-desktop-icon"><Icon name="laptop" /><i className="m-desktop-badge" /></span>
-                <span className="m-desktop-name">{d.name || d.app}</span>
-                <span className="m-desktop-status">Connected</span>
+              <button key={d.id || d.name || d.app} className="m-dev-chip" data-status="connected" onClick={() => onOpenDesktop(d)}>
+                <span className="m-dev-ico"><Icon name="laptop" /><i className="m-dev-dot" /></span>
+                <span className="m-dev-name">{d.name || d.app}</span>
               </button>
             ))}
         </div>
 
-        <div className="m-code-sessions-head">
-          <span className="m-code-label">Sessions</span>
-        </div>
-        <div className="m-code-list">
+        <div className="m-cl-sect"><span className="m-code-label">Sessions</span></div>
+        <div className="m-cl-list">
           {loading
             ? <div className="m-list-note">Loading…</div>
             : sessions.length === 0
             ? <div className="m-list-note">No sessions yet — start one.</div>
-            : sessions.map((s) => (
-              <button key={s.id} className="m-code-card" onClick={() => onOpen(s)}>
-                <span className="m-code-thumb" data-kind="plain">{activity[s.id] && <ActivityBadge state={activity[s.id]} />}</span>
-                <span className="m-code-body">
-                  <span className="m-code-top">
-                    <span className="m-code-name">{pinnedIds.has(s.id) && <span className="m-row-pin"><Icon name="pin" /></span>}{s.title}</span>
-                    <span className="m-code-when">{s.when}</span>
+            : sessions.map((s) => {
+              const w = whereOf(s.id);
+              return (
+                <button key={s.id} className="m-cl-row" onClick={() => onOpen(s)}>
+                  {mark(s.id)}
+                  <span className="m-cl-body">
+                    <span className="m-cl-title">{pinnedIds.has(s.id) && <span className="m-row-pin"><Icon name="pin" /></span>}{s.title}</span>
+                    <span className="m-cl-sub" data-live={w.live ? 'true' : 'false'}>
+                      <span className="m-cl-where">{activity[s.id] === 'waiting' ? 'Waiting for you' : w.subline}</span>
+                      <Icon name={w.locus === 'cloud' ? 'cloud' : 'laptop'} />
+                    </span>
                   </span>
-                  {(() => {
-                    const info = sourceOf(s.id);
-                    return (
-                      <span className="m-code-meta" data-where={info.connected ? 'connected' : 'off'}>
-                        <Icon name={info.local ? 'laptop' : 'cloud'} />
-                        <span className="m-code-state">{info.local ? (info.connected ? 'Connected' : 'Disconnected') : (info.connected ? 'Running' : 'Ready')}</span>
-                        <span className="m-code-loc">· {info.local ? info.name : 'Cloud'}</span>
-                      </span>
-                    );
-                  })()}
-                </span>
-              </button>
-            ))}
+                </button>
+              );
+            })}
         </div>
       </div>
+      <button className="m-search-fab" aria-label="Search" onClick={onSearch}><Icon name="search" /></button>
       <button className="m-fab btn btn-primary btn-lg" onClick={onNewSession}><Icon name="plus" /><span>New session</span></button>
-      <button className="m-search" onClick={onSearch}><Icon name="search" /><span>Search</span></button>
     </div>
   );
 }
@@ -709,7 +760,15 @@ interface CompProps {
   attachments: AttachImage[];                        // pending image attachments (vision)
   onRemoveAttachment: (id: string) => void;
   onPasteFiles: (files: FileList | File[]) => void;  // paste-image / drop
+  /** The two chips above the box (his target screen, 2026-10-05): WHERE the
+   *  session runs (the environment) and WHAT it checks out (the repos) — or
+   *  the folder, on a desktop. */
+  chips: ComposerChip[];
+  /** Why a send is refused right now ('' = it may send) — GitHub is the hard
+   *  limit on a cloud session: linked, and a repo picked. */
+  sendBlock: string;
 }
+interface ComposerChip { id: string; icon: IconName; label: string; live?: boolean; locked?: boolean; onClick: () => void }
 
 /** A pending image attachment — base64 for the turn, dataURL for the chip. */
 interface AttachImage { id: string; mediaType: string; data: string; url: string; name: string }
@@ -3869,6 +3928,289 @@ function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => vo
   );
 }
 
+/* ── Choose environment (his target screen, 2026-10-05) ─────────────────────
+   WHERE the next session runs. "Remote control" = the attached desktops (the
+   existing desktop lane: a tap opens that machine's folder picker); "Cloud
+   environments" = the one "Default" environment the cloud has today — a repo
+   grant is all a cloud session needs. Named environments come next; the
+   "Create environment" row is disabled until they exist as a record. A born
+   session locks the OTHER section (session-locus.ts: the locus is fixed at
+   birth). ─────────────────────────────────────────────────────────────── */
+function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, onPickDesktop, onPickCloud }: {
+  open: boolean; onClose: () => void;
+  desktops: AttachedMachine[];
+  /** How many of the member's sessions live on the named machine. */
+  sessionCount: (machineName: string) => number;
+  locus: Locus;
+  /** The open session has run — its locus can no longer change. */
+  born: boolean;
+  onPickDesktop: (d: AttachedMachine) => void;
+  onPickCloud: () => void;
+}) {
+  const lockDesktop = born && locus === 'cloud';
+  const lockCloud = born && locus === 'local';
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'} data-sheet="environment">
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel" role="dialog" aria-modal="true">
+        <div className="m-sel-grip" />
+        <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">Choose environment</span></div>
+        <div className="m-sel-body">
+          <div className="m-code-label">Remote control</div>
+          {desktops.length === 0
+            ? <div className="m-sel-group"><div className="m-list-note m-list-note-tight">{desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : 'No desktop is attached — turn remote control on in the Glyphh desktop app (Settings → Remote control).'}</div></div>
+            : (
+              <div className="m-sel-group">
+                {desktops.map((d) => {
+                  const name = d.name || d.app;
+                  const n = sessionCount(name);
+                  return (
+                    <button key={d.id || name} className="m-opt m-env-opt" disabled={lockDesktop} title={lockDesktop ? LOCUS_LOCKED_HINT.cloud : undefined} onClick={() => { haptic(); onPickDesktop(d); }}>
+                      <span className="m-env-ico"><Icon name="laptop" /><i className="m-dev-dot" /></span>
+                      <span className="m-opt-text"><span className="m-opt-name">{name}</span><span className="m-opt-desc">{d.app}</span></span>
+                      <span className="m-env-count">{n} session{n === 1 ? '' : 's'}</span><Icon name="chevron" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          {lockDesktop && <div className="m-sel-note">{LOCUS_LOCKED_HINT.cloud}</div>}
+
+          <div className="m-code-label">Cloud environments</div>
+          <div className="m-sel-group">
+            <button className="m-opt m-env-opt" disabled={lockCloud} title={lockCloud ? LOCUS_LOCKED_HINT.local : undefined} onClick={() => { haptic(); onPickCloud(); }}>
+              <span className="m-env-ico"><Icon name="cloud" /></span>
+              <span className="m-opt-text"><span className="m-opt-name">Default</span></span>
+              {locus === 'cloud' && <span className="m-opt-tick"><Icon name="tick" /></span>}
+            </button>
+          </div>
+          <div className="m-sel-group">
+            {/* Named environments are not a record yet — disabled, honestly. */}
+            <button className="m-opt m-env-opt" disabled>
+              <span className="m-env-ico"><Icon name="plus" /></span>
+              <span className="m-opt-text"><span className="m-opt-name">Create environment</span><span className="m-opt-desc">Named environments come next</span></span>
+            </button>
+          </div>
+          {lockCloud && <div className="m-sel-note">{LOCUS_LOCKED_HINT.local}</div>}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ── Repositories → Choose base branch (his target screens, 2026-10-05) ───────
+   The repos a cloud session checks out, from the member's connected GitHub —
+   the same SDK calls the web's picker makes (git.status → git.repos; not
+   linked → Connect GitHub: git.connect → open the URL → poll git.status).
+   Multi-select; "Selected" on top, the rest grouped by owner, search pinned at
+   the bottom. Then one row per pick with its base branch (the repo's default
+   until changed). The FIRST pick is what the worker checks out today; the
+   whole selection rides in the session record. ───────────────────────────── */
+type GitState = 'unknown' | 'off' | 'connecting' | 'on';
+function ReposSheet({ open, onClose, picks, setPicks, git, setGit, locked, note }: {
+  open: boolean; onClose: () => void;
+  picks: RepoPick[]; setPicks: (p: RepoPick[]) => void;
+  git: GitState; setGit: (g: GitState) => void;
+  /** The open session has run — the selection is read-only. */
+  locked: boolean;
+  /** Words from the return landing (a failed completion), shown on open. */
+  note?: string;
+}) {
+  const [depth, setDepth] = useState(0);
+  const [repos, setRepos] = useState<RepoRow[] | null>(null);   // null = loading
+  const [err, setErr] = useState('');
+  useEffect(() => { if (open && note) setErr(note); }, [open, note]);
+  const [query, setQuery] = useState('');
+  const [branchFor, setBranchFor] = useState('');               // the pick whose branches panel 2 lists
+  const [branches, setBranches] = useState<BranchRow[] | null>(null);
+  const pollRef = useRef<AbortController | null>(null);
+
+  const loadRepos = async () => {
+    setErr('');
+    try { setRepos(await mobileGit.repos()); }
+    catch (e) { setRepos([]); setErr(e instanceof Error && e.message ? e.message : 'Could not list repositories.'); }
+  };
+  // Open → settle the link state, list when linked. Close → stop any poll,
+  // reset the track once slid away.
+  useEffect(() => {
+    if (!open) {
+      pollRef.current?.abort(); pollRef.current = null;
+      if (git === 'connecting') setGit('off');
+      const t = setTimeout(() => { setDepth(0); setQuery(''); }, 260);
+      return () => clearTimeout(t);
+    }
+    let on = true;
+    void mobileGit.status().then((st) => {
+      if (!on) return;
+      setGit(st.connected ? 'on' : 'off');
+      if (st.connected) void loadRepos();
+    });
+    return () => { on = false; };
+  }, [open]);
+
+  /** Connect GitHub: the SDK's connect link opens in a new tab (on iOS Safari
+   *  that is the GitHub App install page); the sheet polls status every 2 s
+   *  (3 min cap) and paints the list once linked. `returnTo` = this page. */
+  const connect = () => {
+    haptic();
+    void (async () => {
+      let url = '';
+      try { url = await mobileGit.connect(window.location.href); }
+      catch (e) { setErr(e instanceof Error && e.message ? e.message : 'GitHub is not reachable right now.'); return; }
+      if (!url) { setErr('GitHub is not reachable right now.'); return; }
+      window.open(url, '_blank', 'noopener');
+      setGit('connecting');
+      const ac = new AbortController(); pollRef.current = ac;
+      let ok = false;
+      try { ok = await mobileGit.waitForConnection({ signal: ac.signal }); }
+      catch (e) { if (ac.signal.aborted) return; pollRef.current = null; setGit('off'); setErr(e instanceof Error ? e.message : String(e)); return; }
+      if (ac.signal.aborted) return;
+      pollRef.current = null;
+      if (ok) { setGit('on'); void loadRepos(); }
+      else { setGit('off'); setErr('GitHub did not finish linking — try again.'); }
+    })();
+  };
+  const disconnect = () => {
+    haptic();
+    void mobileGit.disconnect().then(() => { setGit('off'); setRepos(null); setPicks([]); }).catch(() => { /* the rows stay; a failed unlink changes nothing */ });
+  };
+  const openBranches = (pick: RepoPick) => {
+    haptic(); setBranchFor(pick.repo); setBranches(null); setDepth(2);
+    const row = (repos ?? []).find((r) => r.fullName === pick.repo);
+    void mobileGit.branches(pick.repo, row?.defaultBranch || pick.branch || 'main').then(setBranches);
+  };
+
+  const selected = picks.map((p) => (repos ?? []).find((r) => r.fullName === p.repo) ?? { id: p.repo, fullName: p.repo, private: false, defaultBranch: p.branch });
+  const groups = groupRepos((repos ?? []).filter((r) => !picks.some((p) => p.repo === r.fullName)), query);
+  const repoRow = (r: RepoRow, on: boolean) => {
+    const { owner, name } = splitRepo(r.fullName);
+    return (
+      <button key={r.fullName} className="m-opt" disabled={locked} onClick={() => { haptic(); setPicks(toggleRepo(picks, r)); }}>
+        <span className="m-opt-text"><span className="m-opt-desc">{owner}</span><span className="m-opt-name">{name}</span></span>
+        {on && <span className="m-opt-tick"><Icon name="tick" /></span>}
+      </button>
+    );
+  };
+
+  return createPortal(
+    <div className="m-sel-overlay" data-open={open ? 'true' : 'false'} data-sheet="repos">
+      <div className="m-sel-scrim" onClick={onClose} />
+      <div className="m-sel m-sel-tall" role="dialog" aria-modal="true">
+        <div className="m-sel-grip" />
+        <div className="m-sel-track" data-depth={depth}>
+          {/* Panel 0 — Repositories (N). */}
+          <section className="m-sel-panel">
+            <div className="m-sel-head">
+              <button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+              <span className="m-sel-title">{git === 'on' ? `Repositories (${picks.length})` : 'Repositories'}</span>
+              {git === 'on' && picks.length > 0 && <button className="m-sel-next" onClick={() => { haptic(); setDepth(1); }}>Branches<Icon name="chevron" /></button>}
+            </div>
+            <div className="m-sel-body">
+              {err && <div className="m-list-note m-field-err m-list-note-tight">{err}</div>}
+              {git === 'unknown' && <div className="m-list-note">Loading…</div>}
+              {git === 'off' && (
+                <>
+                  <div className="m-sel-group">
+                    <button className="m-opt" onClick={connect}>
+                      <span className="m-env-ico"><Icon name="github" /></span>
+                      <span className="m-opt-text"><span className="m-opt-name">Connect GitHub</span><span className="m-opt-desc">Link your account — a cloud session checks out one of its repositories</span></span>
+                      <Icon name="chevron" />
+                    </button>
+                  </div>
+                  <div className="m-sel-note">Opens GitHub in a new tab; come back here when it is linked.</div>
+                </>
+              )}
+              {git === 'connecting' && (
+                <div className="m-connecting m-connecting-inline">
+                  <GlyphhSpinner size={24} phrases={false} />
+                  <span>Waiting for GitHub — finish in the tab that opened…</span>
+                </div>
+              )}
+              {git === 'on' && (
+                <>
+                  {picks.length > 0 && (
+                    <>
+                      <div className="m-code-label">Selected</div>
+                      <div className="m-sel-group">{selected.map((r) => repoRow(r, true))}</div>
+                    </>
+                  )}
+                  <div className="m-code-label">Repositories</div>
+                  {repos === null
+                    ? <div className="m-list-note">Loading…</div>
+                    : groups.length === 0
+                    ? <div className="m-list-note">{repos.length ? (query ? 'No repositories match.' : 'Every repository is selected.') : 'No repositories found — grant the Glyphh app some on GitHub.'}</div>
+                    : groups.map((g) => <div key={g.owner} className="m-sel-group">{g.repos.map((r) => repoRow(r, false))}</div>)}
+                  <div className="m-sel-group">
+                    {/* A GitHub App only lists repos its installation was granted — the
+                        web's two account rows, verbatim. */}
+                    <button className="m-opt" onClick={() => { haptic(); window.open('https://github.com/settings/installations', '_blank', 'noopener'); }}>
+                      <span className="m-opt-text"><span className="m-opt-name">Manage repository access…</span><span className="m-opt-desc">Grant the Glyphh app more repositories on GitHub</span></span><Icon name="external" />
+                    </button>
+                    <button className="m-opt" onClick={disconnect} disabled={locked}>
+                      <span className="m-opt-text"><span className="m-opt-name">Disconnect GitHub</span><span className="m-opt-desc">Unlink this account (repos stop listing here)</span></span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            {git === 'on' && (
+              <div className="m-sel-foot">
+                <label className="m-sel-search m-sel-search-input"><Icon name="search" /><input value={query} onChange={(e) => setQuery((e.target as HTMLInputElement).value)} placeholder="Search" autoComplete="off" spellCheck={false} {...NOFILL} /></label>
+              </div>
+            )}
+          </section>
+
+          {/* Panel 1 — Choose base branch: one row per pick. */}
+          <section className="m-sel-panel">
+            <div className="m-sel-head">
+              <button className="m-sel-x" aria-label="Back" onClick={() => { haptic(); setDepth(0); }}><Icon name="back" /></button>
+              <span className="m-sel-title">Choose base branch</span>
+            </div>
+            <div className="m-sel-body">
+              {picks.length === 0
+                ? <div className="m-list-note">Pick a repository first.</div>
+                : picks.map((p) => (
+                  <button key={p.repo} className="m-opt m-branch-row" disabled={locked} onClick={() => openBranches(p)}>
+                    <span className="m-opt-text"><span className="m-opt-name">{p.repo}</span><span className="m-opt-desc">{p.branch || 'default branch'}</span></span>
+                    <Icon name="chevron" />
+                  </button>
+                ))}
+              {picks.length > 1 && <div className="m-sel-note">The first repository is the one the cloud workspace checks out; the rest ride with the session for later.</div>}
+            </div>
+          </section>
+
+          {/* Panel 2 — the branches of one repo. */}
+          <section className="m-sel-panel">
+            <div className="m-sel-head">
+              <button className="m-sel-x" aria-label="Back" onClick={() => { haptic(); setDepth(1); }}><Icon name="back" /></button>
+              <span className="m-sel-title">{branchFor}</span>
+            </div>
+            <div className="m-sel-body">
+              {branches === null
+                ? <div className="m-list-note">Loading…</div>
+                : (
+                  <div className="m-sel-group">
+                    {branches.map((b) => {
+                      const cur = picks.find((p) => p.repo === branchFor)?.branch;
+                      return (
+                        <button key={b.name} className="m-opt" onClick={() => { haptic(); setPicks(setBranch(picks, branchFor, b.name)); setDepth(1); }}>
+                          <span className="m-opt-text"><span className="m-opt-name">{b.name}</span>{b.default && <span className="m-opt-desc">default</span>}</span>
+                          {cur === b.name && <span className="m-opt-tick"><Icon name="tick" /></span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function App() {
   const [drawer, setDrawer] = useState(false);
   const [screen, setScreen] = useState<'home' | 'list' | 'session'>('home');
@@ -3884,6 +4226,18 @@ function App() {
   const [attach, setAttach] = useState(false);
   const [attachImgs, setAttachImgs] = useState<AttachImage[]>([]);     // pending image attachments (vision)
   const [folderPick, setFolderPick] = useState<AttachedMachine | null>(null); // desktop whose folder picker is open
+  // THE CLOUD LANE (his direction, 2026-10-05) — the environment sheet, the
+  // repositories sheet, GitHub's link state, and the NEW session's picks (kept
+  // on the phone so the chip remembers; a session takes a copy at birth).
+  const [envOpen, setEnvOpen] = useState(false);
+  const [reposOpen, setReposOpen] = useState(false);
+  const [git, setGit] = useState<GitState>('unknown');
+  const [gitNote, setGitNote] = useState('');   // the return landing's verdict, for the repos sheet
+  const [picks, setPicksState] = useState<RepoPick[]>(() => { try { return picksOf({ repos: JSON.parse(localStorage.getItem('yoCloudPicks') || '[]') }); } catch { return []; } });
+  const setPicks = (p: RepoPick[]) => { setPicksState(p); try { localStorage.setItem('yoCloudPicks', JSON.stringify(p)); } catch { /* */ } };
+  // Where the NEXT session lands when the member has not said: the web's
+  // rule (session-locus.ts defaultLocus) — the attached desktop, else the cloud.
+  const [newLocusPick, setNewLocusPick] = useState<Locus | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [threads, setThreads] = useState<ThreadMeta[] | null>(null);   // null = loading
@@ -3982,18 +4336,34 @@ function App() {
   // server still persists a `mode` field for compatibility, so we hardcode it.
   const SESSION_MODE = 'code' as const;
 
+  /** ONE list from both stores: the desktop's threads over the attach socket
+   *  and the server's CLOUD threads (mobile-cloud.ts mergeThreads). */
+  const loadThreads = async (): Promise<ThreadMeta[]> => {
+    const [d, c] = await Promise.all([
+      desktopSessions.threads().catch(() => [] as ThreadMeta[]),
+      cloudSessions.threads(),
+    ]);
+    return mergeThreads(Array.isArray(d) ? d : [], c);
+  };
+
   /** Name the thread on the desktop (its title, type and folder — the desktop
-   *  writes the turn's messages itself), then refresh the list so the chat
-   *  surfaces with its new title/timestamp. */
+   *  writes the turn's messages itself) or, for a cloud session, on the
+   *  server's thread store (with its transcript), then refresh the list so
+   *  the chat surfaces with its new title/timestamp. */
   const persistThread = async (id: string) => {
     try {
       // Preserve a custom/renamed title (local override or the one already on the thread)
       // instead of re-deriving from the first message — otherwise a rename gets clobbered.
       const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
       const src = chatFor(id).source;
-      await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}), ...(src?.kind === 'local' && src.machineId ? { machineId: src.machineId } : {}) });
-      const t = await desktopSessions.threads();
-      setThreads(Array.isArray(t) ? t : []);
+      if (isCloudKind(src?.kind)) {
+        // A cloud thread lives on the server's thread store, transcript and
+        // all — the worker does not write the thread itself.
+        await cloudSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, source: src, messages: toStoredMessages(convoRef.current) });
+      } else {
+        await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}), ...(src?.kind === 'local' && src.machineId ? { machineId: src.machineId } : {}) });
+      }
+      setThreads(await loadThreads());
     } catch { /* offline / not-ready — the transcript stays local for now */ }
   };
 
@@ -4071,7 +4441,9 @@ function App() {
   const loadSession = (s: Recent) => {
     stopObserving();
     convoRef.current = []; setMsgs(null);
-    desktopSessions.thread(s.id)
+    const metaSrc0 = (threads ?? []).find((t) => t.id === s.id)?.source;
+    const inCloud = locusOf(s.id)?.kind === 'cloud' || isCloudKind(chatFor(s.id).source?.kind) || isCloudKind(metaSrc0?.kind);
+    (inCloud ? cloudSessions.thread(s.id) : desktopSessions.thread(s.id))
       .then((t: { messages?: ThreadMsg[] }) => {
         // `streaming` here is a STALE CLOSURE (captured when loadSession ran).
         // If the user sent a turn while this fetch was in flight, the stale
@@ -4099,10 +4471,15 @@ function App() {
       const src = meta?.source;
       if (src?.kind === 'local') {
         chat.source = { kind: 'local', ...(src.machineId ? { machineId: src.machineId } : {}), path: src.path || '' };
+      } else if (src && isCloudKind(src.kind)) {
+        // A cloud thread born on the web (or another phone): its source is
+        // the record — the run targets the cloud with the same repo.
+        chat.source = src as unknown as Source;
       }
     }
-    // Sessions run ON the desktop over the relay — nothing to provision up
-    // front; the turn connects per-run via attach.run. (Cloud workers: later.)
+    // Nothing to provision up front on either place: a desktop session
+    // connects per-run over the relay (attach.run), a cloud session goes
+    // through the front door (`/api/harness`, region-routed) per turn.
     setConnecting(false);
   };
 
@@ -4135,16 +4512,24 @@ function App() {
     const imgs = override === undefined ? attachImgs.map((a) => ({ mediaType: a.mediaType, data: a.data })) : [];
     const imgUrls = override === undefined ? attachImgs.map((a) => a.url) : [];
     if ((!prompt && imgs.length === 0) || streaming || sendBusyRef.current) return;
-    // EVERY SESSION RUNS ON A DESKTOP (v1, 2026-09-30 — cloud workers come
-    // later): a session without a desktop folder is not sent anywhere. The
-    // draft stays; the picker opens on the attached desktop, or the transcript
-    // says to open the app.
-    if (!session || chatFor(session.id).source?.kind !== 'local') {
-      haptic();
-      if (desktops[0]) { setFolderPick(desktops[0]); return; }
-      convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
-      renderConvo();
-      return;
+    // THE PLACE IS FIXED AT BIRTH (session-locus.ts). A session not yet born
+    // takes the composer's environment now: the CLOUD with the picked repos
+    // (GitHub linked + a repo is the hard limit — his rule, 2026-10-05), or a
+    // DESKTOP folder (the picker opens on the attached desktop, as before).
+    const born = session ? chatFor(session.id).source : undefined;
+    if (!session || (born?.kind !== 'local' && !isCloudKind(born?.kind))) {
+      if (session && newLocus === 'cloud') {
+        if (cloudSendBlock(git === 'on', picks)) { haptic(); setReposOpen(true); return; }
+        const src = cloudSource(picks)!;
+        chatFor(session.id).source = src as Source;
+        saveLocus(session.id, { kind: 'cloud', source: src });
+      } else {
+        haptic();
+        if (desktops[0]) { setFolderPick(desktops[0]); return; }
+        convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
+        renderConvo();
+        return;
+      }
     }
     // Hold the guard through the double-tap / ghost-click window; by the time it
     // releases, `streaming` state has committed and takes over re-entry blocking.
@@ -4241,7 +4626,8 @@ function App() {
     // The session's machine by NAME — its per-connection id changes on every
     // reconnect, so the id is looked up fresh for each turn.
     if (chat.source?.kind === 'local') {
-      const name = locusOf(sess.id)?.machineName || (threads ?? []).find((t) => t.id === sess!.id)?.source?.machineName || '';
+      const l0 = locusOf(sess.id);
+      const name = (l0?.kind === 'local' ? l0.machineName : '') || (threads ?? []).find((t) => t.id === sess!.id)?.source?.machineName || '';
       const live = name ? desktops.find((d) => (d.name || d.app) === name) : undefined;
       if (live) chat.source = { ...chat.source, machineId: live.id };
     }
@@ -4387,7 +4773,53 @@ function App() {
     return () => navigator.serviceWorker.removeEventListener('message', onMsg);
   }, []);
 
+  // ── The composer's place: environment + repos (cloud) or folder (desktop) ──
+  // The OPEN session's locus when it has one; else the next session's —
+  // the member's pick, else the web's default (the attached desktop, else
+  // the cloud). Locked once the session has run.
+  const openLocus: Locus | null = (() => {
+    if (!session) return null;
+    const l = locusOf(session.id);
+    if (l) return l.kind;
+    const src = chatFor(session.id).source;
+    if (src?.kind === 'local') return 'local';
+    if (isCloudKind(src?.kind)) return 'cloud';
+    const meta = (threads ?? []).find((t) => t.id === session.id)?.source;
+    if (meta?.kind === 'local') return 'local';
+    if (isCloudKind(meta?.kind)) return 'cloud';
+    return null;
+  })();
+  const newLocus: Locus = newLocusPick ?? defaultLocus('web', desktops.length > 0);
+  const effLocus: Locus = openLocus ?? newLocus;
+  const sessionBorn = openLocus !== null;
+  const openSrc = session ? (locusOf(session.id)?.kind === 'cloud' ? (locusOf(session.id) as { source: CloudSource }).source : chatFor(session.id).source) : undefined;
+  const openPicks: RepoPick[] = sessionBorn && effLocus === 'cloud' ? picksOf(openSrc as { kind?: string; repo?: string; repos?: unknown } | undefined) : picks;
+  const openMachine = (() => {
+    if (!session) return '';
+    const l = locusOf(session.id);
+    if (l?.kind === 'local') return l.machineName || '';
+    const meta = (threads ?? []).find((t) => t.id === session.id)?.source;
+    return meta?.kind === 'local' ? String(meta.machineName || '') : (desktops[0]?.name || desktops[0]?.app || '');
+  })();
+  const openFolder = (() => {
+    if (!session) return '';
+    const l = locusOf(session.id);
+    if (l?.kind === 'local') return l.path;
+    const src = chatFor(session.id).source;
+    return src?.kind === 'local' ? src.path : '';
+  })();
+  const chips: ComposerChip[] = [
+    { id: 'env', icon: effLocus === 'cloud' ? 'cloud' : 'laptop', label: envChipLabel(effLocus, openMachine), live: effLocus === 'local' && desktops.some((d) => (d.name || d.app) === openMachine), locked: sessionBorn, onClick: () => setEnvOpen(true) },
+    effLocus === 'cloud'
+      ? { id: 'repo', icon: 'github', label: repoChipLabel(openPicks, git === 'on' || (sessionBorn && openPicks.length > 0)), locked: sessionBorn, onClick: () => setReposOpen(true) }
+      : { id: 'folder', icon: 'files', label: folderChipLabel(openFolder), locked: sessionBorn, onClick: () => { if (sessionBorn) return; if (desktops[0]) setFolderPick(desktops[0]); else setEnvOpen(true); } },
+  ];
+  // GitHub is the hard limit on a cloud session; a desktop session's gate is
+  // the folder picker (the send opens it, as before).
+  const sendBlock = !sessionBorn && effLocus === 'cloud' ? cloudSendBlock(git === 'on', picks) : '';
+
   const comp: CompProps = {
+    chips, sendBlock,
     onPlus: () => { haptic(); setAttach(true); },
     onOpenSelector: (s) => { haptic(); if (s === 'permission') setPermOpen(true); else setSelectorAt(s); },
     permLabel: PERMS.find((p) => p.id === perm)?.name ?? 'Accept edits',
@@ -4422,6 +4854,9 @@ function App() {
       const d = desktops[0];
       return { icon: 'laptop', text: d?.name || d?.app || 'Desktop' };
     }
+    // In the cloud: the web's `Cloud · <repo>` label (code-source-chip.ts).
+    if (l?.kind === 'cloud') return { icon: 'cloud', text: cloudLabel(l.source) };
+    if (isCloudKind(src?.kind)) return { icon: 'cloud', text: cloudLabel(src) };
     return undefined;
   })();
 
@@ -4500,17 +4935,32 @@ function App() {
   useEffect(() => {
     if (authState !== 'in') return;
     let on = true;
-    desktopSessions.threads()
-      .then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); })
+    loadThreads()
+      .then((t: ThreadMeta[]) => { if (on) setThreads(t); })
       .catch(() => { if (on) setThreads([]); });
+    // GitHub's link state names the repo chip ("Connect GitHub" until linked).
+    // THE RETURN FROM GITHUB lands here with `?github=pending&link=<nonce>`:
+    // the app completes the link as this member (the callback only parks
+    // it), strips the query, and opens the repositories on success.
+    const link = mobileGit.pendingLinkInUrl(window.location.search);
+    if (link !== null) {
+      const u = new URL(window.location.href); u.searchParams.delete('github'); u.searchParams.delete('link');
+      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+      void mobileGit.complete(link || undefined)
+        .then((st) => { if (!on) return; setGit(st.connected ? 'on' : 'off'); setGitNote(''); if (st.connected) setReposOpen(true); })
+        .catch((err: unknown) => { if (!on) return; setGit('off'); setGitNote(mobileGit.completeError(err)); setReposOpen(true); });
+    } else {
+      void mobileGit.status().then((st) => { if (on) setGit(st.connected ? 'on' : 'off'); });
+    }
     // Attached desktops (Code strip). POLL it — a one-shot fetch goes stale the
     // instant the socket reconnects (a server restart drops the attach WS, the
     // desktop re-attaches seconds later, but a single fetch never sees it).
     const loadDesktops = (): void => { void glyphh().attach.status()
       .then((s: { machines?: AttachedMachine[] }) => { if (on) setDesktops(Array.isArray(s?.machines) ? s.machines : []); })
       .catch(() => { if (on) setDesktops([]); });
-      // The chats live on the desktop: re-read them on the same beat.
-      void desktopSessions.threads().then((t: ThreadMeta[]) => { if (on) setThreads(Array.isArray(t) ? t : []); }).catch(() => { /* keep the last list */ }); };
+      // The chats live on the desktop (and the cloud ones on the server):
+      // re-read them on the same beat.
+      void loadThreads().then((t: ThreadMeta[]) => { if (on) setThreads(t); }).catch(() => { /* keep the last list */ }); };
     loadDesktops();
     const desktopsTimer = setInterval(loadDesktops, 20000);
     return () => { on = false; clearInterval(desktopsTimer); };
@@ -4541,7 +4991,22 @@ function App() {
         return { local: true, name: d?.name || d?.app || 'Desktop', connected: !!d };
       }
     }
-    return { local: false, connected: activity[id] === 'working' || activity[id] === 'waiting' };
+    const cloudSrc = l?.kind === 'cloud' ? l.source : (threads ?? []).find((t) => t.id === id)?.source ?? chatFor(id).source;
+    return { local: false, name: cloudLabel(cloudSrc as { kind?: string; repo?: string } | null), connected: activity[id] === 'working' || activity[id] === 'waiting' };
+  };
+  /** The list row's place: the folder's last segment (else its age) on a live
+   *  desktop, `Cloud · <repo>` in the cloud — the web's labels. */
+  const whereOf = (id: string): SessionWhere => {
+    const info = sourceOf(id);
+    const meta = (threads ?? []).find((t) => t.id === id);
+    const l = locusOf(id);
+    const path = l?.kind === 'local' ? l.path : meta?.source?.kind === 'local' ? String(meta.source.path || '') : '';
+    const src = l?.kind === 'cloud' ? l.source : meta?.source ?? chatFor(id).source;
+    return {
+      locus: info.local ? 'local' : 'cloud',
+      subline: sessionSubline({ locus: info.local ? 'local' : 'cloud', path, source: src as { kind?: string; repo?: string } | null, age: meta ? rel(meta.updatedAt) : '' }),
+      live: info.connected,
+    };
   };
 
   const toggleDrawer = () => { haptic(); setDrawer((d) => !d); };
@@ -4602,7 +5067,8 @@ function App() {
     void desktopSessions.pushThread(id, { title }).catch(() => { /* offline — the local override + list update still stand */ });
   };
   const deleteSession = async (s: Recent) => {
-    try { await desktopSessions.deleteThread(s.id); } catch { /* best effort */ }
+    const inCloud = locusOf(s.id)?.kind === 'cloud' || isCloudKind(chatFor(s.id).source?.kind) || isCloudKind((threads ?? []).find((t) => t.id === s.id)?.source?.kind);
+    try { await (inCloud ? cloudSessions.deleteThread(s.id) : desktopSessions.deleteThread(s.id)); } catch { /* best effort */ }
     remoteChats.delete(s.id); forgetLocus(s.id);
     setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }
@@ -4619,14 +5085,16 @@ function App() {
    *  Recents (setThreads) until that first send, so an abandoned new chat leaves
    *  nothing behind. Its immutable cloud locus is stamped on first send too. */
   // ── WORKING FOLDER ────────────────────────────────────────────────────────
-  // A session works in a folder on a connected desktop (v1, 2026-09-30 —
-  // cloud workers and cloud repo clones come later). Locked once it has run.
+  // A session works in a folder on a connected desktop, or in the cloud on a
+  // checked-out GitHub repo (2026-10-05). Locked once it has run.
   const sourceLocked = !!session && !!msgs && msgs.length > 0;
   const sourceLabel = (() => {
     if (!session) return 'None';
     const l = locusOf(session.id);
     if (l?.kind === 'local') return l.machineName || 'Local machine';
+    if (l?.kind === 'cloud') return cloudLabel(l.source);
     const src = chatFor(session.id).source;
+    if (isCloudKind(src?.kind)) return cloudLabel(src as { kind?: string; repo?: string });
     return src?.kind === 'local' && src.path ? src.path.split('/').filter(Boolean).pop() || 'Desktop' : 'None';
   })();
 
@@ -4699,13 +5167,13 @@ function App() {
       {authState === 'in' && (
       <>
       <div className="m-shell">
-        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onArtifacts={openArtifacts} onConnections={openConnections} onApps={openApps} user={user} iconOf={(id) => (sourceOf(id).local ? 'laptop' : 'cloud')} />
+        <Rail onOpenRecent={openRecent} recents={sessions.slice(0, 12)} onAllSessions={allSessionsList} onAccount={account} onNewSession={newSession} onArtifacts={openArtifacts} onConnections={openConnections} onApps={openApps} user={user} iconOf={(id) => (sourceOf(id).local ? 'laptop' : 'cloud')} whereOf={(id) => sourceOf(id).name || ''} />
         <main className="m-main">
           {(screen === 'list' || screen === 'session') && (
             <div className="m-nav" data-screen={screen} data-noanim={navNoAnimRef.current ? 'true' : 'false'} ref={() => { navNoAnimRef.current = false; }}>
               <div className="m-nav-track">
                 <section className="m-nav-panel">
-                  <HomeList desktops={desktops} sessions={sessions} pinnedIds={pins} loading={threads === null} activity={activity} sourceOf={sourceOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onNewSession={newSession} onSearch={openSearch} />
+                  <HomeList desktops={desktops} sessions={sessions} pinnedIds={pins} loading={threads === null} activity={activity} whereOf={whereOf} onMenu={toggleDrawer} onOpen={openSession} onOpenDesktop={(d) => { haptic(); setFolderPick(d); }} onAddDevice={() => { newSession(); setEnvOpen(true); }} onNewSession={newSession} onSearch={openSearch} />
                 </section>
                 <section className="m-nav-panel">
                   {session && <SessionView session={session} msgs={msgs} connecting={connecting} pinned={pins.has(session.id)} subtitle={sessionSubtitle} onBack={backToList} onMenu={toggleDrawer} onDelete={() => deleteSession(session)} onTogglePin={() => togglePin(session.id)} onRename={() => setRenameId(session.id)} onRetry={regenerate} onEditResend={editResend} onQuote={quoteMsg} comp={comp} />}
@@ -4742,6 +5210,13 @@ function App() {
         onPickDesktop={(d) => { setSelectorAt(null); setFolderPick(d); }}
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
+      {/* The cloud lane's two sheets: WHERE (environment) and WHAT (repos). */}
+      <EnvironmentSheet open={envOpen} onClose={() => { haptic(); setEnvOpen(false); }} desktops={desktops}
+        sessionCount={(name) => (threads ?? []).filter((t) => t.source?.kind === 'local' && (t.source.machineName === name)).length}
+        locus={effLocus} born={sessionBorn}
+        onPickDesktop={(d) => { setEnvOpen(false); setNewLocusPick('local'); setFolderPick(d); }}
+        onPickCloud={() => { setEnvOpen(false); setNewLocusPick('cloud'); }} />
+      <ReposSheet open={reposOpen} onClose={() => { haptic(); setReposOpen(false); setGitNote(''); }} picks={sessionBorn ? openPicks : picks} setPicks={setPicks} git={git} setGit={setGit} locked={sessionBorn} note={gitNote} />
       {/* Apps: the installed-app list + the streamed desktop app tray. */}
       <AppsSheet open={appsOpen} onClose={() => { haptic(); setAppsOpen(false); }} onPick={openAppTray} />
       <AppTray app={trayApp} onClose={() => setTrayApp(null)} />
