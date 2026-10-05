@@ -1,6 +1,6 @@
 import { escapeHtml } from "./shared.js";
 import { hostHas } from "./web-surface.js";
-import { LOCUS_SVG, filterPickerRows, folderGranted, pickerRecent, pickerSections, type Locus } from "./session-locus.js";
+import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, pickerRecent, pickerSections, type Locus } from "./session-locus.js";
 import { placeMenu, type PlaceBox } from "./menu-place.js";
 /**
  * code-source-chip.ts — the WORKSPACE-SOURCE chip (ported from the platform's
@@ -454,7 +454,10 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
             if (!lockRow(browse, desk.locked)) {
               browse.addEventListener("click", () => {
                 menu.textContent = "";
-                renderLocal(menu, opts, machine, pick, () => { void paintRoot(); }, inside ? currentFolder : root);
+                // Start in the current folder when it is inside this grant,
+                // and walk UP as far as the grant (his report, 2026-10-05): a
+                // walk capped where it opened could never reach a sibling.
+                renderLocal(menu, opts, machine, pick, () => { void paintRoot(); }, inside ? currentFolder : root, root);
               });
             }
             list.appendChild(browse);
@@ -1133,8 +1136,11 @@ function renderLocal(
   pick: (s: Source) => void,
   onBack: () => void,
   /** Where the walk starts; defaults to the source's own folder. The locus
-   *  picker hands a granted root here. */
+   *  picker hands the current folder or a granted root here. */
   startAt?: string,
+  /** The ceiling of the walk — the granted root on the web. Without one the
+   *  listing's own root (or the first folder listed) is the ceiling. */
+  capAt?: string,
 ): void {
   backHead(menu, machine?.name ? `On ${machine.name}` : "Local folder", onBack);
   const body = document.createElement("div");
@@ -1144,7 +1150,7 @@ function renderLocal(
 
   const s = sdk();
   const startPath = startAt || (opts.getSource().kind === "local" ? (opts.getSource() as { path: string }).path : undefined);
-  let root: string | null = null;
+  let root: string | null = capAt || null;
 
   const paintListing = (listing: FsListing): void => {
     body.textContent = "";
@@ -1161,10 +1167,7 @@ function renderLocal(
     // open, so a session already set deep in the tree could never go up.
     if (listing.root) root = listing.root;
     else if (!root) root = listing.path;
-    const canGoUp = !!listing.parent
-      && listing.path !== root
-      && (!root || listing.parent === root || listing.parent.startsWith(root));
-    if (canGoUp) {
+    if (canWalkUp(listing, root)) {
       const up = drillItem("‹ up", "", "");
       up.classList.add("ws-fs-up");
       up.addEventListener("click", () => walk(listing.parent!));

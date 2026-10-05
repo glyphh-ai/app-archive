@@ -16,7 +16,7 @@ import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
   type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike,
-  defaultWebFolder, type GrantedMachine,
+  defaultWebFolder, folderAfterPick, type GrantedMachine,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
@@ -885,9 +885,16 @@ function initComposerControls(): void {
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
     // their own away-handlers cover most paths; this catches the rest.
+    // Judged on the event's PATH, not on where the target is NOW (his report,
+    // 2026-10-05: "the web agent file choose will not let the user change
+    // directories"): the picker's Browse and back rows repaint their menu in
+    // the click itself, so the row was already detached when the click
+    // reached here, `contains` said "outside", and the picker closed before
+    // a single folder could be walked.
+    const path = e.composedPath();
     document.querySelectorAll<HTMLElement>(".ws-source-drop").forEach((m) => {
       const holder = m.parentElement;
-      if (holder && !holder.contains(t as HTMLElement)) m.remove();
+      if (holder && !path.includes(holder)) m.remove();
     });
   });
 }
@@ -3032,6 +3039,12 @@ function pickSource(next: Source): void {
   // carrying the pick — layout panels stay up, same seat.
   if (cur && cur.messages.length > 0 && !onHome) {
     if (sameSource(cur.source ?? pendingSource, next)) { repaintSourceUi(); return; }
+    // Leaving the born session RE-ROOTS the web's transports (wb-pod.js
+    // onLocusChanged → getCwd → cwd-changed): a programmatic re-root, not a
+    // pick — unsuppressed, the desktop's own cwd landed in pendingWorkdir
+    // right after the pick and the chip went back to the old folder (his
+    // report, 2026-10-05). Same window applySessionFolder arms for an open.
+    cwdStampSuppressedUntil = Date.now() + 1500;
     currentId = "";
     lastSession = "";
     void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
@@ -3042,10 +3055,19 @@ function pickSource(next: Source): void {
 
   // No session / Home / an UNBORN current session — set the pending pick and,
   // for an unborn current session, re-stamp its source (still cheap to change).
+  // THE PICK IS THE FOLDER (his report, 2026-10-05): threadFolder() reads the
+  // workdir first, so the pick writes BOTH fields — as setThreadFolder does —
+  // or the chip keeps naming the old folder and the run keeps using it.
   pendingSource = next;
+  if (cur && cur.messages.length === 0) {
+    cur.source = next;
+    cur.workdir = folderAfterPick(next, cur.workdir ?? "") || undefined;
+    void saveStore();
+  } else {
+    pendingWorkdir = folderAfterPick(next, pendingWorkdir);
+  }
   paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
-  if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
   sourceChip?.setSource(next);
   // A local↔cloud flip re-resolves the loop's slots so the chip and menu
   // match the source this session actually runs on.
