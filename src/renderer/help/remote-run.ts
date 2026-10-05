@@ -126,6 +126,9 @@ export interface CloudRunStartPayload {
   memory?: RemoteMemoryPolicy;
   subdir?: string;
   repo?: string;
+  branch?: string;
+  /** The member's named cloud environment (personal environments, 2026-10-05); absent = Default. */
+  environmentId?: string;
 }
 
 export type CloudRunDoneEvent = { chatId: string; runId: string } & (
@@ -649,6 +652,10 @@ export async function runRemoteTurn(
   // only beside the repo; the front door validates it and the worker's clone
   // checks it out (SDK RunTurnOptions.branch, rrotor config.branch).
   const branch = repo && chat.source?.kind === "cloud-repo" ? String((chat.source as { branch?: string }).branch || "").trim() : "";
+  // The member's named cloud ENVIRONMENT (his direction, 2026-10-05: personal
+  // environments): the id rides beside the repo; the front door resolves it to
+  // the variables + network policy server-side. Default is the absent id.
+  const environmentId = chat.source?.kind === "cloud-repo" ? String((chat.source as { environmentId?: string }).environmentId || "").trim() : "";
   // A cloud-space session RE-ENTERS an existing workspace: the run threads on
   // the space's original id so the pod resolves the same folder the space was
   // born with (and the fs panels scope identically — cloud-fs-router/wb-pod).
@@ -665,6 +672,7 @@ export async function runRemoteTurn(
         ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
       ...(repo ? { repo } : {}),
       ...(repo && branch ? { branch } : {}),
+      ...(environmentId && environmentId !== "default" ? { environmentId } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
@@ -683,6 +691,7 @@ export async function runRemoteTurn(
       ...(workdir ? { workdir } : {}),
       ...(repo ? { repo } : {}),
       ...(repo && branch ? { branch } : {}),
+      ...(environmentId && environmentId !== "default" ? { environmentId } : {}),
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
