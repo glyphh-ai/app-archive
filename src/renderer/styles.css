@@ -21772,7 +21772,12 @@ html.glyphh-web .echo-dock-hotstrip,
 html.glyphh-web .echo-layout-bar,
 html.glyphh-web .echo-veil { display: none !important; }
 html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
-html.glyphh-web .echo-card.echo-agent-card > .echo-card-head { display: none; }
+/* THE AGENT MOVES ON THE WEB TOO (his review, 2026-10-05: "the glyphh agent
+   panel should be draggable too… not fixed in place"). Its head stays — it is
+   the drag handle, as on every other flow panel (code-workbench.ts
+   wireCardDrag, help/web-cut.ts agentCardMovable); only its close goes: the
+   agent is the page, closing it would leave nothing. */
+html.glyphh-web .echo-card.echo-agent-card > .echo-card-head .echo-card-close { display: none; }
 /* The composer's command-center and reset buttons open what the web no longer has. */
 html.glyphh-web #code-cc-open,
 html.glyphh-web #code-reset-open { display: none !important; }
