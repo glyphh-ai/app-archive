@@ -45,6 +45,12 @@ vi.mock("../../src/main/glyphh-app-host.js", () => ({
     { app: "images", name: "Images", data: "local", tools: [{ name: "save_image", description: "File an image", inputSchema: { type: "object" } }, { name: "list_images" }] },
   ],
   callAppTool: async (app: string, tool: string, args: unknown) => { toolCalls.push([app, tool, args]); return { files: [] }; },
+  installGlyphhAppBundle: async (path: string) => { bundleInstalls.push(["path", path]); return { ok: true, name: "Recall", connectors: ["slack"] }; },
+  installGlyphhAppBundleFromBase64: async (b64: string) => { bundleInstalls.push(["base64", b64]); return { ok: true, name: "Recall", updated: true }; },
+}));
+const bundleInstalls: Array<[string, string]> = [];
+vi.mock("../../src/main/glyphh-app-services.js", () => ({
+  connectorStatus: async (names: Set<string>) => [...names].map((connector) => ({ connector, connected: false })),
 }));
 vi.mock("../../src/main/cli-agents.js", () => ({
   listCliSessions: () => [
@@ -86,6 +92,14 @@ describe("the Customize libraries over the attach socket", () => {
     expect(await h({ itemId: "pub-1", from: "../../etc" })).toEqual({ id: "app:pub-1" });
     expect(hubInstalls).toEqual([["glyphh:pub-9", "app"], ["org:org-3", "app"], ["glyphh:pub-1", "app"]]);
     await expect(h({})).rejects.toThrow(/requires \{ itemId \}/);
+  });
+
+  it("apps.install also takes a .glyphh bundle — ONE handler for the hub form and the local MCP's app_install (the two registrations had been overwriting each other)", async () => {
+    const h = handlers.get("apps.install")!;
+    expect(await h({ bundleBase64: "UEs=" })).toEqual({ installed: "Recall", updated: true, requiredConnections: [] });
+    expect(bundleInstalls).toEqual([["base64", "UEs="]]);
+    await expect(h({ path: "/nowhere/app.glyphh" })).rejects.toThrow(/bundle not found/);
+    expect(hubInstalls.length).toBe(3);
   });
 
   it("cliSessions.list hands the web the vendor CLIs' sessions with their resume handles (his report, 2026-10-04)", async () => {

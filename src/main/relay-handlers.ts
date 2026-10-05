@@ -24,10 +24,6 @@ import { panelGoto, panelIsLive } from "./rpa.js";
 import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
 import { getClient } from "./glyphh-client.js";
 import { gatewayCreds } from "./gateway-token.js";
-import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
-import { connectorStatus } from "./glyphh-app-services.js";
-import fs from "fs";
-import os from "os";
 
 interface Deps {
 }
@@ -185,47 +181,7 @@ export function installRelayHandlers(deps: Deps): void {
     throw new Error("local MCP servers are retired — custom MCP connections run server-side; use connector_call_tool");
   });
 
-  // ── Installed Glyphh apps — deploy (GLYPHH-APP-SPEC §5). Discovery and
-  // invocation (apps.listTools / apps.callTool) are attach-handlers.ts's: the
-  // same two the remote door serves the gateway's /mcp. ─
-  registerRelayHandler("apps.install", async (params) => {
-    const p = params as { bundleBase64?: string; path?: string; url?: string } | null;
-    let r: { ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] };
-    if (p?.path) {
-      // Preferred: the bundle is already on this machine — read it directly
-      // instead of round-tripping megabytes of base64 through the LLM.
-      const filePath = p.path.replace(/^~(?=$|\/)/, os.homedir());
-      if (!fs.existsSync(filePath)) throw new Error(`bundle not found: ${filePath}`);
-      r = await installGlyphhAppBundle(filePath);
-    } else if (p?.url) {
-      const res = await fetch(p.url);
-      if (!res.ok) throw new Error(`bundle download failed: HTTP ${res.status}`);
-      r = await installGlyphhAppBundleFromBase64(Buffer.from(await res.arrayBuffer()).toString("base64"));
-    } else if (p?.bundleBase64) {
-      r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
-    } else {
-      throw new Error("apps.install requires { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
-    }
-    if (!r.ok) throw new Error(r.error || "install failed");
-
-    // Surface missing required connections in the install result so the
-    // caller (Claude etc.) tells the user immediately — the app's tools WILL
-    // fail until those accounts are connected in Glyphh → Connections.
-    let missing: string[] = [];
-    if (r.connectors?.length) {
-      try {
-        const status = await connectorStatus(new Set(r.connectors));
-        missing = status.filter((s) => !s.connected).map((s) => s.connector);
-      } catch { /* status unknown — don't block the install result */ }
-    }
-    return {
-      installed: r.name,
-      updated: !!r.updated,
-      requiredConnections: r.connectors ?? [],
-      ...(missing.length ? {
-        missingConnections: missing,
-        warning: `This app will NOT work until these accounts are connected in Glyphh → Connections: ${missing.join(", ")}. Tell the user to connect them.`,
-      } : {}),
-    };
-  });
+  // Installed Glyphh apps — install, discovery and invocation (apps.install /
+  // apps.listTools / apps.callTool) are attach-handlers.ts's: one registry, one
+  // handler each, for the local MCP, the web and the gateway's /mcp alike.
 }

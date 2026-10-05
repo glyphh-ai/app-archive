@@ -76,7 +76,8 @@ import { fetchOrgApps } from "./org-apps.js";
 import { houseCall } from "./house-doors.js";
 import { realHouseDeps } from "./house-deps.js";
 import { installHubItem } from "./hub-ipc.js";
-import { callAppTool, listInstalledAppTools } from "./glyphh-app-host.js";
+import { connectorStatus } from "./glyphh-app-services.js";
+import { callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64, listInstalledAppTools } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -172,14 +173,55 @@ export function installAttachHandlers(): void {
   // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
   registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
 
-  // A LOCAL-DATA APP FROM THE WEB (his verdict, 2026-10-05): the web cannot
+  // INSTALL AN APP ON THIS MACHINE — one handler, two forms. A .glyphh bundle
+  // ({ path } on this machine, { url }, or { bundleBase64 }) is GLYPHH-APP-SPEC
+  // §5's deploy, the local MCP's app_install. A hub item ({ itemId, from }) is
+  // a LOCAL-DATA APP FROM THE WEB (his verdict, 2026-10-05): the web cannot
   // install it alone, so its Install lands here and this machine's local host
   // takes it — the desktop's own hub install, routed by the manifest's data.
   registerRelayHandler("apps.install", async (params) => {
-    const itemId = str(params, "itemId");
-    if (!itemId) throw new Error("apps.install requires { itemId }");
-    const from = str(params, "from") === "org" ? "org" : "glyphh";
-    return installHubItem(`${from}:${itemId}`, "app");
+    const p = params as { itemId?: string; from?: string; bundleBase64?: string; path?: string; url?: string } | null;
+    if (p?.itemId) {
+      const from = p.from === "org" ? "org" : "glyphh";
+      return installHubItem(`${from}:${String(p.itemId)}`, "app");
+    }
+    let r: { ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] };
+    if (p?.path) {
+      // Preferred: the bundle is already on this machine — read it directly
+      // instead of round-tripping megabytes of base64 through the LLM.
+      const filePath = p.path.replace(/^~(?=$|\/)/, homedir());
+      if (!existsSync(filePath)) throw new Error(`bundle not found: ${filePath}`);
+      r = await installGlyphhAppBundle(filePath);
+    } else if (p?.url) {
+      const res = await fetch(p.url);
+      if (!res.ok) throw new Error(`bundle download failed: HTTP ${res.status}`);
+      r = await installGlyphhAppBundleFromBase64(Buffer.from(await res.arrayBuffer()).toString("base64"));
+    } else if (p?.bundleBase64) {
+      r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
+    } else {
+      throw new Error("apps.install requires { itemId } (a hub app), { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
+    }
+    if (!r.ok) throw new Error(r.error || "install failed");
+
+    // Surface missing required connections in the install result so the
+    // caller (Claude etc.) tells the user immediately — the app's tools WILL
+    // fail until those accounts are connected in Glyphh → Connections.
+    let missing: string[] = [];
+    if (r.connectors?.length) {
+      try {
+        const status = await connectorStatus(new Set(r.connectors));
+        missing = status.filter((s) => !s.connected).map((s) => s.connector);
+      } catch { /* status unknown — don't block the install result */ }
+    }
+    return {
+      installed: r.name,
+      updated: !!r.updated,
+      requiredConnections: r.connectors ?? [],
+      ...(missing.length ? {
+        missingConnections: missing,
+        warning: `This app will NOT work until these accounts are connected in Glyphh → Connections: ${missing.join(", ")}. Tell the user to connect them.`,
+      } : {}),
+    };
   });
 
   // THE APPS' TOOLS ON THIS MACHINE (his report, 2026-10-05): the same two the
