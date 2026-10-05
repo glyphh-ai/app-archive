@@ -210,10 +210,10 @@ export function buildContract(client, deps) {
   // THE MEMBER LIBRARY — THE SERVER FIRST (his rule, 2026-10-04: database-
   // as-truth). A workspace or tab the desktop wrote is on the server from its
   // next sync; a web-only member who never installed the desktop has their
-  // library there from day one. The rows an attached desktop still holds
-  // (layouts.list / panelApps.list over the relay) fill in behind the
-  // server's — one row per name/slug, the server winning a tie — so a machine
-  // that has not synced yet still shows what it has.
+  // library there from day one. The app rows an attached desktop still holds
+  // (panelApps.list over the relay) fill in behind the server's — one row per
+  // slug, the server winning a tie. WORKSPACES do not: the web's are the
+  // cloud's rows only (two worlds, his order 2026-10-05).
   const library = buildMemberLibrary(client, { desktopRead, apiUrl });
   const { layoutsList, panelAppsList } = library;
   const house = createHouseRelay({ client });

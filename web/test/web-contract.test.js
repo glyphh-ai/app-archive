@@ -361,24 +361,20 @@ describe('buildContract — workspaces and app tabs read the server first, write
   });
   const withDesktops = (client, answers) => ({ ...client, attach: attachFor(answers) });
 
-  it('layoutsList: the SERVER\'s rows first (the layouts-list shape), then a desktop\'s rows it lacks; a name on both is the server\'s', async () => {
+  it('layoutsList: the member library\'s workspace rows ONLY — a desktop\'s own layouts never join (two worlds, his order 2026-10-05)', async () => {
     const attach = attachFor({
       m1: { 'layouts.list': { layouts: [DESK_LAYOUT, { ...DESK_LAYOUT, name: 'Grid', cols: 9 }] } },
-      m2: { 'layouts.list': new Error('machine went away') },
     });
     const c = buildContract({ ...authedClient(), attach }, deps);
     const rows = await c.layoutsList();
-    expect(rows.map((l) => l.name)).toEqual(['Grid', 'Research']);
-    expect(rows[0]).toMatchObject({ cols: 2, splits: [{ panelId: 'p' }], updatedAt: 1_000 }); // the server's Grid, not the desktop's (cols 9)
-    expect(rows[1]).toEqual(DESK_LAYOUT);                                                   // the desktop's own row, untouched
-    expect(attach.dispatch).toHaveBeenCalledWith('layouts.list', {}, { machineId: 'm1' });
+    expect(rows.map((l) => l.name)).toEqual(['Grid']);
+    expect(rows[0]).toMatchObject({ cols: 2, splits: [{ panelId: 'p' }], updatedAt: 1_000 }); // the server's Grid
+    expect(attach.dispatch).not.toHaveBeenCalledWith('layouts.list', expect.anything(), expect.anything());
   });
 
-  it('layoutsList: a 401 on the server read leaves the desktop\'s rows standing; a dead attach leaves the server\'s', async () => {
+  it('layoutsList: a 401 on the server read is an empty list, even with a desktop attached', async () => {
     const offline = buildContract(withDesktops(rejectingClient(), { m1: { 'layouts.list': { layouts: [DESK_LAYOUT] } } }), deps);
-    expect((await offline.layoutsList()).map((l) => l.name)).toEqual(['Research']);
-    const noAttach = buildContract({ ...authedClient(), attach: { status: async () => { throw new Error('offline'); }, dispatch: async () => ({}) } }, deps);
-    expect((await noAttach.layoutsList()).map((l) => l.name)).toEqual(['Grid']);
+    expect(await offline.layoutsList()).toEqual([]);
     expect((await buildContract(authedClient(), deps).layoutsList()).map((l) => l.name)).toEqual(['Grid']);
   });
 

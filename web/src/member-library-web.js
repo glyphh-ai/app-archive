@@ -103,10 +103,13 @@ export function buildMemberLibrary(client, deps = {}) {
   const appInstances = deps.appInstances ?? buildAppInstancesWeb(client, { now, document: deps.document, secure: deps.secure });
 
   // ── Workspaces ────────────────────────────────────────────────────────────
+  // TWO WORLDS (his order, 2026-10-05: "these should only be the workspaces
+  // added from the cloud … they live in two different worlds"): the web's
+  // workspaces are the member library's `workspace` rows and nothing else —
+  // a desktop's own layouts (its `layouts.list`) never join this list.
   const layoutsList = async () => {
-    const [srv, desk] = await Promise.all([listRows('workspace'), desktopRead('layouts.list', 'layouts')]);
-    const server = srv.filter((r) => isGridLayout(r.data)).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
-    return mergeServerFirst(server, desk ?? [], (l) => l.name);
+    const srv = await listRows('workspace');
+    return srv.filter((r) => isGridLayout(r.data)).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
   };
   const layoutsSaveGrid = async (grid) => {
     try {

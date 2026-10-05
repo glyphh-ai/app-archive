@@ -40,7 +40,11 @@ export const browserNotificationsGranted = (permission) => permission === 'grant
  * `token()` resolves the member's bearer (null signed out); `connect` is the
  * relay-socket client (injected for tests).
  */
-export function watchNotifications(token, cb, connect = connectRelaySocket, timers = { setTimeout, clearTimeout }) {
+// the window's timers, bound: a bare `setTimeout` in an object is called with
+// that object as `this` and throws "Illegal invocation" in the browser
+const WINDOW_TIMERS = { setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms), clearTimeout: (id) => globalThis.clearTimeout(id) };
+
+export function watchNotifications(token, cb, connect = connectRelaySocket, timers = WINDOW_TIMERS) {
   let stopped = false;
   let backoff = FIRST_BACKOFF_MS;
   let timer = null;

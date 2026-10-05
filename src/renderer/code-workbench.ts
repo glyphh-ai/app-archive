@@ -3820,6 +3820,7 @@ async function init(): Promise<void> {
         // …but the WORKSPACE TILES are on it (his order, 2026-10-05): the
         // web's Echo button lifts a wall of those alone (webEchoSurface).
         buildWall([webEchoSurface().tiles === "workspaces" ? (layouts || []).map((l) => layoutTileOf(l)) : []]);
+        syncWebEchoEmpty((layouts || []).length);
         restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
@@ -3984,6 +3985,7 @@ async function init(): Promise<void> {
         if (!body.isConnected) return;
         let shifted = false;
         if (Array.isArray(fresh)) {
+          if (IS_WEB_TARGET) syncWebEchoEmpty(fresh.length);
           const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
           // Existing tiles follow their row; a layout that's gone leaves the wall.
           for (const e of [...entries]) {
@@ -4998,6 +5000,22 @@ async function init(): Promise<void> {
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
     let dockProofTimer = 0;
+    /** THE WEB'S ECHO holds cloud workspaces only (two worlds, his order
+     *  2026-10-05); with none saved yet the wall says so instead of standing
+     *  blank. The line lives in the stage under the search. */
+    function syncWebEchoEmpty(count: number): void {
+      if (!IS_WEB_TARGET) return;
+      const stage = body.querySelector<HTMLElement>(".echo-stage");
+      if (!stage) return;
+      let line = stage.querySelector<HTMLElement>(".echo-web-empty");
+      if (count > 0) { line?.remove(); return; }
+      if (!line) {
+        line = document.createElement("div");
+        line.className = "echo-web-empty";
+        line.textContent = "No cloud workspaces yet. Save one from Customize → Workspaces.";
+        stage.appendChild(line);
+      }
+    }
     function syncWallVisibility(): void {
       if (!echoWired) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;

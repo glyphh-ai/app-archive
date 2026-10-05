@@ -17926,6 +17926,8 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 html.glyphh-web #echo-dock-layer { display: none !important; }
 .ws-echo-body.web-echo .echo-search-wrap { top: 28px; }
 .ws-echo-body.web-echo .echo-page-grid { padding-top: calc(28px + 44px + 26px); }
+.ws-echo-body.web-echo .echo-web-empty { position: absolute; left: 0; right: 0; top: calc(28px + 44px + 40px); text-align: center; font-size: 13px; color: var(--text-3); pointer-events: none; }
+.ws-echo-body:not(.web-echo) .echo-web-empty { display: none; }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
@@ -21886,11 +21888,14 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    solo panel does. The rail keeps sessions, search, filter and the user chip;
    its doors into Echo / Build / Customize are hidden by web-surface.ts. The
    `glyphh-web` class is on <html> before the first paint (web/src/bridge.js),
-   so nothing here flashes. help/web-cut.ts is the rule these rules draw. ── */
-html.glyphh-web .echo-stage .echo-pages,
-html.glyphh-web .echo-stage .echo-page-dots,
-html.glyphh-web .echo-stage .echo-search-wrap,
-html.glyphh-web .echo-stage .echo-page-arrow,
+   so nothing here flashes. help/web-cut.ts is the rule these rules draw.
+   THE ONE EXCEPTION: the rail's Echo icon lifts the wall of cloud workspaces
+   (body.web-echo) — then its pages and search show (his report, 2026-10-05:
+   "the web is not rendering the echo wall"). ── */
+html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-pages,
+html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-dots,
+html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-search-wrap,
+html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-arrow,
 html.glyphh-web .echo-topbar,
 html.glyphh-web .echo-dock,
 html.glyphh-web #echo-dock-layer,
