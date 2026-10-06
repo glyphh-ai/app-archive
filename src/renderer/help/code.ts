@@ -210,6 +210,10 @@ function paintTypeTabs(): void {
   });
   const btn = el("code-new-chat");
   if (btn) btn.title = `New ${TYPE_LABEL[typeTab]} session`;
+  // WORK IS ONE LIST (his order, 2026-10-07): cloud Glyphh sessions, nothing
+  // to filter by loop or place, no section head. Code keeps the funnel: the
+  // desktop's CLI sessions join it over the relay.
+  el("recent-sessions-filter")?.classList.toggle("hidden", typeTab === "work");
 }
 
 const STORE_KEY = "codeChats";
@@ -6410,7 +6414,7 @@ function renderRailSessions(): void {
     return;
   }
   for (const sec of sessSections(items)) {
-    host.appendChild(sessSectionHead(sec.label, sec.title));
+    if (typeTab !== "work") host.appendChild(sessSectionHead(sec.label, sec.title));
     for (const sess of sec.rows) {
       const row = document.createElement("div");
       row.className = "code-history-item";
@@ -6524,10 +6528,12 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
   search.addEventListener("input", () => { menuQuery = search.value; paint(); });
-  let pool = opts.pool ?? railSessions;
+  let pool = opts.pool ?? [...railSessions, ...railCliSessions];
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
+    // WORK IS ONE LIST (his order, 2026-10-07): no funnel, no section head.
+    filterBtn.classList.toggle("hidden", !opts.pool && menuTab === "work");
     // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function,
     // the same prefs; only the type tab is this menu's own.
     const menuFilter = sessFilter({ ...(opts.pool ? {} : { tab: menuTab }), among: menuKeys, query: q });
@@ -6536,7 +6542,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       const row = document.createElement("div");
       row.className = "wb-session-row" + (sess.locked ? " locked" : "");
       row.appendChild(sessDot(sess.id));
-      if (opts.pool) row.appendChild(sessMarkEl(sess));
+      if (opts.pool || sess.origin === "cli") row.appendChild(sessMarkEl(sess));
       // The locus glyph the rail rows wear — a CLI's own sessions are the
       // machine's by definition and carry none.
       if (!opts.pool) row.appendChild(sessLocusEl(sess));
@@ -6568,7 +6574,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       return row;
     };
     for (const sec of sessSections(visible)) {
-      listHost.appendChild(sessSectionHead(sec.label, sec.title));
+      if (opts.pool || menuTab !== "work") listHost.appendChild(sessSectionHead(sec.label, sec.title));
       for (const c of sec.rows) listHost.appendChild(mkRow(c));
     }
     if (!visible.length) {

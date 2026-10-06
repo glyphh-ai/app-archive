@@ -45,13 +45,15 @@ export interface RemoteControlView extends RemoteControlSetting {
 
 /** Everything the web may call — the server's REMOTE_METHODS, no more. The
  *  relay DRIVES A SESSION on this machine and carries no data (his order,
- *  2026-10-06): no thread, app, workspace or CLI-session list is read off it;
- *  every record is the server's. The web terminal's pty.input/resize/close
+ *  2026-10-06): no thread, app or workspace list is read off it; every record
+ *  is the server's. The CLIs' own sessions are the one read it carries (his
+ *  order, 2026-10-07): they live on this machine and nowhere else. The web terminal's pty.input/resize/close
  *  name a pty this door opened (relay-pty.ts keys them by id); only pty.open
  *  takes a path, guarded below. The fs and git doors are NOT here: they take
  *  paths, so remoteTable builds them around the grant guard (relay-fs.ts). */
 const PASS_THROUGH = [
   "relay.ping",
+  "cliSessions.list",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME

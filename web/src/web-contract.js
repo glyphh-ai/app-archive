@@ -165,6 +165,24 @@ export function buildContract(client, deps) {
     catch (err) { return libError(err); }
   };
 
+  /** THE ONE READ THAT RIDES THE RELAY (his order, 2026-10-07): a vendor CLI's
+   *  own sessions (claude, codex, …) live on the desktop and nowhere else, so
+   *  the CODE rail lists them off every attached machine. Nothing attached, a
+   *  machine that fails to answer → `[]`, never a throw. */
+  const desktopCliSessions = async () => {
+    const attach = client.attach;
+    if (!attach || typeof attach.status !== 'function') return [];
+    try {
+      const st = await attach.status();
+      const machines = Array.isArray(st?.machines) ? st.machines : [];
+      const lists = await Promise.all(machines.map((m) =>
+        attach.dispatch('cliSessions.list', {}, { machineId: m.id })
+          .then((r) => (Array.isArray(r?.sessions) ? r.sessions : []))
+          .catch(() => [])));
+      return lists.flat();
+    } catch { return []; }
+  };
+
   // THE MEMBER LIBRARY IS THE ONE LIST (his order, 2026-10-06): every record
   // is on the server; a desktop syncs its rows there and the web reads them
   // there. Nothing is read off a desktop over the relay — the relay drives a
@@ -975,6 +993,11 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    // THE DESKTOP'S CLI SESSIONS, for the Code rail and the agent window's
+    // recents (his order, 2026-10-07): a CLI's sessions are the machine's own
+    // stores, read off the attached desktop (`cliSessions.list`, attach-
+    // handlers.ts) in preload's cliSessionsList shape. No desktop → none.
+    cliSessionsList: async () => ({ ok: true, sessions: await desktopCliSessions() }),
     // ── Is a desktop attached, and which (attach.status, the server's own
     // answer). The one thing the web asks about a desktop: a Code session on a
     // desktop folder runs there over the relay. No attach client, nothing
