@@ -524,22 +524,29 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
       { id: 'gmail', updatedAt: 8_000, data: { id: 'gmail', kind: 'web', slug: 'gmail', name: 'Gmail', prodUrl: 'https://mail.google.com', nativeRef: null, config: null, description: '', access: 'members', owned: true, latestVersion: null, version: '0.1.0', secretNames: [], requiredConnections: [], listing: null, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' } },
     ],
   });
-  it('a Glyphh tab row lists as an app card; a URL tab does not; its detail and its open answer', async () => {
-    const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
+  it('a Glyphh tab row with a bundle on a machine lists as an app card; one with nothing behind it and a URL tab do not; its detail and its open answer', async () => {
+    const fake = tabs();
+    const base = await fake.list('tab');
+    fake.list = vi.fn(async (kind) => (kind === 'tab' ? base.map((r) => (r.id === 'drive' ? { ...r, data: { ...r.data, nativeRef: '/Users/me/.glyphh/apps/drive/app.json' } } : r)) : []));
+    const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
     const rows = (await lib.skillsList(['skill', 'app', 'task'])).data;
-    expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);   // a Glyphh tab row that names no instance lists as a card of its own
+    expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);   // the bundle on the machine makes it an app
+    expect((await buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 }).skillsList('app')).data).toEqual([]);   // a row left over from a delete is nothing
     expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', author: 'you' });
     expect(rows[0]).not.toHaveProperty('locus');
     expect(rows[0]).not.toHaveProperty('data');
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
-    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: true } });
+    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: false } });   // a bundle on a machine, not a cloud instance
   });
-  it("the panel app list is what is installed — a tab row, an instance — and nothing synthesized for the house apps (his law, 2026-10-06: they are real apps, instances like any other)", async () => {
+  it("the panel app list is what is installed — an instance, or a bundle on a machine — and nothing synthesized; a glyphh row with nothing behind it is not an app (his law, 2026-10-06; his report, 2026-10-07)", async () => {
     const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
     const rows = await lib.panelAppsList();
-    expect(rows.map((r) => r.slug)).toEqual(['drive', 'gmail']);   // the list sorts by name; no made-up Images / Audio / …
-    expect(rows.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { tool: 'gdrive' }, version: '0.1.0' });
+    expect(rows.map((r) => r.slug)).toEqual(['gmail']);   // drive has no instance and no bundle: a row left over from a delete
     expect((await lib.skillTab('app-tab:images')).ok).toBe(false);
+    const withInst = buildMemberLibrary({ memberLibrary: tabs(), http: { get: async (p) => (p === '/api/app-instances' ? [{ key: 'drive~u1', slug: 'drive', kind: 'personal', status: 'ready', manifest: { name: 'Drive' } }] : undefined) }, token: async () => 't' }, { now: () => 9_000 });
+    const rows2 = await withInst.panelAppsList();
+    expect(rows2.map((r) => r.slug)).toEqual(['drive', 'gmail']);
+    expect(rows2.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { tool: 'gdrive', instance: 'drive~u1' } });
   });
   it("deleting a tab-row card on the web tombstones the library row — never 'this runs on your desktop' (his report, 2026-10-07)", async () => {
     const fake = tabs();

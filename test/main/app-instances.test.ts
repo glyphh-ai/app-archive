@@ -104,6 +104,16 @@ describe("mergeAppRows — THE LIST", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].launchConfig?.instance).toBe("expense-desk");
   });
+  it("a glyphh tab with no instance behind it and no bundle on this machine is not listed — it is a row left over from a delete (his report, 2026-10-07)", () => {
+    const dead = tab({ id: "daily-brief", kind: "glyphh", slug: "daily-brief", name: "Daily Brief", config: { instance: "daily-brief~u1" }, nativeRef: null });
+    const bare = tab({ id: "messages", kind: "glyphh", slug: "messages", name: "Messages", config: null, nativeRef: null });
+    expect(mergeAppRows([], [dead, bare]).map((r) => r.slug)).toEqual([]);
+    // Its instance back → the row lists with the instance; a local bundle lists on its own.
+    expect(mergeAppRows([{ ...PERSONAL, key: "daily-brief~u1", slug: "daily-brief" }], [dead]).map((r) => r.slug)).toEqual(["daily-brief"]);
+    expect(mergeAppRows([], [LOCAL]).map((r) => r.slug)).toEqual([LOCAL.slug]);
+    // A URL tab is never an app row's business.
+    expect(mergeAppRows([], [tab({ id: "mail", kind: "web", slug: "mail", name: "Mail", prodUrl: "https://mail" })]).map((r) => r.slug)).toEqual(["mail"]);
+  });
   it("a tab that names an instance carries its live status", () => {
     const named = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk", config: { instance: "expense-desk" } });
     const rows = mergeAppRows([{ ...ORG, status: "stopped" }], [named]);

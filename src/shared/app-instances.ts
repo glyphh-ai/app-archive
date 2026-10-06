@@ -218,6 +218,12 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
     const row = tabRowOf(tab);
     const named = instanceKeyOfRow(tab);
     const live = named ? instances.find((i) => i.key === named) : undefined;
+    // A GLYPHH TAB WITH NOTHING BEHIND IT IS NOT AN APP (his report, 2026-10-07:
+    // tiles on the wall for apps he no longer held, each opening to "not
+    // installed in the cloud"): an app is an instance, or a bundle on this
+    // machine (nativeRef). A row left over from a deleted instance names
+    // nothing that exists and lists nowhere.
+    if (tab.kind === "glyphh" && !live && !inst && !tab.nativeRef) continue;
     out.push(live ? withInstance(row, live) : row);
   }
   for (const inst of bySlug.values()) {
