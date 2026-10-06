@@ -992,6 +992,18 @@ export function loadSettingsGroup(group: string): void {
   showGroupTab(group, tabs.some((t) => t.sub === want) ? want : tabs[0].sub);
 }
 
+/** Open a group page (Build / Customize) AT a tab — the composer's `+` menu
+ *  "Manage skills / connectors" on the web, where the Settings modal hides the
+ *  Build group and the rail's full-screen page carries those tabs. The tab is
+ *  remembered first so a fresh mount lands on it; an already-open page just
+ *  switches. */
+export function openGroupTab(group: "build" | "customize", sub: string): void {
+  groupLastSub[group] = sub;
+  (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(group);
+  const painted = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"] .settings-group-tabs > .skills-tab[data-sub="${sub}"]`);
+  if (painted) showGroupTab(group, sub);
+}
+
 function showGroupTab(group: string, sub: string): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   if (!sec) return;

@@ -24,7 +24,7 @@ import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./sha
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
-import { gotoSection, closeSettingsModal, openSettingsModal } from "./navigation.js";
+import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
 import { memberLine, turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -42,8 +42,10 @@ import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
 import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
-import { hostHas } from "./web-surface.js";
+import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
+import { mountComposerPlus, manageTargetOf, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
+import { openConnectionOnLoad } from "./settings-connections.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
@@ -3810,6 +3812,8 @@ function initFolderLocusChips(): void {
 let pendingNotes: Array<{ id: string; text: string }> = [];
 
 let pendingAttach: AttachRef[] = [];
+/** The composer's `+` menu (composer-plus.ts), once mounted — ⌘U goes through it. */
+let plusMenu: PlusController | null = null;
 
 /** An image attachment inside the thread: a real preview with the name under
  *  it; clicking it opens the lightbox. */
@@ -4134,78 +4138,37 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
 }
 
 function wireComposerAttachments(): void {
-  // The + menu (right of the mode chip) — everything a user ADDS to the
-  // session lives here; paste and drag-drop stay as shortcuts.
+  // THE + MENU (his order, 2026-10-06, Claude's composer as the reference):
+  // ONE component on both surfaces (composer-plus.ts), right of the mode
+  // chip — attach, Skills ›, Connectors ›, Devices ›, Memory ✓, and the
+  // desktop's folder rows behind capability checks. Paste and drag-drop stay
+  // as shortcuts to the same attach tray.
   const plusWrap = el("code-plus-wrap");
   if (plusWrap) {
-    const menu = document.createElement("div");
-    menu.id = "code-plus-menu";
-    menu.className = "code-drop-up hidden";
-    const mkItem = (label: string, hint: string, pick: () => void) => {
-      const b = document.createElement("button");
-      b.className = "code-drop-item";
-      b.type = "button";
-      b.title = hint;
-      const span = document.createElement("span");
-      span.textContent = label;
-      b.appendChild(span);
-      b.addEventListener("click", () => { menu.classList.add("hidden"); pick(); });
-      return b;
+    const toTarget = (t: ManageTarget): void => {
+      if (t.kind === "group") openGroupTab(t.group, t.sub);
+      else openSettingsModal(t.sub);
     };
-    // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea:
-    // Work has no tool to walk one with, so it wears the folder-only class and
-    // the CSS drops it there (his push-back, 2026-09-29: the + itself stays).
-    const addFolder = mkItem("Add folder…", "Give Glyphh read access to another directory", () => {
-      void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
-    });
-    addFolder.classList.add("plus-folder-only");
-    // The OS file/folder pickers are the DESKTOP's (main's dialogs over the
-    // real filesystem). On web the bridge serves no glyphhPickAttachments, so
-    // the two rows are not offered at all — paste and drag-drop still work.
-    if (hostHas("glyphhPickAttachments")) {
-      menu.append(
-        mkItem("Attach files…", "Images and documents ride the next message", () => {
-          void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); });
-        }),
-        addFolder,
-      );
-    }
-    // WORK and CODE run inside a working folder — the + is where you set it,
-    // right from the landing or the thread (Chat has no folder concept; CSS
-    // hides these under data-session-space="chat").
-    const sep = document.createElement("div");
-    sep.className = "code-drop-sep plus-folder-only";
-    const curItem = mkItem("Working folder", "The folder this session works in", () => {
-      void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
-    });
-    curItem.classList.add("plus-folder-only");
-    const newItem = mkItem("Choose working folder…", "Pick (or create) the folder to work in", () => {
-      void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate());
-    });
-    newItem.classList.add("plus-folder-only");
-    // These two open the DESKTOP's OS folder picker (wb.pickCwd → main). On web
-    // there is no such dialog (the bridge serves no pickWorkingDir): the thread's
-    // folder is the source chip's folder browser (a cloud workspace folder, or an
-    // attached machine's over the relay), so the rows are not offered.
-    const osFolderPicker = hostHas("pickWorkingDir");
-    if (osFolderPicker) menu.append(sep, curItem, newItem);
-    const paintPlusFolder = (): void => {
-      if (!osFolderPicker) return;
-      void wb()?.getCwdExplicit?.().then((dir) => {
-        const name = dir ? String(dir).split("/").filter(Boolean).pop() : null;
-        (curItem.querySelector("span") as HTMLElement).textContent = name ? `Working folder: ${name}` : "Working folder: not set";
-        curItem.title = dir ? String(dir) : "No folder picked yet — click to choose";
-      });
-    };
-    plusWrap.appendChild(menu);
-    el("code-plus-chip")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      el("code-mode-menu")?.classList.add("hidden");
-      el("code-level-pop")?.classList.add("hidden");
-      el("code-model-menu")?.classList.add("hidden");
-      el("code-ctx-pop")?.classList.add("hidden");
-      paintPlusFolder();
-      menu.classList.toggle("hidden");
+    plusMenu = mountComposerPlus(plusWrap, el("code-plus-chip") as HTMLButtonElement | null, {
+      surface: onWeb() ? "web" : "desktop",
+      has: hostHas,
+      api: window.glyphh as unknown as PlusApi,
+      space: () => {
+        const c = current();
+        const space = (c ? modeOf(c) : typeTab) as string;
+        return (space === "code" || space === "chat" || space === "cowork") ? space : "work";
+      },
+      attachFiles: () => { void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); }); },
+      // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea
+      // (Work has no tool to walk one with; the row is Code-only).
+      attachFolder: () => { void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); }); },
+      workingFolder: async () => { const d = await wb()?.getCwdExplicit?.(); return d ? String(d) : null; },
+      pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
+      openTarget: toTarget,
+      openConnector: (slug) => { openConnectionOnLoad(slug); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      addConnector: () => { toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      toast: toastOk,
+      place: openChipDropUp,
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
@@ -7034,6 +6997,12 @@ export function initCode(): void {
     if (e.code === "KeyN" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+      return;
+    }
+    // ⌘U — "Add files or photos", the `+` menu's attach door (Claude's chord).
+    if (e.code === "KeyU" && !e.shiftKey && !e.altKey && (e.metaKey || e.ctrlKey) && plusMenu) {
+      e.preventDefault();
+      plusMenu.attachFiles();
       return;
     }
     if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
