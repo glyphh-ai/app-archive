@@ -1802,6 +1802,14 @@ function ensureCodeSection(): void {
   /** A LAYOUT used to bind its own loop here; there is one loop now, so the
    *  stamp is accepted and ignored (the contract stays — layouts still call it). */
   stampLoop: (_loop: string): void => { /* one loop, nothing to bind */ },
+  /** A LAYOUT's TYPE (Work | Code; his order, 2026-10-07) binds to the
+   *  session the layout creates, exactly as its model slots do: the rail's
+   *  type follows, so + New and the fresh record carry it; the blank session
+   *  is reborn under it; a session with a transcript keeps its birth type. */
+  stampType: (t: SessionType): void => {
+    if (t !== "work" && t !== "code") return;
+    setTypeTab(t);
+  },
   /** A LAYOUT's model slots bind to the session it opens with — this session
    *  only; other sessions keep running their own casts untouched. */
   stampModels: (models: Record<string, string>): void => {

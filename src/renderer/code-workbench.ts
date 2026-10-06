@@ -1102,7 +1102,7 @@ async function init(): Promise<void> {
   /** Per-cell app setup a workspace applies on open. Flat by design — it
    *  round-trips verbatim through the desktop IPC, the web bridge and the
    *  server's opaque `data` JSON, so a new key needs no migration. */
-  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off" };
+  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" };
   /** The Rail panel's section toggles, read off a cell config. Absent = shown,
    *  so only an explicit `false` hides — a workspace saved before the panel
    *  existed opens the full rail. */
@@ -1119,7 +1119,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string } | { view: "rail"; collapsed?: "left" | "right" };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -1160,7 +1160,20 @@ async function init(): Promise<void> {
     "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
     "M18.5 15.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z",
   ];
-  function layoutSpace(row?: { space?: string | null; splits?: Array<{ panelId: string }> } | null): "chat" | "cowork" | "code" {
+  /** THE WORKSPACE'S TYPE (his order, 2026-10-07: "workspaces need to carry a
+   *  custom field for each agent window for type re: code or work, and the
+   *  overall workspace the same, following the same rules as the other agent
+   *  settings"): the Glyphh agent cell's own type beats the workspace's, and
+   *  either binds only to a session the layout CREATES (stampLayoutModels).
+   *  null = no opinion; the panels decide the space as before. */
+  function workspaceType(cfg: CellConfig | undefined, row: { type?: string | null } | null | undefined): "work" | "code" | null {
+    const t = cfg?.type ?? row?.type;
+    return t === "work" || t === "code" ? t : null;
+  }
+  function layoutSpace(row?: { space?: string | null; type?: string | null; splits?: Array<{ panelId: string; config?: CellConfig }> } | null): "chat" | "cowork" | "code" {
+    // An explicit type names the space outright: Work is the non-dev space.
+    const typed = workspaceType(row?.splits?.find((p) => p.panelId === "tool:coding")?.config, row);
+    if (typed) return typed === "code" ? "code" : "cowork";
     const s = row?.space;
     if (s === "chat" || s === "cowork" || s === "code") return s;
     return (row?.splits ?? []).some((p) => DEV_PANEL_RE.test(String(p.panelId || ""))) ? "code" : "cowork";
@@ -6096,6 +6109,7 @@ async function init(): Promise<void> {
         const codingCfg = (codingCell?.config || {}) as CellConfig;
         const codingLoop = codingCell ? surfaceOf(codingCell).loop : "";
         const codingFolder = codingCfg.folder || "";
+        const codingType = workspaceType(codingCfg, layout);
         let seatedAgent = false;
         for (const cell of cells) {
           const { id, loop: cellLoop } = surfaceOf(cell);
@@ -6293,7 +6307,7 @@ async function init(): Promise<void> {
         // the session that rode this layout (remembered on every session
         // change below), "keep" rides whatever is current.
         {
-          type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void };
+          type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void; stampType?(t: "work" | "code"): void };
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
           const space = activateLayoutSpace(layout);
           const mode = sessionModeOverride ?? layout.sessionMode ?? "keep";
@@ -6306,6 +6320,7 @@ async function init(): Promise<void> {
           const stampLayoutModels = (): void => {
             if (codingLoop || layout.loop) sess?.stampLoop?.(codingLoop || layout.loop!);
             if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
+            if (codingType) sess?.stampType?.(codingType);   // the TYPE rides the same contract
           };
           if (sess && mode === "new") {
             sess.startNew();
@@ -10806,7 +10821,7 @@ async function init(): Promise<void> {
     // file — comes up rooted in the layout's folder, not the previous one.
     const applyFolderAndSession = (): void => {
       void (async () => {
-        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void };
+        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void; stampType?(t: "work" | "code"): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
@@ -10824,6 +10839,8 @@ async function init(): Promise<void> {
         const stampConfig = (): void => {
           if (codingCfg.loop || layout.loop) sess?.stampLoop?.(codingCfg.loop || layout.loop!);
           if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
+          const t = workspaceType(codingCfg, layout);
+          if (t) sess?.stampType?.(t);
         };
         if (!sess || mode === "keep") { stampFolder(); return; }
         if (mode === "new") { sess.startNew(); stampConfig(); stampFolder(); return; }

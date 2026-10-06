@@ -86,6 +86,10 @@ export interface GridLayoutLike {
   loop?: string;
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
+  /** THE TYPE (his order, 2026-10-07): Work or Code — what every agent
+   *  session this workspace creates carries, unless its own agent cell names
+   *  one. Absent = follow the panels (a dev panel makes it Code). */
+  type?: "work" | "code";
   folder?: string;
   space?: "chat" | "cowork" | "code";
   /** Epoch ms — the writer's clock (added 2026-10-04; absent on older files). */

@@ -26,7 +26,7 @@ export interface ServerLayout {
   name: string;
   cols: number;
   rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off" } }>;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   /** The loop this layout activates on open. Absent → no opinion. */
@@ -38,6 +38,8 @@ export interface ServerLayout {
   modelSelections?: Record<string, string>;
   /** Session behavior on open: keep (default) | new | last. */
   sessionMode?: "keep" | "new" | "last";
+  /** Work or Code for the sessions it creates (2026-10-07); a cell's own wins. */
+  type?: "work" | "code";
   /** Folder the agent switches to on open. */
   folder?: string;
   /** The SPACE this layout belongs to (chat | cowork | code). */
@@ -63,7 +65,7 @@ export interface GridCell {
   /** Per-cell app setup the layout applies on open: the Browser cell's URL,
    *  the Terminal cell's first command (runs after the folder is set), the
    *  Rail panel's section toggles. Opaque to the store — passed through. */
-  config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off" };
+  config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" };
 }
 
 /** Folder-binding mode for layouts that contain any folder-bound app
@@ -88,6 +90,7 @@ export interface GridLayout {
   loop?: string;
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
+  type?: "work" | "code";
   folder?: string;
   space?: "chat" | "cowork" | "code";
   /** THE LWW CLOCK (his rule, 2026-10-04: database-as-truth, latest wins):
