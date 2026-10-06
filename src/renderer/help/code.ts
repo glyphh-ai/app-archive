@@ -2709,8 +2709,13 @@ function renderThread(): void {
   // Working state — the streamed reply renders as plain agent text, and a
   // working spinner ALWAYS sits at the bottom while thinking (through tool
   // execution and inter-turn waits, not just before the first token).
-  spinner?.destroy();
-  spinner = null;
+  // THE SPINNER OUTLIVES THE REPAINT (his report, 2026-10-06: on the web it
+  // flickered and its words changed on every tool call above it). renderThread
+  // runs on every streamed event; destroying and recreating the cube here
+  // restarted its tumble and its phrase each time. One spinner per live run:
+  // made when the run starts, moved into each fresh row, destroyed when the
+  // run ends (below, and setThinking(false)).
+  if (!liveRun) { spinner?.destroy(); spinner = null; }
   if (liveRun) {
     liveRun.bubble = null;
     liveRun.thinkEl = null;
@@ -2724,7 +2729,7 @@ function renderThread(): void {
       paintBubble(liveRun.bubble, liveRun.text);
       inner.appendChild(liveRun.bubble);
     }
-    spinner = createGlyphhSpinner();
+    if (!spinner) spinner = createGlyphhSpinner();
     paintRunMeta();
     const row = document.createElement("div");
     row.className = "code-working";
