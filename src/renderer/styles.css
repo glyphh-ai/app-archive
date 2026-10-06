@@ -18220,14 +18220,17 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-root[data-anchor="center"] .code-input:focus { outline: none; box-shadow: none; }
 .code-root[data-anchor="center"] .code-composer-bar { padding: 0 10px; }
 
-/* Source / git / folder — its own quiet row ABOVE the input, left-aligned
-   (inside the card, both hosts). */
-.code-input-card .code-source-slot {
+/* THE ROW ABOVE THE BOX (his order, 2026-10-07): environment / directory /
+   git / new folder sit OUTSIDE the input card, above it, left-aligned, the
+   mascot at the far right — Claude Code on the web. Code only: a Work
+   session is the cloud's, and the + menu's Devices reaches a desktop. */
+.code-composer > .code-source-slot {
   display: flex; align-items: center; gap: 4px;
-  margin: 0; padding: 6px 4px 0;
+  margin: 0 0 6px; padding: 0 6px;
   min-width: 0;
   color: var(--text-3);
 }
+body[data-session-space="work"] .code-composer > .code-source-slot { display: none; }
 
 /* The row ABOVE the input card: [drips][recents][+] on the left, then the
    status line — whose caret sits at the far right — filling the rest. */
@@ -18412,7 +18415,6 @@ body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"
    there, so folding it away would take the mic with it. Its right edge
    stops where the pill does: the side band's visible tail (its 86px box
    less the 34px tuck; 72px more with the CC + reset buttons) is kept clear. */
-.code-root[data-anchor="center"] > .code-agent .code-input-card:not(.options-open) .code-source-slot { display: none; }
 .code-root[data-anchor="center"] > .code-agent .code-composer-bar { margin-right: 52px; }
 body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent .code-composer-bar { margin-right: 124px; }
 /* The input goes BARE inside the pill — the card is the surface. */
@@ -18445,7 +18447,6 @@ body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent .code-compose
    pill's edge — the card ends where the side band begins, so without this
    the icons stopped a band-width short of the right edge. The band's buttons
    sit pinned at the BOTTOM in this state; the top strip is free air. */
-.code-root[data-anchor="center"] > .code-agent .code-input-card.options-open .code-source-slot { margin-right: -49px; }
 /* The mic (+ its caret) rides the BOTTOM line with the send/stop button no
    matter how tall the input grows — never centered up the expanded card. */
 .code-root[data-anchor="center"] > .code-agent .code-input-wrap #code-mic-wrap,
@@ -22246,7 +22247,16 @@ body[data-session-space="code"] #code-output-wrap { display: none; }
 /* THE CODE LAYOUT (his order, 2026-10-07): the environment / directory / git /
    new-folder chips ride their own row ABOVE the box, always — the Glyphh
    mascot at that row's far right. */
-.code-source-mascot { display: none; flex: 0 0 auto; margin-left: 6px; width: 18px; height: 18px; opacity: 0.85; }
-.code-source-mascot img { width: 18px; height: 18px; display: block; }
-body[data-session-space="code"] .code-input-card .code-source-mascot { display: inline-flex; }
-body[data-session-space="code"] .code-root[data-anchor="center"] > .code-agent .code-input-card:not(.options-open) .code-source-slot { display: flex; }
+.code-source-mascot { display: none; flex: 0 0 auto; margin-left: 8px; width: 24px; height: 24px; opacity: 0.9; }
+.code-source-mascot img { width: 24px; height: 24px; display: block; }
+body[data-session-space="code"] .code-source-slot .code-source-mascot { display: inline-flex; }
+
+/* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
+   the standard modal, asked before a CLI tile from the Echo opens. */
+.run-place-box { width: min(360px, 92vw); }
+.run-place-list { padding: 4px 6px 10px; max-height: min(60vh, 420px); overflow-y: auto; }
+.run-place-list .ws-sec-label { padding: 10px 10px 4px; }
+.run-place-list .code-drop-item { padding: 8px 10px; border-radius: 8px; color: var(--text); }
+.run-place-list .code-drop-item:hover:not(:disabled) { background: var(--hover); }
+.run-place-list .code-drop-item.selected { color: var(--text); }
+.run-place-list .code-drop-item .drop-hint { color: var(--text-3); }

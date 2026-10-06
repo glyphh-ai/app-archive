@@ -54,7 +54,8 @@ import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
-import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf } from "./cloud-source.js";
+import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
+import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -1943,6 +1944,23 @@ function announceWbLocus(): void {
 // The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
 // pod yet — quiet empty state) apart from a desktop source that's offline.
 (window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
+// WHERE A CLI RUNS (his order, 2026-10-07): the Echo asks before it opens a CLI
+// tile — the same places the environment chip offers, as a modal — and the
+// pick becomes the composer's source, so the terminal lands there.
+(window as unknown as { __glyphhRunPlaceInputs?: () => Promise<RunPlaceInput> }).__glyphhRunPlaceInputs = async () => {
+  const src = activeSource();
+  const doors = window.glyphh as unknown as { cloudEnvironmentsList?: () => Promise<Array<{ id: string; name: string }>> };
+  const environments = await (doors.cloudEnvironmentsList?.().catch(() => []) ?? Promise.resolve([]));
+  const current: RunPlace | null = sourceLocus(src) === "local"
+    ? { kind: "desktop", machine: { name: "", ...((src as { machineId?: string }).machineId ? { id: (src as { machineId?: string }).machineId } : {}) } }
+    : { kind: "cloud", environmentId: environmentIdOf(src) };
+  return { surface: onWebTarget() ? "web" : "desktop", machines: threadStore.attachedMachines(), environments, current };
+};
+(window as unknown as { __glyphhPickRunPlace?: (p: RunPlace) => void }).__glyphhPickRunPlace = (p) => {
+  if (p.kind === "cloud") { pickSource(sourceForPicks([], p.environmentId) as Source); return; }
+  if (onWebTarget()) { pickSource({ kind: "local", path: defaultWebFolder({ machines: threadStore.attachedMachines(), recents: recentDesktopFolders() }), ...(p.machine.id ? { machineId: p.machine.id } : {}) }); return; }
+  pickSource({ kind: "local", path: pendingWorkdir || current()?.workdir || "" });
+};
 // VIEW TOGGLES carry the conversation (his report, 2026-09-11): adopting a
 // CLI session backfills its transcript as the chat history and binds the
 // bridge to --resume it. Fresh opens never call this — the one-opener law
