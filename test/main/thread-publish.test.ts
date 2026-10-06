@@ -197,6 +197,34 @@ describe("the loop that doubled every thread (2026-10-04)", () => {
   });
 });
 
+describe("the server lost what was published (2026-10-06)", () => {
+  it("a thread the server now counts fewer messages of than this side sent is re-sent whole on the next pass", async () => {
+    const { api, threads } = fakeSessions();
+    const state = memState();
+    const chats = [chat("c1", 3)];
+    const pub = createThreadPublisher({ api, chats: () => chats, state });
+    await pub.publishAll();
+    expect(state.get().c1.syncedUpTo).toBe(3);
+    threads.get("c1")!.messages = [];            // zeroed on the server by a bad push
+    (api.pushThread as ReturnType<typeof vi.fn>).mockClear();
+    const r = await pub.publishAll();
+    expect(r.replaced).toEqual(["c1"]);
+    expect((api.pushThread as ReturnType<typeof vi.fn>).mock.calls[0][1].messages.map((m: { text: string }) => m.text)).toEqual(["m0", "m1", "m2"]);
+    expect(threads.get("c1")!.messages.map((m) => m.text)).toEqual(["m0", "m1", "m2"]);
+    expect(state.get().c1.syncedUpTo).toBe(3);
+    expect(api.appendMessages).not.toHaveBeenCalled();
+    const again = await pub.publishAll();
+    expect(again.replaced).toEqual([]);          // whole again, nothing more to send
+  });
+  it("a server list that cannot be read repairs nothing and the pass still runs", async () => {
+    const { api } = fakeSessions();
+    (api.threads as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("list down"));
+    const pub = createThreadPublisher({ api, chats: () => [chat("c1", 2)], state: memState() });
+    const r = await pub.publishAll();
+    expect(r.indexed).toEqual(["c1"]);
+  });
+});
+
 describe("what is not the publisher's", () => {
   it("a cloud thread is skipped (the renderer's thread-store pushes its index; the pod holds its transcript)", async () => {
     const { api } = fakeSessions();
