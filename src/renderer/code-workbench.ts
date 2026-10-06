@@ -2546,6 +2546,13 @@ async function init(): Promise<void> {
     // for free), the carousel re-snaps to its page, and transitions pause so
     // cards track the resize instead of rubber-banding behind it. (The old
     // 3D wall's ResizeObserver owned this and died with it.)
+    // The cards layer is named HERE, before the first observer can fire: the
+    // init awaits (the library, the prefs) between this block and the open-
+    // panel code below, and a resize or a body-class change in that window
+    // ran repaintStage against a `const` not yet initialized (his report,
+    // 2026-10-06: the web threw "Cannot access 'cardsLayer' before
+    // initialization" on load).
+    const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     let resizeAnimT = 0;
     const repaintStage = (): void => {
       positionPageChrome();
@@ -4076,7 +4083,6 @@ async function init(): Promise<void> {
     // ── Open panels: click a tile and its LIVE webview zooms up from the
     // tile's spot into a slot row anchored high, so the wall stays visible
     // (and pannable) beneath; close zooms it back to its spot. ──
-    const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     const openList: TileEntry[] = [];
     // ── DOCK AUTO-HIDE (Appearance page, SDK-persisted pref, default ON):
     // the dock stays hidden until the mouse reaches the top of the page —
