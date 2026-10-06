@@ -31,7 +31,9 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, refreshSpeakToggle, toggleSpeakReplies } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, refreshSpeakToggle, toggleSpeakReplies, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
+import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
@@ -1028,6 +1030,30 @@ function initComposerControls(): void {
       });
     }
   }
+  // THE SLOT'S DOORS (his order, 2026-10-07): ✕ drops the take, ✓ keeps it,
+  // the ▮▮▮ Stop pill ends hands-free listening with the text left in the box.
+  el("code-voice-cancel")?.addEventListener("click", (e) => { e.stopPropagation(); cancelRecording(); });
+  el("code-voice-accept")?.addEventListener("click", (e) => { e.stopPropagation(); acceptRecording(); });
+  el("code-voice-free-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopHandsFree(); });
+  onVoiceState(() => paintComposerSlot());
+  paintComposerSlot();
+  // THE USAGE RING's popover (Code only — the stylesheet hides the ring in Work).
+  const usageWrap = el("code-usage-wrap");
+  if (usageWrap) {
+    const upop = document.createElement("div");
+    upop.id = "code-usage-pop";
+    upop.className = "code-drop-up code-usage-pop hidden";
+    usageWrap.appendChild(upop);
+    el("code-usage-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = upop.classList.contains("hidden");
+      if (!opening) { upop.classList.add("hidden"); return; }
+      renderUsagePop(upop);
+      upop.classList.remove("hidden");
+      openChipDropUp(upop);
+      void Promise.all([refreshSpend(true), refreshContextUsage()]).then(() => { if (!upop.classList.contains("hidden")) renderUsagePop(upop); });
+    });
+  }
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
@@ -1041,6 +1067,7 @@ function initComposerControls(): void {
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (outputWrap && !outputWrap.contains(t)) el("code-output-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
+    if (usageWrap && !usageWrap.contains(t)) el("code-usage-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -2907,6 +2934,7 @@ async function refreshSpend(force = false): Promise<void> {
   if (!read) return;
   spend = await read().catch(() => null);
   paintSpendBanner();
+  paintUsageRing();
 }
 window.addEventListener("focus", () => void refreshSpend());
 
@@ -4248,6 +4276,7 @@ function syncDragStripOffset(): void {
 
 // ── Composer ─────────────────────────────────────────────────────────────
 function autoGrow(ta: HTMLTextAreaElement): void {
+  paintComposerSlot();   // the typed state decides the slot (send ↑ / the voice pair)
   // Grow with input up to ~10 lines, then scroll internally. Skip while the
   // textarea has no real width (the agent card mid-entrance): scrollHeight
   // wraps into a tower and the height sticks tall after the card widens.
@@ -4290,7 +4319,86 @@ function setThinking(on: boolean): void {
   const send = el("code-send");
   send?.classList.toggle("thinking", on);
   if (send) send.title = on ? "Stop" : "Send";
+  paintComposerSlot();
+  if (!on) void refreshContextUsage();
   renderHistory(); // the panel header tracks the loop state
+}
+
+// ── THE SLOT (his order, 2026-10-07, Claude's composer as the reference):
+// the wrap's data-slot says what sits at the input's right — the voice pair
+// on an empty idle box, the accent ↑ once text is typed, the Stop pill while
+// a turn runs, the ✕ ✓ + meter while dictation listens, the mic + ▮▮▮ Stop
+// while hands-free listens. composer-state.ts decides; the stylesheet shows.
+let listeningPainted = false;
+function paintComposerSlot(): void {
+  const ta = input();
+  const wrap = document.querySelector<HTMLElement>(".code-input-wrap");
+  if (!ta || !wrap) return;
+  const st = { text: ta.value, running: thinking, voice: voiceState() };
+  wrap.dataset.slot = composerSlot(st);
+  const listening = composerListening(st);
+  if (listening) { ta.placeholder = LISTENING_PLACEHOLDER; listeningPainted = true; }
+  else if (listeningPainted) { listeningPainted = false; paintComposerGate(); }
+}
+
+// ── THE USAGE RING (his order, 2026-10-07, Code only): the budget nearest
+// its line fills the arc; the popover lists the plan, that budget and the
+// session's context window when the desktop can say (glyphhContextUsage).
+let ctxUsage: { tokens: number; budget: number } | null = null;
+function paintUsageRing(): void {
+  const chip = el("code-usage-chip");
+  if (!chip) return;
+  const v = usageView(spend, ctxUsage);
+  const fill = chip.querySelector<SVGCircleElement>(".ring-fill");
+  if (fill) fill.style.strokeDashoffset = String(ringOffset(v.pct));
+  chip.classList.toggle("hot", v.hot);
+  chip.title = v.rows[0] ? `${v.rows[0].label}: ${v.rows[0].detail}` : (v.plan || "Usage");
+}
+async function refreshContextUsage(): Promise<void> {
+  const c = current();
+  const read = (window.glyphh as unknown as { glyphhContextUsage?: (id: string) => Promise<{ tokens: number; budget: number }> }).glyphhContextUsage;
+  if (!c || !read) { ctxUsage = null; paintUsageRing(); return; }
+  ctxUsage = await read(c.id).then((r) => (r && r.budget > 0 ? { tokens: r.tokens, budget: r.budget } : null)).catch(() => null);
+  paintUsageRing();
+}
+function renderUsagePop(pop: HTMLElement): void {
+  const v = usageView(spend, ctxUsage);
+  pop.textContent = "";
+  const head = document.createElement("div");
+  head.className = "usage-plan";
+  head.textContent = v.plan || "Usage";
+  pop.appendChild(head);
+  if (!v.rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "usage-empty";
+    empty.textContent = spend ? "No budget nears its line." : "Usage is not available right now.";
+    pop.appendChild(empty);
+  }
+  for (const r of v.rows) {
+    const row = document.createElement("div");
+    row.className = "usage-row";
+    const h = document.createElement("div");
+    h.className = "usage-row-head";
+    const l = document.createElement("span"); l.textContent = r.label;
+    const d = document.createElement("span"); d.textContent = r.detail;
+    h.append(l, d);
+    const bar = document.createElement("div");
+    bar.className = "usage-bar";
+    const fill = document.createElement("div");
+    fill.className = "usage-fill" + (r.hot ? " hot" : "");
+    fill.style.width = `${r.pct}%`;
+    bar.appendChild(fill);
+    row.append(h, bar);
+    pop.appendChild(row);
+  }
+  if (spend?.canManage) {
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "action-btn usage-billing";
+    go.textContent = "Open Billing";
+    go.addEventListener("click", (e) => { e.stopPropagation(); pop.classList.add("hidden"); (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("billing"); });
+    pop.appendChild(go);
+  }
 }
 
 /** `thinking` is VIEW state: whether the CURRENT chat is running. Re-derive
@@ -7977,6 +8085,8 @@ export function initCode(): void {
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      // While the recorder listens, Enter is not a send: ✓ / ✕ / Stop are the doors.
+      if (composerListening({ text: ta.value, running: thinking, voice: voiceState() })) return;
       // Mid-run, Enter QUEUES the message as a VISIBLE note (his report,
       // 2026-08-28: the interrupt regressed). Injecting it silently into the
       // live run left nothing on screen — no × to take it back, no way to

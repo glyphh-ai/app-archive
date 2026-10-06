@@ -29,19 +29,22 @@ function audio(): AudioContext | null {
 export function cue(kind: "start" | "stop" | "submit"): void {
   const ac = audio();
   if (!ac) return;
-  const now = ac.currentTime;
-  const pair = kind === "start" ? [620, 880] : kind === "stop" ? [880, 560] : [720, 1040];
-  const o = ac.createOscillator();
-  const gain = ac.createGain();
-  o.type = "sine";
-  o.connect(gain); gain.connect(ac.destination);
-  o.frequency.setValueAtTime(pair[0], now);
-  o.frequency.exponentialRampToValueAtTime(pair[1], now + 0.11);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
-  o.start(now);
-  o.stop(now + 0.22);
+  // A cue that cannot sound must never stop the recorder it announces.
+  try {
+    const now = ac.currentTime;
+    const pair = kind === "start" ? [620, 880] : kind === "stop" ? [880, 560] : [720, 1040];
+    const o = ac.createOscillator();
+    const gain = ac.createGain();
+    o.type = "sine";
+    o.connect(gain); gain.connect(ac.destination);
+    o.frequency.setValueAtTime(pair[0], now);
+    o.frequency.exponentialRampToValueAtTime(pair[1], now + 0.11);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+    o.start(now);
+    o.stop(now + 0.22);
+  } catch { /* no audio out here */ }
 }
 
 // ── Reply text-to-speech ──────────────────────────────────────────────────────
