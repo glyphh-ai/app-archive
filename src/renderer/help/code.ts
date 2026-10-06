@@ -2418,8 +2418,9 @@ function selectChat(c: CodeChat): void {
   // A RAIL SESSION CLICK ON THE WEB dumps whatever screen is open — the
   // full-screen page, every work panel — and shows the session (his order,
   // 2026-10-05). The workbench owns the panels; code-workbench.ts binds the
-  // door and it is a no-op on the desktop.
+  // door and it is a no-op on the desktop. The lifted wall drops too.
   (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly?.();
+  (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
   currentId = c.id;
   lastSession = c.id;
   void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
@@ -7415,6 +7416,14 @@ export function initCode(): void {
     if (w.__wbEchoShadowPin) w.__wbEchoShadowPin(); else openCommandCenter();
   };
   el("rail-echo-btn")?.addEventListener("click", openEcho);
+  // ANY RAIL CLICK DROPS THE LIFTED WALL (his order, 2026-10-07) — the Echo
+  // buttons excepted, which toggle it themselves. Captured, so the row's own
+  // handler runs on a surface that is already down.
+  el("app-rail")?.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest("#rail-echo-btn, #rail-echo-btn-strip")) return;
+    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
+  }, true);
   // The sidebar's Echo button leaves with the sidebar; the collapsed strip
   // carries its own (his report, 2026-09-19).
   el("rail-echo-btn-strip")?.addEventListener("click", openEcho);
@@ -7428,6 +7437,9 @@ export function initCode(): void {
    *  panel (its card header carries the title + ✕). The workbench owns the
    *  surface work (__wbNewSessionPanel); this empties the thread state first. */
   const newSessionInPlace = (): void => {
+    // The lifted wall drops first (his report, 2026-10-07: New left the
+    // overlay up and looked like nothing happened).
+    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
     currentId = "";
     // NEW IS A STATE A RELOAD KEEPS (his report, 2026-10-05: "new isn't
     // resetting the web page state so a reload goes back to the last
