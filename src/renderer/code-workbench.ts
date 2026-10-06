@@ -4183,22 +4183,31 @@ async function init(): Promise<void> {
       // The deep band, without taking a click from anyone: the host DOM sees
       // the pointer here, and only a webview under the cursor does not - which
       // is exactly what the sliver above is for.
+      // Leaving the BAR re-tucks: the strip is hidden while peeked, so the
+      // dock itself owns the exit. Judged on EVERY move, not on mouseover
+      // (his report, 2026-10-07: the dock stayed down until the pointer
+      // reached the left rail — mouseover fires only when the element under
+      // the pointer changes, so a move down inside one big element never
+      // closed it), and on the pointer leaving the window or the window
+      // losing focus.
+      const belowBar = (ev: MouseEvent): boolean => {
+        const t = ev.target as HTMLElement | null;
+        if (t?.closest(".echo-topbar") || t?.closest("#echo-dock-layer")) return false;
+        const bar = document.querySelector<HTMLElement>(".echo-topbar")?.getBoundingClientRect();
+        return !bar || ev.clientY > bar.bottom + 24;
+      };
       document.addEventListener("mousemove", (ev) => {
         if (!document.body.classList.contains("echo-dock-tucked")) return;
+        if (document.body.classList.contains("echo-dock-peek")) { if (belowBar(ev)) peek(false); return; }
         const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--wb-top-inset") || "0", 10) || 0;
         if (ev.clientY <= top + 40 && ev.clientX >= (document.getElementById("echo-dock-layer")?.getBoundingClientRect().left ?? 0)) peek(true);
-        else if (!document.body.classList.contains("echo-dock-peek")) window.clearTimeout(revealTimer);
+        else window.clearTimeout(revealTimer);
       });
-      // Leaving the BAR re-tucks: the strip is hidden while peeked, so the
-      // dock itself owns the exit.
       document.addEventListener("mouseover", (ev) => {
-        if (!document.body.classList.contains("echo-dock-peek")) return;
-        const t = ev.target as HTMLElement | null;
-        if (t?.closest(".echo-topbar") || t?.closest("#echo-dock-layer")) return;
-        const y = (ev as MouseEvent).clientY;
-        const bar = document.querySelector<HTMLElement>(".echo-topbar")?.getBoundingClientRect();
-        if (!bar || y > bar.bottom + 24) peek(false);
+        if (document.body.classList.contains("echo-dock-peek") && belowBar(ev)) peek(false);
       });
+      document.documentElement.addEventListener("mouseleave", () => { if (document.body.classList.contains("echo-dock-peek")) peek(false); });
+      window.addEventListener("blur", () => { if (document.body.classList.contains("echo-dock-peek")) peek(false); });
     }
     const readAutoHide = (): void => {
       void Promise.all([
