@@ -4592,13 +4592,24 @@ function dipSay(text: string): void {
  *   .dip clear                       close every panel
  *   .dip list                        what is open, and what can be opened
  *   .dip refresh                     reload the focused panel
+ *   .dip reset                       the open workspace back to its saved design (⌘⇧Esc)
  *   .dip back                        the command center (where you came from)
  */
+/** RESET THE OPEN WORKSPACE to its saved design, on the spot, keeping the
+ *  conversation (his ask, 2026-10-07). Reached by ⌘⇧Esc, the Workspace menu
+ *  and `.dip reset`; says what happened either way. */
+export async function resetWorkspace(): Promise<void> {
+  const w = window as unknown as { __wbResetLayout?: () => Promise<boolean> };
+  const ok = await (w.__wbResetLayout?.() ?? Promise.resolve(false));
+  toastOk(ok ? "Workspace reset to its saved design." : "No workspace is open to reset.");
+}
+
 export function runDip(ref: string): void {
   showWorkspaceSurface();
   const w = window as unknown as {
     __initCodeWorkbench?: () => void;
     __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
+    __wbResetLayout?: () => Promise<boolean>;
     __wbClearPanels?: () => void;
     __wbGridPanels?: () => boolean;
     __wbListApps?: () => Array<{ slug: string; name: string }>;
@@ -4626,6 +4637,7 @@ export function runDip(ref: string): void {
       ].filter(Boolean).join("\n"));
       return;
     }
+    if (verb === "reset") { void resetWorkspace(); return; }
     if (verb === "refresh") {
       // The focused panel reloads itself; no ref = whatever is on top.
       (window as unknown as { __wbReloadFocused?: () => void }).__wbReloadFocused?.();
@@ -7192,6 +7204,12 @@ export function initCode(): void {
       openCommandCenter();
       return;
     }
+    // ⌘⇧Esc — reset the open workspace to its saved design.
+    if (e.code === "Escape" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      void resetWorkspace();
+      return;
+    }
     // ⌘⇧N — a NEW agent session (the ⌘N "new" convention, shifted clear of
     // the OS new-window accelerator).
     if (e.code === "KeyN" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
@@ -7211,6 +7229,8 @@ export function initCode(): void {
   });
   // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
   (window.glyphh as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
+  // ⌘⇧Esc via the app menu (fires even when a panel webview holds the keys).
+  (window.glyphh as unknown as { onResetWorkspaceGesture?: (cb: () => void) => void }).onResetWorkspaceGesture?.(() => { void resetWorkspace(); });
   // ⌘⇧N via the app menu (fires even when a panel webview holds the keys).
   (window.glyphh as unknown as { onNewSessionGesture?: (cb: () => void) => void }).onNewSessionGesture?.(() => {
     (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();

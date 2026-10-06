@@ -1522,6 +1522,9 @@ async function init(): Promise<void> {
     close(slug: string): boolean;
     focus(slug: string): boolean;
     closeAll(): void;
+    /** Reset the open layout to its saved design, keeping the conversation;
+     *  false when no named layout is up or its design is gone. */
+    resetLayout(): Promise<boolean>;
     /** ⌘W: close the top panel; false when nothing is open. */
     closeTop(): boolean;
   }
@@ -4320,6 +4323,13 @@ async function init(): Promise<void> {
     // the whole set down in one action.
     let activeLayoutId: string | null = null;
     const echoMemKey = (name: string): string => `echo:layout:${name.trim().toLowerCase()}`;
+    /** A RESET in flight (resetLayoutToDesign): the layout whose arrangement
+     *  memory the next open must forget — AFTER the outgoing save, which
+     *  would otherwise write the broken arrangement straight back. */
+    let forgetMemOnOpen: string | null = null;
+    /** A reset re-opens under "keep" whatever the layout's own session
+     *  contract says — the conversation stays. Consumed by the next open. */
+    let sessionModeOverride: "keep" | null = null;
     /** A fingerprint of the layout's DEFINITION — grid size plus every cell's
      *  panel and slot. Remembered positions override the definition (that is
      *  what makes a user's drag stick), so memory saved against a DIFFERENT
@@ -6024,6 +6034,7 @@ async function init(): Promise<void> {
         // the OUTGOING layout remembers what its panels were doing (last
         // page, open files, browser tabs) — capture before the teardown
         saveEchoLayoutMem();   // the OUTGOING layout's save runs under ITS contract
+        if (forgetMemOnOpen) { uiStateRemovePrefix(echoMemKey(forgetMemOnOpen)); forgetMemOnOpen = null; }
         // The OUTGOING "last" layout pins the session it was riding NOW, so a
         // return resumes exactly this conversation (the change listener
         // below covers switches mid-ride; this covers the leave itself).
@@ -6285,7 +6296,8 @@ async function init(): Promise<void> {
           type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void };
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
           const space = activateLayoutSpace(layout);
-          const mode = layout.sessionMode ?? "keep";
+          const mode = sessionModeOverride ?? layout.sessionMode ?? "keep";
+          sessionModeOverride = null;
           // The layout's LOOP + MODEL SLOTS follow the SESSION contract (his
           // rule, 2026-09-08): they bind only to a session the layout CREATES.
           // "keep" keeps the current session's own cast; "last" restores the
@@ -7614,6 +7626,7 @@ async function init(): Promise<void> {
         return true;
       },
       closeAll: () => { for (const x of [...openList]) closeCard(x); },
+      resetLayout: resetLayoutToDesign,
       closeTop: () => {
         const top = openList[openList.length - 1];
         if (!top) return false;
@@ -7659,6 +7672,27 @@ async function init(): Promise<void> {
     // The composer band's reset button (help/code.ts DOM) — close every
     // panel, back to the bare command center.
     (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset = resetEcho;
+    // RESET TO THE DESIGN (his ask, 2026-10-07: "reset the workspace back to
+    // what is configured if the layout got fucked up" — ⌘⇧Esc, the Workspace
+    // menu, `.dip reset`). The live arrangement is thrown away: both
+    // arrangement memories are forgotten and the layout's DEFINITION re-opens
+    // on the spot through the one open path. The conversation is kept — the
+    // session binding stays, and this one open runs as "keep".
+    async function resetLayoutToDesign(): Promise<boolean> {
+      const name = echoLayoutName ?? echoActiveLayout?.name ?? null;
+      if (!name) return false;
+      const yo = (window as unknown as { glyphh?: { layoutsList?: () => Promise<LayoutRow[]> } }).glyphh;
+      const layouts = await (yo?.layoutsList?.() ?? Promise.resolve([] as LayoutRow[])).catch(() => [] as LayoutRow[]);
+      const key = name.trim().toLowerCase();
+      const layout = layouts.find((l) => l.name.trim().toLowerCase() === key);
+      if (!layout) return false;
+      await loadUiState();   // the memories are server-side; forget them there
+      uiStateRemovePrefix(namedLayoutKey(name));
+      forgetMemOnOpen = key;
+      sessionModeOverride = "keep";
+      openLayoutInEcho(layout);
+      return true;
+    }
 
     // Teardown: release parked terminals + our controller registration.
     const obs = new MutationObserver(() => {
@@ -10963,6 +10997,7 @@ async function init(): Promise<void> {
     __wbOpenApp?: (app: WbAppRef, newPanel?: boolean) => void;
     __wbOpenApps?: (apps: WbAppRef[]) => void;
     __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
+    __wbResetLayout?: () => Promise<boolean>;
     __wbOpenLayout?: (layout: WbGridLayout) => void;
     __wbClearPanels?: () => Promise<boolean>;
     __wbGridPanels?: () => boolean;
@@ -11063,6 +11098,17 @@ async function init(): Promise<void> {
     if (!layout) return false;
     openLayoutRow(layout, rows);
     return true;
+  };
+  /** Reset the open workspace to its saved design (⌘⇧Esc / `.dip reset` /
+   *  the Workspace menu). Echo is the layout manager when mounted; the rails
+   *  path forgets its own geometry memory and re-opens by name. */
+  wbApp.__wbResetLayout = async (): Promise<boolean> => {
+    if (echoCtl) return echoCtl.resetLayout();
+    const name = activeLayoutName;
+    if (!name) return false;
+    await loadUiState();
+    uiStateRemovePrefix(namedLayoutKey(name));
+    return wbApp.__wbOpenLayoutByName!(name);
   };
   /** `.dip refresh` — reload whatever webview is on top (a panel card first,
    *  then a rail slot). A native panel has nothing to reload; it is left be. */

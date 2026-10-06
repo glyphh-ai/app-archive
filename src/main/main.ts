@@ -915,6 +915,15 @@ async function boot() {
               }
             },
           },
+          {
+            label: "Reset Workspace",
+            accelerator: "CmdOrCtrl+Shift+Escape",
+            click: () => {
+              for (const wc of webContents.getAllWebContents()) {
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:reset-workspace"); } catch { /* mid-teardown */ }
+              }
+            },
+          },
           { type: "separator" },
           { role: "reload" },
           { role: "forceReload" },
