@@ -167,14 +167,35 @@ function setTypeTab(t: SessionType): void {
   void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
   applyTypeTab();
 }
+/** A BLANK session follows the type switch (his report, 2026-10-06: sitting
+ *  on New → Code and switching to Work left the Code composer and chip, on
+ *  the web and the desktop alike). A session with a transcript keeps its
+ *  birth type — its turns were written with that toolbelt. The blank one is
+ *  reborn: its mode, and its source the way newChat stamps it (a Work
+ *  session on the web lands in the cloud; Code follows the pending pick). */
+function rebirthBlankSession(): void {
+  const c = current();
+  if (!c || c.messages.length || modeOf(c) === typeTab) return;
+  c.mode = typeTab;
+  c.source = newSessionSource(onWebTarget() ? "web" : "desktop", typeTab, pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
+  if (c.source.kind === "local" && c.source.path) c.workdir = c.source.path;
+  else delete c.workdir;
+  void saveStore();
+}
 /** Repaint everything the active type governs, in THIS document. */
 function applyTypeTab(): void {
+  rebirthBlankSession();
   paintTypeTabs();
   renderHistory();
   renderRailSessions();
   syncSpaceAttrs();
   // The composer's prompt names the type, and the gate is what writes it.
   paintComposerGate();
+  // The reborn blank session shows its new face: the thread, the source chip,
+  // the folder gate (each a no-op when nothing changed).
+  renderThread();
+  repaintSourceUi();
+  void checkWorkdirGate();
 }
 /** Paint the rail's tab pair + the New button from the active type. */
 function paintTypeTabs(): void {
