@@ -32,7 +32,12 @@
  *  installed on the web?"), see BundleKind; it joins this union — and the
  *  SDK's MemberLibraryKind, which this one is handed to in library-sync-core
  *  — with the desktop's plugin adapter. */
-export type MemberLibraryKind = "workspace" | "tab" | "skill" | "agent" | "task" | "drip" | "schedule";
+/** The SDK's own union (sdk contract/member-library.ts), repeated here because
+ *  the renderer never imports the SDK: the house kinds and plugins joined on
+ *  2026-10-06 (cloud is the one home). */
+export type MemberLibraryKind =
+  | "workspace" | "tab" | "skill" | "agent" | "task" | "drip" | "schedule" | "plugin"
+  | "design" | "deck" | "image" | "video" | "audio" | "file" | "folder";
 
 /** A row as the server lists it. `deletedAt` arrives as a number (epoch ms) on
  *  the `since` page and as an ISO string on an item read; the SDK's reconcile
