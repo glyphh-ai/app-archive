@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   webBootSurfaces, bootsSurface, DESKTOP_BOOT_SURFACES,
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, WEB_RAIL_LINKS,
-  webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
+  webDockDoorAllowed, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS, webWallKeeps, WEB_HOUSE_VIEWS, WEB_DOCK_NAV,
   agentCardMovable, webNewSessionInPlace,
   webRestorableCard, webCardSkipReason, webRestorePlan, webWallMemory,
   webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
@@ -33,10 +33,24 @@ describe("webBootSurfaces — what the home shell boots into", () => {
 });
 
 describe("the dock's doors on the web", () => {
-  it("only a new agent session and Settings act; cc / close all / new tab never", () => {
-    expect(webDockDoorAllowed("glyphh")).toBe(true);
-    expect(webDockDoorAllowed("settings")).toBe(true);
-    for (const k of ["cc", "closeall", "newtab", "agent:claude", ""]) expect(webDockDoorAllowed(k)).toBe(false);
+  it("a new agent session, Settings, the command center and Close all act; New tab and a CLI never", () => {
+    for (const k of ["glyphh", "settings", "cc", "closeall"]) expect(webDockDoorAllowed(k)).toBe(true);
+    for (const k of ["newtab", "agent:claude", ""]) expect(webDockDoorAllowed(k)).toBe(false);
+  });
+  it("the web's wall keeps the cloud's half of two worlds (his order, 2026-10-05: 'the mirror of the app … a different filter')", () => {
+    expect(webWallKeeps({ kind: "layout" })).toBe(true);
+    expect(webWallKeeps({ kind: "app", cloud: true, archetype: "glyphh-app" })).toBe(true);
+    expect(webWallKeeps({ kind: "app", archetype: "glyphh-app" })).toBe(false);        // a desktop-only Glyphh app
+    expect(webWallKeeps({ kind: "app", archetype: "web" })).toBe(false);               // a URL tab
+    expect(webWallKeeps({ kind: "app", archetype: "native" })).toBe(false);            // a native app
+    expect(webWallKeeps({ kind: "app", archetype: "glyphh-nav" })).toBe(false);        // a section: the rail's
+    expect(webWallKeeps({ kind: "agent" })).toBe(false);                               // a CLI
+    expect(webWallKeeps({ kind: "tool", cliAgent: { id: "claude" } })).toBe(false);    // a CLI agent's wall/dock tile
+    for (const v of [...WEB_TOOL_VIEWS, ...WEB_HOUSE_VIEWS]) expect(webWallKeeps({ kind: "tool", toolView: v })).toBe(true);
+    expect(webWallKeeps({ kind: "tool", toolView: "preview" })).toBe(false);
+    for (const k of WEB_DOCK_NAV) expect(webWallKeeps({ kind: "tool", navKey: k })).toBe(true);
+    expect(webWallKeeps({ kind: "tool", navKey: "newtab" })).toBe(false);
+    expect(webWallKeeps({ kind: "folder" })).toBe(true);
   });
 });
 
@@ -93,7 +107,7 @@ describe("settings on the web — everything for building leaves", () => {
     for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="build"]');
     expect(WEB_HIDDEN_RAIL).not.toContain('.app-rail-nav-item[data-settings-sub="customize"]');
-    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#show-dock-row", "#streamed-panels-row"]);
+    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row"]);   // the dock's Appearance rows are back on the web (2026-10-05)
   });
 });
 
@@ -215,8 +229,8 @@ describe("THE ECHO ICON AT THE RAIL'S TOP-LEFT ON THE WEB (his order, 2026-10-05
     expect(webRailWordmark(true)).toBe(true);
     expect(webRailWordmark(false)).toBe(false);
   });
-  it("the web's Echo is the workspaces-only overlay: search yes, dock no, workspace tiles only — opened on the web, never the desktop's rule", () => {
-    expect(webEchoSurface()).toEqual({ search: true, dock: false, tiles: "workspaces" });
+  it("the web's Echo is the desktop's Echo with the cloud filter: search, dock and the cloud's tiles — lifted on the web, never the desktop's rule", () => {
+    expect(webEchoSurface()).toEqual({ search: true, dock: true, tiles: "cloud" });
     expect(Object.isFrozen(webEchoSurface())).toBe(true);
     expect(webEchoOpens(true)).toBe(true);
     expect(webEchoOpens(false)).toBe(false);

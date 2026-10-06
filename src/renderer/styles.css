@@ -17919,14 +17919,10 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
 .echo-topbar-stacked { max-width: 92%; }
-/* THE WEB'S ECHO = WORKSPACES ONLY (his order, 2026-10-05; web-cut.ts
-   webEchoSurface: search yes, dock no): the dock and its hot strip never
-   paint, the search pill sits at the top, the grid starts under it. */
-.ws-echo-body.web-echo .echo-topbar, .ws-echo-body.web-echo .echo-dock-hotstrip { display: none !important; }
-html.glyphh-web #echo-dock-layer { display: none !important; }
-.ws-echo-body.web-echo .echo-search-wrap { top: 28px; }
-.ws-echo-body.web-echo .echo-page-grid { padding-top: calc(28px + 44px + 26px); }
-.ws-echo-body.web-echo .echo-web-empty { position: absolute; left: 0; right: 0; top: calc(28px + 44px + 40px); text-align: center; font-size: 13px; color: var(--text-3); pointer-events: none; }
+/* THE WEB'S ECHO = THE DESKTOP'S, FILTERED (his order, 2026-10-05; web-cut.ts
+   webEchoSurface): the same dock, search and grid; only the empty line is
+   the web's own. */
+.ws-echo-body.web-echo .echo-web-empty { position: absolute; left: 0; right: 0; top: 46%; text-align: center; font-size: 13px; color: var(--text-3); pointer-events: none; }
 .ws-echo-body:not(.web-echo) .echo-web-empty { display: none; }
 
 /* The rail's mark is the HOME button. */
@@ -21889,17 +21885,18 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    its doors into Echo / Build / Customize are hidden by web-surface.ts. The
    `glyphh-web` class is on <html> before the first paint (web/src/bridge.js),
    so nothing here flashes. help/web-cut.ts is the rule these rules draw.
-   THE ONE EXCEPTION: the rail's Echo icon lifts the wall of cloud workspaces
-   (body.web-echo) — then its pages and search show (his report, 2026-10-05:
-   "the web is not rendering the echo wall"). ── */
+   THE ONE EXCEPTION: the rail's Echo icon lifts the wall (body.web-echo,
+   body.echo-wall-lifted) — then its pages, search and dock show (his order,
+   2026-10-05: "echo should be the mirror of the app … a different filter";
+   the dock itself is off until Appearance → Show the dock). ── */
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-pages,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-dots,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-search-wrap,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-arrow,
-html.glyphh-web .echo-topbar,
-html.glyphh-web .echo-dock,
-html.glyphh-web #echo-dock-layer,
-html.glyphh-web .echo-dock-hotstrip,
+html.glyphh-web body:not(.echo-wall-lifted) .echo-topbar,
+html.glyphh-web body:not(.echo-wall-lifted) .echo-dock,
+html.glyphh-web body:not(.echo-wall-lifted) #echo-dock-layer,
+html.glyphh-web body:not(.echo-wall-lifted) .echo-dock-hotstrip,
 html.glyphh-web .echo-layout-bar,
 html.glyphh-web .echo-veil { display: none !important; }
 html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }

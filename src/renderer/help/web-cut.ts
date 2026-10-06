@@ -144,18 +144,48 @@ export function webRailWordmark(web: boolean): boolean {
   return web;
 }
 
-/** THE WEB'S ECHO IS THE WORKSPACES ONLY (his order, 2026-10-05): the same
- *  overlay the desktop lifts (the wall over the open cards), but on the web
- *  its grid holds ONLY the member's workspace tiles — no dock, no app, tool,
- *  section or CLI tiles — and the search at the top filters those. The wall
- *  and the dock still never BOOT on the web (bootsSurface stays false for
- *  them); this is the one surface the web's Echo button opens. */
-export type WebEchoSurface = { search: boolean; dock: boolean; tiles: "workspaces" };
+/** THE WEB'S ECHO IS THE DESKTOP'S ECHO WITH A DIFFERENT FILTER (his order,
+ *  2026-10-05: "echo should be the mirror of the app … just a different
+ *  filter"): the same wall, the same dock, the same search — holding only
+ *  what the cloud can host (webWallKeeps). The wall and the dock still never
+ *  BOOT on the web (bootsSurface stays false; the web lands on Work → New);
+ *  the rail's Echo icon lifts them. The dock is OFF by default here as on
+ *  the desktop (Appearance → Show the dock turns it on). */
+export type WebEchoSurface = { search: boolean; dock: boolean; tiles: "cloud" };
 export function webEchoSurface(): Readonly<WebEchoSurface> {
-  return Object.freeze({ search: true, dock: false, tiles: "workspaces" as const });
+  return Object.freeze({ search: true, dock: true, tiles: "cloud" as const });
 }
-/** Does the Echo button open the workspaces-only overlay here? Web only —
- *  the desktop's button opens the whole command center as ever. */
+
+/** What the web's wall (and dock) keeps of the desktop's tiles — the cloud's
+ *  half of two worlds: a cloud app instance, a panel the web hosts itself
+ *  (WEB_TOOL_VIEWS, and the house panels it fills over the relay), a cloud
+ *  workspace (the web's list is already cloud-only), the dock's own
+ *  controls. Gone: URL tabs and native apps, desktop-only Glyphh apps, CLI
+ *  agents, the section tiles (the rail has those pages), New tab. */
+export type WebWallTileIn = {
+  kind: "app" | "layout" | "tool" | "agent" | "folder";
+  toolView?: string; navKey?: string; cloud?: boolean; archetype?: string | null;
+  /** a CLI agent's tile (kind "tool" on the desktop's wall) — desktop only */
+  cliAgent?: unknown;
+};
+export const WEB_HOUSE_VIEWS: ReadonlyArray<string> = Object.freeze(["gdesign", "gpoint", "gimage", "gvideo", "gsound", "gdrive"]);
+export const WEB_DOCK_NAV: ReadonlyArray<string> = Object.freeze(["glyphh", "settings", "cc", "closeall"]);
+export function webWallKeeps(t: WebWallTileIn): boolean {
+  switch (t.kind) {
+    case "layout": return true;
+    case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
+    case "agent": return false;
+    case "tool":
+      if (t.cliAgent) return false;
+      if (t.navKey) return WEB_DOCK_NAV.includes(t.navKey);
+      return !!t.toolView && (WEB_TOOL_VIEWS.includes(t.toolView) || WEB_HOUSE_VIEWS.includes(t.toolView));
+    case "app":
+      return t.cloud === true;
+    default: return false;
+  }
+}
+/** Does the Echo button lift the web's Echo here? Web only — the desktop's
+ *  button opens the command center as ever. */
 export function webEchoOpens(web: boolean): boolean {
   return web;
 }
@@ -167,17 +197,19 @@ export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-more-toggle",
 ]);
 
-/** Settings rows that govern surfaces the web no longer has: the dock
- *  (Appearance → Dock) and the streamed web panels (General). */
+/** Settings rows that govern surfaces the web no longer has: the streamed
+ *  web panels (General). The dock's rows (Appearance → Show the dock, auto-
+ *  hide, reveal) are back on the web (his order, 2026-10-05): the web's
+ *  Echo carries the dock, off by default like the desktop's. */
 export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
-  "#show-dock-row", "#streamed-panels-row",
+  "#streamed-panels-row",
 ]);
 
-/** The dock's nav keys that still mean something on the web: a new agent
- *  session and Settings. The command center, Close all and New tab are the
- *  wall's own and never act here. */
+/** The dock's nav keys that act on the web: a new agent session, Settings,
+ *  the command center (the Echo itself) and Close all (a fresh session, per
+ *  webCloseAllOpensNew). New tab is a URL tab's door and never acts here. */
 export function webDockDoorAllowed(key: string): boolean {
-  return key === "glyphh" || key === "settings";
+  return WEB_DOCK_NAV.includes(key);
 }
 
 /** The workbench tool views the agent's ⋮ menu offers on the web: the

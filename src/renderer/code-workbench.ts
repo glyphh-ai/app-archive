@@ -53,7 +53,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, webEchoOpens, webEchoSurface, webLayoutCells, webWorkspaceOpenLines } from "./help/web-cut.js";
+import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, webEchoOpens, webEchoSurface, webWallKeeps, webLayoutCells, webWorkspaceOpenLines } from "./help/web-cut.js";
 import { webInstalledApps } from "./help/agent-menu-ui.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
@@ -2409,9 +2409,9 @@ async function init(): Promise<void> {
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
-    // THE WEB'S ECHO IS THE WORKSPACES OVERLAY (his order, 2026-10-05;
-    // help/web-cut.ts webEchoSurface): the class hides the dock and seats
-    // the search at the top; the wall below carries workspace tiles only.
+    // THE WEB'S ECHO (his order, 2026-10-05; help/web-cut.ts webEchoSurface):
+    // the desktop's Echo, filtered to the cloud's tiles; the class marks the
+    // body for the web's empty line.
     body.classList.toggle("web-echo", IS_WEB_TARGET && webEchoOpens(IS_WEB_TARGET));
     // FIRST PAINT WITHOUT A FLASH OF THE DOCK (his order, 2026-10-04: off by
     // default). The pref lands asynchronously (readAutoHide, below); the dock
@@ -2615,7 +2615,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; /** a cloud app instance (two worlds: what the web's wall keeps) */ cloud?: boolean; archetype?: string | null; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
@@ -3648,11 +3648,12 @@ async function init(): Promise<void> {
       const glyphSvg = iconUrl || !(tool || a.appArchetype === "glyphh-app")
         ? undefined
         : svgOf((tool && VIEW_META[tool]?.icon) || VIEW_META.app.icon);
+      const cloud = typeof (a.launchConfig as { instanceKey?: unknown } | null | undefined)?.instanceKey === "string" || undefined;
       if (tool) {
-        return { name: a.name, slug, appId: a.id, kind: "tool", toolView: tool as Exclude<ViewKind, "app">, iconUrl: iconUrl || undefined, glyphSvg, orderKey: `app:${slug}` };
+        return { name: a.name, slug, appId: a.id, kind: "tool", toolView: tool as Exclude<ViewKind, "app">, iconUrl: iconUrl || undefined, glyphSvg, orderKey: `app:${slug}`, cloud, archetype: a.appArchetype ?? null };
       }
       return {
-        name: a.name, slug, appId: a.id, url: a.url || undefined,
+        name: a.name, slug, appId: a.id, url: a.url || undefined, cloud, archetype: a.appArchetype ?? null,
         // No id = a HOUSE DEFAULT (the glyphh launcher set, not a user row).
         houseDefault: !a.id || undefined,
         glyphh: a.appArchetype === "glyphh-app" || undefined,
@@ -3756,7 +3757,10 @@ async function init(): Promise<void> {
       cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
-      const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      // THE WEB'S ECHO = THE DESKTOP'S, FILTERED (his order, 2026-10-05;
+      // help/web-cut.ts webWallKeeps): the cloud's half of two worlds.
+      const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)]
+        .filter((t) => !IS_WEB_TARGET || webWallKeeps(t));
       // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
       // right to left as Close all, Command center, Settings, with the two
       // openers ahead of them — but it is only the DEFAULT. Once the dock has
@@ -3795,6 +3799,12 @@ async function init(): Promise<void> {
       folders = (Array.isArray(folderPref) ? folderPref : [])
         .filter((f): f is WallFolder => !!f && typeof f === "object" && typeof (f as WallFolder).id === "string")
         .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(legacyKey) : [] }));
+      if (IS_WEB_TARGET) {
+        // …and the dock and the folders follow the same filter: a dock slot
+        // the web cannot serve leaves, a folder keeps only its kept members.
+        dockKeys = dockKeys.filter((k) => (dockItemFor(k) ? webWallKeeps({ kind: "tool", navKey: k }) : byK.has(k)));
+        folders = folders.map((f) => ({ ...f, keys: f.keys.filter((k) => byK.has(k)) })).filter((f) => f.keys.length > 0);
+      }
       wallCatalog = new Map(byK);
       const filed = folderedKeys();
       for (const f of folders) byK.set(`folder:${f.id}`, folderTileOf(f));
@@ -3817,10 +3827,11 @@ async function init(): Promise<void> {
       // 2026-10-05: the web remembers its open panels across a refresh and
       // a login) — restoreWallOnce replays what the web can host.
       if (!bootsSurface(IS_WEB_TARGET, "wall")) {
-        // …but the WORKSPACE TILES are on it (his order, 2026-10-05): the
-        // web's Echo button lifts a wall of those alone (webEchoSurface).
-        buildWall([webEchoSurface().tiles === "workspaces" ? (layouts || []).map((l) => layoutTileOf(l)) : []]);
-        syncWebEchoEmpty((layouts || []).length);
+        // …but the wall is BUILT, filtered to the cloud's tiles (webEchoSurface,
+        // webWallKeeps): the rail's Echo icon lifts it, dock and all.
+        void webEchoSurface;
+        buildWall([[...pageTiles, ...rest]]);
+        syncWebEchoEmpty(pageTiles.length + rest.length);
         restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
@@ -5000,9 +5011,9 @@ async function init(): Promise<void> {
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
     let dockProofTimer = 0;
-    /** THE WEB'S ECHO holds cloud workspaces only (two worlds, his order
-     *  2026-10-05); with none saved yet the wall says so instead of standing
-     *  blank. The line lives in the stage under the search. */
+    /** THE WEB'S ECHO holds the cloud's tiles only (two worlds, his order
+     *  2026-10-05); with none yet the wall says so instead of standing blank.
+     *  The line lives in the stage under the search. */
     function syncWebEchoEmpty(count: number): void {
       if (!IS_WEB_TARGET) return;
       const stage = body.querySelector<HTMLElement>(".echo-stage");
@@ -5012,7 +5023,7 @@ async function init(): Promise<void> {
       if (!line) {
         line = document.createElement("div");
         line.className = "echo-web-empty";
-        line.textContent = "No cloud workspaces yet. Save one from Customize → Workspaces.";
+        line.textContent = "Nothing in the cloud yet. Install an app from Build → Discover, or save a workspace.";
         stage.appendChild(line);
       }
     }
