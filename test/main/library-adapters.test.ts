@@ -73,16 +73,16 @@ describe("workspaces", () => {
     workspaceAdapter().apply(item("workspace", "web-made", 5_000, { name: "Web Made", version: 2, cols: 3, rows: 1, colWidths: [1, 1, 1], rowHeights: [1], cells: [] }));
     expect(workspaceAdapter().list().find((r) => r.id === "web-made")).toMatchObject({ updatedAt: 5_000, data: { cols: 3 } });
     expect(existsSync(join(root, "user", "workspaces", "web-made", "workspace.json"))).toBe(true);
-    // TWO WORLDS (2026-10-05): a workspace born on the web (`home: "cloud"`) is never adopted here.
+    // ONE LIST (2026-10-06): a workspace saved on the web is adopted like any other row — the folder is a cache of the server's rows.
     workspaceAdapter().apply(item("workspace", "cloud-only", 6_000, { name: "Cloud Only", version: 2, home: "cloud", cols: 2, rows: 1, colWidths: [1, 1], rowHeights: [1], cells: [] }));
-    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toBeUndefined();
-    expect(existsSync(join(root, "user", "workspaces", "cloud-only", "workspace.json"))).toBe(false);
+    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toMatchObject({ updatedAt: 6_000, data: { cols: 2 } });
+    expect(existsSync(join(root, "user", "workspaces", "cloud-only", "workspace.json"))).toBe(true);
     // A local delete: the folder goes, a tombstone is written at the delete's clock.
     expect(await lm.deleteLayout("Research Desk")).toBe(true);
     expect(readTombstones()["workspace:research-desk"]).toBeGreaterThanOrEqual(before);
     // A remote delete: the folder goes, quietly.
     workspaceAdapter().remove("web-made");
-    expect(workspaceAdapter().list()).toEqual([]);
+    expect(workspaceAdapter().list().map((r) => r.id)).toEqual(["cloud-only"]);
     expect(readTombstones()["workspace:web-made"]).toBeUndefined();
   });
   it("a file written before stamps existed takes its mtime as the clock", () => {

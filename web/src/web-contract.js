@@ -212,8 +212,8 @@ export function buildContract(client, deps) {
   // next sync; a web-only member who never installed the desktop has their
   // library there from day one. The app rows an attached desktop still holds
   // (panelApps.list over the relay) fill in behind the server's — one row per
-  // slug, the server winning a tie. WORKSPACES do not: the web's are the
-  // cloud's rows only (two worlds, his order 2026-10-05).
+  // slug, the server winning a tie. WORKSPACES are the member library's rows
+  // alone — the one list on every surface (his order, 2026-10-06).
   const library = buildMemberLibrary(client, { desktopRead, apiUrl });
   const { layoutsList, panelAppsList } = library;
   const house = createHouseRelay({ client });

@@ -104,19 +104,14 @@ export function buildMemberLibrary(client, deps = {}) {
   const appInstances = deps.appInstances ?? buildAppInstancesWeb(client, { now, document: deps.document, secure: deps.secure });
 
   // ── Workspaces ────────────────────────────────────────────────────────────
-  // TWO WORLDS (his order, 2026-10-05: "these should only be the workspaces
-  // added from the cloud … they live in two different worlds"): the web's
-  // workspaces are the member library's `workspace` rows and nothing else —
-  // a desktop's own layouts (its `layouts.list`) never join this list.
-  // The desktop syncs its own layouts into the same kind (library-adapters.ts
-  // workspaceAdapter), so "the library's rows" alone would still show the
-  // desktop's (his report, 2026-10-05: "why are the desktop's workspaces
-  // showing on the web?"). A workspace saved here is stamped `home: 'cloud'`;
-  // the web lists only those, and the desktop never adopts them.
-  const CLOUD_HOME = 'cloud';
+  // ONE LIST (his order, 2026-10-06: "Cloud is first and every surface pulls
+  // from it"): the member library's `workspace` rows ARE the workspaces, on
+  // every surface. The desktop's workspaces folder is a cache of these rows
+  // (library-adapters.ts workspaceAdapter syncs both ways); a desktop's own
+  // `layouts.list` over the relay never joins — it is the same rows.
   const layoutsList = async () => {
     const srv = await listRows('workspace');
-    return srv.filter((r) => isGridLayout(r.data) && r.data.home === CLOUD_HOME).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
+    return srv.filter((r) => isGridLayout(r.data)).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
   };
   const layoutsSaveGrid = async (grid) => {
     try {
@@ -125,7 +120,7 @@ export function buildMemberLibrary(client, deps = {}) {
       const { loop, modelSelections, sessionMode, folder, space, ...rest } = grid;
       const at = now();
       const data = {
-        ...rest, name, version: 2, home: CLOUD_HOME,
+        ...rest, name, version: 2,
         folderMode: grid.folderMode ?? 'single',
         target: grid.target ?? 'glyphh',
         ...(loop ? { loop } : {}),

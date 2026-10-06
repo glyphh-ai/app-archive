@@ -361,7 +361,7 @@ describe('buildContract — workspaces and app tabs read the server first, write
   });
   const withDesktops = (client, answers) => ({ ...client, attach: attachFor(answers) });
 
-  it('layoutsList: the member library\'s workspace rows ONLY — a desktop\'s own layouts never join (two worlds, his order 2026-10-05)', async () => {
+  it('layoutsList: the member library\'s workspace rows are the one list — a desktop\'s own layouts.list is never asked (his order, 2026-10-06)', async () => {
     const attach = attachFor({
       m1: { 'layouts.list': { layouts: [DESK_LAYOUT, { ...DESK_LAYOUT, name: 'Grid', cols: 9 }] } },
     });
@@ -372,12 +372,12 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(attach.dispatch).not.toHaveBeenCalledWith('layouts.list', expect.anything(), expect.anything());
   });
 
-  it('layoutsList: a workspace the DESKTOP synced into the library (no `home`) is not the web\'s (two worlds, his report 2026-10-05)', async () => {
+  it('layoutsList: ONE LIST — a workspace the desktop synced into the library is the web\'s too (his order, 2026-10-06); an older `home: cloud` stamp changes nothing', async () => {
     const client = authedClient();
     const rows = await client.memberLibrary.list('workspace');
-    client.memberLibrary.list = vi.fn(async () => [...rows, { ...rows[0], id: 'desk', data: { ...rows[0].data, name: 'Desk', home: undefined } }]);
+    client.memberLibrary.list = vi.fn(async () => [...rows, { ...rows[0], id: 'desk', data: { ...rows[0].data, name: 'Desk' } }, { ...rows[0], id: 'old', data: { ...rows[0].data, name: 'Old', home: 'cloud' } }]);
     const c = buildContract(client, deps);
-    expect((await c.layoutsList()).map((l) => l.name)).toEqual(['Grid']);
+    expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Desk', 'Grid', 'Old']);
   });
 
   it('layoutsList: a 401 on the server read is an empty list, even with a desktop attached', async () => {
@@ -392,7 +392,8 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(await c.layoutsSaveGrid({ name: 'Research', cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [], loop: 'glyphh', sessionMode: 'keep' })).toBe(true);
     const [kind, id, input] = client.memberLibrary.put.mock.calls[0];
     expect([kind, id]).toEqual(['workspace', 'research']);
-    expect(input.data).toMatchObject({ name: 'Research', version: 2, loop: 'glyphh', updatedAt: input.updatedAt, home: 'cloud' }); // born on the web
+    expect(input.data).toMatchObject({ name: 'Research', version: 2, loop: 'glyphh', updatedAt: input.updatedAt });
+    expect(input.data.home).toBeUndefined();   // ONE LIST (2026-10-06): no surface stamp
     expect(input.data.sessionMode).toBeUndefined();           // "keep" is the default — not written
     expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Grid', 'Research']);
     expect(await c.layoutsDelete('Research')).toBe(true);
