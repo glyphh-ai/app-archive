@@ -28,7 +28,7 @@ export function chooseRunPlace(i: RunPlaceInput, doors: RunPlaceDoors = {}): Pro
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay run-place-overlay";
     overlay.innerHTML = `<div class="confirm-box run-place-box" role="dialog" aria-modal="true" aria-labelledby="run-place-title">
-      <div class="confirm-head"><h3 id="run-place-title">Choose environment</h3></div>
+      <div class="confirm-head run-place-head"><button class="drop-detail-back run-place-back hidden" type="button" aria-label="Back to environments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button><h3 id="run-place-title">Choose environment</h3></div>
       <div class="run-place-list"></div>
       <div class="confirm-foot"><button class="action-btn secondary run-place-cancel" type="button">Cancel</button></div>
     </div>`;
@@ -41,9 +41,13 @@ export function chooseRunPlace(i: RunPlaceInput, doors: RunPlaceDoors = {}): Pro
     };
     const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); done(null); } };
     const title = overlay.querySelector<HTMLElement>("#run-place-title")!;
+    const back = overlay.querySelector<HTMLButtonElement>(".run-place-back")!;
+    // The folder step is a second page: the ← in the head goes back to the
+    // environments (his order 2026-10-07: "needs a <- back button").
     const drillFolders = (machine: { id?: string; name: string; folders?: readonly string[] }): void => {
       list.textContent = "";
       title.textContent = `Choose folder — ${machine.name || "this desktop"}`;
+      back.classList.remove("hidden");
       const rows = folderRows(machine, i.recents ?? []);
       for (const f of rows) {
         const row = drillItem(f.label, f.sub, "");
@@ -61,27 +65,34 @@ export function chooseRunPlace(i: RunPlaceInput, doors: RunPlaceDoors = {}): Pro
       }
       list.querySelector<HTMLButtonElement>(".code-drop-item:not(:disabled)")?.focus();
     };
-    let section: "desktop" | "cloud" | null = null;
-    for (const r of runPlaceRows(i)) {
-      if (r.section !== section) {
-        section = r.section;
-        const lbl = document.createElement("div");
-        lbl.className = "ws-sec-label";
-        lbl.innerHTML = `${section === "desktop" ? LOCUS_SVG.local : LOCUS_SVG.cloud}<span></span>`;
-        (lbl.querySelector("span") as HTMLElement).textContent = section === "desktop" ? "Remote control" : "Cloud environments";
-        list.appendChild(lbl);
+    const renderPlaces = (): void => {
+      list.textContent = "";
+      title.textContent = "Choose environment";
+      back.classList.add("hidden");
+      let section: "desktop" | "cloud" | null = null;
+      for (const r of runPlaceRows(i)) {
+        if (r.section !== section) {
+          section = r.section;
+          const lbl = document.createElement("div");
+          lbl.className = "ws-sec-label";
+          lbl.innerHTML = `${section === "desktop" ? LOCUS_SVG.local : LOCUS_SVG.cloud}<span></span>`;
+          (lbl.querySelector("span") as HTMLElement).textContent = section === "desktop" ? "Remote control" : "Cloud environments";
+          list.appendChild(lbl);
+        }
+        const row = drillItem(r.label, r.sub, r.selected ? CHECK : "");
+        if (r.selected) row.classList.add("selected");
+        if (!r.place) { row.classList.add("ws-unreachable"); row.disabled = true; }
+        else { const place = r.place; row.addEventListener("click", () => (place.kind === "desktop" ? drillFolders(place.machine) : done(place))); }
+        list.appendChild(row);
       }
-      const row = drillItem(r.label, r.sub, r.selected ? CHECK : "");
-      if (r.selected) row.classList.add("selected");
-      if (!r.place) { row.classList.add("ws-unreachable"); row.disabled = true; }
-      else { const place = r.place; row.addEventListener("click", () => (place.kind === "desktop" ? drillFolders(place.machine) : done(place))); }
-      list.appendChild(row);
-    }
+      list.querySelector<HTMLButtonElement>(".code-drop-item.selected")?.focus();
+    };
+    renderPlaces();
+    back.addEventListener("click", renderPlaces);
     overlay.querySelector(".run-place-cancel")!.addEventListener("click", () => done(null));
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) done(null); });
     document.addEventListener("keydown", onKey);
     document.body.appendChild(overlay);
     guardWebviewsForModal(true);
-    list.querySelector<HTMLButtonElement>(".code-drop-item.selected")?.focus();
   });
 }
