@@ -499,11 +499,21 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
     expect(await buildContract(authedClient(), deps).attachStatus()).toEqual({ attached: false, machines: [] });
   });
 
-  it('the relay carries no data read: the contract has no desktopAppsList, no desktopPanelOpen, no cliSessionsList (his order, 2026-10-06)', () => {
+  it('the relay carries no record: the contract has no desktopAppsList and no desktopPanelOpen (his order, 2026-10-06)', () => {
     const c = buildContract({ ...authedClient(), attach: attachFor({ m1: { 'panelApps.list': { apps: [APP] } } }) }, deps);
     expect(c.desktopAppsList).toBeUndefined();
     expect(c.desktopPanelOpen).toBeUndefined();
-    expect(c.cliSessionsList).toBeUndefined();
+  });
+
+  it('cliSessionsList: the ONE read off a desktop — every attached machine\'s cliSessions.list, flat; a dead machine drops; none → empty (his order, 2026-10-07)', async () => {
+    const attach = attachFor({
+      m1: { 'cliSessions.list': { sessions: [{ id: 's1', cli: 'claude', title: 'fix', cwd: '/w', mtime: 2, updatedAt: 2, resume: 's1' }] } },
+      m2: { 'cliSessions.list': new Error('went away') },
+    });
+    const c = buildContract({ ...authedClient(), attach }, deps);
+    expect(await c.cliSessionsList()).toEqual({ ok: true, sessions: [{ id: 's1', cli: 'claude', title: 'fix', cwd: '/w', mtime: 2, updatedAt: 2, resume: 's1' }] });
+    expect(attach.dispatch).toHaveBeenCalledWith('cliSessions.list', {}, { machineId: 'm1' });
+    expect(await buildContract(authedClient(), deps).cliSessionsList()).toEqual({ ok: true, sessions: [] });
   });
 });
 

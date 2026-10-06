@@ -50,6 +50,7 @@ describe("the desktop's remote door", () => {
   it("serves the remote-safe methods and nothing else", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
+      "cliSessions.list",
       "fs.cwd", "fs.delete", "fs.gitDiff", "fs.gitInfo", "fs.list", "fs.listDir", "fs.mkdir", "fs.r2Diff", "fs.read", "fs.rename", "fs.search", "fs.unwatch", "fs.watch", "fs.write",
       "git.status",
       "layouts.open",
@@ -63,7 +64,8 @@ describe("the desktop's remote door", () => {
 
   it("carries no data read: the threads, the CLI sessions, the workspaces and the app tabs are the server's (his order, 2026-10-06)", () => {
     const t = table();
-    for (const m of ["sessions.list", "sessions.get", "sessions.put", "sessions.delete", "cliSessions.list", "layouts.list", "layouts.get", "panelApps.list"]) expect(t[m]).toBeUndefined();
+    for (const m of ["sessions.list", "sessions.get", "sessions.put", "sessions.delete", "layouts.list", "layouts.get", "panelApps.list"]) expect(t[m]).toBeUndefined();
+    expect(t["cliSessions.list"]).toBeDefined();   // the CLIs' own sessions: the one read that rides (his order, 2026-10-07)
   });
 
   it("opens a web terminal only inside a granted folder (the first grant by default)", async () => {
