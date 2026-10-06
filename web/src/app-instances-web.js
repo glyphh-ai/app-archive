@@ -6,11 +6,13 @@
  *   list     GET /api/app-instances — the ones this member may open
  *   from hub POST /api/app-instances/from-hub {itemId} — a hub app as this
  *            member's personal instance, made server-side
- *   open     a panel loads `/app-host/<key>/ui/index.html` ON THIS ORIGIN:
+ *   open     a panel loads `/app-host/<key>/ui/` ON THIS ORIGIN (a trailing
+ *            slash: the app server resolves the release's index.html):
  *            web/app-host-proxy.mjs forwards it to the API with the session
  *            cookie turned into the bearer (an iframe cannot carry a header)
- *   cards    Settings → Apps lists each instance as a card; its detail is the
- *            manifest; Open writes the `tab` record; Remove deletes the instance
+ *   cards    Settings → Apps lists each instance as a card with its release;
+ *            its detail is the manifest; Open writes the `tab` record; Remove
+ *            deletes the instance; Rollback pins release n-1 (client.appInstances.pin)
  *
  * Pure over an injected client + document, so it tests with no browser.
  */
@@ -117,6 +119,19 @@ export function buildAppInstancesWeb(client, deps = {}) {
     try { await client.memberLibrary.remove('tab', inst.slug, { updatedAt: now() }); } catch { /* no tab, or already gone */ }
     return true;
   };
+  /** Rollback / pin: release `n` of the instance a card id (or key) names
+   *  goes live at once (the SDK's appInstances.pin; the desktop's
+   *  pinInstanceRelease). Answers the instance with its `release`. */
+  const pin = async (id, n) => {
+    const key = isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id);
+    const inst = (await listInstances()).find((i) => i.key === key);
+    if (!inst) throw new Error(`no cloud app ${key}`);
+    const release = Number(n);
+    if (!Number.isInteger(release) || release < 1) throw new Error('n must be a release number (a positive integer)');
+    const live = await client.appInstances.pin(inst.key, release);
+    cached = null;
+    return live;
+  };
 
-  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, isInstanceCardId };
+  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, isInstanceCardId };
 }

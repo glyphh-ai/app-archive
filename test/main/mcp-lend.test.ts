@@ -6,7 +6,7 @@
  * the local tools use.
  */
 import { describe, expect, it, vi } from "vitest";
-import { CLOUD_TOOLS, LOOP_HIDDEN, WINDOW_TOOLS, lendSplit } from "../../src/main/mcp-lend.js";
+import { CLOUD_TOOLS, LOOP_HIDDEN, MACHINE_TOOLS, WINDOW_TOOLS, lendSplit } from "../../src/main/mcp-lend.js";
 
 vi.mock("electron", () => ({ BrowserWindow: class {}, dialog: {}, ipcMain: { handle: () => undefined } }));
 vi.mock("../../src/main/relay-client.js", () => ({ dispatchRelayMethod: async () => undefined }));
@@ -25,13 +25,18 @@ describe("lendSplit", () => {
       expect(s.local(t), t).toBe(true);
       expect(s.gateway(t), t).toBe(false);
     }
-    for (const t of ["skills_list", "skill_save", "tasks_list", "task_run", "schedules_list", "schedule_save", "agents_list", "app_install"]) {
+    for (const t of ["skills_list", "skill_save", "tasks_list", "task_run", "schedules_list", "schedule_save", "agents_list", "app_install", "app_releases", "app_pin"]) {
       expect(s.local(t), t).toBe(false);
       expect(s.gateway(t), t).toBe(true);
     }
+    // app_deploy tars THIS machine's folder: the local server answers it; the
+    // gateway's copy (sourceBase64, for cloud sessions) is not lent beside it.
+    expect(s.local("app_deploy")).toBe(true);
+    expect(s.gateway("app_deploy")).toBe(false);
+    expect(MACHINE_TOOLS.has("app_deploy")).toBe(true);
     // One name, one server: nothing the loop may see is lent twice or by nobody.
-    for (const t of [...WINDOW_TOOLS, ...CLOUD_TOOLS].filter((n) => !LOOP_HIDDEN.has(n))) expect([s.local(t), s.gateway(t)], t).toContain(true);
-    for (const t of [...WINDOW_TOOLS, ...CLOUD_TOOLS]) expect(s.local(t) && s.gateway(t), t).toBe(false);
+    for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS].filter((n) => !LOOP_HIDDEN.has(n))) expect([s.local(t), s.gateway(t)], t).toContain(true);
+    for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS]) expect(s.local(t) && s.gateway(t), t).toBe(false);
   });
 
   it("keeps a belt tool local even when the gateway carries it", () => {
@@ -43,6 +48,7 @@ describe("lendSplit", () => {
   it("lets the gateway answer everything when the local server is down", () => {
     const s = lendSplit({ localUp: false, gatewayUp: true, connections: true, belt: BELT });
     expect(s.gateway("panels_open")).toBe(true);
+    expect(s.gateway("app_deploy")).toBe(true);
     expect(s.gateway("skill_get")).toBe(true);
     expect(s.gateway("skills_list")).toBe(true);
   });

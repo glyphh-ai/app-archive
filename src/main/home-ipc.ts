@@ -113,7 +113,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // midnight — passing today would chop off everything spent today
       // (which zeroed this card). Omitted = "through now".
       client.usage.summary({ from: ymd(monthStart) }).catch(() => null),
-      client.apps.deployed().catch(() => null),
+      // The apps this member may open: the cloud instances (app-platform.md).
+      client.appInstances.list().catch(() => null),
       // The PLAN CATALOG is the authority on the plan's name + monthly pool
       // (his law, 2026-08-25) — never a tier string.
       client.billing.plans().catch(() => []),
@@ -156,7 +157,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       requests: usage?.events || 0,
       // Count live deployments only, exactly like the Apps tab: the seeded
       // system app (system:true) is not a deployed app.
-      appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && a.url).length : 0,
+      appsCount: Array.isArray(apps) ? apps.length : 0,
     };
   });
 

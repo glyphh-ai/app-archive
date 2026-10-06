@@ -24,7 +24,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
-import { callInstanceTool, listInstanceTools } from "./app-instances.js";
+import { callInstanceTool, listInstanceTools, deployFolderAsInstance, listInstanceReleases, pinInstanceRelease } from "./app-instances.js";
+import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
@@ -680,6 +681,35 @@ function buildMcpServer(): McpServer {
         return text({ installed, where: WHERE.app, convert: 'wrong shape? skill_retype { slug, to: "task" | "skill" }' });
       } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
+  );
+  // DEPLOY FROM SOURCE (app-platform.md §12): the Code session's folder — the
+  // thread's folder, its sandbox — goes up as a .tgz and the platform builds
+  // release n. On the gateway's /mcp the same tool takes `sourceBase64` for a
+  // cloud session; here the folder is this machine's, so this door tars it.
+  mcp.tool(
+    "app_deploy",
+    "DEPLOY the current Code session's folder as a Glyphh app release. The folder (the session's working folder, its sandbox) must be a Glyphh app project: manifest.json + package.json at its root (a Next.js static-export project, see the build-glyphh-app skill); node_modules, .next, out and .git never ride. The platform runs npm ci + next build + the worker bundler and pins the new release; the instance is created on the first deploy (an org admin's as an org instance, anyone else's as personal — `kind` forces one). Waits for the build (up to 10 minutes). Returns { key, release: { n, sha256, sizeBytes, note, at, by, pinned }, log (the build log's tail), tools (the app's tool names, now in app_list_tools) }. Roll back with app_pin.",
+    {
+      slug: z.string().describe("The app's slug — must match manifest.json's slug in the folder"),
+      kind: z.enum(["org", "personal"]).optional().describe("Which instance: the organization's (admins) or your personal one. Default: the one that exists, else org then personal"),
+      note: z.string().optional().describe("A release note, kept on the release"),
+    },
+    async ({ slug, kind, note }) => cloud(() => deployFolderAsInstance(getExplicitWorkingDirectory(), { slug, ...(kind ? { kind } : {}), ...(note ? { note } : {}) })),
+  );
+  mcp.tool(
+    "app_releases",
+    "List an installed Glyphh app's releases, oldest first: [{ n, sha256, sizeBytes, note, at, by, pinned }] — `pinned` marks the one the app server serves. `app` is the instance key from app_list_tools (or the slug).",
+    { app: z.string().describe("App key — from app_list_tools (or the slug)") },
+    async ({ app }) => cloud(() => listInstanceReleases(app)),
+  );
+  mcp.tool(
+    "app_pin",
+    "PIN a release of an installed Glyphh app — rollback = pin n-1 (app_releases lists them). The app server reloads the instance on that release at once; nothing is rebuilt. Returns the instance with its `release`.",
+    {
+      app: z.string().describe("App key — from app_list_tools (or the slug)"),
+      n: z.number().int().positive().describe("The release number to pin"),
+    },
+    async ({ app, n }) => cloud(() => pinInstanceRelease(app, n)),
   );
 
   // ── The SEMANTIC STACK — every app's own vector store + knowledge graph

@@ -626,7 +626,7 @@ export function emptyDashboardData() {
 /**
  * `dashboardData()` — compose the Chat-tab landing card exactly as desktop's
  * `dashboard-data` handler (home-ipc.ts) does: identity + org credit pool +
- * the caller's own allocation + month-to-date spend + deployed-app count. Each SDK
+ * the caller's own allocation + month-to-date spend + the installed-app count. Each SDK
  * read is best-effort at the CALL SITE (a member without billing visibility 403s on
  * the org pool → null → the personal `me` card renders instead), and the whole thing
  * degrades to `emptyDashboardData()` off an anonymous `me`. Pure: takes the already-
@@ -636,7 +636,7 @@ export function emptyDashboardData() {
  * @param {{balance?:number,allowance?:number}|null} credits  org pool (billing.credits())
  * @param {{uncapped?:boolean,capCredits?:number,spentCredits?:number,remainingCredits?:number,windowEnd?:string,workspaceName?:string}|null} alloc  caller allocation (usage.allocation())
  * @param {{credits?:number,events?:number}|null} usage    MTD spend (usage.summary())
- * @param {Array<{system?:boolean,url?:string|null}>|null} apps  deployed apps (apps.deployed())
+ * @param {Array<{key:string}>|null} apps  the cloud app instances this member may open (appInstances.list())
  */
 export function toDashboardData(me, credits, alloc, usage, apps, plans, sub) {
   if (!me) return emptyDashboardData();
@@ -668,7 +668,7 @@ export function toDashboardData(me, credits, alloc, usage, apps, plans, sub) {
     // UsageSummary.credits is already WHOLE credits (converted server-side).
     spendCredits: Math.round(usage?.credits || 0),
     requests: usage?.events || 0,
-    // Live deployments only — the seeded system app (system:true) is not deployed.
-    appsCount: Array.isArray(apps) ? apps.filter((a) => !a.system && a.url).length : 0,
+    // The apps installed in the cloud that this member may open (home-ipc.ts parity).
+    appsCount: Array.isArray(apps) ? apps.length : 0,
   };
 }

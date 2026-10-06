@@ -48,7 +48,7 @@ function authedClient() {
     skills: { list: vi.fn(async () => [{ id: 's' }]), get: vi.fn(async () => ({ id: 's' })) },
     agents: { list: vi.fn(async () => [{ id: 'a' }]), get: vi.fn(async () => ({ id: 'a' })), tasks: vi.fn(async () => [{ id: 't' }]), taskRuns: vi.fn(async () => [{ id: 'r' }]) },
     layouts: { list: vi.fn(async () => [{ name: 'Grid', data: { cols: 2, rows: 1, cells: [{ panelId: 'p', col: 0, row: 0, colSpan: 1, rowSpan: 1 }] } }]) },
-    apps: { deployed: vi.fn(async () => []), mine: vi.fn(async () => [{ slug: 'crm', name: 'CRM', url: 'https://crm' }]) },
+    appInstances: { list: vi.fn(async () => []) },
     orgModels: { list: vi.fn(async () => [{ id: 'm1' }]), listCustom: vi.fn(async () => [{ id: 'c1' }]) },
     catalog: { providers: vi.fn(async () => [{ slug: 'anthropic' }]) },
     support: { ticket: vi.fn(async () => ({ ok: true })) },
@@ -58,11 +58,11 @@ function authedClient() {
 /** A fake whose EVERY method rejects — the anonymous-visitor / offline path (401s). */
 function rejectingClient() {
   const boom = vi.fn(async () => { throw new Error('401 Unauthorized'); });
-  const rej = { get: boom, list: boom, roles: boom, apps: boom, resolvedTools: boom, personalMcpList: boom, orgMcpList: boom, deployed: boom, mine: boom, listCustom: boom, providers: boom, status: boom, credits: boom, allocation: boom, summary: boom, update: boom, prefs: boom, setPrefs: boom, ticket: boom };
+  const rej = { get: boom, list: boom, roles: boom, apps: boom, resolvedTools: boom, personalMcpList: boom, orgMcpList: boom, listCustom: boom, providers: boom, status: boom, credits: boom, allocation: boom, summary: boom, update: boom, prefs: boom, setPrefs: boom, ticket: boom };
   return {
     me: boom,
     org: rej, billing: rej, usage: rej, profile: rej, connections: rej, loops: rej,
-    skills: rej, agents: rej, layouts: rej, apps: rej, orgModels: rej,
+    skills: rej, agents: rej, layouts: rej, apps: rej, appInstances: rej, orgModels: rej,
     catalog: rej, support: rej,
     memberLibrary: { list: boom, get: boom, put: boom, remove: boom, files: boom },
   };

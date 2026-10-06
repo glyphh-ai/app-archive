@@ -24,7 +24,7 @@
  *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
  *   apps.install {path | url | bundleBase64} → a .glyphh bundle becomes a CLOUD INSTANCE
  *                                (glyphh-app-host.ts installGlyphhAppBundle): the local MCP's
- *                                app_install, GLYPHH-APP-SPEC §6's deploy. Loopback only — the
+ *                                app_install (docs/GLYPHH-APP-SPEC.md §3). Loopback only — the
  *                                server never lists it for remote control, and an app's tools
  *                                are the gateway's (app_list_tools / app_call_tool), never a
  *                                machine's.

@@ -374,6 +374,10 @@ export function buildMemberLibrary(client, deps = {}) {
       return ok(true);
     } catch (err) { return isNotFound(err) ? ok(true) : fail(err); }
   };
+  /** Settings → Apps → Rollback on the web: the same IPC name as the desktop's. */
+  const appInstancePin = async (pageId, n) => {
+    try { return ok(await appInstances.pin(pageId, n)); } catch (err) { return fail(err); }
+  };
   const skillSetEnabled = async (pageId, on) => {
     try {
       const { ref, item } = await bundleItem(pageId);
@@ -787,7 +791,7 @@ export function buildMemberLibrary(client, deps = {}) {
     layoutsList, layoutsSaveGrid, layoutsDelete,
     panelAppsList, panelAppsCreate, panelAppsUpdate, panelAppsDelete,
     glyphhAppPreviewOpen, glyphhAppPreviewClear, skillTab,
-    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled,
+    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin,
     // A bundle's own agents (agents/*.md) are read off the folder on the desktop; the record carries none.
     skillAgents: emptyList,
     skillAgentSet: needsDesktop,

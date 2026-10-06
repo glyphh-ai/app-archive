@@ -1250,6 +1250,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("skill-agent-set", id, ref, patch) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
   skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
+  /** A cloud app's Rollback: pin release `n` of the instance a card id (or key) names. */
+  appInstancePin: (id: string, n: number) => ipcRenderer.invoke("app-instance-pin", id, n) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
   skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,

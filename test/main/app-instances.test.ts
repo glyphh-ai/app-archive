@@ -8,9 +8,14 @@
  * `glyphh.call` as the member.
  */
 import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { list as tarList } from "tar";
 import {
   callPathOf, instanceCardOf, instanceDetailOf, instanceKeyOfRow, instanceRequestOf, instanceTabRow, instanceToolRows,
   mergeAppRows, panelPathOf, panelUrlOf, resolveInstance, tabConfigOf, instanceCardId, isInstanceCardId, instanceKeyOfCardId,
+  releaseOf, rollbackTargetOf,
   type AppInstanceSummary,
 } from "../../src/shared/app-instances.js";
 import type { TabRowLike } from "../../src/shared/member-library.js";
@@ -107,11 +112,23 @@ describe("mergeAppRows — THE LIST", () => {
 });
 
 describe("the panel URL", () => {
-  it("is the server's proxy at the bundle's entry, the key encoded", () => {
-    expect(panelPathOf("expense-desk")).toBe("/app-host/expense-desk/ui/index.html");
-    expect(panelPathOf("notes~u1")).toBe("/app-host/notes~u1/ui/index.html");
-    expect(panelUrlOf("https://api.glyphh.ai/", "expense-desk")).toBe("https://api.glyphh.ai/app-host/expense-desk/ui/index.html");
+  it("is the server's proxy at the release's ui/ tree with a trailing slash (the app server resolves index.html), the key encoded", () => {
+    expect(panelPathOf("expense-desk")).toBe("/app-host/expense-desk/ui/");
+    expect(panelPathOf("notes~u1")).toBe("/app-host/notes~u1/ui/");
+    expect(panelUrlOf("https://api.glyphh.ai/", "expense-desk")).toBe("https://api.glyphh.ai/app-host/expense-desk/ui/");
     expect(callPathOf("a b")).toBe("/app-host/a%20b/call");
+  });
+});
+
+describe("releases on the summary", () => {
+  it("release n reads off the row; rollback = n-1, nothing before release 1 or with nothing deployed", () => {
+    expect(releaseOf(ORG)).toBeNull();
+    expect(releaseOf({ release: 3 })).toBe(3);
+    expect(releaseOf({ release: 0 })).toBeNull();
+    expect(rollbackTargetOf({ release: 3 })).toBe(2);
+    expect(rollbackTargetOf({ release: 1 })).toBeNull();
+    expect(rollbackTargetOf({ release: null })).toBeNull();
+    expect(rollbackTargetOf(null)).toBeNull();
   });
 });
 
@@ -120,12 +137,22 @@ describe("the Apps-page card and the tool rows", () => {
     const card = instanceCardOf(ORG, "2026-10-04T00:00:00.000Z");
     expect(card).toMatchObject({ id: "app-instance:expense-desk", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "your organization" });
     expect(card.instance.tools).toEqual(["list_expenses"]);
+    expect(card.instance.release).toBeNull();
     expect(isInstanceCardId(card.id)).toBe(true);
     expect(instanceKeyOfCardId(instanceCardId("notes~u1"))).toBe("notes~u1");
     const detail = instanceDetailOf(ORG);
     expect(detail.frontmatter).toMatchObject({ instance: "expense-desk", kind: "org", status: "ready" });
+    expect(detail.frontmatter).not.toHaveProperty("release");
+    expect(detail.body).toContain("nothing deployed yet");
     expect(detail.body).toContain("`list_expenses` — Every expense");
     expect(detail.files).toEqual([]);
+  });
+  it("the card and the detail carry the pinned release", () => {
+    const live = { ...ORG, release: 4 };
+    expect(instanceCardOf(live).instance.release).toBe(4);
+    const detail = instanceDetailOf(live);
+    expect(detail.frontmatter.release).toBe("4");
+    expect(detail.body).toContain("release 4");
   });
   it("tool rows are the gateway's shape, keyed by instance, instances without tools left out", () => {
     expect(instanceToolRows([ORG, PERSONAL])).toEqual([
@@ -145,14 +172,31 @@ describe("the Apps-page card and the tool rows", () => {
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 let forbidOrg = false;
 let token: string | null = "tok-1";
+/** What GET /api/app-instances answers (the deploy tests swap it). */
+let listed: AppInstanceSummary[] = [ORG];
+const RELEASE = { n: 2, sha256: "b".repeat(64), sizeBytes: 4096, note: "second", at: "2026-10-06T00:00:00.000Z", by: "u1", pinned: true };
+/** The SDK's appInstances resource (sdk/src/resources/app-instances.ts), recorded. */
+const sdk = {
+  create: async (input: { slug: string; kind: "org" | "personal"; bundle: { sha256: string; sizeBytes: number }; manifest: Record<string, unknown> }) => {
+    calls.push({ method: "SDK", path: "create", body: input });
+    if (forbidOrg && input.kind === "org") { const e = new Error("org admin only") as Error & { code: string }; e.code = "E_FORBIDDEN"; throw e; }
+    const key = input.kind === "personal" ? `${input.slug}~u1` : input.slug;
+    return { instance: { ...ORG, key, slug: input.slug, kind: input.kind, status: "pending" as const, release: null }, upload: { url: "https://r2.test/put-bundle", key: `apps/o/${input.slug}/releases/1/bundle.zip` } };
+  },
+  builds: async (key: string) => { calls.push({ method: "SDK", path: `builds ${key}` }); return { build: { n: 3 }, upload: { url: "https://r2.test/put-source", key: `apps/o/${key}/builds/3/source.tgz` } }; },
+  runBuild: async (key: string, n: number, opts?: { note?: string }) => { calls.push({ method: "SDK", path: `runBuild ${key} ${n}`, body: opts }); return { release: RELEASE, log: "x".repeat(10_000) + "\nbuild ok" }; },
+  releases: async (key: string) => { calls.push({ method: "SDK", path: `releases ${key}` }); return [{ ...RELEASE, n: 1, pinned: false }, RELEASE]; },
+  pin: async (key: string, n: number) => { calls.push({ method: "SDK", path: `pin ${key} ${n}` }); return { ...ORG, key, release: n }; },
+};
 vi.mock("electron", () => ({ ipcMain: { handle: () => undefined } }));
 vi.mock("../../src/main/glyphh-client.js", () => ({
   SERVER_URL: "https://api.test",
   appCache: { cached: async (_k: string, fn: () => Promise<unknown>) => fn(), invalidate: () => undefined },
   getClient: () => ({
+    appInstances: sdk,
     token: async () => { if (!token) throw new Error("signed out"); return token; },
     http: {
-      get: async (path: string) => { calls.push({ method: "GET", path }); return path === "/api/app-instances" ? [ORG] : []; },
+      get: async (path: string) => { calls.push({ method: "GET", path }); return path === "/api/app-instances" ? listed : []; },
       post: async (path: string, body?: unknown) => {
         calls.push({ method: "POST", path, body });
         if (path === "/api/app-instances") {
@@ -223,7 +267,140 @@ describe("the instance's tools and the panel bridge", () => {
     expect(await main.callInstanceBridge("expense-desk", "ping", {}, fetchImpl)).toEqual({ ok: false, error: "signed out" });
     token = "tok-1";
   });
-  it("the panel URL is the server's proxy", () => {
-    expect(main.instancePanelUrl("expense-desk")).toBe("https://api.test/app-host/expense-desk/ui/index.html");
+  it("the panel URL is the server's proxy, ui/ with a trailing slash", () => {
+    expect(main.instancePanelUrl("expense-desk")).toBe("https://api.test/app-host/expense-desk/ui/");
+  });
+});
+
+// ── app_deploy: the thread's folder → a release ──────────────────────────────
+/** A fake fs for the folder rules: which paths exist, what manifest.json holds. */
+const fakeFs = (files: Record<string, string>, dirs: string[] = ["/work/recall"]) => ({
+  existsSync: (p: fs.PathLike) => Object.prototype.hasOwnProperty.call(files, String(p)) || dirs.includes(String(p)),
+  statSync: ((p: fs.PathLike) => { if (dirs.includes(String(p))) return { isDirectory: () => true } as fs.Stats; throw new Error("ENOENT"); }) as typeof fs.statSync,
+  readFileSync: ((p: fs.PathLike) => { if (!(String(p) in files)) throw new Error("ENOENT"); return files[String(p)]; }) as typeof fs.readFileSync,
+});
+const PROJECT_MANIFEST = JSON.stringify({ manifestVersion: 3, kind: "glyphh-app", name: "Recall", slug: "recall", capabilities: ["db.exec"], connectors: [], tools: [{ name: "ask", handler: "ask" }] });
+const GOOD = { "/work/recall/manifest.json": PROJECT_MANIFEST, "/work/recall/package.json": "{}" };
+
+describe("checkDeployFolder — the thread's folder is the sandbox", () => {
+  it("refuses with no folder set, a folder that is not a directory, no manifest.json or no package.json", () => {
+    expect(() => main.checkDeployFolder(null, "recall", fakeFs(GOOD))).toThrow(/no folder is set/);
+    expect(() => main.checkDeployFolder("", "recall", fakeFs(GOOD))).toThrow(/no folder is set/);
+    expect(() => main.checkDeployFolder("/work/else", "recall", fakeFs(GOOD))).toThrow(/not a directory/);
+    expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ "/work/recall/package.json": "{}" }))).toThrow(/no manifest\.json/);
+    expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ "/work/recall/manifest.json": PROJECT_MANIFEST }))).toThrow(/no package\.json/);
+  });
+  it("refuses a manifest that is not JSON, names no slug, or names another app than the call", () => {
+    expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": "{nope" }))).toThrow(/not valid JSON/);
+    expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": "[]" }))).toThrow(/JSON object/);
+    expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": JSON.stringify({ name: "Recall" }) }))).toThrow(/names no slug/);
+    expect(() => main.checkDeployFolder("/work/recall", "other", fakeFs(GOOD))).toThrow(/is the app "recall" but app_deploy was asked to deploy "other"/);
+    expect(() => main.checkDeployFolder("/work/recall", "", fakeFs(GOOD))).toThrow(/needs the app's slug/);
+  });
+  it("answers the folder and the manifest (slug lowercased) when the shape holds", () => {
+    const p = main.checkDeployFolder("/work/recall", "Recall", fakeFs(GOOD));
+    expect(p.folder).toBe("/work/recall");
+    expect(p.manifest).toMatchObject({ slug: "recall", name: "Recall", tools: [{ name: "ask" }] });
+  });
+});
+
+describe("packProjectFolder — the source tgz", () => {
+  it("tars the folder minus node_modules, .next, out and .git at any depth", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-deploy-"));
+    try {
+      for (const rel of ["manifest.json", "package.json", "app/page.js", "worker.js", "node_modules/next/index.js", ".next/cache/x", "out/index.html", ".git/HEAD", "lib/.git/config", "lib/node_modules/y.js", "lib/util.js"]) {
+        fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+        fs.writeFileSync(path.join(dir, rel), rel);
+      }
+      const tgz = await main.packProjectFolder(dir);
+      expect(tgz.length).toBeGreaterThan(0);
+      const file = path.join(dir, "..", path.basename(dir) + ".tgz");
+      fs.writeFileSync(file, tgz);
+      const entries: string[] = [];
+      await tarList({ file, onReadEntry: (e) => { entries.push(e.path); } });
+      fs.rmSync(file, { force: true });
+      const files = entries.filter((e) => !e.endsWith("/")).sort();
+      expect(files).toEqual(["app/page.js", "lib/util.js", "manifest.json", "package.json", "worker.js"]);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("deployFolderAsInstance — builds → PUT the source → runBuild", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-deploy-"));
+  fs.writeFileSync(path.join(dir, "manifest.json"), PROJECT_MANIFEST);
+  fs.writeFileSync(path.join(dir, "package.json"), "{}");
+  const pack = async () => Buffer.from("tgzbytes");
+  const puts: Array<{ url: string; init: RequestInit }> = [];
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => { puts.push({ url: String(url), init: init! }); return new Response(null, { status: 200 }); }) as typeof fetch;
+  const RECALL: AppInstanceSummary = { ...ORG, key: "recall", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }, { name: "ingest" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
+
+  it("deploys onto the existing instance of that slug: no create, source PUT as gzip, the build run with the note, the log a tail", async () => {
+    calls.length = 0; puts.length = 0; listed = [RECALL];
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", note: "second", fetchImpl, pack });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall", "runBuild recall 3"]);
+    expect(calls.find((c) => c.path === "runBuild recall 3")?.body).toEqual({ note: "second" });
+    expect(puts).toHaveLength(1);
+    expect(puts[0].url).toBe("https://r2.test/put-source");
+    expect(puts[0].init.method).toBe("PUT");
+    expect((puts[0].init.headers as Record<string, string>)["content-type"]).toBe("application/gzip");
+    expect(out.key).toBe("recall");
+    expect(out.release).toEqual(RELEASE);
+    expect(out.log.length).toBe(main.DEPLOY_LOG_TAIL_CHARS);
+    expect(out.log.endsWith("build ok")).toBe(true);
+    expect(out.tools).toEqual(["ask", "ingest"]);
+  });
+  it("with no instance yet, creates one first (org, falling back to personal when refused) with the source's identity standing in for the bundle", async () => {
+    calls.length = 0; puts.length = 0; listed = []; forbidOrg = true;
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack });
+    const made = calls.filter((c) => c.path === "create").map((c) => c.body as { kind: string; slug: string; bundle: { sizeBytes: number } });
+    expect(made.map((m) => m.kind)).toEqual(["org", "personal"]);
+    expect(made[1]).toMatchObject({ slug: "recall", bundle: { sizeBytes: 8 } });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "create", "builds recall~u1", "runBuild recall~u1 3"]);
+    expect(out.key).toBe("recall~u1");
+    // No live row answers yet: the folder's declared tools stand in.
+    expect(out.tools).toEqual(["ask"]);
+    forbidOrg = false;
+  });
+  it("`kind` names the instance: a personal deploy never touches the org's", async () => {
+    calls.length = 0; listed = [RECALL];
+    await main.deployFolderAsInstance(dir, { slug: "recall", kind: "personal", fetchImpl, pack });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "builds recall~u1", "runBuild recall~u1 3"]);
+    expect((calls.find((c) => c.path === "create")!.body as { kind: string }).kind).toBe("personal");
+  });
+  it("refuses the folder rules before any call, and a refused upload before the build", async () => {
+    calls.length = 0; listed = [RECALL];
+    await expect(main.deployFolderAsInstance(null, { slug: "recall", fetchImpl, pack })).rejects.toThrow(/no folder is set/);
+    await expect(main.deployFolderAsInstance(dir, { slug: "other", fetchImpl, pack })).rejects.toThrow(/was asked to deploy "other"/);
+    expect(calls.filter((c) => c.method === "SDK")).toHaveLength(0);
+    const refuse = (async () => new Response(null, { status: 403 })) as typeof fetch;
+    await expect(main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl: refuse, pack })).rejects.toThrow(/source upload was refused/);
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall"]);
+    fs.rmSync(dir, { recursive: true, force: true });
+    listed = [ORG];
+  });
+});
+
+describe("app_releases / app_pin / the Rollback IPC", () => {
+  it("lists the releases of the instance a ref names", async () => {
+    calls.length = 0; listed = [ORG];
+    const rows = await main.listInstanceReleases("expense-desk");
+    expect(rows.map((r) => [r.n, r.pinned])).toEqual([[1, false], [2, true]]);
+    await expect(main.listInstanceReleases("missing")).rejects.toThrow(/not installed in the cloud/);
+  });
+  it("pins a release by key; n must be a release number", async () => {
+    calls.length = 0;
+    expect((await main.pinInstanceRelease("expense-desk", 1)).release).toBe(1);
+    expect(calls.at(-1)?.path).toBe("pin expense-desk 1");
+    await expect(main.pinInstanceRelease("expense-desk", 0)).rejects.toThrow(/release number/);
+    await expect(main.pinInstanceRelease("expense-desk", 1.5)).rejects.toThrow(/release number/);
+  });
+  it("the app-instance-pin IPC takes the card id or the key and answers the envelope", async () => {
+    calls.length = 0;
+    const ok = await main.appInstancePinHandler(instanceCardId("expense-desk"), 1);
+    expect(ok).toMatchObject({ ok: true, data: { key: "expense-desk", release: 1 } });
+    expect(calls.at(-1)?.path).toBe("pin expense-desk 1");
+    expect(await main.appInstancePinHandler("expense-desk", 2)).toMatchObject({ ok: true, data: { release: 2 } });
+    expect(await main.appInstancePinHandler("missing", 1)).toMatchObject({ ok: false, error: expect.stringMatching(/not installed in the cloud/) });
+    expect(await main.appInstancePinHandler("expense-desk", NaN)).toMatchObject({ ok: false, error: expect.stringMatching(/release number/) });
   });
 });

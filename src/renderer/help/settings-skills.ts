@@ -30,7 +30,9 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
+/** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
+interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
 interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
@@ -556,14 +558,17 @@ function renderList(): void {
       const g = group(host, k ? `From ${k}` : "Created by you", rows.length);
       for (const s of rows) {
         const up = updates[s.id];
+        const back = rollbackTarget(s);
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
-          desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
+          // A cloud app's card reads its release where a folder reads its date.
+          desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           share: shares[s.id],
           onOpen: () => void openDetail(s.id),
           action: up ? updateButton(s.id, up.latest) : undefined,
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
+            ...(back !== null ? [{ label: `Rollback to release ${back}`, onClick: () => void rollback(s) }] : []),
             ...(shares[s.id]?.pending
               ? [{ label: "Withdraw from review", onClick: () => void withdrawShare(s.id, s.name) }]
               : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
@@ -818,6 +823,31 @@ async function remove(id: string, name: string): Promise<void> {
   await loadSkillsSettings();
 }
 
+/** What a cloud app's card says on the right: `release n`, or that nothing is deployed yet. */
+function releaseLabel(inst: InstanceOfRow): string {
+  return inst.release ? `release ${inst.release}` : "no release";
+}
+
+/** Rollback = pin n-1 (app-platform.md §10): the release a Rollback pins, or null with nothing before the live one. */
+function rollbackTarget(s: SkillRow | null | undefined): number | null {
+  const n = s?.instance?.release;
+  return typeof n === "number" && Number.isInteger(n) && n > 1 ? n - 1 : null;
+}
+
+/** Settings → Apps → Rollback: the instance goes back one release; the
+ *  server reloads it at once (nothing is rebuilt). */
+async function rollback(s: SkillRow): Promise<void> {
+  const back = rollbackTarget(s);
+  if (back === null) return;
+  const sure = await confirmAction({ title: `Roll back "${s.name}" to release ${back}?`, body: `The app serves release ${back} again at once; release ${s.instance!.release} stays on the list and can be pinned back.`, confirmLabel: "Rollback" });
+  if (!sure) return;
+  const r = await api().appInstancePin(s.id, back) as Env<{ release?: number | null }>;
+  if (!r.ok) { fail(r.error || "Rollback failed."); return; }
+  notice(`${s.name} is on release ${r.data?.release ?? back}`);
+  await loadSkillsSettings();
+  if (current && current.id === s.id) await openDetail(s.id);
+}
+
 async function adopt(id: string): Promise<void> {
   const r = await api().skillAdopt(id) as Env<SkillRow>;
   if (!r.ok) { fail(r.error || "Couldn't move that skill."); return; }
@@ -951,6 +981,13 @@ function paintDetailChrome(): void {
   if (up) { upBtn.textContent = `Update to v${up.latest}`; upBtn.disabled = false; }
   const type = typeOf(current);
   if (type === "app" || el("skill-open-tab")) action("skill-open-tab", "Open", true, (b) => void openAsTab(b)).classList.toggle("hidden", hub || !current || type !== "app");
+  // A cloud app's Rollback (pin n-1) sits beside Open; it hides with nothing before the live release.
+  const back = hub ? null : rollbackTarget(current);
+  if (back !== null || el("skill-rollback")) {
+    const rb = action("skill-rollback", "Rollback", false, () => { if (current) void rollback(current); });
+    rb.classList.toggle("hidden", back === null);
+    if (back !== null) rb.title = `Roll back to release ${back}`;
+  }
   if (type === "task" || el("skill-run-now")) action("skill-run-now", "Run now", true, (b) => void runNow(b)).classList.toggle("hidden", hub || !current || type !== "task");
 }
 

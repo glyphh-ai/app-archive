@@ -96,6 +96,16 @@ describe('proxyAppHost', () => {
     expect(Buffer.concat(res.chunks).toString()).toBe("<head></head>fetch('/app-host/expense-desk/call'");
     expect(res.headers['content-length']).toBe(String(Buffer.byteLength("<head></head>fetch('/app-host/expense-desk/call'")));
   });
+  it("streams the Next.js export's assets under ui/ through untouched (a page's relative ./_next/ resolves under /app-host/<key>/ui/)", async () => {
+    const up = fakeUpstream({ status: 200, headers: { 'content-type': 'application/javascript', 'cache-control': 'private, max-age=300' }, body: 'fetch("/call")//js' });
+    const res = fakeRes();
+    proxyAppHost(fakeReq('/app-host/expense-desk/ui/_next/static/chunks/main.js', { cookie: 'glyphh_session=tok' }), res, 'https://api.glyphh.ai', { request: up.request });
+    await res.finished;
+    expect(up.seen[0].opts).toMatchObject({ method: 'GET', path: '/app-host/expense-desk/ui/_next/static/chunks/main.js' });
+    expect(up.seen[0].opts.headers.authorization).toBe('Bearer tok');
+    expect(res.headers['cache-control']).toBe('private, max-age=300');
+    expect(Buffer.concat(res.chunks).toString()).toBe('fetch("/call")//js');
+  });
   it('streams a /call POST through untouched (JSON is not rewritten)', async () => {
     const up = fakeUpstream({ status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}' });
     const res = fakeRes();
