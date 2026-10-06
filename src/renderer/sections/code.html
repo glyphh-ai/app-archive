@@ -64,8 +64,9 @@
                 <!-- Workspace-source chip (Work + Code only) — where the next
                      session RUNS + what it works on. Hidden in Chat via CSS. -->
                 <!-- THE FLOATING INPUT CARD — the composer's one visual object
-                     (input + chips inside), floating over the wall like the
-                     dock. The source/folder row sits BELOW it, outside. -->
+                     (the source row, the input, and in Work the + and the voice
+                     pair), floating over the wall like the dock. The chip row
+                     sits UNDER it, outside (.code-composer-bar below). -->
                 <div class="code-pill-row">
                 <div class="code-input-card">
                 <!-- Source / git / folder — its own row ABOVE the input, left. -->
@@ -118,6 +119,8 @@
                     <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">+</button>
                   </div>
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                  <!-- Work seats the mic (+ its caret) and the speak toggle here,
+                       right of the input; Code seats them under the box. -->
                   <div id="code-mic-wrap" class="code-chipwrap hidden">
                     <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Hold to talk — press and hold, release to transcribe">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
@@ -134,53 +137,6 @@
                     <svg class="icon-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
                   </button>
                 </div>
-                <div class="code-composer-bar">
-                  <!-- Left group: permission chip with the + (add files/folder)
-                       immediately to its right — space-between must not strand
-                       the + in the middle of the bar. -->
-                  <div class="code-bar-left">
-                    <div id="code-mode-wrap" class="code-chipwrap">
-                      <button id="code-mode-chip" class="code-chip" type="button"></button>
-                    </div>
-                    <!-- The Output chip (his order, 2026-10-05): what shape the
-                         answer takes — Auto, or an artifact. The drop-up is
-                         built by initComposerControls. -->
-                    <div id="code-output-wrap" class="code-chipwrap">
-                      <button id="code-output-chip" class="code-chip code-output-chip" type="button" title="Output" aria-haspopup="menu">
-                        <span>Output</span>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
-                      </button>
-                    </div>
-                    <!-- Voice input: hidden unless Settings › Voice enables it. Click to
-                         record, click to stop → transcribed into the composer. -->
-                    <!-- Appears only while the agent is speaking a reply aloud —
-                         click (or Esc) to stop the voice. -->
-                    <!-- Speak replies — a standing toggle beside the mic (his order,
-                         2026-10-06: the voice features are always on and available);
-                         the reply is read aloud on the super admin's speech model. -->
-                    <div id="code-speak-toggle-wrap" class="code-chipwrap">
-                      <button id="code-speak-toggle" class="code-chip code-speak-toggle" type="button" aria-pressed="false" title="Speak replies aloud">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
-                      </button>
-                    </div>
-                    <div id="code-speak-wrap" class="code-chipwrap hidden">
-                      <button id="code-speak-stop" class="code-chip code-speak-stop" type="button" title="Stop the spoken reply (Esc)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                        <span>Stop</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="code-bar-right">
-                    <div id="code-model-wrap" class="code-chipwrap">
-                      <button id="code-model-chip" class="code-chip" type="button"></button>
-                    </div>
-                    <!-- The effort dial (his order, 2026-10-04): one preference for
-                         every turn; dimmed when the model takes one effort. -->
-                    <div id="code-level-wrap" class="code-chipwrap">
-                      <button id="code-level-chip" class="code-chip" type="button" title="Effort"></button>
-                    </div>
-                  </div>
-                </div>
                 </div><!-- /.code-input-card -->
                 <div class="code-side-band">
                   <button id="code-opts-caret" class="ws-icon-btn" type="button" title="Show session options">
@@ -194,6 +150,58 @@
                   </button>
                 </div>
                 </div><!-- /.code-pill-row -->
+                <!-- THE QUIET ROW UNDER THE BOX (his order, 2026-10-07, Claude's
+                     composer as the reference): OUTSIDE the card, no chip
+                     borders — plain muted words, each still opening its own
+                     drop-up. Work: Output left; model · effort · mode right (the
+                     Stop chip joins the right while a reply is spoken). Code:
+                     + · mic · mode · Output left; model · effort · speak right.
+                     seatMic (help/code.ts) moves the +, the mic, the speak
+                     toggle, the mode and Output into the seats the type takes;
+                     the markup below is the Work order. -->
+                <div class="code-composer-bar">
+                  <div class="code-bar-left">
+                    <!-- The Output chip (his order, 2026-10-05): what shape the
+                         answer takes — Auto, or an artifact. The drop-up is
+                         built by initComposerControls. -->
+                    <div id="code-output-wrap" class="code-chipwrap">
+                      <button id="code-output-chip" class="code-chip code-output-chip" type="button" title="Output" aria-haspopup="menu">
+                        <span>Output</span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="code-bar-right">
+                    <div id="code-model-wrap" class="code-chipwrap">
+                      <button id="code-model-chip" class="code-chip" type="button"></button>
+                    </div>
+                    <!-- The effort dial (his order, 2026-10-04): one preference for
+                         every turn; dimmed when the model takes one effort. -->
+                    <div id="code-level-wrap" class="code-chipwrap">
+                      <button id="code-level-chip" class="code-chip" type="button" title="Effort"></button>
+                    </div>
+                    <div id="code-mode-wrap" class="code-chipwrap">
+                      <button id="code-mode-chip" class="code-chip" type="button"></button>
+                    </div>
+                    <!-- Speak replies — a standing toggle (his order, 2026-10-06: the
+                         voice features are always on and available); the reply is
+                         read aloud on the super admin's speech model. In Work it
+                         rides the input row beside the mic (seatMic). -->
+                    <div id="code-speak-toggle-wrap" class="code-chipwrap">
+                      <button id="code-speak-toggle" class="code-chip code-speak-toggle" type="button" aria-pressed="false" title="Speak replies aloud">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
+                      </button>
+                    </div>
+                    <!-- Appears only while the agent is speaking a reply aloud —
+                         click (or Esc) to stop the voice. -->
+                    <div id="code-speak-wrap" class="code-chipwrap hidden">
+                      <button id="code-speak-stop" class="code-chip code-speak-stop" type="button" title="Stop the spoken reply (Esc)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span>Stop</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 
