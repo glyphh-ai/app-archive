@@ -55,7 +55,7 @@ import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
-  type RemoteChat, type AttachHandle, stopRunById,
+  type RemoteChat, type AttachHandle, stopRunById, parseOpenRef,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { subAgentFeed } from "./subagent-feed.js";
@@ -1269,8 +1269,7 @@ function observeIfRunning(chat: CodeChat): void {
         const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
         const cloudRun = !!ch.source && String((ch.source as { kind?: string }).kind || "").startsWith("cloud");
         if (!onWeb && !cloudRun) return;
-        if (url) openUrlInWorkbench(new URL(url).hostname, url);
-        else if (ref) openAppInWorkbench({ slug: ref, name: ref });
+        openRunRef({ ...(ref ? { ref } : {}), ...(url ? { url } : {}) });
       },
       // Rich per-tool breadcrumbs: the start row shows the WORK (`⚙ Run: <cmd>`,
       // `⚙ Write /path` — the frame's title carries the tool's key input) and the
@@ -4787,8 +4786,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
         const cloudRun = String((src as { kind?: string }).kind || "").startsWith("cloud");
         if (!onWeb && !cloudRun) return;
-        if (url) openUrlInWorkbench(new URL(url).hostname, url);
-        else if (ref) openAppInWorkbench({ slug: ref, name: ref });
+        openRunRef({ ...(ref ? { ref } : {}), ...(url ? { url } : {}) });
       },
       // Rich per-tool breadcrumbs, LOCAL-path grammar: the start row carries the
       // tool's key input (`⚙ Run: <cmd>` — the frame's title), and the done frame
@@ -6941,6 +6939,36 @@ export function openAppInWorkbench(app: { slug: string; name: string; url?: stri
     if (tries++ < 40) setTimeout(open, 50);
   };
   open();
+}
+
+/** Open a saved WORKSPACE by name — the same door the Echo and `.dip` use
+ *  (`__wbOpenLayoutByName` → the switcher's openLayoutRow → grid open, with
+ *  surfaceLayoutCells keeping the cells this surface can host). Cold-safe:
+ *  flips to the workspace, boots the workbench, waits for the hook. */
+export function openLayoutByName(name: string): void {
+  showWorkspaceSurface();
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenLayoutByName?: (n: string) => Promise<boolean> };
+  w.__initCodeWorkbench?.();
+  void (async () => {
+    for (let i = 0; i < 40 && !w.__wbOpenLayoutByName; i++) await new Promise((r) => requestAnimationFrame(r));
+    if (!(await w.__wbOpenLayoutByName?.(name).catch(() => false))) console.warn(`[code] no workspace named ${name} to open`);
+  })();
+}
+
+/** THE PAGE OPENS WHAT THE AGENT ASKED FOR (an `open-app` run frame; his
+ *  report, 2026-10-06: a web member's agent opened panels on their DESKTOP).
+ *  A url → a browser panel; `layout:<name>` → that workspace; `settings:<page>`
+ *  → the Settings modal on that page; a plain ref → the app's panel (a house
+ *  slug opens its house panel, as the app lane routes it). Shared by the
+ *  initiating and the observing run paths, on the web and on a desktop
+ *  watching a cloud run. */
+export function openRunRef(t: { ref?: string; url?: string }): void {
+  if (t.url) { openUrlInWorkbench(new URL(t.url).hostname, t.url); return; }
+  const parsed = t.ref ? parseOpenRef(t.ref) : null;
+  if (!parsed) return;
+  if (parsed.kind === "layout") openLayoutByName(parsed.name);
+  else if (parsed.kind === "settings") openSettingsModal(parsed.page);
+  else openAppInWorkbench({ slug: parsed.slug, name: parsed.slug });
 }
 
 /** Open a built-in WORK PANEL as a workbench panel — the Apps page's "Work
