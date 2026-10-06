@@ -88,7 +88,7 @@ describe("a cloud turn from the desktop", () => {
 
     const r = await lane.start(sender, { chatId: "c1", threadId: "space-9", prompt: "hello", mode: "code", model: "claude-opus-5", permission: "ask", effort: "high", subdir: "api", repo: "glyphh-ai/app" });
     expect(r).toEqual({ ok: true, runId: "run-1" });
-    expect(runs[0]).toEqual({ target: "cloud", threadId: "space-9", prompt: "hello", mode: "code", model: "claude-opus-5", permission: "ask", effort: "high", subdir: "api", repo: "glyphh-ai/app" });
+    expect(runs[0]).toEqual({ target: "cloud", surface: "desktop", threadId: "space-9", prompt: "hello", mode: "code", model: "claude-opus-5", permission: "ask", effort: "high", subdir: "api", repo: "glyphh-ai/app" });
     expect(rows.get("c1")).toMatchObject({ status: "working", runId: "run-1", senderId: 7 });
 
     h.emit({ type: "setup", phase: "model" });

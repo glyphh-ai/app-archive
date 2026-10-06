@@ -106,6 +106,8 @@ export interface CloudLaneClient {
     memory?: unknown;
     subdir?: string;
     repo?: string;
+    /** The run's surface (SDK HarnessSurface): this lane is the desktop's. */
+    surface?: "web" | "desktop" | "cli";
   }): CloudRunHandle;
   harnessViaApi(): {
     fsSpaces(): Promise<{ spaces: CloudSpace[] }>;
@@ -231,6 +233,9 @@ export function createCloudLane(deps: CloudLaneDeps) {
     try {
       handle = deps.client().run({
         target: "cloud",
+        // THE RUN CARRIES ITS SURFACE (2026-10-06): the pod's window tools keep
+        // relaying to THIS desktop; a web run's open on the page instead.
+        surface: "desktop",
         threadId,
         prompt,
         mode: p.mode === "work" ? "work" : "code",

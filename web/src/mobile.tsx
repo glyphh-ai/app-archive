@@ -4366,6 +4366,20 @@ function App() {
   const [minSplash, setMinSplash] = useState(false);   // hold the splash for its full beat
   const [settings, setSettings] = useState(false);
   const [settingsSub, setSettingsSub] = useState<SettingsSub | null>(null);   // rail shortcut → open a specific tray
+  // An `open-app` run frame's ref (2026-10-06): `settings:<page>` opens the
+  // sheet (on the page when it is one of this surface's trays, else its
+  // landing); `layout:<name>` names a workspace this surface cannot host.
+  // Anything else is an app slug for the caller to resolve. Returns what it was.
+  const openRefHere = (ref: string): 'settings' | 'layout' | 'app' => {
+    const m = /^(layout|settings):(.*)$/i.exec(ref.trim());
+    if (!m) return 'app';
+    if (m[1]!.toLowerCase() === 'layout') return 'layout';
+    const page = m[2]!.trim().toLowerCase();
+    const subs: SettingsSub[] = ['profile', 'billing', 'usage', 'appearance', 'connections', 'help'];
+    setSettingsSub((subs as string[]).includes(page) ? (page as SettingsSub) : null);
+    setSettings(true);
+    return 'settings';
+  };
   const [appsOpen, setAppsOpen] = useState(false);            // the Apps list sheet
   const [trayApp, setTrayApp] = useState<AppItem | null>(null); // the app streamed in the tray (null = closed)
   const pushedRunRef = useRef<string>('');                    // last run we auto-opened a panel for (dedupe)
@@ -4582,7 +4596,14 @@ function App() {
       onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
         haptic();
         if (url) { window.open(url, '_blank', 'noopener'); return; }
-        if (!ref || !STREAMED_PANELS) return;
+        if (!ref) return;
+        // The pod's window tools name a Settings page or a workspace (2026-10-06):
+        // Settings opens here; a workspace is a workbench concept this surface
+        // does not have — say so in the transcript.
+        const special = openRefHere(ref);
+        if (special === 'settings') return;
+        if (special === 'layout') { convoRef.current = [...convoRef.current, { id: 'ref' + Date.now().toString(36), role: 'glyphh', text: 'Workspaces open on the desktop app or the web workbench.' }]; renderConvo(); return; }
+        if (!STREAMED_PANELS) return;
         void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
           const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
           const u = a ? (a.prodUrl || a.config?.url || '') : '';
@@ -4807,7 +4828,11 @@ function App() {
         onOpenApp: ({ ref, url }: { ref?: string; url?: string }) => {
           haptic();
           if (url) { window.open(url, '_blank', 'noopener'); return; }
-          if (!ref || !STREAMED_PANELS) return;
+          if (!ref) return;
+          const special = openRefHere(ref);
+          if (special === 'settings') return;
+          if (special === 'layout') { convoRef.current = [...convoRef.current, { id: 'ref' + Date.now().toString(36), role: 'glyphh', text: 'Workspaces open on the desktop app or the web workbench.' }]; renderConvo(); return; }
+          if (!STREAMED_PANELS) return;
           void glyphh().apps.mine().then((list: Array<{ slug: string; name: string; prodUrl: string | null; config?: { url?: string } }>) => {
             const a = list.find((x) => x.slug === ref || x.name.toLowerCase() === ref.toLowerCase());
             const u = a ? (a.prodUrl || a.config?.url || '') : '';

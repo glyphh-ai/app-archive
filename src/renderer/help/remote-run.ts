@@ -84,6 +84,34 @@ interface HarnessRunHandle {
  *  in Ask mode would silently run unattended if we didn't say so. */
 export type RemotePermission = "ask" | "plan" | "acceptEdits" | "auto";
 
+/** WHERE THE CALLER IS (SDK HarnessSurface). A cloud run carries it so the
+ *  pod's window tools act on the right surface: on the web the page opens
+ *  things itself (open-app frames), a desktop keeps the relay. */
+export type RunSurface = "web" | "desktop" | "cli";
+
+/** This renderer's surface: app.glyphh.ai (web) or the desktop. */
+export function surfaceHere(): RunSurface {
+  return (window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ ? "web" : "desktop";
+}
+
+/** What an `open-app` frame's `ref` names (his report, 2026-10-06: a web
+ *  member's agent opened panels on their DESKTOP; now the pod answers
+ *  panels_open / layouts_open / settings_open with this frame and the page
+ *  opens the thing itself): `layout:<name>` is a saved workspace,
+ *  `settings:<page>` a Settings page, anything else an app slug (a house slug
+ *  opens its house panel, as the merged app lane routes it). */
+export type OpenRef = { kind: "layout"; name: string } | { kind: "settings"; page: string } | { kind: "app"; slug: string };
+
+export function parseOpenRef(ref: string): OpenRef | null {
+  const r = ref.trim();
+  if (!r) return null;
+  const m = /^(layout|settings):(.*)$/i.exec(r);
+  if (!m) return { kind: "app", slug: r };
+  const rest = m[2]!.trim();
+  if (!rest) return null;
+  return m[1]!.toLowerCase() === "layout" ? { kind: "layout", name: rest } : { kind: "settings", page: rest.toLowerCase() };
+}
+
 /** The LOOP's memory policy for a turn (mirrors the SDK's HarnessMemoryPolicy):
  *  whether the turn rotates around the stator and how. Absent = runtime default. */
 export interface RemoteMemoryPolicy { recall?: boolean; write?: boolean; topK?: number; threshold?: number; entity?: string }
@@ -698,6 +726,10 @@ export async function runRemoteTurn(
       // The composer's effort dial rides a cloud turn too (SDK RunTurnOptions.effort,
       // 2026-10-04); a desktop-relay turn keeps the machine's own setting.
       ...(opts.effort && !isLocal ? { effort: opts.effort } : {}),
+      // THE RUN CARRIES ITS SURFACE (2026-10-06): the pod's window tools act
+      // where the member is — on the web the page opens panels, workspaces
+      // and Settings itself; nothing relays to a desktop.
+      ...(!isLocal ? { surface: surfaceHere() } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
