@@ -367,6 +367,13 @@ export function buildMemberLibrary(client, deps = {}) {
   const skillDelete = async (pageId) => {
     try {
       if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.remove(pageId));
+      // A TAB ROW IS A LIBRARY ROW (his report, 2026-10-07: deleting an app on
+      // the web answered "this runs on your desktop"): the record lives in the
+      // cloud, so the web tombstones it like any row — nothing is on a desktop.
+      if (isTabCardId(pageId)) {
+        await lib().remove('tab', String(pageId).slice(TAB_CARD.length), { updatedAt: now() });
+        return ok(true);
+      }
       const ref = bundleOfPageId(String(pageId));
       if (!ref) return { ok: false, error: NEEDS_DESKTOP };
       await lib().remove(ref.kind, ref.id, { updatedAt: now() });

@@ -532,6 +532,12 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     expect(rows.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { tool: 'gdrive' }, version: '0.1.0' });
     expect((await lib.skillTab('app-tab:images')).ok).toBe(false);
   });
+  it("deleting a tab-row card on the web tombstones the library row — never 'this runs on your desktop' (his report, 2026-10-07)", async () => {
+    const fake = tabs();
+    const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
+    expect(await lib.skillDelete('app-tab:drive')).toEqual({ ok: true, data: true });
+    expect(fake.remove).toHaveBeenCalledWith('tab', 'drive', { updatedAt: 9_000 });
+  });
   it("a house tab row that arrives WITHOUT its tool still opens its own panel on the web (Images → gimage; his report 2026-10-05: Open did nothing)", async () => {
     const fake = tabs();
     const rows = await fake.list('tab');
