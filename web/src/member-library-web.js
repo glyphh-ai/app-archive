@@ -261,7 +261,10 @@ export function buildMemberLibrary(client, deps = {}) {
       const have = new Set(instances.map((c) => String(c.name).toLowerCase()));
       const haveSlugs = new Set((await appInstances.listInstances()).map((i) => String(i.slug).toLowerCase()));
       rows.push(...instances);
-      for (const t of await tabApps()) if (!haveSlugs.has(t.slug.toLowerCase()) && !have.has(String(t.name).toLowerCase())) rows.push(tabCardOf(t));
+      // A glyphh tab row is an app only with a bundle on a machine behind it
+      // (nativeRef); one left over from a deleted instance is nothing (his
+      // report, 2026-10-07).
+      for (const t of await tabApps()) if (t.nativeRef && !haveSlugs.has(t.slug.toLowerCase()) && !have.has(String(t.name).toLowerCase())) rows.push(tabCardOf(t));
     }
     return ok(rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
   };
