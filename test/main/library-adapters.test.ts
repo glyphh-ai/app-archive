@@ -7,7 +7,7 @@
  * (2026-10-04: db rows with cloud storage) run over a temp SQLite — node's
  * own, standing in for better-sqlite3, whose binary here is Electron's.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -179,6 +179,25 @@ describe("skills and tasks (folders)", () => {
     a.remove("digest");
     expect(existsSync(join(root, "user", "tasks", "digest"))).toBe(false);
     expect(a.list()).toEqual([]);
+  });
+
+  // AN APP CARRIES ITS SKILL (his law, 2026-10-06): installing an app writes a
+  // library `skill` row (`app-<slug>`, files SKILL.md). It is a skill row like
+  // any other — no special case here — so it lands in the skills home and
+  // links into every CLI's folder, and a delete (the uninstall) takes it back.
+  it("a skill row an app install wrote (`app-<slug>`, source app) lands in the skills home like any skill and links into every CLI's folder", () => {
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    const a = bundleAdapter("skill");
+    a.apply(item("skill", "app-images", 9_000, { name: "Images", description: "Save, list and generate images", enabled: true, type: "skill", source: "app", app: "images" }, []), [
+      { path: "SKILL.md", bytes: new TextEncoder().encode("---\nname: Images\ndescription: Save, list and generate images\n---\n\nFind the tool with find_tools, then images.save_image.\n"), mtime: 9_000 },
+    ]);
+    const dir = join(root, "user", "skills", "app-images");
+    expect(existsSync(join(dir, "SKILL.md"))).toBe(true);
+    expect(a.list().find((r) => r.id === "app-images")).toMatchObject({ data: { name: "Images", description: "Save, list and generate images", enabled: true, type: "skill" } });
+    expect(readlinkSync(join(home, ".claude", "skills", "app-images"))).toBe(dir);
+    a.remove("app-images");
+    expect(existsSync(dir)).toBe(false);
+    expect(existsSync(join(home, ".claude", "skills", "app-images"))).toBe(false);
   });
 });
 

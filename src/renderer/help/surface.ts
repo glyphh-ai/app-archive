@@ -59,7 +59,7 @@ export function surfaceHostsView(view: string, caps: Readonly<SurfaceCaps>): boo
  *  bearing fields). `archetype` is the app row's appArchetype: "native" is a
  *  desktop binary; "web" a URL tab; "glyphh-app" a Glyphh app; "glyphh-nav"
  *  a section. `cloud` marks a cloud app INSTANCE (the row's launchConfig
- *  names an instanceKey); `houseDefault` a house built-in row (no appId). */
+ *  names its `instance`); `houseDefault` a house built-in row (no appId). */
 export type SurfaceTileIn = {
   kind: "app" | "layout" | "tool" | "agent" | "folder";
   toolView?: string; navKey?: string; archetype?: string | null;

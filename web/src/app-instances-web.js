@@ -17,7 +17,7 @@
  * Pure over an injected client + document, so it tests with no browser.
  */
 import {
-  instanceCardOf, instanceDetailOf, instanceKeyOfCardId, instanceKeyOfRow, instanceTabRow, isInstanceCardId, panelPathOf, resolveInstance,
+  instanceCardOf, instanceDetailOf, instanceKeyOfCardId, instanceKeyOfRow, instanceTabOpen, instanceTabRow, isInstanceCardId, panelPathOf, resolveInstance,
 } from '../../src/shared/app-instances';
 import { tabRecordOf } from '../../src/shared/member-library';
 
@@ -110,7 +110,8 @@ export function buildAppInstancesWeb(client, deps = {}) {
     const at = now();
     const row = instanceTabRow(inst, null, existing, new Date(at).toISOString());
     await lib.put('tab', inst.slug, { data: tabRecordOf(row), updatedAt: at });
-    return { slug: row.slug, name: row.name };
+    // A house app's Open names its built-in panel (the same rule as the desktop's instanceTab).
+    return instanceTabOpen(row);
   };
   const remove = async (id) => {
     const inst = await find(id);

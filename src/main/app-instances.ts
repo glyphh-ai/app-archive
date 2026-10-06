@@ -33,7 +33,7 @@ import { getActiveUserId } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { appCache, getClient, SERVER_URL } from "./glyphh-client.js";
 import {
-  instanceCardOf, instanceDetailOf, instanceRequestOf, instanceTabRow, instanceToolRows, isInstanceCardId, instanceKeyOfCardId,
+  instanceCardOf, instanceDetailOf, instanceRequestOf, instanceTabOpen, instanceTabRow, instanceToolRows, isInstanceCardId, instanceKeyOfCardId,
   panelUrlOf, callPathOf, resolveInstance, tabConfigOf,
   type AppInstanceSummary, type BundleManifestLike, type InstanceCard, type InstanceKind,
 } from "../shared/app-instances.js";
@@ -342,11 +342,11 @@ export async function instanceDetail(id: string): Promise<ReturnType<typeof inst
   return instanceDetailOf(inst, new Date().toISOString());
 }
 
-/** Open = the tab (created on first open, so the wall and the rail know it). */
-export async function instanceTab(id: string): Promise<{ slug: string; name: string }> {
+/** Open = the tab (created on first open, so the wall and the rail know it);
+ *  a house app's answer names its built-in panel (shared instanceTabOpen). */
+export async function instanceTab(id: string): Promise<{ slug: string; name: string; tool?: string }> {
   const key = instanceKeyOfCardId(id);
   const inst = (await listInstances()).find((i) => i.key === key);
   if (!inst) throw new Error(`no cloud app ${key}`);
-  const row = await ensureInstanceTab(inst, null);
-  return { slug: row.slug, name: row.name };
+  return instanceTabOpen(await ensureInstanceTab(inst, null));
 }

@@ -41,8 +41,6 @@ function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLi
 }
 const fakeDoc = () => ({ cookie: '' });
 
-// The six built-in house rows ride every signed-in panel app list (2026-10-06); these tests are about the member's own rows.
-const notHouse = (s) => !['audio', 'design', 'drive', 'images', 'slides', 'video'].includes(String(s).toLowerCase());
 describe('the panel open (glyphhAppPreviewOpen on the web)', () => {
   it('answers this origin\'s proxy path for the instance a tab names, and sets the panel cookie', async () => {
     const doc = fakeDoc();
@@ -97,7 +95,7 @@ describe('the member library folds instances in', () => {
     const client = fakeClient();
     const lib = buildMemberLibrary(client, { document: fakeDoc(), desktopRead: async () => [{ id: 'local', slug: 'local-only', name: 'Local', appArchetype: 'glyphh-app', execPath: '/x/index.html' }] });
     const rows = await lib.panelAppsList();
-    expect(rows.map((r) => r.slug).filter(notHouse).sort()).toEqual(['crm', 'expense-desk', 'local-only', 'notes']);
+    expect(rows.map((r) => r.slug).sort()).toEqual(['crm', 'expense-desk', 'local-only', 'notes']);
     expect(rows.find((r) => r.slug === 'expense-desk').launchConfig).toMatchObject({ instance: 'expense-desk', instanceStatus: 'ready' });
     expect(rows.find((r) => r.slug === 'expense-desk').appArchetype).toBe('glyphh-app');
   });
@@ -120,7 +118,24 @@ describe('the member library folds instances in', () => {
     const client = fakeClient();
     client.http.get = vi.fn(async () => { throw new Error('offline'); });
     const lib = buildMemberLibrary(client, { document: fakeDoc() });
-    expect((await lib.panelAppsList()).map((r) => r.slug).filter(notHouse)).toEqual(['crm']);
+    expect((await lib.panelAppsList()).map((r) => r.slug)).toEqual(['crm']);
+  });
+  // THE HOUSE APPS ARE APPS (his law, 2026-10-06): an `images` instance the
+  // server installed lists like any instance — never a synthesized row — and
+  // its row names the built-in panel (tool gimage), which is where the tile,
+  // the ⋮ menu and Settings → Apps → Open all land on the web.
+  it('a house app is an instance like any other; its row and its Open name the built-in panel', async () => {
+    const images = { ...MINE, key: 'images~u1', slug: 'images', manifest: { name: 'Images', tools: [{ name: 'save_image' }], capabilities: ['library.*'], connectors: [] }, url: '/app-host/images~u1/' };
+    const client = fakeClient({ instances: [ORG, images] });
+    const lib = buildMemberLibrary(client, { document: fakeDoc() });
+    const rows = await lib.panelAppsList();
+    expect(rows.map((r) => r.slug).sort()).toEqual(['crm', 'expense-desk', 'images']);
+    expect(rows.find((r) => r.slug === 'images')).toMatchObject({ appArchetype: 'glyphh-app', launchConfig: { instance: 'images~u1', tool: 'gimage', instanceStatus: 'ready' } });
+    expect(rows.find((r) => r.slug === 'expense-desk').launchConfig).not.toHaveProperty('tool');
+    expect((await lib.skillTab('app-instance:images~u1')).data).toEqual({ slug: 'images', name: 'Images', tool: 'gimage', cloud: true });
+    expect(client.memberLibrary.put).toHaveBeenCalledWith('tab', 'images', expect.objectContaining({ data: expect.objectContaining({ config: expect.objectContaining({ instance: 'images~u1', tool: 'gimage' }) }) }));
+    // With nothing installed there is nothing: no row is made up for a house app.
+    expect((await buildMemberLibrary(fakeClient({ instances: [], library: fakeLibrary({}) }), { document: fakeDoc() }).panelAppsList())).toEqual([]);
   });
 });
 
