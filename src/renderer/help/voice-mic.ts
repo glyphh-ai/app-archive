@@ -13,7 +13,7 @@
 
 import { cue, playReplyTTS, stopReply } from "./voice-out.js";
 import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./composer-state.js";
-import { dictationText, partialDue } from "./voice-text.js";
+import { dictationText, partialDue, transcribeErrorText } from "./voice-text.js";
 import { micChecked, micRows } from "./mic-devices.js";
 
 interface VoicePref {
@@ -75,6 +75,10 @@ const stateSubs = new Set<(s: VoiceState) => void>();
 function setVoiceState(s: VoiceState): void {
   if (vstate === s) return;
   vstate = s;
+  // DICTATION LIGHTS THE BOX (his order, 2026-10-07): a faint glow in the
+  // theme's primary while the take records and transcribes; voice mode has
+  // its own bar and stays dark.
+  el("code-input")?.closest(".code-composer")?.classList.toggle("dictating", s === "ptt" || s === "transcribing");
   for (const cb of stateSubs) { try { cb(s); } catch { /* subscriber threw */ } }
 }
 /** The recorder's state right now. */
@@ -464,15 +468,22 @@ async function transcribe(model: string): Promise<void> {
   chip?.classList.add("transcribing");
   setVoiceState("transcribing");
   let text = "";
+  let failed = false;
   try {
     if (partialInflight) await partialInflight;
     text = await transcribeBlob(takeBlob(), model);
-  } catch (e) { console.error("[voice] transcribe failed", e); }
+  } catch (e) {
+    // SAID, NOT SWALLOWED (his report, 2026-10-07): the chip wears the reason
+    // until the next good take, instead of a take that quietly lands nothing.
+    failed = true;
+    micError(transcribeErrorText(e), true);
+    console.error("[voice] transcribe failed", e);
+  }
   chip?.classList.remove("transcribing");
   recorder = null;
   chunks = [];
   setVoiceState("off");
-  if (!handsFree) { paintTranscript(text); el<HTMLTextAreaElement>("code-input")?.focus(); return; }
+  if (!handsFree) { if (!failed) paintTranscript(text); el<HTMLTextAreaElement>("code-input")?.focus(); return; }
   // Voice mode: a real utterance submits the turn; silence just re-listens.
   if (text.trim()) {
     paintTranscript(text);
