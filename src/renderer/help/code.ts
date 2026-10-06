@@ -648,7 +648,9 @@ function paintModelChip(): void {
   // With the gateway on, "Default" is the ORG'S default (his order, 2026-09-20),
   // so the chip names it: the turn runs on that, never on some older pick.
   const orgDef = modelSource === "gateway" && !sel ? resolvedDefaultModel() : "";
-  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (orgDef ? `Default · ${orgDef}` : "Default")}`;
+  // Plain words under the box (his order, 2026-10-07): the name alone, the
+  // way Claude's composer names its model — the title says what it is.
+  mc.textContent = none ? "No model" : sel?.name ?? (orgDef ? `Default · ${orgDef}` : "Default");
   mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
     : sel ? `${sel.name} — ${sel.providerSlug}`
     : "Your organization's default model";
@@ -1888,6 +1890,8 @@ function syncSpaceAttrs(): void {
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
   announceWbLocus();
+  // The composer's chips take the seats this type gives them (seatMic).
+  (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic?.();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
 /** THE PANELS FOLLOW THE SESSION (his report, 2026-10-04): the workbench's
@@ -4257,15 +4261,15 @@ function autoGrow(ta: HTMLTextAreaElement): void {
   // collapses what IT opened, never a caret-opened card.
   const card = ta.closest(".code-input-card");
   if (!card) return;
-  // STICKY expansion (his rule, 2026-08-19): expanding reseats the +/mic
-  // chips, which CHANGES the wrap width — closing on "back under one line"
-  // re-wrapped the text and re-opened it, flickering at the breakpoint. So
-  // auto-open latches: it only releases when the input is EMPTY (sent or
-  // cleared). Definitive, no oscillation.
+  // STICKY expansion (his rule, 2026-08-19): expanding used to reseat the
+  // +/mic chips, which CHANGED the wrap width — closing on "back under one
+  // line" re-wrapped the text and re-opened it, flickering at the breakpoint.
+  // So auto-open latches: it only releases when the input is EMPTY (sent or
+  // cleared). Definitive, no oscillation. (The seats follow the TYPE now,
+  // not the fold — seatMic — but the latch stays: it is the calmer rule.)
   const tall = h > 44;
   if (tall && !card.classList.contains("options-open")) card.classList.add("options-open", "auto-open");
   else if (!ta.value.trim() && card.classList.contains("auto-open")) card.classList.remove("options-open", "auto-open");
-  (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic?.();
 }
 /** Recompute the composer height whenever its WIDTH changes — card
  *  entrances, adoptions, and layout switches all resize it after the last
@@ -7527,33 +7531,60 @@ export function initCode(): void {
   // CC pins the wall over open cards; reset clears back to the command
   // center. The latter two only show while panels cover the wall (the
   // workbench drives body.echo-cc-needed).
-  // The mic has TWO seats (his rule, 2026-08-19): the collapsed PILL keeps it
-  // in the input row beside the ⏎; DOCKED or EXPANDED it sits in the chip
-  // bar's bottom-left, right of the permission chip. appendChild moves keep
-  // listeners. The workbench calls this global after re-homing the agent.
+  // THE CHIPS FOLLOW THE TYPE (his order, 2026-10-07 — Claude's composer for
+  // Work, Claude Code on the web for Code; "just MOVE THE CHIPS"). The box
+  // holds the input; the quiet row UNDER it holds the words. Work keeps the
+  // + at the input's left and the voice pair (mic + caret, speak toggle) at
+  // its right; everything else sits in the row — Output left, model ·
+  // effort · mode (+ Stop while speaking) right. Code seats the + and the
+  // mic under the box too: + · mic · mode · Output left, model · effort ·
+  // speak right. One rule for every host (docked cell, the centre pill,
+  // the web's flow card): no chip lands in the box but Work's + and voice
+  // pair. appendChild moves keep listeners; a node already in its seat is
+  // left alone (moving it would blur a focused chip). The workbench calls
+  // this global after re-homing the agent; the type switch calls it too.
   const seatMic = (): void => {
     const mic = el("code-mic-wrap");
     const plus = el("code-plus-wrap");
     const agent = document.querySelector(".code-agent");
     if (!mic || !plus || !agent) return;
-    const docked = !!agent.closest(".ws-agent-holder");
-    const expanded = !!agent.querySelector(".code-input-card.options-open");
+    const wrap = agent.querySelector(".code-input-wrap");
+    const left = agent.querySelector(".code-bar-left");
+    const right = agent.querySelector(".code-bar-right");
+    const wave = el("code-rec-wave");
+    if (!wrap || !left || !right || !wave) return;
     const speak = el("code-speak-toggle-wrap");
-    if (docked || expanded) {
-      // Bottom-left chip order: permissions, +, Output, then the voice pair —
-      // the mic and the speak toggle sit to the RIGHT of the Output chip (his
-      // order, 2026-10-06).
-      const mode = el("code-mode-wrap");
-      const output = el("code-output-wrap");
-      if (mode && plus.previousElementSibling !== mode) mode.after(plus);
-      const anchor = output ?? plus;
-      if (mic.previousElementSibling !== anchor) anchor.after(mic);
-      if (speak && speak.previousElementSibling !== mic) mic.after(speak);
+    const mode = el("code-mode-wrap");
+    const output = el("code-output-wrap");
+    const level = el("code-level-wrap");
+    const model = el("code-model-wrap");
+    const stop = el("code-speak-wrap");
+    const c = current();
+    const work = (c ? modeOf(c) : typeTab) === "work";
+    // Put `nodes` at the head of `parent` in this order, moving only what is
+    // out of place (a pass over a settled row touches nothing).
+    const order = (parent: Element, nodes: Array<HTMLElement | null>): void => {
+      let prev: Element | null = null;
+      for (const n of nodes) {
+        if (!n) continue;
+        const want: Element | null = prev ? prev.nextElementSibling : parent.firstElementChild;
+        if (n.parentElement !== parent || want !== n) parent.insertBefore(n, want && want.parentElement === parent ? want : null);
+        prev = n;
+      }
+    };
+    // Seat `node` in `parent` right before `before`, only when it is not there.
+    const seatBefore = (node: HTMLElement | null, parent: Element, before: Element): void => {
+      if (node && (node.parentElement !== parent || node.nextElementSibling !== before)) parent.insertBefore(node, before);
+    };
+    if (work) {
+      order(wrap, [plus]);
+      seatBefore(speak, wrap, wave);
+      seatBefore(mic, wrap, speak ?? wave);
+      order(left, [output]);
+      order(right, [model, level, mode, stop]);
     } else {
-      const wrap = agent.querySelector(".code-input-wrap");
-      const wave = el("code-rec-wave");
-      if (wrap && wrap.firstElementChild !== plus) wrap.insertBefore(plus, wrap.firstElementChild);
-      if (wrap && wave && mic.parentElement !== wrap) wrap.insertBefore(mic, wave);
+      order(left, [plus, mic, mode, output]);
+      order(right, [model, level, speak, stop]);
     }
   };
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic = seatMic;
@@ -7569,7 +7600,6 @@ export function initCode(): void {
     if (card.classList.contains("options-open") && ta && ta.clientHeight > 44) return;
     card.classList.toggle("options-open");
     card.classList.remove("auto-open");   // the user took over from auto-grow
-    seatMic();
   });
   el("code-cc-open")?.addEventListener("click", () => {
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
