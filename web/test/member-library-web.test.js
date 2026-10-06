@@ -279,6 +279,7 @@ const PUB = [
   { id: 'pub-3', slug: 'glyphh', name: 'Glyphh', description: 'The Glyphh plugin', sourceOrg: 'Glyphh', installed: false, installs: 40, version: 3, updatedAt: '2026-10-04T00:00:00.000Z', createdAt: '2026-09-20T00:00:00.000Z', kind: 'plugin', categories: ['apps'], icon: null },
   { id: 'pub-4', slug: 'crm', name: 'CRM', description: 'An app', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-29T00:00:00.000Z', createdAt: '2026-09-29T00:00:00.000Z', kind: 'app', categories: [], icon: null },
   // An app row from before the cloud may still carry a `data` word; it says nothing now (his order, 2026-10-06).
+  { id: 'pub-6', slug: 'images', name: 'Images', description: "The member's image library", sourceOrg: 'Glyphh', installed: false, installs: 1, version: 1, updatedAt: '2026-09-27T00:00:00.000Z', createdAt: '2026-09-27T00:00:00.000Z', kind: 'app', categories: [], icon: null },
   { id: 'pub-5', slug: 'vault', name: 'Vault', description: 'An app', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-28T00:00:00.000Z', createdAt: '2026-09-28T00:00:00.000Z', kind: 'app', categories: [], icon: null, data: 'local' },
 ];
 const ORG_SKILLS = [
@@ -322,14 +323,17 @@ describe('Discover on web — the same catalog reads as hub-ipc', () => {
     const r = await lib.skillsDiscover(['skill', 'task', 'plugin']);
     expect(r.ok).toBe(true);
     expect(r.data.map((d) => d.ref)).toEqual(['glyphh:pub-3', 'org:org-1', 'glyphh:pub-1', 'glyphh:pub-2']);
-    expect(r.data[1]).toEqual({ ref: 'org:org-1', from: 'org', id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', version: 1, installed: false, installs: 1, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null, type: 'skill' });
+    expect(r.data[1]).toEqual({ ref: 'org:org-1', from: 'org', id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', version: 1, installed: false, installs: 1, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null, tool: null, type: 'skill' });
     expect(r.data[0]).toMatchObject({ from: 'glyphh', author: 'Glyphh', version: 3, installs: 40, type: 'plugin', icon: null });
     expect(r.data[3]).toMatchObject({ type: 'task', icon: '<svg/>' });
     expect(http.calls.filter((c) => c.method === 'GET').map((c) => c.path).sort()).toEqual(['/api/hub/public', '/api/library/plugin', '/api/library/skill', '/api/library/task']);
     // Only the asked kinds: the Plugins page sees the plugin alone, the app never (no app home here).
     expect((await lib.skillsDiscover('plugin')).data.map((d) => d.ref)).toEqual(['glyphh:pub-3']);
     const withApps = (await lib.skillsDiscover(['skill', 'app', 'task'])).data;
-    expect(withApps.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4', 'glyphh:pub-5']);
+    expect(withApps.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4', 'glyphh:pub-5', 'glyphh:pub-6']);
+    // A house app's card wears its own panel's mark; any other app none (his report, 2026-10-07: generic icons on Discover).
+    expect(withApps.find((d) => d.ref === 'glyphh:pub-6')).toMatchObject({ slug: 'images', tool: 'gimage' });
+    expect(withApps.find((d) => d.ref === 'glyphh:pub-4')).toMatchObject({ slug: 'crm', tool: null });
     // No row carries a word on where its data lives: an app is a cloud instance.
     expect(withApps.every((d) => !('data' in d))).toBe(true);
   });
