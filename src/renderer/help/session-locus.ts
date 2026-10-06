@@ -46,6 +46,15 @@ export function locusFilterOf(v: unknown): LocusFilter {
   return v === "local" || v === "cloud" ? v : "";
 }
 
+/** A session with NO turns anywhere — never written to, on any surface. A
+ *  thread adopted from the server carries only a messageCount until it is
+ *  opened; it is not blank, it is unread (his report, 2026-10-06: a rail
+ *  click on Work emptied the agent and the row left the list — the boot
+ *  rebirth had flipped an unread thread's type and source). */
+export function sessionIsBlank(c: { messages?: unknown[]; messageCount?: number }): boolean {
+  return (c.messages?.length ?? 0) === 0 && !((c.messageCount ?? 0) > 0);
+}
+
 // ── THE ONE RECENTS FILTER ───────────────────────────────────────────────
 
 /** What a recents row must say about itself to be filtered. `loopKey` is the
