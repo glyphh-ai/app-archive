@@ -21886,13 +21886,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    is filtered out of the tiles (help/web-cut.ts webWallKeeps); the wall and
    the dock still do not BOOT (the web lands on Work → New) and the rail's
    Echo icon lifts them. Only the agent card's chrome differs below. ── */
-html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
-/* THE AGENT MOVES ON THE WEB TOO (his review, 2026-10-05: "the glyphh agent
-   panel should be draggable too… not fixed in place"). Its head stays — it is
-   the drag handle, as on every other flow panel (code-workbench.ts
-   wireCardDrag, help/web-cut.ts agentCardMovable); only its close goes: the
-   agent is the page, closing it would leave nothing. */
-html.glyphh-web .echo-card.echo-agent-card > .echo-card-head .echo-card-close { display: none; }
+/* The agent card on the web is the desktop's card: same border, radius, inset and close (his order, 2026-10-06: "the desktop is set into the grid correctly... the browser is not"). */
 /* The composer's command-center and close-all buttons act on the web as on
    the desktop (his order, 2026-10-05): the Echo lifts, close all opens a
    fresh session. */

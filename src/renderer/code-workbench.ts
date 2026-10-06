@@ -4917,7 +4917,7 @@ async function init(): Promise<void> {
       // as close to the edges as they sit to each other.
       // THE WEB CUT: the agent is the page on the web — edge to edge, no band
       // margin (the dock never paints there; the 7px seams between panels stay).
-      const margin = IS_WEB_TARGET ? 0 : 7;
+      const margin = 7;   // the desktop's inset, on the web too (his order, 2026-10-06: the agent sits in the grid like the desktop's)
       // The dock's band — THE SAME measure the stage uses for its pill (help/
       // dock-band.ts). A bar PARKED in the body-level portal layer (panels up,
       // auto-hide off) still sits fixed across the top, so its band is still
@@ -4938,7 +4938,7 @@ async function init(): Promise<void> {
       }
       // Degenerate windows (tiny stage, mid-boot measures) — keep a usable box.
       if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
-      const side = IS_WEB_TARGET ? 0 : 7;
+      const side = 7;
       return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
     }
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
