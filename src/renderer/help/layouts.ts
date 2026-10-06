@@ -289,6 +289,7 @@ layoutFolderClearBtn?.addEventListener("click", () => {
 // (code-workbench's SESSION contract), history riding along on "last".
 const layoutAgentRows = document.getElementById("layout-agent-rows");
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
+const layoutTypeSelect = document.getElementById("layout-type") as HTMLSelectElement | null;
 const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's model picks. */
 let builderModelSelections: Record<string, string> = {};
@@ -372,6 +373,9 @@ interface CellConfig {
   folder?: string;
   model?: string;
   session?: "keep" | "new" | "last";
+  /** The Glyphh agent cell's TYPE (his order, 2026-10-07): Work or Code for
+   *  the session it creates. Absent = the workspace's overall type. */
+  type?: "work" | "code";
   /** A CLI agent slot's gateway choice: absent = the member's default in Settings. */
   gateway?: "on" | "off";
   railMenu?: boolean;
@@ -682,6 +686,8 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   clear.addEventListener("click", () => { fin.value = ""; setCellValue(i, "folder", ""); });
   fields.appendChild(folder);
   fields.appendChild(model);
+  // THE TYPE rides the Glyphh agent cell only — a CLI cell is always Code.
+  if (!cli) fields.appendChild(selectRow("Type", [["", "Workspace default"], ["work", "Work"], ["code", "Code"]], cfg.type ?? "", (v) => setCellValue(i, "type", v)));
   fields.appendChild(selectRow("Session", [["", "Workspace default"], ["keep", "Keep the current session"], ["new", "Start a new session"], ["last", "Resume the last session"]], cfg.session ?? "", (v) => setCellValue(i, "session", v)));
   if (cli?.gateway) {
     // THE SLOT'S GATEWAY OVERRIDE (his order, 2026-09-30). Paid plans only:
@@ -1180,6 +1186,10 @@ async function editLayout(name: string) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
     layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
   }
+  if (layoutTypeSelect) {
+    const t = (layout as { type?: string })?.type;
+    layoutTypeSelect.value = t === "work" || t === "code" ? t : "";
+  }
   void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
@@ -1208,6 +1218,7 @@ async function newLayout() {
   if (layoutFolderInput) layoutFolderInput.value = "";
   builderModelSelections = {};
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
+  if (layoutTypeSelect) layoutTypeSelect.value = "";
   void renderLoopModels();
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
@@ -1318,6 +1329,8 @@ async function saveLayout() {
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
     sessionMode: (hasAgentSeat && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
+    // The type binds like the model slots: only with an agent seat to bind to.
+    ...(hasAgentSeat && (layoutTypeSelect?.value === "work" || layoutTypeSelect?.value === "code") ? { type: layoutTypeSelect.value as "work" | "code" } : {}),
     folder: layoutFolderInput?.value.trim() || null,
   });
   // A refused save says why on the form — the plan gate on the desktop, or
