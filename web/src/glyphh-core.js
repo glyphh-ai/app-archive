@@ -309,7 +309,6 @@ const LOCAL_NAMES = new Set([
   'getWorkingDir', 'setWorkingDir', 'pickWorkingDir', 'getWorkingDirRecents',
   // dripsPreview is NOT local anymore — drips render on web (web-contract wires
   // it to drip-web-runner's sandboxed-iframe overlay).
-  'deployAppFromWorkdir',
   // Local OS file/exec pickers + path classification — need a real filesystem.
   // P6 routes these over attach to a connected provider.
   'pickExecutable', 'pickDirectory', 'layoutsPickFolder',
@@ -540,7 +539,7 @@ export function toLegacyDrips(items) {
 
 /**
  * `panelAppsList` — the deployed panel apps as the dashboard's SavedPanelApp rows.
- * The new server's `/api/panel-apps` (client.apps.deployed) returns a leaner PanelApp;
+ * The server's `/api/panel-apps` rows are a leaner PanelApp;
  * missing legacy fields default so the renderer never reads `undefined`.
  * @param {Array<Record<string, unknown>>} apps
  */

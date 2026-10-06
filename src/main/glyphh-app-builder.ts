@@ -159,53 +159,6 @@ function packProjectSource(dir: string): Buffer {
   return zip.toBuffer();
 }
 
-/**
- * The Releases tab's build: the working folder's built project becomes (or
- * updates) the app's cloud instance — the same rails update_app rides — and
- * the row's version advances so the Releases surface has an honest story.
- * Sharing an app's source is git's job.
- */
-export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?: boolean } = {}): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
-  void opts;
-  const wd = getExplicitWorkingDirectory();
-  if (!wd) throw new Error("no working folder is set");
-  const dir = resolveAppDir(wd);
-
-  const built = collectBuiltProject(dir);
-  if (!built) {
-    throw new Error("no built app found — for a Vite project run `npm run build` first (needs glyphh.app.json + dist/index.html)");
-  }
-  const manifest = JSON.parse(built.manifestJson) as { slug: string; name: string; version?: string };
-  const slug = manifest.slug;
-  refuseBuiltinWorkpanel(slug);
-  // The Releases tab builds FOR a specific app — refuse if the working folder
-  // holds a different project, so a stray cwd can't cut under the wrong slug.
-  if (expectSlug && slug !== expectSlug) {
-    throw new Error(`the working folder builds '${slug}', not '${expectSlug}' — open that app's project folder and try again`);
-  }
-
-  // Same remote-asset guard the install runs.
-  const textAssets: Record<string, string> = {};
-  for (const f of built.files) {
-    if (!/\.(html?|css|m?js|jsx|ts|tsx)$/i.test(f.archivePath)) continue;
-    try { if (fs.statSync(f.absPath).size < 2_000_000) textAssets[f.archivePath] = fs.readFileSync(f.absPath, "utf8"); }
-    catch { /* skip unreadable */ }
-  }
-  const remote = lintRemoteAssets(textAssets);
-  if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
-
-  const r = await packageBuiltAndInstall(built.files, built.manifestJson);
-  if (!r.ok) return { slug, version: "", status: "failed", error: r.error };
-
-  // Version: bump the row's patch (a manifest version seeds the first).
-  const row = (await appsStore.mine()).find((a) => a.slug === slug);
-  const base = row?.version || manifest.version || "0.1.0";
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(base);
-  const version = m ? `${m[1]}.${m[2]}.${Number(m[3]) + 1}` : "0.1.1";
-  await appsStore.markBuilt(slug, version);
-  return { slug, version, status: "ready" };
-}
-
 export async function pullAppSource(slug: string, _opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
   refuseBuiltinWorkpanel(slug);
   // THE PURGE: the source-of-record service is retired — app source shares

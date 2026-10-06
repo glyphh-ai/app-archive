@@ -2,7 +2,7 @@
  * glyphh-client.ts — the ONE @glyphh/sdk instance for the desktop app.
  *
  * Every control-plane call goes through this client: typed resource clients
- * (client.connections, client.apps, …) where coverage exists, and the
+ * (client.connections, client.appInstances, …) where coverage exists, and the
  * `client.http` escape hatch for endpoints still migrating. The SDK owns the
  * token lifecycle (single-flight refresh, rotation, sign-out) — nothing else
  * in the app may store or refresh tokens.

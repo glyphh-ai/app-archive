@@ -150,19 +150,9 @@
                    tabs are exactly About / Connections / Support; every
                    builder tab below stays the owner's. -->
               <button class="app-detail-tab" data-tab="dashboard">General</button>
-              <button class="app-detail-tab hidden" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
-              <button class="app-detail-tab tab-glyphh-only hidden" data-tab="webhooks">Integration</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
-              <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
-              <!-- Two axes, deliberately: Releases + Marketplace are how the app
-                   travels INSIDE Glyphh; Public hosting is the app on the open web. -->
-              <!-- Built-app tabs. Releases + Connections show for the builder AND
-                   anyone who installed the app; Marketplace + Public hosting are
-                   the builder's alone (tab-owner-only). -->
-              <button class="app-detail-tab tab-owner-only hidden" data-tab="history">History</button>
-              
             </div>
 
             <div class="app-builder-split">
@@ -238,31 +228,9 @@
                   <!-- Required connections — declared by an installed Glyphh
                        app's manifest. Shows per-connector connected status and
                        warns loudly when any are missing. -->
-                  <!-- Co-working: collaborator seats on a user-owned app.
-                       Same-org members only; roles gate powers (read = see +
-                       pull source, edit = build, admin = publish, never
-                       delete). Shown for built glyphh apps the caller may
-                       manage; filled by loadCollabSection(). -->
-                  <div id="app-collab-section" class="hidden">
-                    <div class="app-detail-section-sep"></div>
-                    <label class="settings-label">Collaborators</label>
-                    <p class="proxy-field-hint" style="margin:2px 0 10px;">Invite members of your organization to co-work on this app. <strong>Read</strong> sees the app and pulls its source, <strong>Edit</strong> builds it, <strong>Admin</strong> also publishes — only you can delete it.</p>
-                    <div id="app-collab-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
-                    <div id="app-collab-list"></div>
-                    <div id="app-collab-add-row" style="display:flex;gap:6px;margin-top:10px;align-items:center;">
-                      <select id="app-collab-member" class="settings-input" style="flex:1;margin:0;"></select>
-                      <select id="app-collab-role" class="settings-input" style="width:110px;margin:0;">
-                        <option value="read">Read</option>
-                        <option value="edit" selected>Edit</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                      <button id="app-collab-add" class="action-btn" type="button">Add</button>
-                    </div>
-                  </div>
                   <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
                     <button id="app-detail-delete" class="action-btn danger">Delete</button>
                     <button id="app-detail-export" class="action-btn hidden" title="Export this app as a .glyphh bundle">Export</button>
-                    <button id="app-detail-clone" class="action-btn hidden" title="Duplicate this app as a new private app — version history seeded from the latest snapshot; addresses, domains and releases are not copied">Duplicate</button>
                     <div style="flex:1;"></div>
                     <button id="app-dash-cancel" class="action-btn">Cancel</button>
                     <button id="app-dash-save" class="action-btn primary">Save</button>
@@ -270,51 +238,9 @@
 
                 </div>
 
-                <!-- Connection left -->
-                <!-- Config Vars left: add form + list. Values are write-only —
-                     encrypted on this machine before upload; shown in plain
-                     text exactly once, here, while being typed. -->
-                <div class="app-tab-left" data-tab="config">
-                  <div id="config-var-error" class="crud-form-error hidden"></div>
-                  <label class="settings-label">Key</label>
-                  <input id="config-var-key" type="text" class="settings-input" placeholder="OPENAI_API_KEY" spellcheck="false" autocomplete="off" style="font-family:var(--font-mono);font-size:12px;" />
-                  <label class="settings-label">Value <span style="color:var(--text-2);font-weight:400;">— visible only now; encrypted on save and never shown again</span></label>
-                  <textarea id="config-var-value" class="settings-input" rows="4" placeholder="sk-…" spellcheck="false" autocomplete="off" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
-                  <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;font-size:12px;color:var(--text-2);cursor:pointer;line-height:1.4;">
-                    <input id="config-var-readable" type="checkbox" style="width:auto;margin:2px 0 0;flex:none;" />
-                    <span>Readable by app code <span style="color:var(--text-3);">— the app can fetch this value via <code>secrets.get</code>. Leave off (default) for credentials the runtime uses on the app's behalf but never hands to app code.</span></span>
-                  </label>
-                  <div class="settings-actions" style="margin-top:8px;">
-                    <span id="config-var-status" style="flex:1;font-size:12px;color:var(--success);"></span>
-                    <button id="config-var-add" class="action-btn primary">Save var</button>
-                  </div>
-
-                  <div class="app-detail-section-sep"></div>
-
-                  <div id="config-var-list"></div>
-                </div>
-
                 <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
                      Each must be explicitly approved (allowlist) before it's
                      reachable — newly-appeared tools default to OFF. -->
-                <!-- Integration: Webhooks left, Pipelines right. Clean grammar:
-                     title, one-line description, full-width search + New,
-                     table with a permanent header. -->
-                <div class="app-tab-left" data-tab="webhooks">
-                  <!-- .app-builder-controls already pads 12px top — no second
-                       helping, so the two pane titles align horizontally. -->
-                  <div style="padding:0 16px 0 0;">
-                    <div id="app-data-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
-                    <h3 class="settings-subheading" style="margin:0 0 4px;">Webhooks</h3>
-                    <p class="proxy-field-hint" style="margin:0 0 10px;">Signed POSTs to your URL on every data change.</p>
-                    <div style="display:flex;gap:8px;margin-bottom:12px;">
-                      <input id="app-data-webhooks-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
-                      <button id="app-data-new-webhook" class="action-btn primary" type="button">+ New</button>
-                    </div>
-                    <div id="app-data-webhooks" class="mbr-list"></div>
-                  </div>
-                </div>
-
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
                   <code id="app-mcp-endpoint" class="app-mcp-endpoint"></code>
@@ -366,22 +292,3 @@
                   </div>
                 </div>
 
-                <!-- Releases left: the selected release's notes + promotion. The
-                     HISTORY is on the right, where a list belongs. -->
-
-                <!-- Version history (co-working, 2026-09-01): the source
-                     snapshot chain — every desktop build is an entry. Code
-                     history is the DEVELOPERS' surface (server-gated too). -->
-                <div class="app-tab-left" data-tab="history">
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <label class="settings-label" style="margin:0;">Version history</label>
-                    <div style="flex:1;"></div>
-                    <button id="apphist-refresh" class="ws-icon-btn" type="button" title="Refresh"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-                  </div>
-                  <p class="proxy-field-hint" style="margin:2px 0 12px;">Every build records a snapshot of the app's source. Restore pulls that version into your working folder — the next build makes it the new latest.</p>
-                  <div id="apphist-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
-                  <div id="apphist-list" class="mbr-list"><div class="inline-empty">Loading…</div></div>
-                </div>
-
-                <!-- Edge traffic (his order, 2026-09-02): what hit the apex
-                     edge for this app's custom hostnames. Developers only. -->

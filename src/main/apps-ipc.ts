@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import { exportServerApp } from "./glyphh-app-package";
-import { deployAppFromWorkdir, pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder";
+import { pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
@@ -15,7 +15,6 @@ import { scanChromeProfiles, importFromChrome } from "./chrome-import";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
-import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
 import { BUILTIN_EFFECT_LIST } from "../shared/drip-effects";
 import { getDripManagerInstance } from "./drip-manager";
 
@@ -312,10 +311,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, tabsAdded: 0, tabsSkipped: 0, cookiesImported: 0, cookiesFailed: 0, error: err instanceof Error ? err.message : String(err) }; }
   });
 
-  ipcMain.handle("app-secrets-list", async (_e, id: string) => listAppSecrets(id));
-  ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string, appReadable?: boolean) => setAppSecret(id, key, value, appReadable === true));
-  ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));
-
   // ── yo app package (import / export) ──────────────────────
   // Export an app to a .glyphh bundle. Resolves the app from the org's SERVER
   // library (fetchOrgApps) — the old path read the legacy local appConnector,
@@ -372,16 +367,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     };
   });
 
-  ipcMain.handle("app-build-deploy", async (_e, slug: string, opts?: { deploy?: boolean }) => {
-    try {
-      // THE PURGE: local build only — no cloud pods, no hosted deploy.
-      const r = await deployAppFromWorkdir(slug || undefined, { deploy: false });
-      invalidateOrgApps(); // the cut advanced apps.version — the Releases tab re-reads it
-      return { ok: r.status === "ready", result: r, error: r.error };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
   // ── Production tab: graduate to a standalone Supabase repo (download zip) ────
   ipcMain.handle("app-graduate", async (_e, slug: string) => {
     const win = getMainWindow();

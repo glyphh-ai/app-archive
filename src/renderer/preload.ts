@@ -71,30 +71,6 @@ export interface Connection {
   agentAvailable?: number;
 }
 
-/** One immutable build of an app, as the Releases tab renders it. */
-export interface AppReleaseRow {
-  id: string;
-  version: string;
-  status: "pending" | "uploading" | "building" | "ready" | "failed";
-  error: string | null;
-  notes: string | null;
-  channel: "dev" | "live";
-  promotedAt: string | null;
-  /** The ORG approval ladder (co-working) — null until submitted to the org admins. */
-  orgReview?: "submitted" | "approved" | "rejected" | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** A collaborator seat on a user-owned app (co-working). */
-export interface AppCollaboratorRow {
-  userId: string;
-  role: "read" | "edit" | "admin";
-  email: string;
-  name: string | null;
-  addedAt: string;
-}
-
 /** One day (or one hostname's totals) of apex-edge traffic. */
 export interface EdgeTrafficDayRow {
   day: string;
@@ -158,28 +134,6 @@ export interface MarketingLinkRow {
   sessions: number;
   bounced: number;
   durationMsSum: number;
-}
-
-/** One entry of an app's source snapshot chain (version history). */
-export interface AppSnapshotRow {
-  hash: string;
-  parentHash: string | null;
-  createdAt: string;
-  createdByEmail: string | null;
-  /** The commit message, when one was given ("light git", 2026-09-01). */
-  note: string | null;
-  isHead: boolean;
-}
-
-/** One submitted release in the org admin's approval queue. */
-export interface OrgPendingReleaseRow {
-  appId: string;
-  slug: string;
-  name: string;
-  releaseId: string;
-  version: string;
-  submittedAt: string;
-  ownerEmail: string | null;
 }
 
 // ── Account surfaces (Settings › Billing / Organization / Account) ──────────
@@ -370,20 +324,6 @@ interface LoopRoleView {
     isPlatformDefault: boolean;
   }>;
 }
-
-// A custom domain + the DNS records to publish — structural mirror of the SDK
-// CustomDomain contract (Phase F), so the preload stays SDK-import-free.
-type DnsRecordWire = { type: "CNAME" | "A" | "AAAA" | "TXT"; name: string; value: string };
-type CustomDomainWire = {
-  id: string;
-  deploymentId: string;
-  hostname: string;
-  status: string;
-  dnsInstructions: { hostname: string; isApex: boolean; records: DnsRecordWire[]; apexUnsupported: boolean };
-  error: string | null;
-  verifiedAt: string | null;
-  createdAt: string;
-};
 
 /** Which sub-agent a frame came from; absent on the main agent's own. */
 interface SubAgentRef { childId: string; slug: string; name: string; model: string }
@@ -762,47 +702,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("connection-set-enabled", id, enabled, isOrg) as Promise<{ ok: boolean; error?: string }>,
   connectionSetScope: (id: string, scope: "org" | "personal") =>
     ipcRenderer.invoke("connection-set-scope", id, scope) as Promise<{ ok: boolean; error?: string }>,
-  // Per-app config vars (encrypted secrets). List never includes values —
-  // a value is visible only in the form where it's typed, at creation.
-  appSecretsList: (id: string) =>
-    ipcRenderer.invoke("app-secrets-list", id) as Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>,
-  appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) =>
-    ipcRenderer.invoke("app-secrets-set", id, key, value, appReadable) as Promise<{ ok: boolean; error?: string }>,
-  appSecretsDelete: (id: string, key: string) =>
-    ipcRenderer.invoke("app-secrets-delete", id, key) as Promise<{ ok: boolean; error?: string }>,
   // yo app package (import / export)
   appImport: () => ipcRenderer.invoke("app-import") as Promise<{ ok: boolean; appId?: string; error?: string }>,
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,
-  // Deploy (dev-host) + Production (Supabase graduation) — app-detail tabs.
-  hostingStatus: (slug: string) => ipcRenderer.invoke("hosting-status", slug) as Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>,
-  appVersionSet: (slug: string, version: string) =>
-    ipcRenderer.invoke("app-version-set", slug, version) as Promise<{ ok: boolean; version?: string; error?: string }>,
-  hostingDeploy: (slug: string) => ipcRenderer.invoke("hosting-deploy", slug) as Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>,
-  hostingDestroy: (id: string) => ipcRenderer.invoke("hosting-destroy", id) as Promise<{ ok: boolean; error?: string }>,
-  // Dedicated app servers + custom domains (Phase F) — deploy an app to its own
-  // machine and point a domain at it. Shapes MIRROR the SDK app-servers contract
-  // (structural, like the Files store above — no SDK import in the preload).
-  appServersList: () => ipcRenderer.invoke("app-servers-list") as Promise<{
-    ok: boolean;
-    images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>;
-    error?: string;
-  }>,
-  appServerDeploy: (slug: string, imageKey: string, releaseId?: string) =>
-    ipcRenderer.invoke("app-server-deploy", slug, imageKey, releaseId) as Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>,
-  appServerDeployments: (slug: string) =>
-    ipcRenderer.invoke("app-server-deployments", slug) as Promise<{
-      ok: boolean;
-      deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>;
-      error?: string;
-    }>,
-  appServerDestroy: (slug: string, id: string) =>
-    ipcRenderer.invoke("app-server-destroy", slug, id) as Promise<{ ok: boolean; error?: string }>,
-  appDomainsList: (slug: string) =>
-    ipcRenderer.invoke("app-domains-list", slug) as Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>,
-  appDomainAdd: (slug: string, deploymentId: string | null, hostname: string) =>
-    ipcRenderer.invoke("app-domain-add", slug, deploymentId, hostname) as Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>,
-  appDomainRemove: (slug: string, id: string) =>
-    ipcRenderer.invoke("app-domain-remove", slug, id) as Promise<{ ok: boolean; error?: string }>,
   // Marketplace listing — copy, images, and the list/unlist decision.
   appListingSet: (slug: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("app-listing-set", slug, patch) as Promise<{ ok: boolean; error?: string }>,
@@ -812,33 +714,11 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-listing-image-remove", slug, key) as Promise<{ ok: boolean; error?: string }>,
   appListingList: (slug: string, listed: boolean) =>
     ipcRenderer.invoke("app-listing-list", slug, listed) as Promise<{ ok: boolean; listed?: boolean; error?: string }>,
-  // Releases — the app's version history, its notes, and dev → live promotion.
   // Re-fetch + reinstall an installed app at its newest published version. The
   // download endpoint is server-side and not built yet, so this reports honestly.
   appUpdateInstalled: (slug: string) =>
     ipcRenderer.invoke("app-update-installed", slug) as Promise<{ ok: boolean; error?: string }>,
-  appBuildDeploy: (slug: string, opts?: { deploy?: boolean }) =>
-    ipcRenderer.invoke("app-build-deploy", slug, opts) as Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>,
-  appReleases: (slug: string) =>
-    ipcRenderer.invoke("app-releases", slug) as Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>,
-  appReleaseNotes: (slug: string, releaseId: string, notes: string | null) =>
-    ipcRenderer.invoke("app-release-notes", slug, releaseId, notes) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
-  appReleasePromote: (slug: string, releaseId: string) =>
-    ipcRenderer.invoke("app-release-promote", slug, releaseId) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
-  // Co-working — collaborators on a user-owned app + per-release org approval.
-  appCollaborators: (slug: string) =>
-    ipcRenderer.invoke("app-collaborators", slug) as Promise<{ ok: boolean; collaborators: AppCollaboratorRow[]; error?: string }>,
-  appCollaboratorSet: (slug: string, userId: string, role: "read" | "edit" | "admin") =>
-    ipcRenderer.invoke("app-collaborator-set", slug, userId, role) as Promise<{ ok: boolean; collaborators?: AppCollaboratorRow[]; error?: string }>,
-  appCollaboratorRemove: (slug: string, userId: string) =>
-    ipcRenderer.invoke("app-collaborator-remove", slug, userId) as Promise<{ ok: boolean; error?: string }>,
-  appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") =>
-    ipcRenderer.invoke("app-release-org-review", slug, releaseId, action) as Promise<{ ok: boolean; error?: string }>,
-  appOrgPendingReleases: () =>
-    ipcRenderer.invoke("app-org-pending-releases") as Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>,
-  // Edge traffic — the apex fleet's per-hostname stats (org + per-app views).
-  appTraffic: (slug: string, days?: number) =>
-    ipcRenderer.invoke("app-traffic", slug, days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>,
+  // Edge traffic — the apex fleet's per-hostname stats (org-wide).
   orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) =>
     ipcRenderer.invoke("org-domains-traffic", days, filter) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>,
   // Marketing links (his order, 2026-09-02): campaign URLs + attribution stats.
@@ -850,9 +730,6 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("marketing-link-update", id, patch) as Promise<{ ok: boolean; error?: string }>,
   marketingLinkDelete: (id: string) =>
     ipcRenderer.invoke("marketing-link-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  // Duplicate an owned app as a template (new private app, history seeded).
-  appClone: (slug: string, input: { slug: string; name?: string }) =>
-    ipcRenderer.invoke("app-clone", slug, input) as Promise<{ ok: boolean; id?: string; slug?: string; name?: string; error?: string }>,
   // Agency client orgs — workspaces the org creates and funds for its clients.
   orgClients: () =>
     ipcRenderer.invoke("org-clients") as Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>,
@@ -881,11 +758,6 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("library-admin-queue") as Promise<{ ok: boolean; queue: Array<LibraryListingRow & { prompt: string; code: string; submittedBy: string | null }>; error?: string }>,
   libraryAdminReview: (id: string, action: "begin" | "approve" | "reject", notes?: string) =>
     ipcRenderer.invoke("library-admin-review", id, action, notes) as Promise<{ ok: boolean; error?: string }>,
-  // Version history — the source snapshot chain + restore-a-snapshot.
-  appSourceHistory: (slug: string) =>
-    ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,
-  appSourceRestore: (slug: string, hash: string) =>
-    ipcRenderer.invoke("app-source-restore", slug, hash) as Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>,
   appGraduate: (slug: string) => ipcRenderer.invoke("app-graduate", slug) as Promise<{ ok: boolean; path?: string; error?: string }>,
 
   // Onboarding complete — triggers panel restore
@@ -980,34 +852,6 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("org-app-block-set", ref, blocked) as Promise<{ ok: boolean; blocked?: boolean; slug?: string; error?: string }>,
   accountOrgImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-org-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
-  appsIngestInstalled: () =>
-    ipcRenderer.invoke("apps-ingest-installed") as Promise<{ ok: boolean; apps?: Array<{ slug: string; name: string }>; error?: string }>,
-  appsIngestList: (slug: string) =>
-    ipcRenderer.invoke("apps-ingest-list", slug) as Promise<{ ok: boolean; hooks?: unknown[]; tokens?: unknown[]; error?: string }>,
-  appsIngestTokenCreate: (slug: string, label: string, expiresDays?: number) =>
-    ipcRenderer.invoke("apps-ingest-token-create", slug, label, expiresDays) as Promise<{ ok: boolean; token?: string; row?: unknown; error?: string }>,
-  appsIngestTokenRevoke: (slug: string, id: string) =>
-    ipcRenderer.invoke("apps-ingest-token-revoke", slug, id) as Promise<{ ok: boolean; error?: string }>,
-  appsIngestHookCreate: (slug: string, input: { name: string; table: string; embed?: string[]; description?: string }) =>
-    ipcRenderer.invoke("apps-ingest-hook-create", slug, input) as Promise<{ ok: boolean; hook?: unknown; error?: string }>,
-  appsIngestHookDelete: (slug: string, name: string) =>
-    ipcRenderer.invoke("apps-ingest-hook-delete", slug, name) as Promise<{ ok: boolean; error?: string }>,
-  appsWebhooksList: (slug: string) =>
-    ipcRenderer.invoke("apps-webhooks-list", slug) as Promise<{ ok: boolean; webhooks?: unknown[]; error?: string }>,
-  appsWebhookCreate: (slug: string, input: { url: string; description?: string }) =>
-    ipcRenderer.invoke("apps-webhook-create", slug, input) as Promise<{ ok: boolean; webhook?: unknown; secret?: string; error?: string }>,
-  appsWebhookDelete: (slug: string, id: string) =>
-    ipcRenderer.invoke("apps-webhook-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
-  appsSchedulesList: (slug: string) =>
-    ipcRenderer.invoke("apps-schedules-list", slug) as Promise<{ ok: boolean; schedules?: unknown[]; error?: string }>,
-  appsScheduleCreate: (slug: string, input: { name: string; cron: string; prompt: string }) =>
-    ipcRenderer.invoke("apps-schedule-create", slug, input) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
-  appsScheduleUpdate: (slug: string, id: string, patch: Record<string, unknown>) =>
-    ipcRenderer.invoke("apps-schedule-update", slug, id, patch) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
-  appsScheduleDelete: (slug: string, id: string) =>
-    ipcRenderer.invoke("apps-schedule-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
-  appsScheduleRun: (slug: string, id: string) =>
-    ipcRenderer.invoke("apps-schedule-run", slug, id) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
   accountUserImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-user-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>

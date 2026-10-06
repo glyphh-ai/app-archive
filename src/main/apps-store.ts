@@ -180,13 +180,3 @@ export function removeEntryLocal(slug: string): void {
   } catch { /* already gone */ }
 }
 
-/** Bump the row's version after a local build cut. */
-export async function markBuilt(slug: string, version: string): Promise<void> {
-  const row = readRow(slug);
-  if (!row) return;
-  row.latestVersion = version;
-  row.version = version;
-  row.updatedAt = new Date().toISOString();
-  writeRow(row);
-  noteLibrarySave("tab", row.slug);
-}

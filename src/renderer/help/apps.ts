@@ -16,14 +16,7 @@ import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 function escMkt(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-/** Compact date for history rows (inlined from the dead marketplace-data module). */
-function mktDate(iso: string): string {
-  try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
-  catch { return iso; }
-}
 import { formatMarkdown } from "../format-markdown.js";
-
-declare const Chart: any;
 
 // ── Apps (unified: apps + MCP + connections) ────────────
 
@@ -64,7 +57,6 @@ const IS_WEB = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WE
 
 let currentAppId = "";
 let currentApp: PanelApp | null = null;
-let activeAppTab: "dashboard" | "config" = "dashboard";
 
 // Reasonable default guardrails, prefilled in the per-app Guardrails tab (and
 // mirrored in the org Security panels) so a new app is never shipped unbounded.
@@ -312,8 +304,6 @@ interface PanelApp {
   latestVersion?: string | null;
   /** The app's steered NEXT version — what the next build releases. */
   version?: string;
-  /** Secret NAMES the manifest declares — drives the Config Vars tab. */
-  secretNames?: string[];
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The listing's uploaded icon — the ONE icon source (same as the command
@@ -345,7 +335,7 @@ function toPanelApp(a: {
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
-  owned?: boolean; latestVersion?: string | null; version?: string; secretNames?: string[];
+  owned?: boolean; latestVersion?: string | null; version?: string;
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
@@ -357,7 +347,7 @@ function toPanelApp(a: {
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
     mark: markFor(a.launchConfig),
-    owned: a.owned, latestVersion: a.latestVersion, version: a.version, secretNames: a.secretNames, requiredConnections: a.requiredConnections,
+    owned: a.owned, latestVersion: a.latestVersion, version: a.version, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -470,7 +460,6 @@ function renderAppsList() {
 // ── Tab switching ────────────────────────────────────────
 
 function switchAppTab(tab: string) {
-  activeAppTab = tab as typeof activeAppTab;
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab[data-tab]").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tab);
   });
@@ -481,14 +470,6 @@ function switchAppTab(tab: string) {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
   if (tab === "dashboard") void loadPanelTab();
-  if (tab === "config") void loadConfigVarsTab();
-  if (tab === "history") void loadHistoryTab();
-  if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
-  // Consumer view (marketplace-installed): render from the cached store
-  // Deploy + "own your code" share the Public hosting tab: both answer "who runs
-  // this for the public", which is a different question from how it is distributed
-  // inside Glyphh (Releases + Marketplace).
-
 }
 
 // ── Marketplace tab — the listing an installer sees ──────────────
@@ -496,196 +477,6 @@ function switchAppTab(tab: string) {
 // The agent can write every field here (set_app_listing / upload_app_image over
 // MCP). What it deliberately cannot do is press List: publishing to other orgs is
 // the irreversible half, so it stays a human click on this tab.
-
-async function loadHistoryTab(): Promise<void> {
-  const list = document.getElementById("apphist-list");
-  const errEl = document.getElementById("apphist-error");
-  if (!list) return;
-  errEl?.classList.add("hidden");
-  list.innerHTML = `<div class="inline-empty">Loading…</div>`;
-  const slug = currentApp?.slug || currentAppId;
-  const res = await window.glyphh.appSourceHistory?.(slug);
-  if (currentApp && (currentApp.slug || currentAppId) !== slug) return;
-  if (!res?.ok) {
-    list.innerHTML = "";
-    if (errEl) { errEl.textContent = res?.error || "Couldn't load the version history."; errEl.classList.remove("hidden"); }
-    return;
-  }
-  if (!res.history.length) {
-    list.innerHTML = `<div class="inline-empty">No snapshots yet — the first build records one.</div>`;
-    return;
-  }
-  list.innerHTML = "";
-  for (const s of res.history) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);";
-    row.innerHTML = `
-      <code style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-2);">${escMkt(s.hash.slice(0, 12))}</code>
-      ${s.isHead ? `<span class="release-badge live">latest</span>` : ""}
-      <div style="flex:1;min-width:0;font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-        ${s.note ? `${escMkt(s.note)}<span style="color:var(--text-3);margin-left:8px;">${escMkt(s.createdByEmail || "unknown")}</span>` : escMkt(s.createdByEmail || "unknown")}
-        <span style="color:var(--text-3);margin-left:8px;">${escMkt(mktDate(s.createdAt))}</span>
-      </div>
-      ${!s.isHead && !IS_WEB ? `<button type="button" class="action-btn apphist-restore" style="height:24px;font-size:11px;padding:0 10px;">Restore</button>` : ""}`;
-    row.querySelector(".apphist-restore")?.addEventListener("click", () => {
-      void (async () => {
-        const ok = await confirmAction({
-          title: `Restore ${s.hash.slice(0, 12)}?`,
-          body: "This version's files replace your working folder's copy of the app. Your next build makes it the new latest — nothing in the history is lost.",
-          confirmLabel: "Restore",
-        });
-        if (!ok) return;
-        const r = await window.glyphh.appSourceRestore?.(slug, s.hash);
-        if (!r?.ok) {
-          if (errEl) { errEl.textContent = r?.error || "Couldn't restore the snapshot."; errEl.classList.remove("hidden"); }
-          return;
-        }
-        errEl?.classList.add("hidden");
-        const done = document.createElement("div");
-        done.className = "settings-hint";
-        done.style.cssText = "margin:8px 0;";
-        done.textContent = `Restored into ${r.dir} (${r.files} files) — build + update the app to run it.`;
-        list.prepend(done);
-      })();
-    });
-    list.appendChild(row);
-  }
-}
-
-// ── Edge traffic (his order, 2026-09-02): the apex fleet's stats for this
-// app's custom hostnames — requests/day chart, totals, per-hostname table. ──
-
-type TrafficRow = { day: string; requests: number; bytesIn: number; bytesOut: number; avgMs: number; maxMs: number; s2xx: number; s3xx: number; s4xx: number; s5xx: number; blocked: number; offline?: number };
-
-const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
-
-type CollabRole = "read" | "edit" | "admin";
-interface CollabRow { userId: string; role: CollabRole; email: string; name: string | null; addedAt: string }
-
-function collabError(msg: string): void {
-  const el = document.getElementById("app-collab-error");
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.toggle("hidden", !msg);
-}
-
-async function loadCollabSection(): Promise<void> {
-  const sec = document.getElementById("app-collab-section");
-  if (!sec) return;
-  sec.classList.add("hidden");
-  collabError("");
-  const app = currentApp;
-  // Built glyphh apps the caller PUBLISHED — an installed app's seats belong
-  // to its developer, and legacy launcher rows have nothing to co-work on.
-  if (!app || app.appArchetype !== "glyphh-app" || app.owned === false) return;
-  const slug = app.slug;
-  const res = await window.glyphh.appCollaborators?.(slug);
-  if (currentApp?.slug !== slug) return;   // he moved on — never paint stale
-  if (!res?.ok) return;                    // no access / no seam here — stay hidden
-  sec.classList.remove("hidden");
-  renderCollabList(slug, res.collaborators || []);
-  void primeCollabPicker(res.collaborators || []);
-  wireCollabAdd(slug);
-}
-
-function renderCollabList(slug: string, rows: CollabRow[]): void {
-  const list = document.getElementById("app-collab-list");
-  if (!list) return;
-  list.innerHTML = rows.length ? "" : `<div class="inline-empty" style="padding:6px 0;">Just you so far.</div>`;
-  for (const c of rows) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);";
-    row.innerHTML = `
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.name || c.email)}</div>
-        ${c.name ? `<div style="font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.email)}</div>` : ""}
-      </div>
-      <select class="settings-input collab-role-sel" style="width:110px;margin:0;font-size:12px;">
-        <option value="read"${c.role === "read" ? " selected" : ""}>Read</option>
-        <option value="edit"${c.role === "edit" ? " selected" : ""}>Edit</option>
-        <option value="admin"${c.role === "admin" ? " selected" : ""}>Admin</option>
-      </select>
-      <button type="button" class="ws-icon-btn collab-remove" title="Remove collaborator" aria-label="Remove collaborator">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>`;
-    row.querySelector<HTMLSelectElement>(".collab-role-sel")!.addEventListener("change", (ev) => {
-      const sel = ev.currentTarget as HTMLSelectElement;
-      void window.glyphh.appCollaboratorSet?.(slug, c.userId, sel.value as CollabRole).then((r) => {
-        if (!r?.ok) { collabError(r?.error || "Couldn't change the role."); sel.value = c.role; return; }
-        collabError("");
-        void loadCollabSection();
-      });
-    });
-    row.querySelector(".collab-remove")!.addEventListener("click", () => {
-      void (async () => {
-        const ok = await confirmAction({
-          title: `Remove ${c.name || c.email}?`,
-          body: "They lose access to this app and its source. You can add them back any time.",
-          confirmLabel: "Remove",
-          danger: true,
-        });
-        if (!ok) return;
-        const r = await window.glyphh.appCollaboratorRemove?.(slug, c.userId);
-        if (!r?.ok) { collabError(r?.error || "Couldn't remove the collaborator."); return; }
-        collabError("");
-        void loadCollabSection();
-      })();
-    });
-    list.appendChild(row);
-  }
-}
-
-/** Fill the member picker with org members not already seated. */
-async function primeCollabPicker(seated: CollabRow[]): Promise<void> {
-  const sel = document.getElementById("app-collab-member") as HTMLSelectElement | null;
-  if (!sel) return;
-  sel.innerHTML = `<option value="">Loading members…</option>`;
-  try {
-    const { accountApi } = await import("./settings-api.js");
-    const members = await accountApi().members();
-    const taken = new Set(seated.map((c) => c.userId));
-    const options = members.filter((m) => !taken.has(m.userId) && !m.disabled);
-    sel.innerHTML = options.length
-      ? `<option value="">Add a member…</option>` + options.map((m) =>
-          `<option value="${escMkt(m.userId)}">${escMkt(m.name || m.email)}</option>`).join("")
-      : `<option value="">Everyone in your org is already here</option>`;
-  } catch {
-    sel.innerHTML = `<option value="">Couldn't load members</option>`;
-  }
-}
-
-function wireCollabAdd(slug: string): void {
-  const btn = document.getElementById("app-collab-add") as HTMLButtonElement | null;
-  if (!btn || btn.dataset.wired) return;
-  btn.dataset.wired = "1";
-  btn.addEventListener("click", () => {
-    const member = (document.getElementById("app-collab-member") as HTMLSelectElement | null)?.value || "";
-    const role = ((document.getElementById("app-collab-role") as HTMLSelectElement | null)?.value || "edit") as CollabRole;
-    if (!member) { collabError("Pick a member to add."); return; }
-    const live = currentApp?.slug || slug;
-    btn.disabled = true;
-    void window.glyphh.appCollaboratorSet?.(live, member, role).then((r) => {
-      btn.disabled = false;
-      if (!r?.ok) { collabError(r?.error || "Couldn't add the collaborator."); return; }
-      collabError("");
-      void loadCollabSection();
-    });
-  });
-}
-
-// ── Installed-app release view: version + update availability ────
-//
-// An installer doesn't edit notes or promote — they see which version they have
-// and whether a newer one is published. The auto-update toggle is per-app.
-
-/** Lazy kebab imports (the lib-editor module is already loaded by the page). */
-function kebabBits(): { kebabCell: typeof import("./lib-editor.js").kebabCell; ROW_MENU_ICONS: typeof import("./lib-editor.js").ROW_MENU_ICONS } {
-  const m = kebabModule;
-  if (!m) throw new Error("lib-editor not loaded");
-  return m;
-}
-let kebabModule: { kebabCell: typeof import("./lib-editor.js").kebabCell; ROW_MENU_ICONS: typeof import("./lib-editor.js").ROW_MENU_ICONS } | null = null;
-void import("./lib-editor.js").then((m) => { kebabModule = { kebabCell: m.kebabCell, ROW_MENU_ICONS: m.ROW_MENU_ICONS }; });
 
 /** Delete is refused server-side while a live deployment exists — it would orphan
  *  the running Fly machine. So gate the Delete button on deploy state: clearly
@@ -699,136 +490,6 @@ async function gateAppDelete(slug: string): Promise<void> {
   btn.title = "";
   btn.classList.remove("delete-blocked");
 }
-
-async function loadConfigVarsTab() {
-  // Never let unsaved plaintext linger in the entry fields across a tab switch
-  // or app reopen — a value only ever exists here while actively being typed.
-  const keyField = document.getElementById("config-var-key") as HTMLInputElement | null;
-  const valueField = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
-  const readableField = document.getElementById("config-var-readable") as HTMLInputElement | null;
-  if (keyField) keyField.value = "";
-  if (valueField) valueField.value = "";
-  if (readableField) readableField.checked = false;
-  const listEl = document.getElementById("config-var-list");
-  if (!listEl) return;
-  const res = await window.glyphh.appSecretsList?.(currentAppId);
-  listEl.innerHTML = "";
-  if (!res?.ok) {
-    listEl.innerHTML = `<div class="inline-empty">Couldn't load config vars.</div>`;
-    return;
-  }
-  const secrets = res.secrets || [];
-  // The manifest's DECLARED names lead the list: an unset declaration is the
-  // one thing the user must act on, so it renders as a row, not a guess.
-  const setKeys = new Set(secrets.map((sec) => sec.key));
-  const missing = (currentApp?.secretNames ?? []).filter((k) => !setKeys.has(k));
-  for (const k of missing) {
-    const row = document.createElement("div");
-    row.className = "config-var-row";
-    row.innerHTML = `<span class="config-var-key" style="font-family:var(--font-mono);"></span>
-      <span style="flex:1;font-size:12px;color:var(--warning);">required by the app — not set</span>
-      <button class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Set…</button>`;
-    (row.querySelector(".config-var-key") as HTMLElement).textContent = k;
-    row.querySelector("button")?.addEventListener("click", () => {
-      const kf = document.getElementById("config-var-key") as HTMLInputElement | null;
-      if (kf) { kf.value = k; }
-      (document.getElementById("config-var-value") as HTMLTextAreaElement | null)?.focus();
-    });
-    listEl.appendChild(row);
-  }
-  if (!secrets.length && !missing.length) {
-    listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this tab use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
-    return;
-  }
-  for (const s of secrets) {
-    const row = document.createElement("div");
-    row.className = "config-var-row";
-    const keyEl = document.createElement("span");
-    keyEl.className = "config-var-key";
-    keyEl.textContent = s.key;
-    {
-      const badge = document.createElement("span");
-      badge.className = "config-var-hostonly";
-      if (s.appReadable) {
-        badge.textContent = "app-readable";
-        badge.title = "App code can read this value via secrets.get.";
-        badge.style.cssText = "color:var(--success);border-color:color-mix(in srgb, var(--success) 40%, transparent);";
-      } else {
-        badge.textContent = "runtime-only";
-        badge.title = s.hostOnly
-          ? "Credential — encrypted, never readable by app code (secrets.get refuses it). Only the trusted runtime uses it."
-          : "Encrypted; not readable by app code. Turn on \"Readable by app code\" when saving to expose it.";
-      }
-      keyEl.appendChild(badge);
-    }
-    const valEl = document.createElement("span");
-    valEl.className = "config-var-masked";
-    valEl.textContent = "••••••••";
-    valEl.title = "Encrypted — set " + (s.at ? new Date(s.at).toLocaleDateString() : "earlier") + "; values can't be viewed again";
-    const edit = document.createElement("button");
-    edit.className = "action-btn";
-    edit.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
-    edit.textContent = "Edit";
-    edit.title = "Load this var into the form to change its value or its \"readable by app code\" setting. Values are write-only, so editing clears the value — re-enter it to save.";
-    edit.addEventListener("click", () => {
-      const editKey = document.getElementById("config-var-key") as HTMLInputElement | null;
-      const editReadable = document.getElementById("config-var-readable") as HTMLInputElement | null;
-      if (editKey) editKey.value = s.key;
-      if (editReadable) editReadable.checked = !!s.appReadable;
-      // Write-only: the stored value can never be shown again, so editing wipes
-      // the field — the user re-enters the value (and can flip app-readable) to save.
-      const editValue = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
-      if (editValue) editValue.value = "";
-      const statusEl = document.getElementById("config-var-status");
-      if (statusEl) statusEl.textContent = `Editing ${s.key} — re-enter its value to save (values are write-only and can't be shown).`;
-      editValue?.focus();
-    });
-    const del = document.createElement("button");
-    del.className = "action-btn danger";
-    del.style.cssText = "height:24px;font-size:11px;padding:0 10px;";
-    del.textContent = "Delete";
-    del.addEventListener("click", async () => {
-      if (!(await confirmAction({
-        title: `Delete config var ${s.key}?`,
-        body: "Apps that need it stop working until it's re-added.",
-        confirmLabel: "Delete var",
-        danger: true,
-      }))) return;
-      await window.glyphh.appSecretsDelete?.(currentAppId, s.key);
-      void loadConfigVarsTab();
-    });
-    row.append(keyEl, valEl, edit, del);
-    listEl.appendChild(row);
-  }
-}
-
-function wireConfigVarsForm() {
-  const keyEl = document.getElementById("config-var-key") as HTMLInputElement | null;
-  const valueEl = document.getElementById("config-var-value") as HTMLTextAreaElement | null;
-  const readableEl = document.getElementById("config-var-readable") as HTMLInputElement | null;
-  const errEl = document.getElementById("config-var-error");
-  const statusEl = document.getElementById("config-var-status");
-  if (!keyEl || !valueEl || !readableEl || !errEl || !statusEl) return;
-  document.getElementById("config-var-add")?.addEventListener("click", async () => {
-    errEl.classList.add("hidden");
-    statusEl.textContent = "";
-    const key = keyEl.value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-    const value = valueEl.value;
-    const res = await window.glyphh.appSecretsSet?.(currentAppId, key, value, readableEl.checked);
-    if (!res?.ok) {
-      errEl.textContent = res?.error || "Couldn't save";
-      errEl.classList.remove("hidden");
-      return;
-    }
-    // The one and only moment the plaintext existed in the UI — clear it.
-    keyEl.value = "";
-    valueEl.value = "";
-    statusEl.textContent = `${key} saved — value encrypted; it can't be viewed again.`;
-    setTimeout(() => { if (statusEl.textContent?.startsWith(key)) statusEl.textContent = ""; }, 6000);
-    void loadConfigVarsTab();
-  });
-}
-
 
 // ── Panel tab ────────────────────────────────────────────
 
@@ -995,11 +656,6 @@ async function openPanelAppDetail(app: PanelApp) {
   const mktInstalled = !owned;
   document.querySelectorAll<HTMLElement>(".tab-mkt-installed").forEach((el) => el.classList.toggle("hidden", !mktInstalled));
   document.querySelector(".app-detail-tab[data-tab='dashboard']")?.classList.toggle("hidden", mktInstalled);
-  // Config Vars is NEED-driven (his order, 2026-08-25): shown when the
-  // manifest declares secret names — for owners AND installers (an installed
-  // app that declares OPENAI_API_KEY is exactly where the installer must set
-  // it; values are per-org). No declaration → hidden, then un-hidden only if
-  // vars already exist (the async check below).
   // A tab is a tab (his order, 2026-09-16): one basic form for every kind. An
   // installed app's tools, connections and contents live on Settings → Build → Apps.
   document.querySelectorAll<HTMLElement>(".app-detail-tab:not([data-tab='dashboard'])").forEach((el) => el.classList.add("hidden"));
@@ -1008,12 +664,6 @@ async function openPanelAppDetail(app: PanelApp) {
     // drops Releases (the publisher's history, not the installer's).
     const show = mktInstalled ? el.dataset.tab === "connections" : isBuilt;
     el.classList.toggle("hidden", !show);
-  });
-  document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
-    // History is OFF the surface for now (his order, 2026-09-10) — the
-    // snapshot chain keeps recording; only the tab is hidden.
-    const parked = el.dataset.tab === "history";
-    el.classList.toggle("hidden", parked || !(isBuilt && owned));
   });
   // The type control is retired: every NEW app is a web panel, and a built
   // app's type comes from its bundle either way.
@@ -1044,7 +694,6 @@ async function openPanelAppDetail(app: PanelApp) {
   // glyphh app only rides those rails technically (entry html as execPath).
   // Its real "path" is the source of record — never show the native fields.
   const isGlyphhKind = app.appArchetype === "glyphh-app";
-  document.querySelectorAll<HTMLElement>(".tab-glyphh-only").forEach((el) => el.classList.add("hidden"));
   toggleTypeFields("app-detail", isGlyphhKind ? "browser" : detailType);
   if (isGlyphhKind) document.getElementById("app-detail-browser-fields")?.classList.add("hidden");
   toggleArchetypeFields("app-detail", detailArchetype);
@@ -1053,9 +702,6 @@ async function openPanelAppDetail(app: PanelApp) {
   // view doesn't carry them (its tabs are exactly About/Connections/Support);
   // the app's tools still reach the org's agents through the install.
   document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
-
-  // Co-working seats (General tab) — async; hides itself when not applicable.
-  void loadCollabSection();
 
   // Shared edit header: icon + name + slug, with the app's PUBLISHED address
   // (or an honest "Not Published") underneath (his order, 2026-09-01). The
@@ -1550,9 +1196,6 @@ function initApps() {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
   });
 
-  // Config Vars tab: add-form wiring (list loads on tab switch).
-  wireConfigVarsForm();
-
   // Detail-form Browser ↔ Native + archetype toggles + Browse… button.
   const detailTypeSelect = document.getElementById("app-detail-type") as HTMLSelectElement;
   const detailArchetypeSelect = document.getElementById("app-detail-archetype") as HTMLSelectElement;
@@ -1622,45 +1265,16 @@ function initApps() {
     if (!confirmed) return;
     const res = await window.glyphh.panelAppsDelete?.(currentAppId);
     if (res && res.ok === false) {
-      // Almost always the live-deployment guard. Tell the user instead of silently
-      // closing as if it worked, and re-sync the gate.
+      // Tell the user instead of silently closing as if it worked.
       await confirmAction({
         title: "Couldn't delete this tab",
-        body: res.error || "Take the app down first (Hosting tab → Take down), then delete.",
+        body: res.error || "Couldn't delete this tab.",
         confirmLabel: "OK",
       });
       if (currentApp?.slug) void gateAppDelete(currentApp.slug);
       return;
     }
     closeAppDetail();
-  });
-
-  // Duplicate as a template (his order, 2026-09-02): new private app whose
-  // version history starts from this app's latest snapshot. One-app-plus-
-  // updates stays the sanctioned model; this is the deliberate-fork door.
-  document.getElementById("app-detail-clone")?.addEventListener("click", async () => {
-    const srcSlug = currentApp?.slug;
-    if (!srcSlug) return;
-    const { formModal } = await import("./settings-list-page.js");
-    await formModal({
-      title: `Duplicate ${appDetailName.value || srcSlug}`,
-      fields: [
-        { key: "slug", label: "New slug", placeholder: `${srcSlug}-v2`, required: true,
-          validate: (v) => (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim().toLowerCase()) ? null : "Kebab-case: letters, numbers, hyphens.") },
-        { key: "name", label: "Name", placeholder: `${appDetailName.value || srcSlug} copy` },
-      ],
-      submitLabel: "Duplicate",
-      onSubmit: async (values) => {
-        const r = await window.glyphh.appClone?.(srcSlug, {
-          slug: values.slug!.trim().toLowerCase(),
-          ...(values.name?.trim() ? { name: values.name.trim() } : {}),
-        });
-        if (!r?.ok) return { ok: false as const, error: r?.error || "Couldn't duplicate the app." };
-        closeAppDetail();
-        void loadApps();
-        return { ok: true as const };
-      },
-    });
   });
 
   // Export the current app as a .glyphh bundle (main shows the save dialog).
