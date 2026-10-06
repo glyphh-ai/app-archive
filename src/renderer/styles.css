@@ -4708,6 +4708,14 @@ body[data-session-space="cowork"] .code-view-toggles { display: none !important;
 .dash-split-col .crud-inline-form { padding: 0; }
 .dash-split-col .crud-inline-header { margin-bottom: 10px; }
 
+/* adaL card — same card structure as the split columns, but spans full width
+   above them as the primary memory tier (green accent border to signal that). */
+.dash-adal-col { margin-bottom: 16px; border-color: rgba(175, 95, 255, 0.27); }
+.dash-adal-col .dash-stat-num { font-size: 18px; }
+.dash-adal-col .dash-stat-values { gap: 14px; }
+.dash-adal-col .dash-chart-container { padding: 14px; }
+.dash-adal-col .dash-chart-box { height: 160px; }
+
 /* Dashboard data triggers — subheads that open a modal */
 .dash-data-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dash-data-trigger .action-btn { font-size: 11px; padding: 3px 10px; }
@@ -12202,6 +12210,9 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
    left-aligned wrapping grid (the CC storefront centers; the page starts left). */
 .layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
 
+/* Ada fallback — semantic memory hits when nothing matches by name. */
+
+
 /* ── Terminal view (stub session) ── */
 .ws-terminal {
   flex: 1;
@@ -19221,7 +19232,7 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   .gdz-stage { flex: none; min-height: 320px; }
 }
 
-/* ════ GLYPHH MEMORY panel — list tabs + the 3D space ════ */
+/* ════ GLYPHH MEMORY panel — list tabs + the adaL graph + the 3D space ════ */
 
 .ws-gmemory-body { display: flex; flex-direction: column; overflow: hidden; }
 .gmem { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -19325,6 +19336,20 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmem-turn.user { border-left-color: var(--accent); }
 .gmem-turn-speaker { flex: none; width: 64px; font-weight: 650; color: var(--text-3); font-size: 11px; padding-top: 1px; }
 .gmem-turn-text { flex: 1; min-width: 0; word-break: break-word; }
+
+/* — adaL context graph — */
+.gmem-adal { position: absolute; inset: 0; }
+.gmem-adal-svg { width: 100%; height: 100%; cursor: grab; }
+.gmem-adal-svg:active { cursor: grabbing; }
+.gmem-adal-edge { stroke: color-mix(in srgb, var(--accent) 28%, transparent); stroke-width: 1; }
+.gmem-adal-role { font-size: 10px; fill: var(--text-3); text-anchor: middle; pointer-events: none; }
+.gmem-adal-node text { font-size: 10.5px; fill: var(--text-2); text-anchor: middle; }
+.gmem-adal-node.entity circle { fill: var(--accent); }
+.gmem-adal-node.entity text { font-size: 12px; }
+.gmem-adal-node.entity text { fill: var(--text); font-weight: 650; }
+.gmem-adal-node.filler circle { fill: var(--surface); stroke: var(--border-2); stroke-width: 1.5; }
+.gmem-adal-node.hit circle { stroke: #ec4899; stroke-width: 3; }
+.gmem-adal-node.dim { opacity: 0.25; }
 
 /* — the 3D space — */
 .gmem-3d { position: absolute; inset: 0; overflow: hidden; }

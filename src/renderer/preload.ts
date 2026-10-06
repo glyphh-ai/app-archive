@@ -332,7 +332,7 @@ export interface PanelAppInput {
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
 /** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
-interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string }
+interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null }
 /** A notification as main/notify.ts hands it to the workbench (mirrors AppNotification). */
 interface AppNotification { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }
 /** The library kinds a bundle can be: every one of them is a skill, the

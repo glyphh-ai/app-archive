@@ -283,7 +283,9 @@ async function boot() {
   restoreUserScopeFromSidecar();
   // Initialize local SQLite database (agents, layouts, preferences).
   // NOTE: this store is on death row — the zero-local-storage law (2026-08-15)
-  // says every piece of user state goes through the SDK to the server.
+  // says every piece of user state goes through the SDK to the server. The
+  // local Ada fact store already went (Ada is cloud-only; the agent's
+  // ada_remember/ada_recall tools ride the stator via statorCall).
   initLocalDb();
   const migrationResult = migrateFromFiles();
   if (migrationResult.migrated) {
