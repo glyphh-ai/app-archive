@@ -4656,6 +4656,14 @@ async function init(): Promise<void> {
      *  page up at the time closes first (his order, 2026-10-05) — the overlay
      *  lifts over the agent; the search is cleared and takes the focus so a
      *  hand can type straight into it. */
+    // THE WALL DROPS ON A DECISION (his order, 2026-10-07): + New, a session
+    // on the rail, any rail click, the command icon, Esc — if the lifted wall
+    // is up, it goes; nothing else looks like nothing happened. The doors
+    // call this; a wall that is not up is left alone.
+    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall = () => {
+      if (!cardsLayer.classList.contains("echo-shadow")) return;
+      setShadow(false, false);
+    };
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
       if (!openList.length) return;
       const on = !shadowPinned;
