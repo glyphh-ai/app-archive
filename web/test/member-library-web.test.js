@@ -517,6 +517,14 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', locus: 'cloud', data: 'cloud', author: 'you' });
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
     expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: true } });
+  });
+  it("a house tab row that arrives WITHOUT its tool still opens its own panel on the web (Images → gimage; his report 2026-10-05: Open did nothing)", async () => {
+    const fake = tabs();
+    const rows = await fake.list('tab');
+    fake.list = vi.fn(async (kind) => (kind === 'tab' ? [...rows, { id: 'images', updatedAt: 7_500, data: { ...rows[0].data, id: 'images', slug: 'images', name: 'Images', nativeRef: '/Users/me/.glyphh/apps/images/app.json', config: null } }] : []));
+    const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
+    expect(await lib.skillTab('app-tab:images')).toEqual({ ok: true, data: { slug: 'images', name: 'Images', tool: 'gimage', cloud: false } });
+    expect((await lib.skillsList(['app'])).data.find((r) => r.id === 'app-tab:images')).toMatchObject({ tool: 'gimage', locus: 'local' });
     expect((await lib.skillsList('skill')).data).toEqual([]);
   });
 });

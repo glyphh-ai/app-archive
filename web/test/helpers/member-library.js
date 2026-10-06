@@ -2,7 +2,8 @@
  *  `client.memberLibrary` seeded per kind, honouring the LWW put/remove rule. */
 import { vi } from 'vitest';
 
-export const GRID = { name: 'Grid', version: 2, cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], cells: [{ panelId: 'p', col: 0, row: 0, colSpan: 1, rowSpan: 1 }], updatedAt: 1_000 };
+// `home: 'cloud'` = born on the web; a row without it is a desktop's synced layout, not the web's (two worlds, 2026-10-05).
+export const GRID = { name: 'Grid', version: 2, home: 'cloud', cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], cells: [{ panelId: 'p', col: 0, row: 0, colSpan: 1, rowSpan: 1 }], updatedAt: 1_000 };
 export const CRM = { id: 'crm', kind: 'web', slug: 'crm', name: 'CRM', prodUrl: 'https://crm', nativeRef: null, config: null, description: '', access: 'members', owned: true, latestVersion: null, version: '0.1.0', secretNames: [], requiredConnections: [], listing: null, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' };
 export const DRIP = { name: 'party', recipe: '3 confetti fireworks' };
 export const SCHED = { name: 'Morning digest', cron: '0 9 * * 1-5', kind: 'task', target: 'digest', agentId: null, ownerAgentId: null, args: {}, enabled: true };

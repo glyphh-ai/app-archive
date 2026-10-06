@@ -88,6 +88,9 @@ export function workspaceAdapter(): KindAdapter {
     },
     apply(item: MemberLibraryItem): void {
       if (!isGridLayout(item.data)) throw new Error(`workspace ${item.id}: not a grid`);
+      // TWO WORLDS (his order, 2026-10-05): a workspace saved on the web
+      // (`home: "cloud"`) stays the web's; this machine never adopts it.
+      if ((item.data as { home?: unknown }).home === "cloud") return;
       lm().applyRemoteLayout({ ...(item.data as GridLayout), updatedAt: item.updatedAt });
     },
     remove(id: string): void { lm().removeLayoutLocal(id); },

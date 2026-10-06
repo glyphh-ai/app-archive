@@ -69,10 +69,14 @@ describe("workspaces", () => {
     const rows = workspaceAdapter().list();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: "research-desk", updatedAt: file.updatedAt, data: { name: "Research Desk", cols: 1, updatedAt: file.updatedAt } });
-    // A pull: the server's grid, at the server's clock.
+    // A pull: another machine's grid, at the server's clock.
     workspaceAdapter().apply(item("workspace", "web-made", 5_000, { name: "Web Made", version: 2, cols: 3, rows: 1, colWidths: [1, 1, 1], rowHeights: [1], cells: [] }));
     expect(workspaceAdapter().list().find((r) => r.id === "web-made")).toMatchObject({ updatedAt: 5_000, data: { cols: 3 } });
     expect(existsSync(join(root, "user", "workspaces", "web-made", "workspace.json"))).toBe(true);
+    // TWO WORLDS (2026-10-05): a workspace born on the web (`home: "cloud"`) is never adopted here.
+    workspaceAdapter().apply(item("workspace", "cloud-only", 6_000, { name: "Cloud Only", version: 2, home: "cloud", cols: 2, rows: 1, colWidths: [1, 1], rowHeights: [1], cells: [] }));
+    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toBeUndefined();
+    expect(existsSync(join(root, "user", "workspaces", "cloud-only", "workspace.json"))).toBe(false);
     // A local delete: the folder goes, a tombstone is written at the delete's clock.
     expect(await lm.deleteLayout("Research Desk")).toBe(true);
     expect(readTombstones()["workspace:research-desk"]).toBeGreaterThanOrEqual(before);

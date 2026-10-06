@@ -38,6 +38,7 @@ import {
 } from '../../src/shared/member-library';
 import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
 import { appDataOf, installRoute } from '../../src/renderer/help/app-data-rules.ts';
+import { HOUSE_VIEW_OF_APP } from '../../src/renderer/help/house-relay.ts';
 import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
@@ -107,9 +108,15 @@ export function buildMemberLibrary(client, deps = {}) {
   // added from the cloud … they live in two different worlds"): the web's
   // workspaces are the member library's `workspace` rows and nothing else —
   // a desktop's own layouts (its `layouts.list`) never join this list.
+  // The desktop syncs its own layouts into the same kind (library-adapters.ts
+  // workspaceAdapter), so "the library's rows" alone would still show the
+  // desktop's (his report, 2026-10-05: "why are the desktop's workspaces
+  // showing on the web?"). A workspace saved here is stamped `home: 'cloud'`;
+  // the web lists only those, and the desktop never adopts them.
+  const CLOUD_HOME = 'cloud';
   const layoutsList = async () => {
     const srv = await listRows('workspace');
-    return srv.filter((r) => isGridLayout(r.data)).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
+    return srv.filter((r) => isGridLayout(r.data) && r.data.home === CLOUD_HOME).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
   };
   const layoutsSaveGrid = async (grid) => {
     try {
@@ -118,7 +125,7 @@ export function buildMemberLibrary(client, deps = {}) {
       const { loop, modelSelections, sessionMode, folder, space, ...rest } = grid;
       const at = now();
       const data = {
-        ...rest, name, version: 2,
+        ...rest, name, version: 2, home: CLOUD_HOME,
         folderMode: grid.folderMode ?? 'single',
         target: grid.target ?? 'glyphh',
         ...(loop ? { loop } : {}),
@@ -203,13 +210,18 @@ export function buildMemberLibrary(client, deps = {}) {
   // kind "glyphh" in the member library, not instances, so the desktop's
   // Skills page lists them and the web's did not. They list here as app
   // cards (`app-tab:<slug>`); an instance of the same slug IS that card.
+  // A tab's panel: its launchConfig.tool, else the house panel its slug names
+  // (Images → gimage) — a row relayed from a desktop can arrive without the
+  // tool, and Open then took the desktop door (his report, 2026-10-05: "on
+  // web this open doesn't do anything").
+  const houseToolOf = (t) => (t.config && typeof t.config === 'object' && typeof t.config.tool === 'string') ? t.config.tool : (HOUSE_VIEW_OF_APP[String(t.slug || '').toLowerCase()] ?? null);
   const TAB_CARD = 'app-tab:';
   const isTabCardId = (id) => String(id || '').startsWith(TAB_CARD);
   const tabCardOf = (t) => ({
     id: `${TAB_CARD}${t.slug}`, source: 'app', type: 'app',
     name: String(t.name || t.slug), description: String(t.description || ''), author: 'you',
     enabled: true, dir: '', fileCount: 0, updatedAt: t.updatedAt,
-    icon: null, tool: (t.config && typeof t.config === 'object' && typeof t.config.tool === 'string') ? t.config.tool : null,
+    icon: null, tool: houseToolOf(t),
     locus: t.nativeRef ? 'local' : 'cloud', data: appDataOf({ launchConfig: t.config ?? null }),
   });
   const tabApps = async () => {
@@ -790,7 +802,7 @@ export function buildMemberLibrary(client, deps = {}) {
     if (isTabCardId(pageId)) {
       try {
         const t = await tabCard(pageId);
-        const tool = t.config && typeof t.config === 'object' && typeof t.config.tool === 'string' ? t.config.tool : null;
+        const tool = houseToolOf(t);
         return ok({ slug: t.slug, name: t.name, ...(tool ? { tool } : {}), cloud: !t.nativeRef });
       } catch (err) { return fail(err); }
     }

@@ -884,6 +884,10 @@ async function download(): Promise<void> {
  *  `cwd` when given, with `prompt` waiting in the composer. */
 function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string }): void {
   closeSettingsModal();
+  // On the web this page is a full-screen panel, not the modal: it must step
+  // aside or the session opens behind it (his report, 2026-10-05: the plugin
+  // menu's items "do nothing").
+  if (onWeb()) (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel?.();
   const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void };
   if (!w.__glyphhOpenSessionWith) { fail("The agent isn't ready yet."); return; }
   w.__glyphhOpenSessionWith(opts);
@@ -1855,15 +1859,21 @@ function wire(): void {
   el("skill-kebab")?.addEventListener("click", async (e) => {
     if (!current) return;
     const anchor = e.currentTarget as HTMLElement;
+    // A CONTROL THE HOST CANNOT SERVE HIDES (his rule, 2026-10-04): the
+    // folder-bound items — edit in its folder, replace its files, download,
+    // show in folder — are the desktop's; the web menu carries the rest.
+    const machine = !onWeb();
     openMenu(anchor, [
       { label: "Try in chat", onClick: tryInChat },
-      { label: "Edit with Glyphh", onClick: () => editWith() },
+      ...(machine ? [{ label: "Edit with Glyphh", onClick: () => editWith() }] : []),
       { label: "Check for updates", onClick: () => void checkForUpdates() },
       ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
       ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
-      { label: "Replace", onClick: () => void replaceFiles() },
-      { label: "Download", onClick: () => void download() },
-      { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },
+      ...(machine ? [
+        { label: "Replace", onClick: () => void replaceFiles() },
+        { label: "Download", onClick: () => void download() },
+        { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },
+      ] : []),
       { sep: true as const },
       { label: "Remove", danger: true, onClick: () => void remove(current!.id, current!.name) },
     ]);
