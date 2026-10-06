@@ -18199,6 +18199,16 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 /* THE INPUT CARD — the composer's one visual object, floating over the wall
    in the dock's own language (translucent surface, blur, soft shadow):
    the textarea and the chip row live INSIDE it; the input itself goes bare. */
+/* DICTATION LIGHTS THE BOX (his order, 2026-10-07): a faint glow in the
+   theme's primary — purple on High Vis, white on Modern — while a take
+   records and transcribes. Subtle: a hairline ring and a soft halo. */
+.code-composer.dictating .code-input-card {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent) 16%, transparent);
+  transition: box-shadow .25s ease, border-color .25s ease;
+}
 .code-input-card {
   display: flex;
   flex-direction: column;

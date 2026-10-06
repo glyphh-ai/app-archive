@@ -13,6 +13,17 @@ export function dictationText(base: string, transcript: string): string {
   return /\s$/.test(base) ? base + t : `${base} ${t}`;
 }
 
+/** WHAT A FAILED TRANSCRIPTION SAYS on the mic chip (his report, 2026-10-07:
+ *  the mic heard him and nothing landed — the wall had refused the model and
+ *  the desktop swallowed the error). Electron wraps a main-process throw as
+ *  "Error invoking remote method 'voice-transcribe': Error: <message>"; the
+ *  member reads the message. Pure. */
+export function transcribeErrorText(err: unknown): string {
+  const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const msg = raw.replace(/^Error invoking remote method '[^']*':\s*/, "").replace(/^(?:Error|GlyphhError):\s*/, "").trim();
+  return msg ? `Transcription failed — ${msg}` : "Transcription failed.";
+}
+
 /** How often a growing take is sent for a partial transcript, in ms. */
 export const PARTIAL_EVERY_MS = 2_500;
 /** A take shorter than this is not worth a partial (the final transcript covers it). */
