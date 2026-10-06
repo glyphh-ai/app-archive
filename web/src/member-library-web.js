@@ -217,6 +217,9 @@ export function buildMemberLibrary(client, deps = {}) {
   // (Images → gimage) — a row relayed from a desktop can arrive without the
   // tool, and Open then took the desktop door (his report, 2026-10-05: "on
   // web this open doesn't do anything").
+  /** A Discover card for a house app wears that app's own mark (his report,
+   *  2026-10-07: generic icons on Drive, Images, …): the panel its slug names. */
+  const houseToolOfSlug = (kind, slug) => (kind === 'app' ? (HOUSE_VIEW_OF_APP[String(slug || '').toLowerCase()] ?? null) : null);
   const houseToolOf = (t) => (t.config && typeof t.config === 'object' && typeof t.config.tool === 'string') ? t.config.tool : (HOUSE_VIEW_OF_APP[String(t.slug || '').toLowerCase()] ?? null);
   const TAB_CARD = 'app-tab:';
   const isTabCardId = (id) => String(id || '').startsWith(TAB_CARD);
@@ -556,11 +559,11 @@ export function buildMemberLibrary(client, deps = {}) {
       for (const [k, org] of orgLists) {
         for (const it of org) {
           if (!it.headVersion) continue;
-          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k });
+          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, tool: houseToolOfSlug(k, it.slug), type: k });
         }
       }
       for (const p of pub.filter((x) => kinds.includes(x.kind))) {
-        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind });
+        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, tool: houseToolOfSlug(p.kind, p.slug), type: p.kind });
       }
       return ok(rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
     } catch (err) { return fail(err); }
