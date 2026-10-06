@@ -14222,17 +14222,24 @@ select:focus {
 .code-voice-sq.accept { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
 .code-voice-sq.accept:hover { background: var(--accent-hover, var(--accent)); }
 .code-voice-sq:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Hands-free listening: the mic (+ caret) stays; the ▮▮▮ Stop pill joins. */
-.code-voice-free { display: none; flex: none; align-self: flex-end; margin-bottom: 3px; }
-.code-input-wrap[data-slot="free"] .code-voice-free { display: inline-flex; }
-.code-chip.code-voice-free-stop {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 26px; padding: 0 10px 0 8px;
-  border: none; border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
-  color: var(--accent-text, var(--accent)); font-size: 12px; font-weight: 600;
-}
-.code-chip.code-voice-free-stop:hover { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)); color: var(--accent-text, var(--accent)); }
+/* VOICE MODE ON (his order, 2026-10-07, Claude's voice bar): the mic group
+   leaves; mute · the live waveform · ✕ take the slot, in that order. */
+.code-voice-mute, .code-voice-end { display: none; align-self: flex-end; margin-bottom: 4px; }
+.code-input-wrap[data-slot="free"] #code-mic-wrap { display: none !important; }
+.code-input-wrap[data-slot="free"] .code-voice-mute { display: inline-flex; order: 1; }
+.code-input-wrap[data-slot="free"] .code-rec-wave { display: block; order: 2; width: 150px; margin: 0 2px 5px; }
+.code-input-wrap[data-slot="free"] .code-voice-end { display: inline-flex; order: 3; }
+.code-voice-mute .ic-off { display: none; }
+.code-voice-mute.on { background: var(--danger, #ef4444); border-color: var(--danger, #ef4444); color: #fff; }
+.code-voice-mute.on .ic-on { display: none; }
+.code-voice-mute.on .ic-off { display: block; }
+/* THE MICROPHONE MENU'S LEVEL (his report, 2026-10-07: "the mic test isn't
+   working" — the bar had no style): a mic glyph and a track whose fill
+   follows the chosen device's level while the menu is open. */
+.code-mic-level { display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px; color: var(--text-3); }
+.code-mic-level svg { flex: none; }
+.code-mic-level-track { flex: 1; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; display: block; }
+.code-mic-level-fill { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); transition: width 0.08s linear; }
 /* The placeholder while listening (both modes): italic, muted. */
 .code-input-wrap[data-slot="ptt"] .code-input::placeholder,
 .code-input-wrap[data-slot="free"] .code-input::placeholder { font-style: italic; color: var(--text-3); }

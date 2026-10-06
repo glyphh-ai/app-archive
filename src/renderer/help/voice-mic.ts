@@ -14,6 +14,7 @@
 import { cue, playReplyTTS, stopReply } from "./voice-out.js";
 import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./composer-state.js";
 import { dictationText, partialDue } from "./voice-text.js";
+import { micChecked, micRows } from "./mic-devices.js";
 
 interface VoicePref {
   mode?: "off" | "push-to-talk" | "continuous";
@@ -198,6 +199,22 @@ export async function toggleVoiceMode(): Promise<void> {
   if (!(await startRecording())) { voiceModeOn = false; handsFree = false; paintVoiceMode(); }
 }
 
+// MUTE in voice mode (Claude's voice bar): the track goes quiet, the silence
+// detector waits, the session stays up; unmute carries on.
+let muted = false;
+function paintMute(): void {
+  const b = el<HTMLButtonElement>("code-voice-mute");
+  if (!b) return;
+  b.classList.toggle("on", muted);
+  b.setAttribute("aria-pressed", muted ? "true" : "false");
+  b.title = muted ? "Unmute" : "Mute";
+}
+export function toggleMute(): void {
+  muted = !muted;
+  stream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+  paintMute();
+}
+
 /** Show the voice controls only when a transcription model is set and the
  *  member has not turned the mic off in Settings › Voice. */
 export async function refreshMicChip(): Promise<void> {
@@ -327,6 +344,7 @@ function startVadLoop(): void {
   const openedAt = Date.now();
   const SPEAK = 0.025, SILENCE_MS = 1300, MAX_MS = 30000;
   vadTimer = setInterval(() => {
+    if (muted) { spoke = false; silenceAt = 0; return; }
     if (!analyser) return;
     analyser.getByteTimeDomainData(buf);
     let sum = 0;
@@ -395,6 +413,8 @@ async function startRecording(): Promise<boolean> {
   recorder.onstop = () => { stopMeter(); stopPartials(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
   recorder.start(1000);               // one-second slices: the live transcript reads them as they land
   discard = false;
+  muted = false;
+  paintMute();
   startPartials(p.inputModel);
   el("code-mic-chip")?.classList.add("recording");
   setVoiceState(handsFree ? "free" : "ptt");   // the slot repaints: ✕ ✓ + meter, or mic + Stop
@@ -649,11 +669,10 @@ export async function renderMicMenu(menu: HTMLElement): Promise<void> {
   lvl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg><span class="code-mic-level-track"><span class="code-mic-level-fill"></span></span>`;
   menu.appendChild(lvl);
 
-  const devices = await micDevices();
-  const rows: Array<{ id: string; name: string }> = [{ id: "", name: "System default" }, ...devices.map((d, i) => ({ id: d.deviceId, name: d.label || `Microphone ${i + 1}` }))];
+  const rows = micRows(await micDevices());
   // The chosen device is only valid if it's still present; otherwise fall back to
   // System default so exactly ONE row is ever checked.
-  const chosen = devices.some((d) => d.deviceId === p.deviceId) ? p.deviceId : "";
+  const chosen = micChecked(rows, p.deviceId);
   startMenuMeter(menu, lvl.querySelector<HTMLElement>(".code-mic-level-fill"), chosen || null);
   let marked = false;
   for (const r of rows) {
@@ -679,6 +698,8 @@ export function initVoiceMic(): void {
   chip.dataset.wired = "1";
   chip.addEventListener("click", () => void chipClick());
   el("code-voice-mode")?.addEventListener("click", (e) => { e.stopPropagation(); void toggleVoiceMode(); });
+  el("code-voice-mute")?.addEventListener("click", (e) => { e.stopPropagation(); toggleMute(); });
+  el("code-voice-end")?.addEventListener("click", (e) => { e.stopPropagation(); stopHandsFree(); });
   // Esc cancels a dictation take (his order, 2026-10-07) — captured ahead of
   // every other Escape door so an open drop-up never swallows it.
   document.addEventListener("keydown", (e) => {
