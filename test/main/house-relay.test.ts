@@ -27,12 +27,12 @@ describe("the house apps on the web (his order, 2026-10-05)", () => {
     for (const bad of ["preview", "files", "terminal", "", undefined, null, 42, "GDESIGN"]) expect(houseViewOf(bad)).toBeNull();
   });
 
-  it("the connect line names what the panel shows", () => {
-    expect(connectDesktopLine("gdesign")).toBe("Connect your desktop to see your designs");
-    expect(connectDesktopLine("gimage")).toBe("Connect your desktop to see your images");
-    expect(connectDesktopLine("gpoint")).toBe("Connect your desktop to see your decks");
-    expect(connectDesktopLine("gdrive")).toBe("Connect your desktop to see your Drive");
-    expect(connectDesktopLine("nope")).toBe("Connect your desktop to see your files");
+  it("the empty line names what the panel shows — the cloud's, never the desktop's (two worlds, 2026-10-06)", () => {
+    expect(connectDesktopLine("gdesign")).toBe("No designs in the cloud yet");
+    expect(connectDesktopLine("gimage")).toBe("No images in the cloud yet");
+    expect(connectDesktopLine("gpoint")).toBe("No decks in the cloud yet");
+    expect(connectDesktopLine("gdrive")).toBe("No Drive in the cloud yet");
+    expect(connectDesktopLine("nope")).toBe("No files in the cloud yet");
   });
 
   it("a not-attached answer paints bare; any other failure keeps the panel's own wording", () => {
@@ -41,7 +41,7 @@ describe("the house apps on the web (his order, 2026-10-05)", () => {
     expect(isNotAttached({ ok: false, error: "boom" })).toBe(false);
     expect(isNotAttached({ ok: true, notAttached: true, error: "x" })).toBe(false);
     expect(isNotAttached(null)).toBe(false);
-    expect(houseEmptyText(off, "Couldn't load Drive:")).toBe("Connect your desktop to see your Drive");
+    expect(houseEmptyText(off, "Couldn't load Drive:")).toBe("No Drive in the cloud yet");
     expect(houseEmptyText({ ok: false, error: "boom" }, "Couldn't load Drive:")).toBe("Couldn't load Drive: boom");
     expect(houseEmptyText(undefined, "Couldn't load Drive:")).toBe("Couldn't load Drive: Unknown error.");
   });

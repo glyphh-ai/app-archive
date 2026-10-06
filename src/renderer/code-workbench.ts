@@ -2412,7 +2412,6 @@ async function init(): Promise<void> {
     // THE WEB'S ECHO (his order, 2026-10-05; help/web-cut.ts webEchoSurface):
     // the desktop's Echo, filtered to the cloud's tiles; the class marks the
     // body for the web's empty line.
-    body.classList.toggle("web-echo", IS_WEB_TARGET && webEchoOpens(IS_WEB_TARGET));
     // FIRST PAINT WITHOUT A FLASH OF THE DOCK (his order, 2026-10-04: off by
     // default). The pref lands asynchronously (readAutoHide, below); the dock
     // markup lands now. So the body class is set BEFORE the markup, from the
@@ -3238,9 +3237,7 @@ async function init(): Promise<void> {
       // tiles lead while the dock is OFF (his order, 2026-10-04 — the dock's
       // icons as the first items from the top-left), and whatever the dock
       // carries never shows twice.
-      // THE WEB CUT (his order, 2026-10-05): no dock on the web means no dock
-      // tiles leading the pages either — nothing of the wall paints there.
-      const fromDock = bootsSurface(IS_WEB_TARGET, "dock") ? dockEntries() : [];
+      const fromDock = dockEntries();
       const dockOnWall = new Set(document.body.classList.contains(DOCK_OFF_CLASS) ? fromDock : []);
       const list = wallTilesFor<TileEntry>({
         dockEnabled: !document.body.classList.contains(DOCK_OFF_CLASS),
@@ -3838,7 +3835,6 @@ async function init(): Promise<void> {
         // a folder emptied by the filter stays in the pref, unpainted
         const shown = [...pageTiles, ...rest].filter((t) => t.kind !== "folder" || (t.cells?.length ?? 0) > 0);
         buildWall([shown]);
-        syncWebEchoEmpty(shown.length);
         restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
@@ -3870,18 +3866,15 @@ async function init(): Promise<void> {
         // a reopened app "reverted to claude" (his report, 2026-09-10).
         else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
         else if (t.kind === "tool" && t.toolView) {
-          cards.push(webWallMemory(IS_WEB_TARGET) && e.flowSolo === true ? { kind: "tool", toolView: t.toolView, solo: true } : { kind: "tool", toolView: t.toolView });
+          cards.push({ kind: "tool", toolView: t.toolView });
         }
         // An agent PANEL instance is the agent (his ruling, 2026-09-26) — the
         // boot opens a fresh one; replaying yesterday's beside it doubled them.
         else if (t.slug && t.slug.startsWith("agent-panel:")) continue;
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
-      // THE WEB writes the agent's seat beside the cards (his order,
-      // 2026-10-05: the panels AND the agent come back where they were);
-      // the desktop's state is byte-identical to before.
-      if (!webWallMemory(IS_WEB_TARGET)) return { layout: null, cards };
-      return { layout: null, cards, agentAt };
+      void agentAt;
+      return { layout: null, cards };
     }
     function scheduleWallSave(): void {
       // Gate: never write until the boot restore has run, or the agent card
@@ -3932,14 +3925,17 @@ async function init(): Promise<void> {
       // replayed. A panel opened before the session restores fills once it
       // does (wb.onCwdChanged → refreshForCwd, webFsReady's retry) — the
       // desktop's own boot order.
-      if (!bootsSurface(IS_WEB_TARGET, "wall")) {
+      // THE WEB IS THE DESKTOP (his order, 2026-10-06): the same replay — the
+      // agent is seated first (the web's page), a saved layout opens by name
+      // through the web's cell filter, the saved cards come back as they were.
+      if (IS_WEB_TARGET) {
         activateGlyphh();
-        const plan = webRestorePlan(saved);
-        for (const why of plan.skipped) console.warn("[web-cut] saved panel not restored on the web:", why);
-        if (!echoCtl || !plan.open.length) return;
-        try { echoCtl.restoreWebWall(plan.open.map((c) => ({ toolView: String(c.toolView), solo: c.solo === true })), plan.agentAt); }
-        catch (e) { console.warn("[web-cut] wall restore stopped:", (e as Error)?.message || e); }
-        return;
+        if (saved?.layout) {
+          const name = saved.layout;
+          const row = layouts.find((l) => (l.name || "").toLowerCase() === name.toLowerCase());
+          if (row) void openLayoutWeb(row);
+          return;
+        }
       }
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
@@ -4003,7 +3999,6 @@ async function init(): Promise<void> {
         if (!body.isConnected) return;
         let shifted = false;
         if (Array.isArray(fresh)) {
-          if (IS_WEB_TARGET) syncWebEchoEmpty(fresh.length);
           const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
           // Existing tiles follow their row; a layout that's gone leaves the wall.
           for (const e of [...entries]) {
@@ -5018,22 +5013,6 @@ async function init(): Promise<void> {
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
     let dockProofTimer = 0;
-    /** THE WEB'S ECHO holds the cloud's tiles only (two worlds, his order
-     *  2026-10-05); with none yet the wall says so instead of standing blank.
-     *  The line lives in the stage under the search. */
-    function syncWebEchoEmpty(count: number): void {
-      if (!IS_WEB_TARGET) return;
-      const stage = body.querySelector<HTMLElement>(".echo-stage");
-      if (!stage) return;
-      let line = stage.querySelector<HTMLElement>(".echo-web-empty");
-      if (count > 0) { line?.remove(); return; }
-      if (!line) {
-        line = document.createElement("div");
-        line.className = "echo-web-empty";
-        line.textContent = "Nothing in the cloud yet. Install an app from Build → Discover, or save a workspace.";
-        stage.appendChild(line);
-      }
-    }
     function syncWallVisibility(): void {
       if (!echoWired) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;

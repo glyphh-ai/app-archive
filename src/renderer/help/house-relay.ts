@@ -7,10 +7,10 @@
  * tool-backed rows on the desktop (their tab's launchConfig.tool names a
  * built-in work panel: gdesign / gpoint / gimage / gvideo / gsound / gdrive),
  * and the web renderer already has those panels. So on the web a house row
- * opens the web's OWN panel (code-workbench.ts __wbOpenTool), and that
- * panel's DATA comes off the attached desktop over the relay — the member's
- * designs, decks, images, video, audio and Drive live in the desktop's
- * app-data (media-local.ts, office-store.ts), never on the server.
+ * opens the web's OWN panel (code-workbench.ts __wbOpenTool). TWO WORLDS
+ * (his order, 2026-10-06): that panel shows the CLOUD's files only — it
+ * never reads the desktop's app-data over the relay; with nothing in the
+ * cloud it says so.
  *
  * The one door is `app.call { app, tool, args }` (main/house-doors.ts on the
  * desktop, attach.py's REMOTE_METHODS + HOUSE_APPS on the server): READ-ONLY,
@@ -42,9 +42,11 @@ const THINGS: Readonly<Record<string, string>> = Object.freeze({
   gdesign: "designs", gpoint: "decks", gimage: "images", gvideo: "videos", gsound: "audio", gdrive: "Drive",
 });
 
-/** The honest empty state with no desktop attached (his order, 2026-10-05). */
+/** The honest empty state on the web: a house panel there shows the CLOUD's
+ *  files only — two worlds (his order, 2026-10-06: "how can the cloud apps be
+ *  pulling content from the local machine?"); nothing of the desktop's. */
 export function connectDesktopLine(view: string): string {
-  return `Connect your desktop to see your ${THINGS[view] ?? "files"}`;
+  return `No ${THINGS[view] ?? "files"} in the cloud yet`;
 }
 
 /** The one line a write answers on the web: the apps' files are the desktop's. */

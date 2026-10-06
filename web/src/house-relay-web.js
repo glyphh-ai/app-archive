@@ -49,14 +49,12 @@ export function createHouseRelay({ client, now = () => Date.now() }) {
   };
 
   /** One house read; `empty` is the list field a failed answer still carries. */
-  const call = (view, app, tool, args, empty) => async () => {
-    const m = await attachedMachine();
-    if (!m) return { ok: false, notAttached: true, error: connectDesktopLine(view), ...empty };
-    try {
-      const r = await client.attach.dispatch('app.call', { app, tool, args }, { machineId: m.id });
-      return { ok: true, ...(r && typeof r === 'object' ? r : {}) };
-    } catch (err) { return { ok: false, error: msg(err), ...empty }; }
-  };
+  // TWO WORLDS (his order, 2026-10-06: "how can the cloud apps be pulling
+  // content from the local machine?"): a house panel on the web shows the
+  // cloud's files only. There is no cloud store for the house apps yet, so
+  // every read answers the honest empty line — never the desktop's files.
+  const call = (view, _app, _tool, _args, empty) => async () => ({ ok: false, notAttached: true, error: connectDesktopLine(view), ...empty });
+  void attachedMachine; void msg;
   const readOnly = async () => ({ ok: false, error: HOUSE_READ_ONLY_LINE });
 
   /** A data URL's bytes, for the video first-frame capture (wb-media.ts videoThumb). */
