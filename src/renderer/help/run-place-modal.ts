@@ -11,7 +11,7 @@
 import { drillItem } from "./code-source-chip.js";
 import { guardWebviewsForModal } from "./shared.js";
 import { LOCUS_SVG } from "./session-locus.js";
-import { CHECK, folderRows, runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
+import { folderRows, runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
 
 export type { RunPlace, RunPlaceInput } from "./run-place.js";
 
@@ -79,13 +79,14 @@ export function chooseRunPlace(i: RunPlaceInput, doors: RunPlaceDoors = {}): Pro
           (lbl.querySelector("span") as HTMLElement).textContent = section === "desktop" ? "Remote control" : "Cloud environments";
           list.appendChild(lbl);
         }
-        const row = drillItem(r.label, r.sub, r.selected ? CHECK : "");
-        if (r.selected) row.classList.add("selected");
+        // Nothing is pre-selected: the modal is the QUESTION "where does this
+        // run?", and a pre-ticked row reads as already answered (his report,
+        // 2026-10-07). The composer chip keeps its tick; this screen does not.
+        const row = drillItem(r.label, r.sub, "");
         if (!r.place) { row.classList.add("ws-unreachable"); row.disabled = true; }
         else { const place = r.place; row.addEventListener("click", () => (place.kind === "desktop" ? drillFolders(place.machine) : done(place))); }
         list.appendChild(row);
       }
-      list.querySelector<HTMLButtonElement>(".code-drop-item.selected")?.focus();
     };
     renderPlaces();
     back.addEventListener("click", renderPlaces);
