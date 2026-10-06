@@ -74,6 +74,8 @@ export interface CloudRunStart {
   memory?: unknown;
   subdir?: string;
   repo?: string;
+  /** The attached desktops the turn may reach (HarnessRunBody.devices). */
+  devices?: string[];
 }
 
 /** The slice of the SDK's run handle the lane drives (`client.run()` →
@@ -108,6 +110,7 @@ export interface CloudLaneClient {
     repo?: string;
     /** The run's surface (SDK HarnessSurface): this lane is the desktop's. */
     surface?: "web" | "desktop" | "cli";
+    devices?: string[];
   }): CloudRunHandle;
   harnessViaApi(): {
     fsSpaces(): Promise<{ spaces: CloudSpace[] }>;
@@ -247,6 +250,7 @@ export function createCloudLane(deps: CloudLaneDeps) {
         ...(p.memory ? { memory: p.memory } : {}),
         ...(p.subdir ? { subdir: p.subdir } : {}),
         ...(p.repo ? { repo: p.repo } : {}),
+        ...(p.devices?.length ? { devices: p.devices } : {}),
       });
     } catch (err) { return { ok: false, error: errorText(err) }; }
 

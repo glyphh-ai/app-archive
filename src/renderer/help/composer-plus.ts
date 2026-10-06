@@ -288,6 +288,10 @@ export interface PlusDoors {
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
+  /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): an attached
+   *  desktop is on by default; a click flips it for this session. */
+  deviceOn?: (machineId: string) => boolean;
+  toggleDevice?: (machineId: string, attached: string[]) => void;
 }
 
 export interface PlusController {
@@ -554,10 +558,22 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     loading.remove();
     if (!pane.isConnected) return;
     if (!rows.length) emptyRow(pane, "No machine is attached.");
+    const attachedIds = rows.filter((d) => d.state === "attached").map((d) => d.machineId);
     for (const d of rows) {
-      const b = rowEl({ label: d.name, icon: PLUS_ICONS.devices, kind: "check", checked: d.state === "attached", sub: d.state === "attached" ? "Attached" : "Disconnected", muted: d.state !== "attached", hint: "Manage devices to disconnect or allow" });
+      const attached = d.state === "attached";
+      const on = attached && (doors.deviceOn?.(d.machineId) ?? true);
+      const b = rowEl({ label: d.name, icon: PLUS_ICONS.devices, kind: "check", checked: on, sub: attached ? (on ? "Attached — this session can reach its granted folders" : "Attached — off for this session") : "Disconnected", muted: !attached, hint: attached ? "Click to turn this device on or off for this session" : "Manage devices to disconnect or allow" });
       b.dataset.machineId = d.machineId;
-      b.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); });
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!attached || !doors.toggleDevice) { close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); return; }
+        doors.toggleDevice(d.machineId, attachedIds);
+        const now = doors.deviceOn?.(d.machineId) ?? true;
+        b.classList.toggle("selected", now);
+        b.setAttribute("aria-checked", now ? "true" : "false");
+        const sub = b.querySelector<HTMLElement>(".drop-sub");
+        if (sub) sub.textContent = now ? "Attached — this session can reach its granted folders" : "Attached — off for this session";
+      });
       pane.appendChild(b);
     }
     pane.appendChild(sepEl());

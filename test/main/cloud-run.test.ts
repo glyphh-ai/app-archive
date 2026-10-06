@@ -90,6 +90,8 @@ describe("a cloud turn from the desktop", () => {
     expect(r).toEqual({ ok: true, runId: "run-1" });
     expect(runs[0]).toEqual({ target: "cloud", surface: "desktop", threadId: "space-9", prompt: "hello", mode: "code", model: "claude-opus-5", permission: "ask", effort: "high", subdir: "api", repo: "glyphh-ai/app" });
     expect(rows.get("c1")).toMatchObject({ status: "working", runId: "run-1", senderId: 7 });
+    // The devices the member added to the chat ride the run (his order, 2026-10-07); none → no field.
+    expect(runs[0]).not.toHaveProperty("devices");
 
     h.emit({ type: "setup", phase: "model" });
     h.emit({ type: "delta", delta: "Hi" });
