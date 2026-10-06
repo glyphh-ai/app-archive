@@ -1082,8 +1082,11 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     if (!hubItem) { void paintTaskRuns(s); void paintTaskSchedule(s, tm.schedule ?? null); }
     return;
   }
-  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<ConnDep | string> }; ui?: string; tools?: string } = {};
-  try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
+  // THE APP'S MANIFEST (his report, 2026-10-07: Discover showed none of an
+  // app's tools): manifest.json — the bundle's, inline tools — else the older
+  // app.json authoring form, whose `tools` names a file.
+  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<ConnDep | string> }; connectors?: string[]; ui?: string; tools?: string | Array<{ name: string; description?: string }> } = {};
+  try { manifest = JSON.parse(await read("manifest.json") || await read("app.json") || "{}"); } catch { manifest = {}; }
   const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
   const fromFolder = s.files.filter((f) => /^screenshots\/.*\.(png|jpe?g|gif|webp|svg)$/i.test(f.path)).map((f) => ({ path: f.path, caption: "" }));
   const gallery = shots.length ? shots : fromFolder;
@@ -1104,7 +1107,11 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const first = urls.findIndex(Boolean);
     if (first >= 0) { show(first); host.appendChild(g); }
   }
-  await Promise.all([paintBundleSkills(s, read), paintBundleTools(s, read, manifest.tools || "tools/manifest.json"), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
+  await Promise.all([
+    paintBundleSkills(s, read),
+    paintBundleTools(s, read, Array.isArray(manifest.tools) ? manifest.tools : (manifest.tools || "tools/manifest.json")),
+    paintBundleConnections(manifest.dependencies?.connections ?? manifest.connectors ?? []),
+  ]);
 }
 
 /**
@@ -1386,13 +1393,15 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
 const AGENT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>`;
 
 /** The app's tools (tools/manifest.json) with the same permission grammar as a connection's. */
-async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<string>, rel: string): Promise<void> {
+async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<string>, rel: string | Array<{ name: string; description?: string }>): Promise<void> {
   const host = el("skill-tools-list"); const count = el("skill-tool-count");
   if (!host) return;
   let tools: Array<{ name: string; description?: string }> = [];
   // AN INSTANCE'S TOOLS ARE ITS MANIFEST'S (his report, 2026-10-07: "Tools · 0"
   // on an installed app): the card carries them; there is no folder to read.
-  if (s.instance) tools = s.instance.tools.map((name) => ({ name }));
+  // A manifest.json carries its tools inline; the old app.json names a file.
+  if (Array.isArray(rel)) tools = rel.filter((t) => t && t.name);
+  else if (s.instance) tools = s.instance.tools.map((name) => ({ name }));
   else { try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; } }
   if (count) count.textContent = `· ${tools.length}`;
   if (!tools.length) { host.innerHTML = `<div class="crud-empty">This app exposes no tools.</div>`; return; }
