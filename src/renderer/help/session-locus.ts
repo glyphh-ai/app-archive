@@ -167,9 +167,24 @@ export interface PickerModel {
 
 /** The default place for a new session: the desktop where there is one — the
  *  machine itself, or on the web an ATTACHED desktop — else the cloud. */
-export function defaultLocus(surface: "desktop" | "web", attached: boolean): Locus {
+export function defaultLocus(surface: "desktop" | "web", attached: boolean, type: "work" | "code" = "code"): Locus {
   if (surface === "desktop") return "local";
+  // A WORK session on the web runs in the cloud (his order, 2026-10-06: "on
+  // the work sessions in the cloud… why are they showing up under a folder
+  // on the connected device's file system?"); only a CODE session needs a
+  // folder and so follows an attached desktop. Attaching is an explicit pick.
+  if (type === "work") return "cloud";
   return attached ? "local" : "cloud";
+}
+
+/** The source a NEW session is born with: the pending pick, except that a
+ *  Work session on the web whose pick is still the DEFAULT (the attached
+ *  desktop's folder) is born in the cloud — an explicit pick always stands. */
+export function newSessionSource<S extends { kind: string }>(
+  surface: "desktop" | "web", type: "work" | "code", pending: S, resolvedDefault: S, same: (a: S, b: S) => boolean, cloud: S,
+): S {
+  if (surface === "web" && type === "work" && pending.kind === "local" && same(pending, resolvedDefault)) return cloud;
+  return pending;
 }
 
 export const LOCUS_LOCKED_HINT: Record<Locus, string> = {

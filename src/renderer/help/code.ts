@@ -15,7 +15,7 @@ import { threadLocus } from "./thread-locus.js";
 import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
-  type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike,
+  type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike, newSessionSource,
   defaultWebFolder, folderAfterPick, type GrantedMachine,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
@@ -1919,7 +1919,9 @@ function newChat(): void {
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
-  c.source = pendingSource;
+  // A Work session on the web is born in the cloud unless the member picked a
+  // place (session-locus.ts newSessionSource; his order, 2026-10-06).
+  c.source = newSessionSource(onWebTarget() ? "web" : "desktop", typeTab, pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
   if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
   // Still nothing? Adopt the workbench's LIVE folder — a thread is tied to
   // its folder from birth (his rule, 2026-08-30), never left floating on

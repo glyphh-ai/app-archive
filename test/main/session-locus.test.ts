@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  defaultLocus, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
+  defaultLocus, newSessionSource, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
   sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, type RecentsRowLike,
   defaultWebFolder, filterPickerRows, pickerRecent, PICKER_RECENT_MAX,
   folderAfterPick, canWalkUp,
@@ -89,10 +89,25 @@ describe("the grant", () => {
 describe("the picker", () => {
   const spaces = [{ id: "t1", updatedAt: 1, top: ["src"] }];
 
-  it("defaults to the desktop where there is one, else the cloud", () => {
+  it("defaults to the desktop where there is one, else the cloud — a WORK session on the web is the cloud's (his order, 2026-10-06)", () => {
     expect(defaultLocus("desktop", false)).toBe("local");
     expect(defaultLocus("web", true)).toBe("local");
     expect(defaultLocus("web", false)).toBe("cloud");
+    expect(defaultLocus("web", true, "work")).toBe("cloud");
+    expect(defaultLocus("web", true, "code")).toBe("local");
+    expect(defaultLocus("desktop", true, "work")).toBe("local");
+  });
+
+  it("a new Work session on the web is born in the cloud unless the member picked a place; Code follows the attached desktop", () => {
+    type S = { kind: string; path?: string };
+    const same = (a: S, b: S) => a.kind === b.kind && a.path === b.path;
+    const cloud: S = { kind: "cloud-new" };
+    const deskDefault: S = { kind: "local", path: "/Users/me/yo" };
+    expect(newSessionSource("web", "work", deskDefault, deskDefault, same, cloud)).toBe(cloud);
+    expect(newSessionSource("web", "code", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
+    const picked: S = { kind: "local", path: "/Users/me/other" };
+    expect(newSessionSource("web", "work", picked, deskDefault, same, cloud)).toBe(picked);
+    expect(newSessionSource("desktop", "work", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
   });
 
   it("on the desktop: 'On this desktop' then 'In the cloud'", () => {
