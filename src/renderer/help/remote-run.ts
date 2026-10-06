@@ -32,6 +32,8 @@
  */
 
 import type { Source } from "./code-source-chip.js";
+import { devicesForRun } from "./devices-pick.js";
+import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 // ── SDK handle mirrors (window.glyphhSdk = the raw @glyphh/sdk client) ─────────
 
@@ -155,6 +157,8 @@ export interface CloudRunStartPayload {
   subdir?: string;
   repo?: string;
   branch?: string;
+  /** The attached desktops this session may reach over the relay (HarnessRunBody.devices). */
+  devices?: string[];
   /** The member's named cloud environment (personal environments, 2026-10-05); absent = Default. */
   environmentId?: string;
 }
@@ -277,6 +281,8 @@ export function createIpcCloudRun(ipc: CloudRunIpc, p: CloudRunStartPayload, sig
 //    remote-run doesn't reach back into code.ts's interfaces). ────────────────
 export interface RuntimeBinding { sessionId: string; url: string; token: string }
 export interface RemoteChat {
+  /** The attached desktops this session may reach (the + menu's Devices); absent = every attached one. */
+  devices?: string[];
   id: string;
   source?: Source;
   /** The session's SPACE + toolbelt (code.ts modeOf) — rides every run. */
@@ -614,6 +620,17 @@ const RELAY_RUNTIME = (chat: RemoteChat): RuntimeBinding => ({ sessionId: chat.i
 // and the observer (attachToActiveRun) MUST derive this identically or a reattach polls the
 // wrong key and never finds the live run (his bug: web/mobile can't reattach to an off-desktop
 // session in progress).
+/** The attached desktops, by machine id, from the Devices page's read. */
+async function attachedDeviceIds(): Promise<string[]> {
+  const read = (window.glyphh as unknown as { attachDevicesList?: () => Promise<DevicesAnswer> }).attachDevicesList;
+  if (!read) return [];
+  const a = await read().catch(() => null);
+  return a ? deviceRowsOf(a).devices.map((d) => d.machineId) : [];
+}
+async function devicesForTurn(chat: RemoteChat): Promise<string[]> {
+  return devicesForRun(chat.devices, await attachedDeviceIds());
+}
+
 export function runThreadId(chat: RemoteChat): string {
   return chat.source?.kind === "cloud-space"
     ? String((chat.source as { space?: string }).space || chat.id)
@@ -688,6 +705,10 @@ export async function runRemoteTurn(
   // the space's original id so the pod resolves the same folder the space was
   // born with (and the fs panels scope identically — cloud-fs-router/wb-pod).
   const threadId = runThreadId(chat);
+  // THE DEVICES THE TURN MAY REACH (his order, 2026-10-07): the session's
+  // list, else every attached desktop; a cloud turn names them and the
+  // gateway's device tools open those machines inside their granted folders.
+  const devices = isLocal ? [] : await devicesForTurn(chat);
 
   let run: HarnessRunHandle;
   try {
@@ -707,6 +728,7 @@ export async function runRemoteTurn(
       ...(opts.effort ? { effort: opts.effort } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
+      ...(devices.length ? { devices } : {}),
     }, opts.signal) : sdkRun!({
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
       // The machine the session is bound to (remote control, 2026-09-30) — absent, the newest.
@@ -730,6 +752,7 @@ export async function runRemoteTurn(
       // where the member is — on the web the page opens panels, workspaces
       // and Settings itself; nothing relays to a desktop.
       ...(!isLocal ? { surface: surfaceHere() } : {}),
+      ...(devices.length ? { devices } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),

@@ -56,6 +56,8 @@ import { panelFsRoute } from "./panel-fs-route.js";
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
+import { deviceChecked, toggleDeviceIn } from "./devices-pick.js";
+import { groupByDate } from "./recents-groups.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -134,6 +136,9 @@ interface CodeChat {
    *  Absent = Auto. Artifact adds one standing line to every later turn
    *  (output-format.ts). Local to this surface, like `permission`. */
   outputFormat?: StoredOutputFormat;
+  /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): the + menu's
+   *  Devices picks, by machine id; absent = every attached desktop. */
+  devices?: string[];
   /** THE ARTIFACT IN HAND (his order, 2026-10-05): set by the artifact
    *  viewer's "Start chat" / "Send to Glyphh"; its id rides the hidden steer
    *  (artifact-rules.ts artifactStandingLine), never the visible message. */
@@ -1993,6 +1998,7 @@ function newChat(): void {
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
   // The Output pick made on the lazy landing is this session's (his order, 2026-10-05).
   if (pendingOutputFormat) { c.outputFormat = pendingOutputFormat; pendingOutputFormat = null; }
+  if (pendingDevices) { c.devices = pendingDevices; pendingDevices = undefined; }
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
@@ -3212,6 +3218,8 @@ const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
  *  raw cloud constant, so the desktop's default stays the user's machine. */
 let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
+/** The Devices picks made before a session is born (newChat stamps them). */
+let pendingDevices: string[] | undefined;
 
 /** The folders this member's DESKTOP sessions ran in, newest first — the
  *  recents the folder picker lists on the web ("the last 5") and the second
@@ -4247,6 +4255,12 @@ function wireComposerAttachments(): void {
       addConnector: () => { toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
+      deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
+      toggleDevice: (id, attached) => {
+        const c = current();
+        const next = toggleDeviceIn(c?.devices ?? pendingDevices, id, attached);
+        if (c) { c.devices = next; void saveStore(); } else pendingDevices = next;
+      },
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
@@ -6219,12 +6233,15 @@ interface SessGroup { label: string; title: string; rows: RailSession[] }
 
 /** THE RAIL'S PARADIGM (main, 2026-08-20): Pinned first (only when any
  *  exist), then one group per folder, each most-recently-touched down. */
-function sessSections(items: RailSession[]): SessGroup[] {
+function sessSections(items: RailSession[], byDay = false): SessGroup[] {
   const byTouch = (a: RailSession, b: RailSession): number => b.mtime - a.mtime;
   const pinned = items.filter((x) => sessPinned(x.id)).sort(byTouch);
   const rest = items.filter((x) => !sessPinned(x.id)).sort(byTouch);
   const out: SessGroup[] = [];
   if (pinned.length) out.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
+  // WORK GROUPS BY DAY (his order, 2026-10-07): Today, Yesterday, Older — in
+  // the rail and the recents dropdown, on the app and the web.
+  if (byDay) return [...out, ...groupByDate(rest, (r) => r.mtime).map((g) => ({ label: g.label, title: g.label, rows: g.rows }))];
   const byKey = new Map<string, SessGroup>();
   for (const c of rest) {
     // Cloud sessions share ONE group: each has its own folder named "workspace",
@@ -6431,8 +6448,8 @@ function renderRailSessions(): void {
     host.appendChild(empty);
     return;
   }
-  for (const sec of sessSections(items)) {
-    if (typeTab !== "work") host.appendChild(sessSectionHead(sec.label, sec.title));
+  for (const sec of sessSections(items, typeTab === "work")) {
+    host.appendChild(sessSectionHead(sec.label, sec.title));
     for (const sess of sec.rows) {
       const row = document.createElement("div");
       row.className = "code-history-item";
@@ -6591,8 +6608,8 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       row.append(title, pin, del);
       return row;
     };
-    for (const sec of sessSections(visible)) {
-      if (opts.pool || menuTab !== "work") listHost.appendChild(sessSectionHead(sec.label, sec.title));
+    for (const sec of sessSections(visible, !opts.pool && menuTab === "work")) {
+      listHost.appendChild(sessSectionHead(sec.label, sec.title));
       for (const c of sec.rows) listHost.appendChild(mkRow(c));
     }
     if (!visible.length) {
