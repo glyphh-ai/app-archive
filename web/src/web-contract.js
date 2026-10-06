@@ -993,6 +993,19 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
+    // WHERE THE MEMBER STANDS ON MONEY (his report, 2026-10-07: the usage ring
+    // said "not available" on the web — the page had no door). The same
+    // server read the desktop's main/spend-state.ts makes, the same shape.
+    spendState: async () => {
+      try {
+        const raw = await client.http.get('/api/me/spend-state');
+        const d = raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw;
+        const o = d && typeof d === 'object' ? d : {};
+        return { ok: true, hasPlan: o.hasPlan !== false, plan: String(o.plan ?? ''), canManage: !!o.canManage, tightest: o.tightest ?? null };
+      } catch {
+        return { ok: false, hasPlan: true, plan: '', canManage: false, tightest: null };
+      }
+    },
     // THE DESKTOP'S CLI SESSIONS, for the Code rail and the agent window's
     // recents (his order, 2026-10-07): a CLI's sessions are the machine's own
     // stores, read off the attached desktop (`cliSessions.list`, attach-
