@@ -16,7 +16,7 @@ import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
   type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike, newSessionSource,
-  defaultWebFolder, folderAfterPick, type GrantedMachine,
+  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
@@ -167,6 +167,7 @@ function setTypeTab(t: SessionType): void {
   // so the rail, each open agent panel and its recents dropdown all move
   // together — one choice, not one per window (his report, 2026-09-29).
   void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
+  rebirthBlankSession();
   applyTypeTab();
 }
 /** A BLANK session follows the type switch (his report, 2026-10-06: sitting
@@ -177,7 +178,7 @@ function setTypeTab(t: SessionType): void {
  *  session on the web lands in the cloud; Code follows the pending pick). */
 function rebirthBlankSession(): void {
   const c = current();
-  if (!c || c.messages.length || modeOf(c) === typeTab) return;
+  if (!c || !sessionIsBlank(c) || modeOf(c) === typeTab) return;
   c.mode = typeTab;
   c.source = newSessionSource(onWebTarget() ? "web" : "desktop", typeTab, pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
   if (c.source.kind === "local" && c.source.path) c.workdir = c.source.path;
@@ -186,7 +187,6 @@ function rebirthBlankSession(): void {
 }
 /** Repaint everything the active type governs, in THIS document. */
 function applyTypeTab(): void {
-  rebirthBlankSession();
   paintTypeTabs();
   renderHistory();
   renderRailSessions();
@@ -7160,6 +7160,7 @@ export function initCode(): void {
       const t: SessionType = value === "work" ? "work" : "code";
       if (t === typeTab) return;
       typeTab = t;
+      rebirthBlankSession();
       applyTypeTab();
     });
   // The sidebar's own header: collapse (persisted) and the Echo launcher.

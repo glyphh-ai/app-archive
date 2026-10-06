@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultLocus, newSessionSource, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
-  sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, type RecentsRowLike,
+  sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, sessionIsBlank, type RecentsRowLike,
   defaultWebFolder, filterPickerRows, pickerRecent, PICKER_RECENT_MAX,
   folderAfterPick, canWalkUp,
 } from "../../src/renderer/help/session-locus";
@@ -240,5 +240,20 @@ describe("walking up in the folder browser (his report, 2026-10-05)", () => {
   it("without a ceiling any parent will do; separators and trailing slashes do not matter", () => {
     expect(canWalkUp({ path: "/a/b", parent: "/a" }, null)).toBe(true);
     expect(canWalkUp({ path: "C:\\code\\app", parent: "C:\\code" }, "C:/code/")).toBe(true);
+  });
+});
+
+describe("sessionIsBlank — only a thread with no turns anywhere follows the type switch", () => {
+  it("a fresh session is blank", () => {
+    expect(sessionIsBlank({ messages: [] })).toBe(true);
+    expect(sessionIsBlank({})).toBe(true);
+    expect(sessionIsBlank({ messages: [], messageCount: 0 })).toBe(true);
+  });
+  it("a thread with turns loaded is not blank", () => {
+    expect(sessionIsBlank({ messages: [{ role: "user" }] })).toBe(false);
+  });
+  it("a thread adopted from the server, unread (messageCount only), is NOT blank", () => {
+    expect(sessionIsBlank({ messages: [], messageCount: 7 })).toBe(false);
+    expect(sessionIsBlank({ messageCount: 1 })).toBe(false);
   });
 });
