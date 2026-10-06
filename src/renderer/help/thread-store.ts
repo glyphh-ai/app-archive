@@ -33,6 +33,7 @@
 import { harnessRequest, HarnessHttpError } from "./harness-api.js";
 import { threadLocus, healSource } from "./thread-locus.js";
 import { boundMessages, adoptServerMessages } from "./bound-messages.js";
+import { countAfterLoad, needsTranscript, parseTranscript, pushMessages } from "./thread-body.js";
 
 // ── Shapes ────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ interface ThreadMeta {
   id: string; title: string; mode: string; source: unknown;
   createdAt: number; updatedAt: number; messageCount: number;
 }
-interface ThreadFull extends ThreadMeta { messages: unknown[] }
+interface ThreadFull extends ThreadMeta { messages: unknown[]; transcriptUrl?: string | null }
 interface PushBody { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }
 interface PushResult { applied: boolean; thread: ThreadMeta }
 
@@ -468,7 +469,10 @@ async function pushOne(id: string): Promise<boolean> {
     title: c.title,
     mode: modeOf(c),
     source: c.source ?? null,
-    messages: c.messages,
+    // A body this surface has not loaded is not sent: `messages: []` on an
+    // adopted thread read as "now empty" and zeroed it on the server (his
+    // report, 2026-10-06).
+    ...pushMessages(c),
     updatedAt: stampOf(c),
   };
   try {
@@ -577,10 +581,12 @@ export async function ensureMessages(id: string): Promise<boolean> {
   bodyInflight.add(id);
   try {
     const full = await t.get(id);
-    c.messages = boundMessages(full.messages);
+    const url = needsTranscript(full);
+    const whole = url ? await fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`transcript: HTTP ${r.status}`)))).then(parseTranscript).catch(() => null) : null;
+    c.messages = boundMessages(whole && whole.length >= full.messages.length ? whole : full.messages);
     c.title = full.title;
     c.updatedAt = full.updatedAt;
-    c.messageCount = full.messages.length;
+    c.messageCount = countAfterLoad(c.messages.length, full.messageCount);
     snapshot.set(id, projection(c)); // fetched = synced; don't re-push it
     bodyFailedAt.delete(id);
     void cacheSave();
