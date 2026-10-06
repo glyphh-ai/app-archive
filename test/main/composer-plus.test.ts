@@ -52,9 +52,9 @@ describe("the rows, per surface", () => {
 });
 
 describe("where Manage goes", () => {
-  it("desktop: the Settings modal at Skills / Connections / Devices / Memory", () => {
-    expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "settings", sub: "skills" });
-    expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "settings", sub: "connections-cfg" });
+  it("desktop: Skills + Connectors are the Build page's tabs too (his order, 2026-10-07); Devices + Memory stay settings pages", () => {
+    expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "group", group: "build", sub: "skills" });
+    expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "group", group: "build", sub: "connections-cfg" });
     expect(manageTargetOf("desktop", "devices")).toEqual({ kind: "settings", sub: "devices" });
     expect(manageTargetOf("desktop", "memory")).toEqual({ kind: "settings", sub: "memory" });
   });

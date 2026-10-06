@@ -15,7 +15,7 @@ import {
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, WEB_RAIL_LINKS,
   DESKTOP_TOOL_VIEWS, toolViewsHosted, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
-  webFullScreenPanels, webPanelOpensFullScreen, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
+  webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
   WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailWordmark, webCloseAllOpensNew,
   workspaceOpenClosesHosts, RAIL_HEADER_ORDER, webRailHeaderOrder } from "../../src/renderer/help/surface.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
@@ -227,6 +227,18 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {
     for (const k of ["files", "agents", "terminal", "settings", "gmail", "", "preview"]) expect(webPanelOpensFullScreen(k)).toBe(false);
+  });
+  it("the desktop opens Build and Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
+    expect([...GROUP_PAGES]).toEqual(["build", "customize"]);
+    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
+    expect(panelOpensFullScreen("artifacts", false)).toBe(false);
+    expect(panelOpensFullScreen("artifacts", true)).toBe(true);
+    for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
+  });
+  it("every Build / Customize settings row names its page; a plain settings page names none", () => {
+    for (const sub of [...WEB_BUILD_SUBS, "connections-cfg"]) expect(groupOfSub(sub)).toBe("build");
+    for (const sub of WEB_CUSTOMIZE_SUBS) expect(groupOfSub(sub)).toBe("customize");
+    for (const sub of ["general", "appearance", "memory", "devices", "mcp", "remote", "artifacts", "usage", ""]) expect(groupOfSub(sub)).toBeNull();
   });
   it("the header reads '‹ Artifacts' / '‹ Build' / '‹ Customize'", () => {
     expect(webFullScreenTitle("artifacts")).toBe("Artifacts");

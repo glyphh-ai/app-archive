@@ -259,13 +259,14 @@ export function toggleMemory(api: PlusApi, st: MemoryState): "on" | "off" | "nee
 // ── Where "Manage …" goes, per surface ───────────────────────────────────
 export type ManageKind = "skills" | "connectors" | "devices" | "memory";
 export type ManageTarget = { kind: "settings"; sub: string } | { kind: "group"; group: "build"; sub: string };
-/** Skills + Connectors live in the Build group: the desktop's Settings modal
- *  lists them (openSettings(sub)); the web's modal hides the Build group, so
- *  there the rail's full-screen Build page carries the tab. Devices and
- *  Memory are plain settings pages on both. */
-export function manageTargetOf(surface: PlusSurface, kind: ManageKind): ManageTarget {
+/** Skills + Connectors are the Build page's tabs on BOTH surfaces (his order,
+ *  2026-10-07: the desktop renders Build and Customize as pages too, and the
+ *  Settings modal no longer lists them). Devices and Memory are plain
+ *  settings pages on both. `surface` stays in the signature for the rows
+ *  that do differ by host. */
+export function manageTargetOf(_surface: PlusSurface, kind: ManageKind): ManageTarget {
   const sub = kind === "skills" ? "skills" : kind === "connectors" ? "connections-cfg" : kind === "devices" ? "devices" : "memory";
-  if ((kind === "skills" || kind === "connectors") && surface === "web") return { kind: "group", group: "build", sub };
+  if (kind === "skills" || kind === "connectors") return { kind: "group", group: "build", sub };
   return { kind: "settings", sub };
 }
 

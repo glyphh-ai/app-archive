@@ -4,6 +4,7 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
+import { groupOfSub } from "./surface.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
@@ -407,6 +408,11 @@ function arrangeAppSettingsNav(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
+  // THE GROUP PAGES (his order, 2026-10-07): a Build / Customize row is a tab
+  // of its full-screen page on both surfaces, never a page of the modal — a
+  // deep link, the + menu's Manage rows and every older caller land there.
+  const group = sub ? groupOfSub(sub) : null;
+  if (group && sub) { openGroupTab(group, sub); return; }
   // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
   // the SAME settings modal as desktop. The platform page keeps its own
   // settings surface — the two are separate on purpose; never route the app's
@@ -1108,7 +1114,7 @@ function parkSettingsSection(section: string): void {
 // ── Init ─────────────────────────────────────────────────
 
 export function initHelp() {
-  hideDesktopOnlySubs();   // web: the desktop's own settings rows never show
+  hideDesktopOnlySubs();   // both: the group rows leave the modal; web: the desktop's capability rows too
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
   // The workbench bundle can't import help modules — it calls this bridge
