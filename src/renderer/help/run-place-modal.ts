@@ -11,12 +11,19 @@
 import { drillItem } from "./code-source-chip.js";
 import { guardWebviewsForModal } from "./shared.js";
 import { LOCUS_SVG } from "./session-locus.js";
-import { CHECK, runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
+import { CHECK, folderRows, runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
 
 export type { RunPlace, RunPlaceInput } from "./run-place.js";
 
-/** The modal. Resolves to the pick, or null on Cancel / Escape / a click outside. */
-export function chooseRunPlace(i: RunPlaceInput): Promise<RunPlace | null> {
+export interface RunPlaceDoors {
+  /** The machine's own folder picker (the desktop surface); absent on the web. */
+  browse?: () => Promise<string | null>;
+}
+
+/** The modal. Resolves to the pick, or null on Cancel / Escape / a click
+ *  outside. A desktop pick drills into its folders (folderRows) before it
+ *  resolves — the session needs both the machine and the folder. */
+export function chooseRunPlace(i: RunPlaceInput, doors: RunPlaceDoors = {}): Promise<RunPlace | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "confirm-overlay run-place-overlay";
@@ -33,6 +40,27 @@ export function chooseRunPlace(i: RunPlaceInput): Promise<RunPlace | null> {
       resolve(place);
     };
     const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); done(null); } };
+    const title = overlay.querySelector<HTMLElement>("#run-place-title")!;
+    const drillFolders = (machine: { id?: string; name: string; folders?: readonly string[] }): void => {
+      list.textContent = "";
+      title.textContent = `Choose folder — ${machine.name || "this desktop"}`;
+      const rows = folderRows(machine, i.recents ?? []);
+      for (const f of rows) {
+        const row = drillItem(f.label, f.sub, "");
+        row.addEventListener("click", () => done({ kind: "desktop", machine, folder: f.path }));
+        list.appendChild(row);
+      }
+      if (doors.browse) {
+        const browse = drillItem("Browse…", "Pick any folder on this desktop", "");
+        browse.addEventListener("click", () => { void doors.browse!().then((p) => { if (p) done({ kind: "desktop", machine, folder: p }); }); });
+        list.appendChild(browse);
+      } else if (!rows.length) {
+        const note = drillItem("No folder granted", "Grant one in the Glyphh desktop app (Settings → Remote control).", "");
+        note.classList.add("ws-unreachable"); note.disabled = true;
+        list.appendChild(note);
+      }
+      list.querySelector<HTMLButtonElement>(".code-drop-item:not(:disabled)")?.focus();
+    };
     let section: "desktop" | "cloud" | null = null;
     for (const r of runPlaceRows(i)) {
       if (r.section !== section) {
@@ -46,7 +74,7 @@ export function chooseRunPlace(i: RunPlaceInput): Promise<RunPlace | null> {
       const row = drillItem(r.label, r.sub, r.selected ? CHECK : "");
       if (r.selected) row.classList.add("selected");
       if (!r.place) { row.classList.add("ws-unreachable"); row.disabled = true; }
-      else { const place = r.place; row.addEventListener("click", () => done(place)); }
+      else { const place = r.place; row.addEventListener("click", () => (place.kind === "desktop" ? drillFolders(place.machine) : done(place))); }
       list.appendChild(row);
     }
     overlay.querySelector(".run-place-cancel")!.addEventListener("click", () => done(null));

@@ -1956,12 +1956,16 @@ function announceWbLocus(): void {
   const current: RunPlace | null = sourceLocus(src) === "local"
     ? { kind: "desktop", machine: { name: "", ...((src as { machineId?: string }).machineId ? { id: (src as { machineId?: string }).machineId } : {}) } }
     : { kind: "cloud", environmentId: environmentIdOf(src) };
-  return { surface: onWebTarget() ? "web" : "desktop", machines: threadStore.attachedMachines(), environments, current };
+  return { surface: onWebTarget() ? "web" : "desktop", machines: threadStore.attachedMachines(), recents: recentDesktopFolders(), environments, current };
 };
+(window as unknown as { __glyphhRunPlaceBrowse?: () => Promise<string | null> }).__glyphhRunPlaceBrowse = async () =>
+  (await wb()?.pickCwd?.({ nullOnCancel: true })) ?? null;
 (window as unknown as { __glyphhPickRunPlace?: (p: RunPlace) => void }).__glyphhPickRunPlace = (p) => {
   if (p.kind === "cloud") { pickSource(sourceForPicks([], p.environmentId) as Source); return; }
-  if (onWebTarget()) { pickSource({ kind: "local", path: defaultWebFolder({ machines: threadStore.attachedMachines(), recents: recentDesktopFolders() }), ...(p.machine.id ? { machineId: p.machine.id } : {}) }); return; }
-  pickSource({ kind: "local", path: pendingWorkdir || current()?.workdir || "" });
+  // The folder the member picked in the modal; else the web's default on that
+  // machine, else the desktop's own pending folder.
+  if (onWebTarget()) { pickSource({ kind: "local", path: p.folder || defaultWebFolder({ machines: threadStore.attachedMachines(), recents: recentDesktopFolders() }), ...(p.machine.id ? { machineId: p.machine.id } : {}) }); return; }
+  pickSource({ kind: "local", path: p.folder || pendingWorkdir || current()?.workdir || "" });
 };
 // VIEW TOGGLES carry the conversation (his report, 2026-09-11): adopting a
 // CLI session backfills its transcript as the chat history and binds the

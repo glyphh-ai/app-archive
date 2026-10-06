@@ -5,12 +5,14 @@
  * run-place-modal.ts paints these; the tests read them bare.
  */
 
-export type RunPlace = { kind: "desktop"; machine: { id?: string; name: string } } | { kind: "cloud"; environmentId: string };
+export type RunPlace = { kind: "desktop"; machine: { id?: string; name: string }; folder?: string } | { kind: "cloud"; environmentId: string };
 
 export interface RunPlaceInput {
   surface: "web" | "desktop";
-  /** The attached desktops (web); on the desktop the machine is itself. */
-  machines: ReadonlyArray<{ id?: string; name: string }>;
+  /** The attached desktops (web), each with the folders it granted; on the desktop the machine is itself. */
+  machines: ReadonlyArray<{ id?: string; name: string; folders?: readonly string[] }>;
+  /** Desktop folders recent sessions ran in — offered under the grants. */
+  recents?: readonly string[];
   environments: ReadonlyArray<{ id: string; name: string; subline?: string }>;
   /** Where the composer stands now — the checked row. */
   current: RunPlace | null;
@@ -33,6 +35,25 @@ export function runPlaceRows(i: RunPlaceInput): RunPlaceRow[] {
   const envs = [{ id: "default", name: "Default", subline: "" }, ...i.environments.filter((e) => e.id !== "default")];
   for (const e of envs) {
     out.push({ section: "cloud", place: { kind: "cloud", environmentId: e.id }, label: e.name, sub: e.subline ?? "", selected: i.current?.kind === "cloud" && i.current.environmentId === e.id });
+  }
+  return out;
+}
+
+/** THE FOLDER STEP (his order, 2026-10-07: "it doesn't allow the user to then
+ *  also pick the folder"): a desktop picked, its granted folders lead, then
+ *  the recent folders inside a grant, each once. On the desktop itself (no
+ *  grants) the recents stand alone and Browse… opens the machine's picker. */
+export interface FolderRow { path: string; label: string; sub: string }
+const leaf = (p: string): string => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+const inside = (p: string, folders: readonly string[]): boolean => folders.some((f) => p === f || p.startsWith(f.endsWith("/") ? f : `${f}/`));
+export function folderRows(machine: { folders?: readonly string[] }, recents: readonly string[] = []): FolderRow[] {
+  const grants = machine.folders ?? [];
+  const out: FolderRow[] = grants.map((f) => ({ path: f, label: leaf(f), sub: f }));
+  const seen = new Set(grants);
+  for (const r of recents) {
+    if (!r || seen.has(r) || (grants.length && !inside(r, grants))) continue;
+    seen.add(r);
+    out.push({ path: r, label: leaf(r), sub: r });
   }
   return out;
 }
