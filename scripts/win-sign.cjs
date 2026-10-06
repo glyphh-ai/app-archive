@@ -67,6 +67,26 @@ module.exports = async function sign(configuration) {
   }
   console.log(`[win-sign] ${name}: existing signature ${status} — signing`);
 
+  // eSigner is a remote service: its malware-scan and signing endpoints
+  // sometimes answer an HTML error page instead of JSON (the v1.5.3 build:
+  // "Unexpected character (<) at position 0" in getMalwareScanResponse), and
+  // CodeSignTool then exits 0 with no output file. Such an answer is a hiccup,
+  // not a verdict, so each file gets a few attempts with a growing pause
+  // before the build is failed.
+  const attempts = Number(process.env.WIN_SIGN_ATTEMPTS) || 4;
+  for (let attempt = 1; ; attempt++) {
+    const outcome = signOnce(jar, file, name);
+    if (!outcome) return;
+    if (attempt >= attempts) throw new Error(`[win-sign] ${outcome} (${attempts} attempts)`);
+    const pause = 5000 * 2 ** (attempt - 1);
+    console.warn(`[win-sign] ${outcome} — attempt ${attempt} of ${attempts}, retrying in ${pause / 1000}s`);
+    await new Promise((resolve) => setTimeout(resolve, pause));
+  }
+};
+
+/** One CodeSignTool run over the file. Returns undefined when the signed
+ *  file replaced the original, otherwise the reason it did not. */
+function signOnce(jar, file, name) {
   // The jar reads conf/code_sign_tool.properties relative to CODE_SIGN_TOOL_PATH
   // and expects to run from that directory (the layout is <root>/jar/<jar>).
   const root = process.env.CODE_SIGN_TOOL_PATH || path.dirname(path.dirname(jar));
@@ -90,14 +110,15 @@ module.exports = async function sign(configuration) {
       { cwd: root, env: { ...process.env, CODE_SIGN_TOOL_PATH: root }, stdio: "inherit" },
     );
     if (r.error) throw r.error;
-    if (r.status !== 0) throw new Error(`[win-sign] CodeSignTool exited ${r.status} signing ${name}`);
+    if (r.status !== 0) return `CodeSignTool exited ${r.status} signing ${name}`;
     const signed = path.join(outDir, name);
-    if (!fs.existsSync(signed)) throw new Error(`[win-sign] CodeSignTool produced no output for ${name}`);
+    if (!fs.existsSync(signed)) return `CodeSignTool produced no output for ${name}`;
     // copy + unlink, not rename: the temp dir and the build tree can sit on
     // different drives on the hosted runner (EXDEV).
     fs.copyFileSync(signed, file);
     console.log(`[win-sign] signed ${name}`);
+    return undefined;
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });
   }
-};
+}
