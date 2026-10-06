@@ -1,107 +1,41 @@
 /**
  * media-panel.ts — GLYPHH IMAGE / VIDEO / SOUNDS, the desktop transport.
- * Thin IPC over client.media, plus the one desktop-only concern: PLAYBACK.
- * The store presigns a direct URL when it can; when it can't (local dev),
- * the main process downloads the bytes once into a tmp cache and hands the
- * renderer a file:// path — the bearer never reaches the renderer either way.
+ * Thin IPC over the house store (shared/house-store.ts): the libraries live
+ * in the member library, their bytes on R2 (his order, 2026-10-06: cloud is
+ * the one home). The desktop's own part is the two dialogs — Upload picks a
+ * file off this disk, Download writes one to it — and the bearer never
+ * reaches the renderer: a panel plays a presigned URL the store mints.
  */
 
-import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, basename, extname } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 import { dialog, ipcMain } from "electron";
-import * as local from "./media-local.js";
-import type { MediaKind } from "@glyphh/sdk";
+import { houseStore } from "./house-store.js";
+import { mediaMimeOf, type MediaKind } from "../shared/house-store.js";
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-const MIMES: Record<string, string> = {
-  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
-  ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
-  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg",
-  ".txt": "text/plain", ".md": "text/markdown",
-};
-const EXT_BY_MIME: Record<string, string> = Object.fromEntries(Object.entries(MIMES).map(([e, m]) => [m, e]));
-
-export function kindForMime(mime: string): MediaKind {
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("audio/")) return "audio";
-  return "script";
-}
-
-/** Upload a local file into the org library — presigned when possible. */
-export async function uploadMediaFile(path: string, opts: { title?: string; kind?: MediaKind } = {}): Promise<{ id: string; kind: MediaKind; title: string }> {
-  const mime = MIMES[extname(path).toLowerCase()];
-  if (!mime) throw new Error(`unsupported file type "${extname(path)}"`);
-  const bytes = readFileSync(path);
-  const kind = opts.kind ?? kindForMime(mime);
-  if (kind === "script") throw new Error(`unsupported file type "${extname(path)}"`);
-  const done = local.save(kind as local.MediaKind, opts.title ?? basename(path), bytes);
-  return { id: done.id, kind: done.kind as MediaKind, title: done.title };
-}
-
-/** A URL the renderer can play directly: the file itself. No presign, no tmp
- *  cache, no download - the library is on this disk (his ruling, 2026-09-18). */
-export function mediaFileUrl(id: string): string {
-  return local.fileUrl(id);
+/** Upload a file from this disk into its library. */
+export async function uploadMediaFile(path: string, opts: { title?: string; kind?: string } = {}): Promise<{ id: string; kind: MediaKind; title: string }> {
+  const mime = mediaMimeOf(path);
+  if (!mime) throw new Error(`unsupported file type "${path.slice(path.lastIndexOf("."))}"`);
+  const r = await houseStore().mediaAdd(opts.kind, opts.title ? `${opts.title}${path.slice(path.lastIndexOf("."))}` : basename(path), new Uint8Array(readFileSync(path)), mime);
+  if (!r.ok) throw new Error(r.error);
+  return { id: r.id, kind: r.kind, title: r.title };
 }
 
 export function registerMediaPanelIpc(): void {
-  // THE LIBRARY IS ON THIS MACHINE (his ruling, 2026-09-18). These panels are
-  // apps, so their files sit in app-data/<slug>/files like every other app's
-  // data. The old lane asked the server for /api/media, which the fork never
-  // implemented, so every panel opened on "Couldn't load the library".
-  ipcMain.handle("media-list", (_e, kind?: unknown, q?: unknown) => {
-    try {
-      // A kind the library does not have ("avatar", "recording", "voice" are
-      // the panels' legacy sub-kinds) answers EMPTY. It used to fall through to
-      // "every kind", so the Images panel, which asks for image AND avatar, got
-      // the whole library twice and every picture showed up double (his
-      // report, 2026-09-18).
-      const k = kind ? String(kind) : "";
-      if (k && k !== "image" && k !== "audio" && k !== "video") return { ok: true, assets: [] };
-      const only = k ? (k as local.MediaKind) : undefined;
-      return { ok: true, assets: local.list(only, q ? String(q) : undefined) };
-    } catch (err) {
-      return { ok: false, error: errText(err), assets: [] };
-    }
-  });
-  ipcMain.handle("media-url", (_e, id: unknown) => {
-    try {
-      return { ok: true, url: local.fileUrl(String(id)) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
+  const store = () => houseStore();
+  ipcMain.handle("media-list", (_e, kind?: unknown, q?: unknown) => store().mediaList(kind, q));
+  ipcMain.handle("media-url", (_e, id: unknown) => store().mediaUrl(id));
   // First-frame capture support: the raw bytes fetched HERE — Node has no
-  // CORS. The store's presigned URLs carry no CORS headers, so the renderer's
-  // crossOrigin <video> load simply errored and every video card sat on its
-  // placeholder instead of a still (his report, 2026-09-08). The renderer
-  // wraps these bytes in a same-origin Blob and captures cleanly.
-  ipcMain.handle("media-thumb-bytes", (_e, id: unknown) => {
-    const THUMB_BYTES_CAP = 64 * 1024 * 1024; // a thumbnail is not worth a 500MB read
-    try {
-      const asset = local.get(String(id));
-      if (asset.sizeBytes > THUMB_BYTES_CAP) return { ok: false, error: "too large for capture" };
-      return { ok: true, bytes: new Uint8Array(local.bytes(String(id))), mime: asset.mime };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-delete", (_e, id: unknown) => {
-    try {
-      local.remove(String(id));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
+  // CORS. The renderer wraps them in a same-origin Blob and captures cleanly.
+  ipcMain.handle("media-thumb-bytes", (_e, id: unknown) => store().mediaThumbBytes(id));
+  ipcMain.handle("media-delete", (_e, id: unknown) => store().mediaDelete(id));
   // GLYPHH MAKES NO MODEL CALLS (his ruling, 2026-09-18, and the same rule
   // that retired llm.complete and agent.run in the app runtime): the driving
-  // agent generates, and writes what it made into the app's own folder with
-  // media.save. There is no server job to start and none to poll.
+  // agent generates, and files what it made with the app's own save tool.
+  // There is no server job to start and none to poll.
   ipcMain.handle("media-generate", () => ({
     ok: false,
     error: "Ask the agent to make it — it generates and saves into this app's library. Glyphh itself makes no model calls.",
@@ -112,14 +46,12 @@ export function registerMediaPanelIpc(): void {
   }));
   ipcMain.handle("media-save", async (_e, id: unknown) => {
     try {
-      const asset = local.get(String(id));
-      const ext = EXT_BY_MIME[asset.mime] ?? ".bin";
-      const stem = asset.title.replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "media";
-      const picked = await dialog.showSaveDialog({ defaultPath: `${stem}${ext}` });
+      const r = await store().mediaBytes(id);
+      if (!r.ok) return r;
+      const picked = await dialog.showSaveDialog({ defaultPath: r.name });
       if (picked.canceled || !picked.filePath) return { ok: false, error: "cancelled" };
-      const bytes = local.bytes(String(id));
-      writeFileSync(picked.filePath, Buffer.from(bytes));
-      return { ok: true, path: picked.filePath, bytes: bytes.byteLength };
+      writeFileSync(picked.filePath, r.bytes);
+      return { ok: true, path: picked.filePath, bytes: r.bytes.byteLength };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
@@ -134,16 +66,14 @@ export function registerMediaPanelIpc(): void {
       });
       const path = picked.filePaths[0];
       if (picked.canceled || !path) return { ok: false, error: "cancelled" };
-      const r = await uploadMediaFile(path);
-      return { ok: true, ...r };
+      return { ok: true, ...(await uploadMediaFile(path)) };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
   });
   ipcMain.handle("media-upload-file", async (_e, path: unknown, opts: unknown) => {
     try {
-      const r = await uploadMediaFile(String(path), (opts ?? {}) as { title?: string; kind?: MediaKind });
-      return { ok: true, ...r };
+      return { ok: true, ...(await uploadMediaFile(String(path), (opts ?? {}) as { title?: string; kind?: string })) };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }

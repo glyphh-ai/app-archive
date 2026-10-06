@@ -176,7 +176,7 @@ describe('bridge KNOWN wiring', () => {
   it('panelAppsList → memberLibrary.list("tab"), SavedPanelApp defaults', async () => {
     const out = await glyphh.panelAppsList();
     expect(fake.memberLibrary.list).toHaveBeenCalledWith('tab');
-    expect(out[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
+    expect(out.find((r) => r.slug === 'crm')).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });
 
   it('orgModelsList / orgCustomModelsList / orgProvidersList → {ok,data}', async () => {

@@ -1,9 +1,9 @@
 /**
  * design.ts — GLYPHH DESIGN, the desktop transport + the agent's extraction
- * helpers. Design systems live in the LOCAL library (~/.glyphh/office/design
- * via office-store — documents + asset bytes on disk, THE PURGE 2026-09-10);
- * this module is the IPC surface the panel rides plus the two DETERMINISTIC
- * extractors the agent's tools lean on:
+ * helpers. Design systems live in the member library (shared/house-store.ts
+ * — the document as the record, its asset bytes as its files; his order,
+ * 2026-10-06: cloud is the one home); this module is the IPC surface the
+ * panel rides plus the two DETERMINISTIC extractors the agent's tools lean on:
  *
  *   extractSiteDesign(url)  — fetch a page (+ its first stylesheets) and count
  *                             the colors/fonts/radii it actually uses
@@ -14,17 +14,9 @@
 
 import { readFile } from "node:fs/promises";
 import { ipcMain, nativeImage } from "electron";
-import * as store from "./office-store";
-import type { DesignSystem } from "@glyphh/sdk";
+import { houseStore } from "./house-store.js";
 
-export function designFileName(name: unknown): string {
-  const base = String(name ?? "").trim().split(/[\\/]/).pop() ?? "";
-  const stem = base.replace(/\.json$/i, "").replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-").toLowerCase();
-  if (!stem) throw new Error("a design needs a name");
-  return `${stem}.json`;
-}
-
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+export { designFileName } from "../shared/house-store.js";
 
 // ── Site extraction — colors/fonts/radii a page actually uses ────────────────
 
@@ -129,85 +121,17 @@ export async function imagePalette(path: string): Promise<Array<{ hex: string; s
     }));
 }
 
-// ── IPC — the panel's transport ──────────────────────────────────────────────
+// ── IPC — the panel's transport: the store's doors, one each ─────────────────
 
 export function registerDesignIpc(): void {
-  ipcMain.handle("design-list", async () => {
-    try {
-      const designs = (await store.listDesigns()).map((m) => ({
-        file: m.file, title: m.title, size: m.sizeBytes, mtime: Date.parse(m.updatedAt) || 0,
-      }));
-      return { ok: true, designs };
-    } catch (err) {
-      return { ok: false, error: errText(err), designs: [] };
-    }
-  });
-  ipcMain.handle("design-read", async (_e, name: unknown) => {
-    try {
-      const d = await store.readDesign(designFileName(name));
-      return { ok: true, title: d.title, document: d.document };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-write", async (_e, name: unknown, document: unknown) => {
-    try {
-      const meta = await store.writeDesign(designFileName(name), document as DesignSystem);
-      return { ok: true, file: meta.file, title: meta.title };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-delete", async (_e, name: unknown) => {
-    try {
-      await store.deleteDesign(designFileName(name));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-asset-upload", async (_e, name: unknown, input: unknown) => {
-    try {
-      const a = input as { id?: string; kind: "logo" | "icon" | "image"; title: string; contentType: string; dataBase64: string };
-      const file = designFileName(name);
-      const d = await store.readDesign(file);
-      const bytes = Buffer.from(String(a.dataBase64 ?? ""), "base64");
-      const id = (a.id ?? a.title ?? "asset").toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "asset";
-      const entry = { id, kind: a.kind, title: a.title, contentType: a.contentType, sizeBytes: bytes.length };
-      await store.writeDesignAssetBytes(file, id, bytes);
-      const doc = d.document as DesignSystem;
-      doc.assets = [...(doc.assets ?? []).filter((x) => x.id !== id), entry];
-      await store.writeDesign(file, doc);
-      return { ok: true, asset: entry };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
+  const store = () => houseStore();
+  ipcMain.handle("design-list", () => store().designList());
+  ipcMain.handle("design-read", (_e, name: unknown) => store().designRead(name));
+  ipcMain.handle("design-write", (_e, name: unknown, document: unknown) => store().designWrite(name, document));
+  ipcMain.handle("design-delete", (_e, name: unknown) => store().designDelete(name));
+  ipcMain.handle("design-asset-upload", (_e, name: unknown, input: unknown) => store().designAssetUpload(name, input));
   // Asset bytes ride IPC as a data URL — the panel <img> renders it directly;
   // the session bearer never reaches the renderer.
-  ipcMain.handle("design-asset-url", async (_e, name: unknown, assetId: unknown) => {
-    try {
-      const file = designFileName(name);
-      const d = await store.readDesign(file);
-      const entry = (d.document.assets ?? []).find((x) => x.id === String(assetId));
-      if (!entry) throw new Error("asset not found");
-      const bytes = await store.readDesignAssetBytes(file, entry.id);
-      return { ok: true, url: `data:${entry.contentType};base64,${bytes.toString("base64")}` };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-asset-delete", async (_e, name: unknown, assetId: unknown) => {
-    try {
-      const file = designFileName(name);
-      const d = await store.readDesign(file);
-      const doc = d.document as DesignSystem;
-      doc.assets = (doc.assets ?? []).filter((x) => x.id !== String(assetId));
-      await store.writeDesign(file, doc);
-      await store.deleteDesignAssetBytes(file, String(assetId));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
+  ipcMain.handle("design-asset-url", (_e, name: unknown, assetId: unknown) => store().designAssetUrl(name, assetId));
+  ipcMain.handle("design-asset-delete", (_e, name: unknown, assetId: unknown) => store().designAssetDelete(name, assetId));
 }

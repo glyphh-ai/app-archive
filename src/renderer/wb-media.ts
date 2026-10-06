@@ -10,7 +10,6 @@
  */
 
 import { officePager, officePage } from "./wb-office-ui.js";
-import { isNotAttached } from "./help/house-relay.js";
 import { biasThumbCrop } from "./wb-office-ui.js";
 
 
@@ -234,10 +233,7 @@ export function initMedia(host: MediaHost): MediaPanel {
       .filter((x) => x.status === "ready")
       .sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
     if (anyErr && !assets.length) {
-      // No desktop attached on the web: the connect line, bare (his order,
-      // 2026-10-05; help/house-relay.ts) — an empty state, not an error.
-      if (isNotAttached(anyErr)) empty.textContent = anyErr.error;
-      else empty.innerHTML = `Couldn't load the library.<br>${anyErr.error ?? "Unknown error."}`;
+      empty.innerHTML = `Couldn't load the library.<br>${anyErr.error ?? "Unknown error."}`;
       empty.classList.remove("hidden");
       return;
     }

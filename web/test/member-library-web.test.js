@@ -490,12 +490,20 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
   it('a Glyphh tab row lists as an app card; a URL tab does not; its detail and its open answer', async () => {
     const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
     const rows = (await lib.skillsList(['skill', 'app', 'task'])).data;
-    expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);
+    expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);   // the member's own rows only; the built-in house rows live in panelAppsList (2026-10-06)
     expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', author: 'you' });
     expect(rows[0]).not.toHaveProperty('locus');
     expect(rows[0]).not.toHaveProperty('data');
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
     expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: true } });
+  });
+  it("the six house apps are built-in rows of the panel app list on every surface (his order, 2026-10-06): a member's own row by the slug wins, the rest are synthesized", async () => {
+    const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
+    const rows = await lib.panelAppsList();
+    expect(rows.map((r) => r.slug)).toEqual(['audio', 'design', 'drive', 'gmail', 'images', 'slides', 'video']);   // the list sorts by name
+    expect(rows.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { tool: 'gdrive' }, version: '0.1.0' });
+    expect(rows.find((r) => r.slug === 'images')).toMatchObject({ id: 'images', name: 'Images', appArchetype: 'glyphh-app', launchConfig: { tool: 'gimage' }, owned: true });
+    expect(await lib.skillTab('app-tab:images')).toEqual({ ok: true, data: { slug: 'images', name: 'Images', tool: 'gimage', cloud: true } });
   });
   it("a house tab row that arrives WITHOUT its tool still opens its own panel on the web (Images → gimage; his report 2026-10-05: Open did nothing)", async () => {
     const fake = tabs();

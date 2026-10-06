@@ -22,10 +22,6 @@
  *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
  *   layouts.get  {name}        → one workspace by name
  *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
- *   app.call {app, tool, args} → THE HOUSE APPS' READ DOOR (house-doors.ts): the web's own
- *                                Design / Slides / Images / Video / Audio / Drive panels fill
- *                                from this machine's app-data (his order, 2026-10-05). Reads
- *                                only, house apps only; bytes ride as capped data URLs.
  *   apps.install {path | url | bundleBase64} → a .glyphh bundle becomes a CLOUD INSTANCE
  *                                (glyphh-app-host.ts installGlyphhAppBundle): the local MCP's
  *                                app_install, GLYPHH-APP-SPEC §6's deploy. Loopback only — the
@@ -60,8 +56,6 @@ import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, typ
 import { listCliSessions } from "./cli-agents.js";
 import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
-import { houseCall } from "./house-doors.js";
-import { realHouseDeps } from "./house-deps.js";
 import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
@@ -153,10 +147,6 @@ export function installAttachHandlers(): void {
   });
 
   registerRelayHandler("panelApps.list", async () => ({ apps: await fetchOrgApps() }));
-
-  // THE HOUSE APPS' FILES FOR THE WEB'S OWN PANELS (his order, 2026-10-05):
-  // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
-  registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
 
   // INSTALL A BUNDLE IN THE CLOUD — the local MCP's app_install. A .glyphh
   // ({ path } on this machine, { url }, or { bundleBase64 }) is validated here

@@ -7,11 +7,12 @@
  *   kind "doc-html" — the Docs panel sends its RENDERED document HTML; it
  *                     prints on US Letter with 1in margins (real text PDF).
  *
- * Both finish with a save dialog (default: ~/Downloads) and reveal the file
- * in the Finder on success.
+ * Both render HERE (an offscreen window; the web has none) and the PDF lands
+ * in Drive as a `file` record of the member library (his order, 2026-10-06:
+ * cloud is the one home) — the Drive panel opens or downloads it from there.
  */
 
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { promises as fsp } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -20,6 +21,7 @@ import { marked } from "marked";
 import { readGPoint, stripHiddenSlides } from "./gpoints";
 import { gdocFileName } from "./office-docs";
 import { readDoc } from "./office-store";
+import { houseStore } from "./house-store.js";
 
 /** Load HTML into a window via a TEMP FILE, not a data: URL. A base64 data URL
  *  has a hard length ceiling in Chromium, so a big/image-heavy deck (media
@@ -109,15 +111,10 @@ function docPrintDoc(title: string, bodyHtml: string): string {
   </style></head><body>${bodyHtml}</body></html>`;
 }
 
-async function savePdf(pdf: Buffer, suggestedName: string): Promise<{ ok: boolean; path?: string; canceled?: boolean }> {
-  const { canceled, filePath } = await dialog.showSaveDialog({
-    defaultPath: join(app.getPath("downloads"), suggestedName),
-    filters: [{ name: "PDF", extensions: ["pdf"] }],
-  });
-  if (canceled || !filePath) return { ok: true, canceled: true };
-  await fsp.writeFile(filePath, pdf);
-  shell.showItemInFolder(filePath);
-  return { ok: true, path: filePath };
+/** The PDF into Drive: one `file` record under a free name, its bytes the one file. */
+async function savePdf(pdf: Buffer, name: string): Promise<{ ok: boolean; path?: string; error?: string }> {
+  const r = await houseStore().fileAdd(name, new Uint8Array(pdf), "application/pdf");
+  return r.ok ? { ok: true, path: `Drive/${r.id}` } : r;
 }
 
 /**
