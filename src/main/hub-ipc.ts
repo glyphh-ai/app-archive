@@ -17,7 +17,7 @@ import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills, setInstallForgetter, removeSkillFiles } from "./skills-fs.js";
 import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
-import { ensureInstanceTab, installFromHub } from "./app-instances.js";
+import { ensureInstanceTab, installFromHub, listInstances } from "./app-instances.js";
 import { instanceCardId } from "../shared/app-instances.js";
 import { houseViewOfApp } from "../shared/house-store.js";
 
@@ -82,6 +82,8 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   // row STAYS and says it is already here.
   const mine = new Set(listSkills(["skill", "app", "task", "plugin"])
     .map((sk) => `${kindOfId(sk.id)}:${sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase()}`));
+  // AN APP IS INSTALLED WHEN THE MEMBER HAS AN INSTANCE OF IT (his report, 2026-10-07).
+  if (kinds.includes("app")) for (const i of await listInstances().catch(() => [])) mine.add(`app:${i.slug.toLowerCase()}`);
   const have = (kind: Kind, slug: string): boolean => mine.has(`${kind}:${(slug || "").toLowerCase()}`);
   const rows: DiscoverRow[] = [];
   for (const [kind, org] of orgLists) {

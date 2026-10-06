@@ -1044,7 +1044,6 @@ function initComposerControls(): void {
   // the ▮▮▮ Stop pill ends hands-free listening with the text left in the box.
   el("code-voice-cancel")?.addEventListener("click", (e) => { e.stopPropagation(); cancelRecording(); });
   el("code-voice-accept")?.addEventListener("click", (e) => { e.stopPropagation(); acceptRecording(); });
-  el("code-voice-free-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopHandsFree(); });
   onVoiceState(() => paintComposerSlot());
   paintComposerSlot();
   // THE USAGE RING's popover (Code only — the stylesheet hides the ring in Work).

@@ -160,7 +160,10 @@ describe("releases on the summary", () => {
 describe("the Apps-page card and the tool rows", () => {
   it("a card stands for the instance, with no folder", () => {
     const card = instanceCardOf(ORG, "2026-10-04T00:00:00.000Z");
-    expect(card).toMatchObject({ id: "app-instance:expense-desk", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "your organization" });
+    expect(card).toMatchObject({ id: "app-instance:expense-desk", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "your organization", tool: null });
+    // A house app's card is Glyphh's and wears its panel's mark; the manifest's description rides (his report, 2026-10-07).
+    const house = instanceCardOf({ ...ORG, slug: "design", kind: "personal", manifest: { ...ORG.manifest, name: "Design", description: "The member's design systems" } });
+    expect(house).toMatchObject({ author: "Glyphh", tool: "gdesign", description: "The member's design systems", name: "Design" });
     expect(card.instance.tools).toEqual(["list_expenses"]);
     expect(card.instance.release).toBeNull();
     expect(isInstanceCardId(card.id)).toBe(true);
