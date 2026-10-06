@@ -334,6 +334,11 @@ describe('Discover on web — the same catalog reads as hub-ipc', () => {
     // A house app's card wears its own panel's mark; any other app none (his report, 2026-10-07: generic icons on Discover).
     expect(withApps.find((d) => d.ref === 'glyphh:pub-6')).toMatchObject({ slug: 'images', tool: 'gimage' });
     expect(withApps.find((d) => d.ref === 'glyphh:pub-4')).toMatchObject({ slug: 'crm', tool: null });
+    // An instance of the slug = installed (his report, 2026-10-07: Discover "has no idea it is already installed").
+    const withInst = hubLib(fakeLibrary(), { ...hubRoutes(), 'GET /api/app-instances': [{ key: 'images~u1', slug: 'images', kind: 'personal', status: 'ready', manifest: { name: 'Images' } }] });
+    const rows2 = (await withInst.lib.skillsDiscover(['skill', 'app'])).data;
+    expect(rows2.find((d) => d.ref === 'glyphh:pub-6')?.installed).toBe(true);
+    expect(rows2.find((d) => d.ref === 'glyphh:pub-4')?.installed).toBe(false);
     // No row carries a word on where its data lives: an app is a cloud instance.
     expect(withApps.every((d) => !('data' in d))).toBe(true);
   });

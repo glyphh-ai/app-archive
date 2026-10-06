@@ -250,7 +250,8 @@ export interface InstanceCard {
   fileCount: number;
   updatedAt: string;
   icon: null;
-  tool: null;
+  /** A house app's panel (gimage, gdrive, …): the card's mark. */
+  tool: string | null;
   /** Not a folder: the instance it stands for; `release` = the pinned n. */
   instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[]; release: number | null };
 }
@@ -269,13 +270,16 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     type: "app",
     name: String(inst.manifest?.name || inst.slug),
     description: String(inst.manifest?.description ?? ""),
-    author: inst.kind === "org" ? "your organization" : "you",
+    // A house app is Glyphh's (his report, 2026-10-07: "by you" on Design); an
+    // org instance the org's; a member's own install theirs.
+    author: houseViewOfApp(inst.slug) ? "Glyphh" : inst.kind === "org" ? "your organization" : "you",
     enabled: inst.status !== "stopped" && inst.status !== "error",
     dir: "",
     fileCount: 0,
     updatedAt: nowIso,
     icon: null,
-    tool: null,
+    // A house app's card wears its panel's mark, as every other door does.
+    tool: houseViewOfApp(inst.slug),
     instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools, release: releaseOf(inst) },
   };
 }

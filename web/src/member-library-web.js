@@ -543,10 +543,11 @@ export function buildMemberLibrary(client, deps = {}) {
   const skillsDiscover = async (kind) => {
     try {
       const kinds = kindsOf(kind);
-      const [orgLists, pub, mine] = await Promise.all([
+      const [orgLists, pub, mine, instances] = await Promise.all([
         Promise.all(kinds.map(async (k) => [k, await orgList(k)])),
         pubList(),
         mineRows(),
+        kinds.includes('app') ? appInstances.listInstances() : Promise.resolve([]),
       ]);
       // ALREADY YOURS IS NOT THE SAME AS ADDABLE (his report, 2026-09-18): the
       // library row is the honest answer, the hub's `installed` only counts installs.
@@ -554,6 +555,9 @@ export function buildMemberLibrary(client, deps = {}) {
       // plugin read "Added" that was nowhere in his plugins — the hub's flag was
       // another device's folder install from before plugins were a library kind).
       const have = new Set(mine.map((m) => `${m.kind}:${m.id.toLowerCase()}`));
+      // AN APP IS INSTALLED WHEN THE MEMBER HAS AN INSTANCE OF IT (his report,
+      // 2026-10-07: Discover "has no idea it is already installed").
+      for (const i of instances) have.add(`app:${String(i.slug || '').toLowerCase()}`);
       const has = (k, slug) => have.has(`${k}:${String(slug || '').toLowerCase()}`);
       const rows = [];
       for (const [k, org] of orgLists) {

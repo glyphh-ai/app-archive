@@ -795,6 +795,8 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
   const r = await api().skillInstall(d.ref, d.type ?? cfg.kind) as Env<{ id: string }>;
   if (!r.ok) { btn.disabled = false; btn.textContent = btn.classList.contains("skill-add-wide") ? "Add" : "+"; fail(r.error || "Install failed."); return; }
   d.installed = true;
+  // THE WALL REPAINTS AT ONCE (his report, 2026-10-07: the tile took a while to show up).
+  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
   const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   const installed = (list.ok ? list.data ?? [] : []).find((s) => s.name === d.name || s.id.endsWith(`:${d.slug ?? ""}`));
@@ -1388,7 +1390,10 @@ async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<s
   const host = el("skill-tools-list"); const count = el("skill-tool-count");
   if (!host) return;
   let tools: Array<{ name: string; description?: string }> = [];
-  try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; }
+  // AN INSTANCE'S TOOLS ARE ITS MANIFEST'S (his report, 2026-10-07: "Tools · 0"
+  // on an installed app): the card carries them; there is no folder to read.
+  if (s.instance) tools = s.instance.tools.map((name) => ({ name }));
+  else { try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; } }
   if (count) count.textContent = `· ${tools.length}`;
   if (!tools.length) { host.innerHTML = `<div class="crud-empty">This app exposes no tools.</div>`; return; }
   const slug = s.id.replace(/^[a-z]+:/, "");
@@ -1457,7 +1462,8 @@ async function openDetail(id: string): Promise<void> {
   void paintExtras(s, null);
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
-  (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
+  // An installed app lives in the cloud, never "on this machine" (his report, 2026-10-07).
+  (el("skill-author-meta") as HTMLElement).textContent = s.instance ? "In the cloud" : local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   paintSource(s.id);
   viewedVersion = null;
   shareState = { head: null, pending: null, declined: null };
