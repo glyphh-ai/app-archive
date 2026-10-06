@@ -11,10 +11,9 @@
  * (layoutsList). Each door is probed with hostHas: a surface without one
  * reads an empty.
  *
- * THE DOORS: a house row opens its own work panel (__wbOpenTool); a cloud
- * instance opens as a panel (__wbOpenApp); a row living on an attached
- * desktop, asked from the web, opens THERE (desktopPanelOpen → `panels.open
- * {app}`) and the web toasts "Opened on <machine>". A CLI row opens on the
+ * THE DOORS: a house row opens its own work panel (__wbOpenTool); every
+ * other installed app opens as a panel on THIS surface (__wbOpenApp) —
+ * nothing opens on a desktop from the web (his order, 2026-10-06). A CLI row opens on the
  * session's folder through the workbench's door (__wbOpenAgentCli — the
  * attached desktop over remote control, or the cloud worker's pty); a
  * desktop CLI session under it resumes on the desktop (the rail's own open).
@@ -29,13 +28,11 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { toolViewIcon } from "./layouts.js";
 import { toast } from "./toast.js";
 import {
-  agentMenuModel, appRowOpen, openedOnLine, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
+  agentMenuModel, appRowOpen, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
   type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
 
 interface MenuApi {
   attachStatus?: () => Promise<{ attached: boolean; machines: MenuMachine[] }>;
-  desktopAppsList?: () => Promise<{ ok: boolean; apps: MenuAppRow[] }>;
-  desktopPanelOpen?: (p: { app: string; machineId?: string }) => Promise<{ ok: boolean; name?: string; error?: string }>;
   cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
   layoutsList?: () => Promise<Array<{ name?: string }>>;
 }
@@ -82,14 +79,13 @@ const IC = {
 const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
 /** The last read (machines, apps, CLIs, sessions, workspaces) — painted at once on the next open. */
-type SurfaceRead = { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
+type SurfaceRead = { machines: MenuMachine[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
 let lastRead: SurfaceRead | null = null;
 let clisCache: MenuCliRow[] = [];
 
 /** THE INSTALLED APPS (his order, 2026-10-05): panelAppsList — the server's
- *  tab rows, every cloud instance, an attached desktop's rows behind —
- *  mapped to menu rows. A row the desktop did not report is a CLOUD one and
- *  opens as a panel on either surface. */
+ *  tab rows and every instance, the one list — mapped to menu rows. Every
+ *  row is the cloud's and opens as a panel on this surface. */
 interface InstalledAppLike { slug?: string; id?: string; name?: string; kind?: string; appArchetype?: string; iconDataUrl?: string | null; icon?: string | null; launchConfig?: { tool?: string; instance?: string } | null; config?: { tool?: string; instance?: string } | null; machineId?: string; machineName?: string }
 export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSlugs: ReadonlySet<string>, machine: MenuMachine | null): MenuAppRow[] {
   const out: MenuAppRow[] = [];
@@ -115,9 +111,8 @@ export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSl
 /** The reads, in parallel, on both surfaces; a door the host lacks reads an empty. */
 async function readSurface(): Promise<SurfaceRead> {
   const a = api();
-  const [status, apps, installed, clis, sessions, layouts] = await Promise.all([
+  const [status, installed, clis, sessions, layouts] = await Promise.all([
     hostHas("attachStatus") ? a.attachStatus!().catch(() => null) : Promise.resolve(null),
-    hostHas("desktopAppsList") ? a.desktopAppsList!().catch(() => null) : Promise.resolve(null),
     hostHas("panelAppsList") ? (a as unknown as { panelAppsList?: () => Promise<InstalledAppLike[]> }).panelAppsList!().catch(() => null) : Promise.resolve(null),
     hostHas("cliAgentsList") ? a.cliAgentsList!().catch(() => null) : Promise.resolve(null),
     (shell().__glyphhCliSessions?.() ?? Promise.resolve([] as RailSessionLike[])).catch(() => [] as RailSessionLike[]),
@@ -126,10 +121,8 @@ async function readSurface(): Promise<SurfaceRead> {
   ]);
   if (clis?.ok && clis.agents.length) clisCache = clis.agents.map((c) => ({ id: c.id, name: c.name }));
   const machines = status?.machines ?? [];
-  const deskRows = apps?.ok ? apps.apps : [];
-  const deskSlugs = new Set(deskRows.map((r) => r.slug.toLowerCase()));
   const workspaces = (Array.isArray(layouts) ? layouts : []).map((l) => ({ name: String(l?.name ?? "") }));
-  return { machines, apps: deskRows, installed: installedRowsOf(Array.isArray(installed) ? installed : [], deskSlugs, machines[0] ?? null), sessions, workspaces };
+  return { machines, installed: installedRowsOf(Array.isArray(installed) ? installed : [], new Set(), machines[0] ?? null), sessions, workspaces };
 }
 
 function modelFor(doors: AgentMenuDoors, web: SurfaceRead | null): AgentMenu {
@@ -139,7 +132,6 @@ function modelFor(doors: AgentMenuDoors, web: SurfaceRead | null): AgentMenu {
     mode: doors.mode(),
     session: doors.session(),
     machines: web?.machines ?? [],
-    apps: web?.apps ?? [],
     installed: web?.installed ?? [],
     clis: clisCache,
     cliSessions: web?.sessions ?? [],
@@ -241,15 +233,11 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
       for (const a of s.rows) {
         const b = under(row(appIcon(a), a.name, "wam-app wam-sub"), open);
         const where = appRowOpen(a, m.surface);
-        b.title = where.open === "house-panel"
-          ? `Open ${a.name}`
-          : where.open === "panel" ? `Open ${a.name} — installed in the cloud`
-          : `Open ${a.name} on ${a.machineName || "your desktop"}`;
+        b.title = where.open === "house-panel" ? `Open ${a.name}` : `Open ${a.name} — installed in the cloud`;
         b.addEventListener("click", () => {
           close();
           if (where.open === "house-panel") { shell().__wbOpenTool?.(where.view); return; }
-          if (where.open === "panel") { (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true }); return; }
-          void openOnDesktop(a);
+          (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true });
         });
         menu.appendChild(b);
       }
@@ -334,32 +322,12 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
   });
 }
 
-/** panels.open on the desktop; the web says where it landed. */
-async function openOnDesktop(a: MenuAppRow): Promise<void> {
-  const open = api().desktopPanelOpen;
-  if (!hostHas("desktopPanelOpen") || !open) { toast("Connect your desktop to open apps", { kind: "error" }); return; }
-  const t = toast(`Opening ${a.name} on ${a.machineName || "your desktop"}…`);
-  const r = await open({ app: a.slug, ...(a.machineId ? { machineId: a.machineId } : {}) }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-  if (r?.ok) t.update(openedOnLine(a.machineName), { kind: "ok" });
-  else t.update(`${a.name} did not open${r?.error ? `: ${r.error}` : ""}`, { kind: "error" });
-}
-
 let seq = 0;
 /** Wire the ⋮: a click toggles the menu, painted from what is known at
  *  once; the fresh read repaints it as soon as it lands. */
 export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: AgentMenuDoors): void {
   const web = onWeb();
   menu.classList.add("agent-menu-folds");   // the sizing of a menu with folds (styles.css)
-  if (web) {
-    // The workbench's app doors (ctl.openApp / __wbOpenApp — an agent's
-    // panels.open tool, a .dip, appLaunch) land here on the web: the app
-    // opens on the attached desktop, by slug, on the first machine that has it.
-    (window as unknown as { __glyphhOpenAppOnDesktop?: (a: { slug: string; name: string }) => void }).__glyphhOpenAppOnDesktop = (a) => {
-      const known = lastRead?.apps.find((r) => r.slug.toLowerCase() === a.slug.toLowerCase());
-      const machine = lastRead?.machines[0];
-      void openOnDesktop(known ?? { slug: a.slug, name: a.name || a.slug, machineId: machine?.id ?? "", machineName: machine?.name ?? "" });
-    };
-  }
   // THE FOLDS: fresh on every open — collapsed (his order, 2026-10-05).
   let folds: FoldState = menuFoldState();
   const refresh = async (): Promise<void> => {

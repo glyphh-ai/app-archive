@@ -91,11 +91,13 @@ describe('Settings → Apps on the web', () => {
 });
 
 describe('the member library folds instances in', () => {
-  it('panelAppsList = the server\'s tabs + every instance no tab names (+ the desktops behind)', async () => {
+  it('panelAppsList = the server\'s tabs + every instance no tab names — the one list; a desktop\'s rows never join (his order, 2026-10-06)', async () => {
     const client = fakeClient();
-    const lib = buildMemberLibrary(client, { document: fakeDoc(), desktopRead: async () => [{ id: 'local', slug: 'local-only', name: 'Local', appArchetype: 'glyphh-app', execPath: '/x/index.html' }] });
+    const desktopRead = vi.fn(async () => [{ id: 'local', slug: 'local-only', name: 'Local', appArchetype: 'glyphh-app', execPath: '/x/index.html' }]);
+    const lib = buildMemberLibrary(client, { document: fakeDoc(), desktopRead });
     const rows = await lib.panelAppsList();
-    expect(rows.map((r) => r.slug).sort()).toEqual(['crm', 'expense-desk', 'local-only', 'notes']);
+    expect(desktopRead).not.toHaveBeenCalled();
+    expect(rows.map((r) => r.slug).sort()).toEqual(['crm', 'expense-desk', 'notes']);
     expect(rows.find((r) => r.slug === 'expense-desk').launchConfig).toMatchObject({ instance: 'expense-desk', instanceStatus: 'ready' });
     expect(rows.find((r) => r.slug === 'expense-desk').appArchetype).toBe('glyphh-app');
   });

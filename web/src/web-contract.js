@@ -39,8 +39,6 @@ import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
 import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
 import { webIconProxyPath } from '../webicon.mjs';
-import { iconForRow } from './web-icons.js';
-import { appRowKind } from '../../src/shared/member-library';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
 // (cloud pod vs attached desktop) without touching the renderer (wb-pod.js).
@@ -48,6 +46,7 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 // THE MEMBER LIBRARY (his rule, 2026-10-04: database-as-truth): workspaces,
 // tabs, skills, agents and tasks read the server FIRST and write to it; the
 // desktop pulls what the web wrote on its next sync (member-library-web.js).
+import { iconForRow } from './web-icons.js';
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 // THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
 import { createHouseStoreWeb } from './house-store-web.js';
@@ -166,55 +165,11 @@ export function buildContract(client, deps) {
     catch (err) { return libError(err); }
   };
 
-  /** THE ATTACHED DESKTOPS' answer to one read-only relay method — every
-   *  machine the member has remote control on answers (desktop-sessions.ts
-   *  reads the chats the same way); `field` names the list in a reply. No
-   *  attach client, nothing attached, a machine that fails to answer → `[]`,
-   *  never a throw, so the SDK read beside it still lands. */
-  const desktopRead = async (method, field) => {
-    const attach = client.attach;
-    if (!attach || typeof attach.status !== 'function') return [];
-    try {
-      const st = await attach.status();
-      const machines = Array.isArray(st?.machines) ? st.machines : [];
-      const lists = await Promise.all(machines.map((m) =>
-        attach.dispatch(method, {}, { machineId: m.id })
-          .then((r) => (Array.isArray(r?.[field]) ? r[field] : []))
-          .catch(() => [])));
-      return lists.flat();
-    } catch { return []; }
-  };
-
-  /** One menu row off a desktop's `panelApps.list` reply: the apps a panel
-   *  can open, each with its KIND (shared/member-library.ts appRowKind:
-   *  "glyphh" = an installed Glyphh app bundle, "web" = a URL tab, "native");
-   *  the system / navigation rows drop here. The agent menu lists ONLY the
-   *  "glyphh" rows (his review, 2026-10-05; help/agent-menu.ts glyphhAppsOnly).
-   *  `tool` is a house app's built-in panel (the tab's launchConfig.tool —
-   *  gdesign, gimage, …): the row then opens the web's own panel, filled over
-   *  the relay (his order, 2026-10-05; help/agent-menu.ts appRowOpen). */
-  const desktopAppRow = (a, m) => {
-    const kind = appRowKind(a);
-    if (!kind) return null;
-    const slug = String(a.slug || a.id || '').trim();
-    if (!slug) return null;
-    const tool = a.launchConfig && typeof a.launchConfig.tool === 'string' ? a.launchConfig.tool : null;
-    return {
-      slug, name: String(a.name || slug), kind,
-      icon: iconForRow(a) || (typeof a.iconUrl === 'string' && a.iconUrl ? a.iconUrl : null),
-      ...(tool ? { tool } : {}),
-      machineId: String(m?.id || ''), machineName: String(m?.name || m?.app || ''),
-    };
-  };
-
-  // THE MEMBER LIBRARY — THE SERVER FIRST (his rule, 2026-10-04: database-
-  // as-truth). A workspace or tab the desktop wrote is on the server from its
-  // next sync; a web-only member who never installed the desktop has their
-  // library there from day one. The app rows an attached desktop still holds
-  // (panelApps.list over the relay) fill in behind the server's — one row per
-  // slug, the server winning a tie. WORKSPACES are the member library's rows
-  // alone — the one list on every surface (his order, 2026-10-06).
-  const library = buildMemberLibrary(client, { desktopRead, apiUrl });
+  // THE MEMBER LIBRARY IS THE ONE LIST (his order, 2026-10-06): every record
+  // is on the server; a desktop syncs its rows there and the web reads them
+  // there. Nothing is read off a desktop over the relay — the relay drives a
+  // session on a desktop, it carries no data.
+  const library = buildMemberLibrary(client, { apiUrl });
   const { layoutsList, panelAppsList } = library;
   const house = createHouseStoreWeb({ client, apiUrl });
 
@@ -1020,18 +975,10 @@ export function buildContract(client, deps) {
     // signs in on its own in the worker. `missing` is never reported here (only
     // the worker knows what it has installed).
     cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
-    // THE DESKTOP'S CLI SESSIONS (his report, 2026-10-04: the web rail showed
-    // only the Glyphh threads): the vendor CLIs' own stores live on the
-    // attached desktop, read over the relay (`cliSessions.list`, attach-
-    // handlers.ts) — the rows the desktop rail draws, with the `>_` + vendor
-    // mark, in preload's cliSessionsList shape. No desktop → an empty list.
-    cliSessionsList: async () => ({ ok: true, sessions: await desktopRead('cliSessions.list', 'sessions') }),
-
-    // ── THE WEB CUT (his order, 2026-10-05): the agent window's ⋮ menu reaches
-    // the ATTACHED DESKTOP — is one there, what it has installed, and an open
-    // ON it. The web shows nothing of the app itself: the desktop paints the
-    // panel and the web says "Opened on <machine>". No attach client, nothing
-    // attached, a machine that fails to answer → honest empties, never a throw.
+    // ── Is a desktop attached, and which (attach.status, the server's own
+    // answer). The one thing the web asks about a desktop: a Code session on a
+    // desktop folder runs there over the relay. No attach client, nothing
+    // attached, a dead answer → honest empties, never a throw.
     attachStatus: async () => {
       const attach = client.attach;
       if (!attach || typeof attach.status !== 'function') return { attached: false, machines: [] };
@@ -1043,36 +990,6 @@ export function buildContract(client, deps) {
         return { attached: !!st?.attached && machines.length > 0, ...(typeof st?.allowed === 'boolean' ? { allowed: st.allowed } : {}), machines };
       } catch { return { attached: false, machines: [] }; }
     },
-    // Each attached desktop's installed apps (`panelApps.list` over the relay —
-    // attach-handlers.ts), trimmed to what a menu row needs and tagged with the
-    // machine that holds it; the art is the row's own bytes, the marketplace
-    // icon, else its favicon through our origin (web-icons.js iconForRow).
-    desktopAppsList: async () => {
-      const attach = client.attach;
-      if (!attach || typeof attach.status !== 'function') return { ok: true, apps: [] };
-      try {
-        const st = await attach.status();
-        const machines = Array.isArray(st?.machines) ? st.machines : [];
-        const lists = await Promise.all(machines.map((m) =>
-          attach.dispatch('panelApps.list', {}, { machineId: m.id })
-            .then((r) => (Array.isArray(r?.apps) ? r.apps : []).map((a) => desktopAppRow(a, m)))
-            .catch(() => [])));
-        return { ok: true, apps: lists.flat().filter((a) => !!a) };
-      } catch (err) { return { ok: false, error: err?.message || String(err), apps: [] }; }
-    },
-    // Open one app ON the desktop (`panels.open {app}` — relay-handlers.ts
-    // reports the open only once the panel is live there).
-    desktopPanelOpen: async ({ app, machineId } = {}) => {
-      const attach = client.attach;
-      if (!attach || typeof attach.dispatch !== 'function') return { ok: false, error: 'no desktop attached' };
-      const slug = String(app || '').trim();
-      if (!slug) return { ok: false, error: 'desktopPanelOpen requires { app }' };
-      try {
-        const r = await attach.dispatch('panels.open', { app: slug }, machineId ? { machineId: String(machineId) } : undefined);
-        return { ok: true, app: String(r?.app || slug), name: String(r?.name || slug) };
-      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-
     // ── THE CLOUD SESSION'S CHIPS (his report, 2026-10-05: "how does the user
     // pick a new cloud env or connect github?") — the SDK's `git` and
     // `environments` resources for help/cloud-chips.ts, the same calls the

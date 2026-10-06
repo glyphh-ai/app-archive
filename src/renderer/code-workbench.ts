@@ -7416,11 +7416,10 @@ async function init(): Promise<void> {
         // entries can never disagree.
         if (key === "glyphh-home") { activateGlyphh(); return; }
         // On the web a GLYPHH APP is a cloud instance and a panel here — its
-        // UI through the instance proxy (mountGlyphhAppWebView), no desktop
-        // needed (his order, 2026-10-06); anything else (a tab row, a native
-        // app) is the desktop's — never on the web's wall (help/surface.ts
-        // surfaceHostsTile) — and that door says so.
-        if (IS_WEB_TARGET && !app.glyphh) { openAppOnDesktopWeb(app); return; }
+        // UI through the instance proxy (mountGlyphhAppWebView); a URL tab
+        // opens in a browser tab. Nothing opens on a desktop from the web
+        // (his order, 2026-10-06: the relay drives a session, nothing else).
+        if (IS_WEB_TARGET && !app.glyphh) { openUrlTabWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -7979,12 +7978,12 @@ async function init(): Promise<void> {
     return !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
   }
 
-  /** WEB: an app opens on the attached desktop (web-agent-menu-ui.ts owns the
-   *  relay call + toast); without that door the request is named, never lost. */
-  function openAppOnDesktopWeb(app: { slug?: string; name?: string }): void {
-    const open = (window as unknown as { __glyphhOpenAppOnDesktop?: (a: { slug: string; name: string }) => void }).__glyphhOpenAppOnDesktop;
-    if (!open) { console.warn("[web-cut] no desktop door for app open:", app.slug || app.name || ""); return; }
-    open({ slug: String(app.slug || ""), name: String(app.name || app.slug || "") });
+  /** WEB: a URL tab opens in a browser tab; a row with no URL has nowhere
+   *  to open here and says so. */
+  function openUrlTabWeb(app: { slug?: string; name?: string; url?: string; prodUrl?: string }): void {
+    const url = String(app.url || app.prodUrl || "");
+    if (!/^https?:\/\//i.test(url)) { console.warn("[web] no URL to open for app:", app.slug || app.name || ""); return; }
+    try { window.open(url, "_blank", "noopener"); } catch { /* popup blocked */ }
   }
 
   /**
@@ -10939,7 +10938,7 @@ async function init(): Promise<void> {
     __wbToggleAppSwitcher?: () => void;
     __wbOpenSection?: (section: string) => void;
   };
-  wbApp.__wbOpenApp = (app, _newPanel) => { if (IS_WEB_TARGET) openAppOnDesktopWeb(app); else openAppCard(app); };
+  wbApp.__wbOpenApp = (app, _newPanel) => { if (IS_WEB_TARGET && !app.glyphh) openUrlTabWeb(app); else openAppCard(app); };
   // The agent dock changes how much width the rails get, but the workbench owns
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };

@@ -32,7 +32,7 @@
 import {
   buildScheduleData, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, buildAgentRow, buildTabRow, dripId, dripRecordOf,
   hubPayloadFiles, isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
-  layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId, workspaceSurfaceOf,
+  layoutRowOf, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId, workspaceSurfaceOf,
 } from '../../src/shared/member-library';
 import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
 import { HOUSE_VIEW_OF_APP } from '../../src/renderer/help/house-relay.ts';
@@ -69,11 +69,10 @@ function bytesOf(rel, text) {
 
 /**
  * @param {object} client the SDK client (client.memberLibrary)
- * @param {object} deps  { desktopRead(method, field) → rows[] from the attached desktops; fetchImpl }
+ * @param {object} deps  { fetchImpl }
  */
 export function buildMemberLibrary(client, deps = {}) {
   const lib = () => client.memberLibrary;
-  const desktopRead = deps.desktopRead ?? (async () => []);
   const fetchImpl = deps.fetchImpl ?? ((u, i) => fetch(u, i));
   // THE BYTES GO THROUGH THE SERVER (his report, 2026-10-05: "Failed to fetch"
   // installing a plugin — a browser cannot reach the presigned R2 URLs
@@ -150,12 +149,12 @@ export function buildMemberLibrary(client, deps = {}) {
   // like any instance — never a synthesized row. Their tab's `tool` names the
   // built-in panel (shared/app-instances.ts), which is where Open lands.
   const panelAppsList = async () => {
-    const [srv, desk, instances] = await Promise.all([listRows('tab'), desktopRead('panelApps.list', 'apps'), appInstances.listInstances()]);
+    const [srv, instances] = await Promise.all([listRows('tab'), appInstances.listInstances()]);
     const tabs = srv.filter((r) => isTabRow(r.data)).map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
-    // THE LIST = INSTANCES: the server's tabs, every instance no tab names yet
-    // — then the attached desktops' rows behind.
-    const server = mergeAppRows(instances, tabs);
-    return mergeServerFirst(server, desk ?? [], (a) => a.slug || a.id);
+    // THE ONE LIST (his order, 2026-10-06): the server's tabs and every
+    // instance no tab names yet. The Echo, the Apps page and the ⋮ menu all
+    // read this; nothing from a desktop joins it.
+    return mergeAppRows(instances, tabs);
   };
   /** A Glyphh-app panel on the web: the instance's UI through this origin's proxy. */
   const glyphhAppPreviewOpen = async (slug) => {
