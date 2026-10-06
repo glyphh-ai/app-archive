@@ -1,10 +1,10 @@
 /**
- * run-place-modal.test.ts — where a CLI opened from the Echo runs (his order,
+ * run-place.test.ts — where a CLI opened from the Echo runs (his order,
  * 2026-10-07): the desktops first, then Default and the member's environments,
  * the composer's current place checked.
  */
 import { describe, expect, it } from "vitest";
-import { runPlaceRows } from "../../src/renderer/help/run-place-modal.js";
+import { runPlaceRows } from "../../src/renderer/help/run-place.js";
 
 describe("runPlaceRows", () => {
   it("web: the attached desktops, then Default and the member's environments; the current place is checked", () => {
