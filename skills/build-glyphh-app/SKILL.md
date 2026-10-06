@@ -1,153 +1,181 @@
 ---
 name: build-glyphh-app
-description: Author a Glyphh app — a portable .glyphh bundle with a UI window, an optional headless worker (per-app SQLite, cron schedules, notifications), and/or MCP tools that surface on the user's Glyphh relay so any LLM can orchestrate them. Use when a developer or user wants to build, package, or deploy a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh"), or to expose a machine capability as an MCP tool for the user's Glyphh.
+description: Author a Glyphh app, a Next.js static-export project with a manifest, a server-side worker (Postgres, pgvector, Neo4j, connectors, cron, notifications) and tools that land in the agent's toolbox, then deploy it as a versioned release with app_deploy. Use when a developer or user wants to build, change, deploy or roll back a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh").
 ---
 
 # Build a Glyphh App
 
-A **Glyphh app** is a `.glyphh` bundle (a zip: `manifest.json` + `index.html` +
-optional `worker.js` + assets) that installs like any other app AND can expose
-**MCP tools** the user's LLM tools (Claude Desktop, Cowork, Cursor) discover and
-call through the Glyphh relay. Full contract: `docs/GLYPHH-APP-SPEC.md` (v2).
+A **Glyphh app** is a Next.js project (static export) plus `manifest.json` and
+an optional `worker.js`. It is built into a bundle (`manifest.json` + `ui/` +
+`worker.js`), deployed as a **release** to the Glyphh app server, rendered as a
+panel on the web and the desktop, and its **tools** show up in
+`app_list_tools` / `app_call_tool` for the agent. The authoritative contract is
+the SDK's `GLYPHH_APP_SPEC` (`@glyphh/sdk`); the validators are
+`validateAppProject` (the folder) and `validateAppBundle` (the built bundle).
 
-## When to use
+## What an app is for
 
-- The user wants a small UI to do a machine task (send a text, create an event).
-- The user wants a **real app**: its own local database, scheduled background
-  work, notifications — a habit tracker, a personal CRM, a watcher.
-- The user wants any of that exposed as MCP **tools** so Claude can orchestrate
-  it (`app_call_tool`), not just click it.
+**The app stores and finds; the AGENT thinks.** There is no model call inside
+an app (`llm.*` and `agent.run` are gone). An app that needs something
+written, summarized or classified declares tools for the parts only the server
+can do (store it, find it, schedule it, send it) and the agent does the thinking,
+then calls those tools with the result. Daily Brief is the pattern:
+`collect_brief` pulls the raw material through connectors and stores it,
+`save_brief` files what the agent wrote, `get_brief` and `search_brief` read it
+back.
 
-## What you can build on
+## Project layout
 
-Apps never touch the OS or a database engine directly. They call **host
-capabilities** the host implements and gates per-app. Only declared
-capabilities are reachable.
+```
+manifest.json     the contract (below)
+package.json      next + react + react-dom; scripts.build = "next build"
+next.config.mjs   EXACTLY: output 'export', trailingSlash true,
+                  basePath from GLYPHH_APP_BASE, assetPrefix base || '.',
+                  images { unoptimized: true }
+app/              the Next.js app router (layout.js + page.js); pages/ also works
+worker.js         optional: handlers behind the tools and cron
+```
 
-Services (cross-platform):
+Start from the SDK template: `appTemplateFiles()` (or `sdk/templates/app-next`)
+gives every file above with a one-page UI that lists the app's tools and
+shares a table with the worker. Never author an `entry`; the export's
+`index.html` is the entry. Never ship `node_modules`, `.next` or `out`.
 
-| capability      | args                           | returns                                      |
-|-----------------|--------------------------------|----------------------------------------------|
-| `db.exec`       | `{ sql, params? }`             | `{ rows }` or `{ changes, lastInsertRowid }` |
-| `cron.schedule` | `{ id, cron, handler, args? }` | `{ scheduled, id }` (persisted upsert)       |
-| `cron.cancel`   | `{ id }`                       | `{ cancelled }`                              |
-| `cron.list`     | `{ }`                          | `[{ id, cron, handler }]`                    |
-| `notify.send`   | `{ title, body }`              | `{ shown }` (click opens the app)            |
+### manifest.json
 
-AI & data services. Glyphh itself has NO LLM, NO key store, NO agent — apps
-are the only agentic surface, and every model call runs on the APP's key:
-the user sets `<PROVIDER>_API_KEY` on the app's Config Vars tab and the host
-injects it (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`):
+```json
+{
+  "manifestVersion": 3,
+  "kind": "glyphh-app",
+  "name": "Recall",
+  "slug": "recall",
+  "description": "Ask questions over your notes.",
+  "capabilities": ["db.exec", "vector.upsert", "vector.search"],
+  "connectors": [],
+  "worker": "worker.js",
+  "window": { "width": 720, "height": 560 },
+  "tools": [
+    { "name": "ingest", "description": "Index a document.", "handler": "ingest",
+      "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] } },
+    { "name": "ask", "description": "Find the notes that answer a question.", "handler": "ask",
+      "inputSchema": { "type": "object", "properties": { "q": { "type": "string" } }, "required": ["q"] } }
+  ]
+}
+```
+
+Rules: `slug` is lowercase `[a-z0-9_-]` and stable (it is the instance key and
+the tool namespace). Each tool is backed by EXACTLY ONE of `handler` (a
+function in the worker) or `capability` (a 1:1 passthrough). Every capability
+the worker or a tool uses MUST be in `capabilities`; any `connector.*`
+capability needs a non-empty `connectors` list (connection slugs such as
+`gmail`, `google_calendar`, `slack`, `google_contacts`). Never expose
+`agent.run` as a tool. Write `description` + `inputSchema` for an LLM deciding
+whether to call the tool.
+
+## The worker
+
+`worker.js` runs sandboxed on the app server: no `fetch`, `require`, `import`,
+`process`, no network. Its world is the `glyphh` object:
+
+```js
+async function call(m, a) { const r = await glyphh.call(m, a); if (!r.ok) throw new Error(r.error); return r.result; }
+
+glyphh.handle("ingest", async ({ text }) => {
+  await call("db.exec", { sql: "CREATE TABLE IF NOT EXISTS notes (id SERIAL PRIMARY KEY, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())" });
+  const { rows } = await call("db.exec", { sql: "INSERT INTO notes (body) VALUES ($1) RETURNING id", params: [text] });
+  await call("vector.upsert", { collection: "notes", items: [{ id: String(rows[0].id), text }] });
+  return { id: rows[0].id };
+});
+glyphh.handle("ask", async ({ q }) => {
+  const { matches } = await call("vector.search", { collection: "notes", query: q, k: 6 });
+  return { matches };   // the AGENT reads these and answers
+});
+glyphh.handle("tick", async () => { /* a cron target: query, then notify.send */ });
+
+(async () => {   // idempotent setup on every worker start
+  await call("cron.schedule", { id: "tick", cron: "0 9 * * *", handler: "tick" });
+})();
+```
+
+- `glyphh.handle(name, async (args) => result)`: register synchronously at the
+  top level (10 s to be ready). Handlers back tool calls and cron firings and
+  have 60 s each.
+- `glyphh.call(capability, args)` resolves `{ ok: true, result }` or
+  `{ ok: false, error }`; it never throws for a capability error.
+- `glyphh.app.slug`, `console.log/warn/error` (the app server's log),
+  `setTimeout/clearTimeout`.
+- Keep it stateless: state lives in the database.
+
+## Capabilities
 
 | capability | args | notes |
 |---|---|---|
-| `llm.embed` | `{ text \| texts, model? }` | local ONNX embeddings, 384-dim default, fully on-device |
-| `llm.chunk` | `{ text, maxChars?, overlap? }` | prep text for embedding |
-| `llm.complete` | `{ prompt, system?, provider?, model? }` | one-shot; providers anthropic (default) / openai / google, key from config vars |
-| `agent.run` | `{ prompt, system?, provider?, tools?, maxTurns? }` | agentic loop over the APP'S OWN manifest tools; same providers/keys |
-| `vector.upsert/search/delete` | `{ collection, … }` | per-app store; text auto-embeds; exact cosine + metadata filter |
-| `graph.cypher` | `{ query, params? }` | per-app embedded Kuzu graph — real Cypher; schema-full (CREATE NODE/REL TABLE first) |
-| `secrets.get` / `secrets.list` | `{ key }` / `{ }` | per-app config vars the USER sets on the app's Config Vars tab — encrypted, write-once, machine-bound. How an app requires keys: agent.run/llm.complete read `<PROVIDER>_API_KEY` automatically. Check `secrets.list` and render a "set ANTHROPIC_API_KEY in Config Vars" state when missing. |
+| `db.exec` | `{ sql, params? }` | **Postgres**, the app's own schema. `$1, $2` params; ONE statement per call; unqualified table names; `CREATE TABLE IF NOT EXISTS` on first use; `SERIAL`, `TEXT`, `JSONB`, `TIMESTAMPTZ`, `now()`, `ON CONFLICT … DO UPDATE`. Returns `{ rows }` for a query, `{ rowCount }` otherwise. Refused: `CREATE/ALTER/DROP SCHEMA`, `SET search_path`, several statements. Not SQLite: no `?`, no `AUTOINCREMENT`, no `julianday`. |
+| `vector.upsert` / `vector.search` / `vector.delete` | `{ collection, items: [{ id, text, metadata? }] }` / `{ collection, query, k?, filter? }` / `{ collection, ids }` | pgvector underneath; text is embedded with the org's embedding model. `search` returns `{ matches: [{ id, text, metadata, score }] }`. |
+| `graph.cypher` | `{ query, params? }` | **Neo4j** Cypher over a property graph: `CREATE (n:Person {name: $name})`, `MERGE`, `MATCH (a:Person)-[:KNOWS*1..2]->(b) RETURN b`. No Kuzu DDL (no `CREATE NODE TABLE`). Labels and relationship types are the app's own; the server prefixes them per instance. Returns `{ rows }`. |
+| `connector.status` / `connector.tools` / `connector.call` | `{}` / `{ connector? }` / `{ connector, tool, args }` | the member's connected accounts, scoped to the manifest's `connectors`. Gate the UI on `connector.status` and say "Connect X in Glyphh" instead of failing. `connector.tools` is the live truth for tool names. |
+| `cron.schedule` / `cron.cancel` / `cron.list` | `{ id, cron, handler, args? }` / `{ id }` / `{}` | 5-field cron, an upsert (re-register on every start), at most 20 per instance; firings run as the instance's owner. |
+| `notify.send` | `{ title, body }` | a notification to the member. |
+| `secrets.get` / `secrets.list` | `{ key }` / `{}` | config vars the member sets on the app. Document the var name and check `secrets.list`. |
+| `app.call` | `{ app, tool, args }` | another installed app's tool, through the framework. Never your own handlers: call those functions directly. |
 
-RAG-in-an-app is: `llm.chunk` → `vector.upsert` → `vector.search { query, k }`
-→ `llm.complete` with the top chunks in the prompt. An agentic app is:
-declare good tools, then `agent.run { prompt: goal }` — the model drives the
-app's own tools (never expose agent.run itself as a tool; install rejects it).
+Retired, refused at runtime: `llm.complete`, `llm.embed`, `llm.chunk`,
+`agent.run`, `contacts.search`, `messages.send`, `web.fetch`, `web.read`.
+Reach people through connectors (`gmail`, `slack`, `google_contacts`).
 
-Connections (scoped to the manifest's `connectors` list — see below):
+## The UI
 
-| capability         | args                         | returns                                        |
-|--------------------|------------------------------|------------------------------------------------|
-| `connector.status` | `{ }`                        | `[{ connector, connected, healthy }]`          |
-| `connector.tools`  | `{ connector? }`             | `[{ connector, name, description, inputSchema }]` |
-| `connector.call`   | `{ connector, tool, args? }` | `{ result }` (text)                            |
-
-Machine capabilities (macOS): `contacts.search { query }`,
-`messages.send { to, body }`.
-
-`db.exec` is the app's OWN SQLite file (`~/.glyphh/app-data/<slug>/data.sqlite`) —
-one statement per call, `?` params. No ATTACH/PRAGMA/VACUUM. No cross-app data.
-
-If the app needs a capability that doesn't exist yet, it must be added to the
-host first (`src/main/glyphh-app-host.ts` `runCapability` + `KNOWN_CAPABILITIES`,
-services in `src/main/glyphh-app-services.ts`) and documented in the spec —
-apps can't invent capabilities.
-
-## The three surfaces
-
-1. **UI** (`entry: index.html`) — window the user opens. Talks to the host via
-   `window.glyphh.call("<capability>", args)` → `{ ok, result } | { ok:false, error }`.
-   Self-contained (inline CSS/JS), no external network unless needed.
-   For rich visuals, host-provided libraries are available via relative
-   script tags (no vendoring, no CDN):
-   `<script src="../_libs/chart.js"></script>` → `window.Chart` (Chart.js 4);
-   `../_libs/three.js` → `window.THREE`; `../_libs/flow.js` →
-   `window.GlyphhFlow` — `GlyphhFlow.renderFlow(el, { nodes, edges, onChange })`
-   gives a drag/connect/zoom node-canvas (React Flow) with zero React code.
-2. **Worker** (`worker: worker.js`) — headless app logic in a sandboxed hidden
-   context (no Node, no network, 60s per invoke). Registers handlers:
-   `glyphh.handle("name", async (args) => result)`. Handlers back MCP tools and
-   cron firings. Register handlers synchronously at top level; async setup in
-   an IIFE. Keep it stateless — state lives in `db.exec`.
-3. **Tools** (`tools[]`) — each backed by exactly ONE of `capability`
-   (1:1 passthrough) or `handler` (runs in the worker; requires `worker`).
-   Write `description` + `inputSchema` for an LLM deciding whether to call it.
+The page reaches the host ONLY through the injected shim,
+`window.glyphh.call(capability, args)` → `{ ok, result } | { ok: false, error }`,
+as the signed-in member (`"ping"` answers `{ pong: true }`). Call it from
+client components (`"use client"`) in effects and handlers, never during
+render. The UI and the worker share the DATABASE, not business logic: the page
+reads and writes with `db.exec`; the worker's handlers back the agent's tools.
+No remote `<script>`/`<link>`/CDN and no fetch to other origins; everything is
+bundled at build time. Build on the house dark tokens (`--bg #1a1a1c`,
+`--panel #252528`, `--bg-2 #2e2e32`, `--line #3f3f46`, `--ink #f1f1f1`,
+`--muted #c4c4c4`, `--dim #828282`, `--accent #af5fff`; headings JetBrains
+Mono, text Geist) so the panel is indistinguishable from the host.
 
 ## Steps
 
-1. **Scaffold** under `apps/<name>/`: `manifest.json` with
-   `manifestVersion: 2`, `kind: "glyphh-app"`, `name`, `slug` (`[a-z0-9_-]`),
-   `entry`, optional `worker`, `capabilities`, optional `connectors`, `tools`,
-   `window`. Every `tools[].capability` MUST be in `capabilities`;
-   `tools[].handler` requires `worker`; any `connector.*` capability requires a
-   non-empty `connectors` list (Pipedream app slugs, e.g.
-   `["salesforce", "netsuite"]` — declare ALL the connections the app
-   integrates; multi-connection pipeline apps are a first-class shape).
-   Connections are user-level: the user connects each account once in Glyphh;
-   the app is self-contained and never sees tokens. Have the UI check
-   `connector.status` and render a "Connect X in Glyphh" state rather than
-   failing on unconnected accounts.
-   **Finding slugs/tools**: the catalog is Pipedream's app directory
-   (~3,500 apps) — browse https://pipedream.com/apps for slugs and
-   https://mcp.pipedream.com for each app's MCP tools. Docs drift; the live
-   truth is the relay's `connector_list_tools` (what THIS user has connected,
-   with exact tool schemas) and `connector.tools` inside the app. Verify a
-   slug against `connector.status` before shipping the manifest.
-2. **Worker pattern** (if the app has logic/schedules):
-   ```js
-   async function call(m, a) { const r = await glyphh.call(m, a); if (!r.ok) throw new Error(r.error); return r.result; }
-   glyphh.handle("my_tool", async (args) => { /* db.exec, messages.send, … */ });
-   glyphh.handle("tick", async () => { /* cron target: query, notify.send */ });
-   (async () => {           // idempotent setup on every worker start
-     await call("db.exec", { sql: "CREATE TABLE IF NOT EXISTS …" });
-     await call("cron.schedule", { id: "tick", cron: "0 9 * * *", handler: "tick" });
-   })();
-   ```
-   Schema creation must be idempotent and run from BOTH worker and UI (either
-   may start first).
-3. **Package**: `npm run pack:apps` → `dist-apps/<name>.glyphh`.
-4. **Install / deploy**:
-   - Locally: Apps page → Import → pick the `.glyphh`.
-   - Remotely (Claude deploying for a user over MCP): base64 the bundle and call
-     the `app_install` relay tool with `{ bundleBase64 }`. Install warm-starts
-     the worker, so its cron schedules arm immediately.
-5. **Verify**: `app_list_tools` shows the app + tools; `app_call_tool
-   { app, tool, args }` runs them headlessly.
+1. **Scaffold** in the session's folder from the template; set `name`, `slug`,
+   `description`, the capabilities and connectors the app really uses.
+   Initialize git (`.gitignore`: `node_modules/`, `.next/`, `out/`, `.env`).
+2. **Write the worker**: one handler per tool, Postgres SQL, idempotent schema
+   creation on first use, cron registered in the startup IIFE.
+3. **Write the page**: list what the worker stores, act through `db.exec` and
+   the connectors, gate on `connector.status`.
+4. **Build locally**: `npm install && npm run build`. Fix every error.
+5. **Deploy**: `app_deploy { slug, kind?, note? }`. It tars the session's folder
+   (`manifest.json` + `package.json` + …), the platform builds it (`npm ci`,
+   `next build` with the instance's base path, `worker.js` bundled and linted),
+   records it as the next release and pins it. The answer carries `{ key,
+   release, log tail, tools }`. A failed build answers the log; fix and deploy
+   again. Never ship through a login or device-auth flow; the session is
+   already authenticated.
+6. **Verify**: `app_list_tools` shows the app and its tools; `app_call_tool
+   { app, tool, args }` runs one headlessly; the panel renders at
+   `/app-host/<key>/ui/`.
+7. **Roll back** with `app_pin { app, n }` (`app_releases { app }` lists them).
+   `app_install { bundleBase64 }` installs an already BUILT bundle you were
+   handed; it is not for authoring.
 
-## Reference apps
+## Reference apps (the server's defaults, `glyphh/default-apps/`)
 
-- **`apps/keep-in-touch/`** — canonical v2: personal CRM. Per-app SQLite,
-  daily cron → notification, Contacts autocomplete, Messages send, five
-  handler-backed tools. Copy its shape for any "track things + remind me" app.
-- **`apps/messages/`** — canonical v1: thin UI + capability-passthrough tool.
+- **`daily-brief`**: connectors + Postgres + vectors + cron. `collect_brief`
+  stores raw mail and events, the agent writes, `save_brief` files it.
+- **`keep-in-touch`**: a personal CRM. Postgres with a due query, a 9am
+  cron → `notify.send`, check-ins through the `gmail` connector.
+- **`messages`**: one tool over two connectors (`gmail`, `slack`) and a small
+  page.
 
 ## Guardrails
 
-- Keep `slug` stable — it's the `.dip` key, the tool namespace, and the data
-  directory; re-install updates in place (data and schedules survive).
-- Don't request capabilities the app doesn't use — the manifest is the security
-  contract users read before installing.
-- UI and tools should share logic by sharing the DATABASE, not by duplicating
-  business rules in two scripts; keep derived state in SQL views/queries.
-- Cron: re-register on every worker start (it's an upsert). Use handler names
-  that read as verbs; cap runtime well under the 60s invoke timeout.
+- Keep `slug` stable: it is the instance key, the tool namespace and the
+  schema; a new release keeps the data and the schedules.
+- Don't request capabilities the app doesn't use; the manifest is the security
+  contract the member reads.
+- One statement per `db.exec`; `$n` params, never string-built SQL.
+- Cron handlers run as the owner, unattended: keep them well under 60 s and
+  make them idempotent.
