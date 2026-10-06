@@ -90,6 +90,22 @@ export interface GridLayoutLike {
   space?: "chat" | "cowork" | "code";
   /** Epoch ms — the writer's clock (added 2026-10-04; absent on older files). */
   updatedAt?: number;
+  /** THE SURFACE IT WAS MADE ON (his order, 2026-10-06: "the workspaces
+   *  should carry a desktop vs web key for where they are created"). Stamped
+   *  at the save on each surface; absent on every workspace before then —
+   *  all of those were made on a desktop (workspaceSurfaceOf). */
+  surface?: WorkspaceSurface;
+}
+
+/** Where a workspace was created: a desktop app or the web. */
+export type WorkspaceSurface = "desktop" | "web";
+
+/** The surface a workspace belongs to. A row without the stamp predates it —
+ *  every workspace before 2026-10-06 was made on a desktop. Each surface
+ *  lists only its own (layout-manager's desktop list, member-library-web's
+ *  layoutsList); the library row keeps every workspace. */
+export function workspaceSurfaceOf(g: Pick<GridLayoutLike, "surface"> | null | undefined): WorkspaceSurface {
+  return g?.surface === "web" ? "web" : "desktop";
 }
 
 /** The row the Workspaces page, the wall and the attach socket read — the

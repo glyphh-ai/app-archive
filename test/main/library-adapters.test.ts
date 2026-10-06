@@ -47,7 +47,7 @@ vi.mock("../../src/main/local-agents.js", () => ({
   readAgentRow: (slug: string) => agents.get(slug) ?? null,
 }));
 
-import { getLayoutManager } from "../../src/main/layout-manager.js";
+import { desktopLayouts, getLayoutManager } from "../../src/main/layout-manager.js";
 import * as appsStore from "../../src/main/apps-store.js";
 import { readTombstones } from "../../src/main/library-events.js";
 import { agentAdapter, bundleAdapter, dripAdapter, manifestOf, readSyncState, scheduleAdapter, tabAdapter, workspaceAdapter } from "../../src/main/library-adapters.js";
@@ -65,17 +65,24 @@ describe("workspaces", () => {
     await lm.saveLayout({ name: "Research Desk", version: 2, cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [] });
     const file = JSON.parse(readFileSync(join(root, "user", "workspaces", "research-desk", "workspace.json"), "utf-8"));
     expect(file.updatedAt).toBeGreaterThanOrEqual(before);
+    // Made HERE (his order, 2026-10-06): the save stamps the surface — a desktop's.
+    expect(file.surface).toBe("desktop");
     const rows = workspaceAdapter().list();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: "research-desk", updatedAt: file.updatedAt, data: { name: "Research Desk", cols: 1, updatedAt: file.updatedAt } });
+    expect(rows[0]).toMatchObject({ id: "research-desk", updatedAt: file.updatedAt, data: { name: "Research Desk", cols: 1, surface: "desktop", updatedAt: file.updatedAt } });
     // A pull: another machine's grid, at the server's clock.
     workspaceAdapter().apply(item("workspace", "web-made", 5_000, { name: "Web Made", version: 2, cols: 3, rows: 1, colWidths: [1, 1, 1], rowHeights: [1], cells: [] }));
     expect(workspaceAdapter().list().find((r) => r.id === "web-made")).toMatchObject({ updatedAt: 5_000, data: { cols: 3 } });
     expect(existsSync(join(root, "user", "workspaces", "web-made", "workspace.json"))).toBe(true);
     // ONE LIST (2026-10-06): a workspace saved on the web is adopted like any other row — the folder is a cache of the server's rows.
-    workspaceAdapter().apply(item("workspace", "cloud-only", 6_000, { name: "Cloud Only", version: 2, home: "cloud", cols: 2, rows: 1, colWidths: [1, 1], rowHeights: [1], cells: [] }));
-    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toMatchObject({ updatedAt: 6_000, data: { cols: 2 } });
+    workspaceAdapter().apply(item("workspace", "cloud-only", 6_000, { name: "Cloud Only", version: 2, surface: "web", cols: 2, rows: 1, colWidths: [1, 1], rowHeights: [1], cells: [] }));
+    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toMatchObject({ updatedAt: 6_000, data: { cols: 2, surface: "web" } });
     expect(existsSync(join(root, "user", "workspaces", "cloud-only", "workspace.json"))).toBe(true);
+    // THE DESKTOP'S LIST (his order, 2026-10-06): the web-made one stays in the folder and the sync's
+    // list, but the list the wall and the Workspaces page read is the desktop-made ones — the stamped
+    // one and the one from before the stamp.
+    expect(desktopLayouts(lm.listLayouts()).map((g) => g.name).sort()).toEqual(["Research Desk", "Web Made"]);
+    expect(workspaceAdapter().list().map((r) => r.id).sort()).toEqual(["cloud-only", "research-desk", "web-made"]);
     // A local delete: the folder goes, a tombstone is written at the delete's clock.
     expect(await lm.deleteLayout("Research Desk")).toBe(true);
     expect(readTombstones()["workspace:research-desk"]).toBeGreaterThanOrEqual(before);

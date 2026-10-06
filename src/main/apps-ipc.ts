@@ -122,7 +122,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
 
 }
 
-import { toLayoutRow, type LayoutManager } from "./layout-manager";
+import { desktopLayouts, toLayoutRow, type LayoutManager } from "./layout-manager";
 
 interface AppsIpcDeps {
   layoutManager: LayoutManager;
@@ -149,8 +149,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   // IPC: layouts CRUD — the files under ~/.glyphh/workspaces are the truth;
   // every list re-scans them. The row is layout-manager's ONE projection,
-  // shared with the attach socket's layouts.list (what app.glyphh.ai reads).
-  ipcMain.handle("layouts-list", async () => (await layoutManager.refreshAndList()).map(toLayoutRow));
+  // shared with the attach socket's layouts.list. The list is THIS SURFACE'S
+  // (his order, 2026-10-06): only the workspaces made on a desktop — a
+  // web-made one stays in the folder and the library, listed on the web.
+  ipcMain.handle("layouts-list", async () => desktopLayouts(await layoutManager.refreshAndList()).map(toLayoutRow));
   ipcMain.handle("layouts-save", async (_e, name: string, panelIds: string[]) => {
     const existing = layoutManager.listLayouts().find(l => l.name === name);
     if (!existing) {

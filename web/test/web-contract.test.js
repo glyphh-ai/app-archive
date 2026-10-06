@@ -397,12 +397,15 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(attach.dispatch).not.toHaveBeenCalledWith('layouts.list', expect.anything(), expect.anything());
   });
 
-  it('layoutsList: ONE LIST — a workspace the desktop synced into the library is the web\'s too (his order, 2026-10-06); an older `home: cloud` stamp changes nothing', async () => {
+  it('layoutsList: ONE LIST, THIS SURFACE\'S ROWS — a workspace carries where it was made (his order, 2026-10-06); the web lists the web-made ones, a desktop-made one and one from before the stamp stay in the library for the desktop; an older `home: cloud` stamp changes nothing', async () => {
     const client = authedClient();
     const rows = await client.memberLibrary.list('workspace');
-    client.memberLibrary.list = vi.fn(async () => [...rows, { ...rows[0], id: 'desk', data: { ...rows[0].data, name: 'Desk' } }, { ...rows[0], id: 'old', data: { ...rows[0].data, name: 'Old', home: 'cloud' } }]);
+    client.memberLibrary.list = vi.fn(async () => [...rows,
+      { ...rows[0], id: 'desk', data: { ...rows[0].data, name: 'Desk', surface: 'desktop' } },
+      { ...rows[0], id: 'before', data: { ...rows[0].data, name: 'Before', surface: undefined } },
+      { ...rows[0], id: 'old', data: { ...rows[0].data, name: 'Old', home: 'cloud' } }]);
     const c = buildContract(client, deps);
-    expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Desk', 'Grid', 'Old']);
+    expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Grid', 'Old']);
   });
 
   it('layoutsList: a 401 on the server read is an empty list, even with a desktop attached', async () => {
@@ -418,7 +421,8 @@ describe('buildContract — workspaces and app tabs read the server first, write
     const [kind, id, input] = client.memberLibrary.put.mock.calls[0];
     expect([kind, id]).toEqual(['workspace', 'research']);
     expect(input.data).toMatchObject({ name: 'Research', version: 2, loop: 'glyphh', updatedAt: input.updatedAt });
-    expect(input.data.home).toBeUndefined();   // ONE LIST (2026-10-06): no surface stamp
+    expect(input.data.home).toBeUndefined();   // ONE LIST (2026-10-06): no `home` split
+    expect(input.data.surface).toBe('web');    // …but the row names where it was MADE (his order, 2026-10-06)
     expect(input.data.sessionMode).toBeUndefined();           // "keep" is the default — not written
     expect((await c.layoutsList()).map((l) => l.name).sort()).toEqual(['Grid', 'Research']);
     expect(await c.layoutsDelete('Research')).toBe(true);

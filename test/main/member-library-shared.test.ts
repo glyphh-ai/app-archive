@@ -10,7 +10,7 @@ import {
   agentClock, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
   filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
   normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
-  workspaceClock, workspaceId, type GridLayoutLike, type TabRowLike,
+  workspaceClock, workspaceId, workspaceSurfaceOf, type GridLayoutLike, type TabRowLike,
 } from "../../src/shared/member-library.js";
 
 const GRID: GridLayoutLike = { name: "Research Desk", version: 2, cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], cells: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], loop: "glyphh", sessionMode: "new", updatedAt: 1_700_000 };
@@ -26,6 +26,15 @@ describe("workspaces", () => {
     expect(workspaceClock({ ...GRID, updatedAt: undefined })).toBe(0);
     expect(isGridLayout(GRID)).toBe(true);
     expect(isGridLayout({ name: "x" })).toBe(false);
+  });
+  it("a workspace carries the SURFACE it was made on (his order, 2026-10-06); one without the stamp predates it and is a desktop's", () => {
+    expect(workspaceSurfaceOf({ ...GRID, surface: "web" })).toBe("web");
+    expect(workspaceSurfaceOf({ ...GRID, surface: "desktop" })).toBe("desktop");
+    expect(workspaceSurfaceOf(GRID)).toBe("desktop");
+    expect(workspaceSurfaceOf({ surface: "cloud" as never })).toBe("desktop");
+    expect(workspaceSurfaceOf(null)).toBe("desktop");
+    // the stamp rides the row untouched — the list filters, the row keeps every workspace
+    expect(layoutRowOf({ ...GRID, surface: "web" })).toEqual(layoutRowOf(GRID));
   });
 });
 

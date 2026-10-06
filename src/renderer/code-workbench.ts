@@ -3707,13 +3707,10 @@ async function init(): Promise<void> {
       // A user row WINS its slug; defaults carry NO appId (id: "") so their
       // tiles are never deletable/editable, and the slug-based keys keep the
       // saved icon order working across the copy→global transition.
-      // APP-WEB (his rule, 2026-08-24): only GLYPHH apps render in a web tab —
-      // they are hosted on our servers. URL/native rows and the house defaults
-      // are desktop-only surfaces there.
-      // APP-WEB (his rule, 2026-08-25): every app is back on the web wall —
-      // glyphh apps open in-app; anything else opens ITS URL in a new browser
-      // tab (activateTile). URL-less native rows still can't open anywhere.
-      // ONE list, shared with the left rail (help/app-list.ts).
+      // ONE list, shared with the left rail (help/app-list.ts); the surface's
+      // capability filter (help/surface.ts surfaceHostsTile) paints it below —
+      // on the web the saved TAB rows (URL tabs, native apps, bundles) stay
+      // off the wall (his report, 2026-10-06).
       const appsAll = visibleAppRows(
         rows as PanelRowLite[] | null,
         houseDefaults as HouseDefault[] | null,
@@ -3756,7 +3753,8 @@ async function init(): Promise<void> {
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
       // ONE LIST ON BOTH SURFACES (his order, 2026-10-06; help/surface.ts
       // surfaceHostsTile): every tile this surface can host — the browser
-      // drops only a native app. The desktop keeps everything.
+      // keeps a cloud instance, a house built-in and a nav row, and drops
+      // every saved tab row (it cannot render one). The desktop keeps everything.
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)]
         .filter((t) => surfaceHostsTile(t, surfaceCaps(IS_WEB_TARGET)));
       // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
@@ -7066,9 +7064,6 @@ async function init(): Promise<void> {
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.cliAgent) { openAgentCliCard(t); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
-      // A URL TAB IN A BROWSER IS A BROWSER TAB (help/surface.ts: a browser
-      // can open a URL; an embedded page there would need a streamed panel).
-      if (IS_WEB_TARGET && t.url && !t.glyphh) { window.open(t.url, "_blank", "noopener"); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
@@ -7418,12 +7413,11 @@ async function init(): Promise<void> {
         // ONE path with the wall's own tiles (activateGlyphh) — the two
         // entries can never disagree.
         if (key === "glyphh-home") { activateGlyphh(); return; }
-        // A URL TAB IN A BROWSER IS A BROWSER TAB (help/surface.ts); a GLYPHH
-        // APP is a cloud instance and a panel here — its UI through the
-        // instance proxy (mountGlyphhAppWebView), no desktop needed (his
-        // order, 2026-10-06); a native app needs a desktop window, and that
-        // door says so.
-        if (IS_WEB_TARGET && app.url && !app.glyphh && key !== "browser") { window.open(app.url, "_blank", "noopener"); return; }
+        // On the web a GLYPHH APP is a cloud instance and a panel here — its
+        // UI through the instance proxy (mountGlyphhAppWebView), no desktop
+        // needed (his order, 2026-10-06); anything else (a tab row, a native
+        // app) is the desktop's — never on the web's wall (help/surface.ts
+        // surfaceHostsTile) — and that door says so.
         if (IS_WEB_TARGET && !app.glyphh) { openAppOnDesktopWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
