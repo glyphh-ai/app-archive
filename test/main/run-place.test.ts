@@ -4,7 +4,20 @@
  * the composer's current place checked.
  */
 import { describe, expect, it } from "vitest";
-import { folderRows, runPlaceRows } from "../../src/renderer/help/run-place.js";
+import { folderChipLabel, folderChipRows, folderRows, runPlaceRows } from "../../src/renderer/help/run-place.js";
+
+describe("the Folder chip under the desktop's box (his order, 2026-10-07)", () => {
+  it("lists the session's folder first and checked, then the recents, each once", () => {
+    const rows = folderChipRows("/Users/me/dev/yo", ["/Users/me/dev/happy-shoes", "/Users/me/dev/yo", "", "/Users/me/dev/happy-shoes"]);
+    expect(rows.map((r) => [r.label, r.selected])).toEqual([["yo", true], ["happy-shoes", false]]);
+    expect(rows[0].sub).toBe("/Users/me/dev/yo");
+  });
+  it("with no folder picked the recents stand alone and the chip reads Folder", () => {
+    expect(folderChipRows("", ["/a/b"]).map((r) => [r.label, r.selected])).toEqual([["b", false]]);
+    expect(folderChipLabel("")).toBe("Folder");
+    expect(folderChipLabel("/Users/me/dev/yo/")).toBe("yo");
+  });
+});
 
 describe("runPlaceRows", () => {
   it("web: the attached desktops, then Default and the member's environments; the current place is checked", () => {

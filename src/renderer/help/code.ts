@@ -49,13 +49,14 @@ import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
-import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
+import { folderChipLabel, folderChipRows } from "./run-place.js";
 import { deviceChecked, toggleDeviceIn } from "./devices-pick.js";
 import { groupByDate } from "./recents-groups.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
@@ -496,15 +497,100 @@ function renderOutputMenu(): void {
     menu.appendChild(item);
   }
 }
-/** Keyboard on the open menu: arrows move, Enter picks, Esc closes. */
-function outputMenuKeys(menu: HTMLElement, e: KeyboardEvent): void {
+/** Keyboard on an open chip menu: arrows move, Enter picks, Esc closes
+ *  (focus back on the chip). The Output and Folder chips share it. */
+function chipMenuKeys(menu: HTMLElement, chipId: string, e: KeyboardEvent): void {
   const rows = Array.from(menu.querySelectorAll<HTMLButtonElement>(".code-drop-item"));
   if (!rows.length) return;
   const at = rows.findIndex((r) => r === document.activeElement);
-  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); menu.classList.add("hidden"); el("code-output-chip")?.focus(); }
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); menu.classList.add("hidden"); el(chipId)?.focus(); }
   else if (e.key === "ArrowDown") { e.preventDefault(); rows[(at + 1 + rows.length) % rows.length].focus(); }
   else if (e.key === "ArrowUp") { e.preventDefault(); rows[(at - 1 + rows.length) % rows.length].focus(); }
   else if (e.key === "Enter" && at >= 0) { e.preventDefault(); rows[at].click(); }
+}
+
+// ── The Folder chip (his order, 2026-10-07, Claude's "Project or folder") ──
+// Under the desktop's box, left of Output: the session's folder — a recent
+// one, or any folder through the OS picker. The folder IS the thread's
+// sandbox (threadFolder / setThreadFolder, the one truth); a cloud session
+// that ran on this desktop over the relay shows the folder it ran in (the
+// rail's record of the thread). The web has no local folders: hidden there.
+function chipFolderOf(c: CodeChat | null | undefined = current()): string {
+  const own = threadFolder(c);
+  if (own) return own;
+  return (c && railSessions.find((s) => s.id === c.id)?.cwd) || "";
+}
+function paintFolderChip(): void {
+  const wrap = el("code-folder-wrap");
+  const chip = el("code-folder-chip");
+  if (!wrap || !chip) return;
+  if (onWebTarget()) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  const folder = chipFolderOf();
+  const label = chip.querySelector<HTMLElement>("span");
+  if (label) label.textContent = folderChipLabel(folder);
+  chip.classList.toggle("picked", !!folder);
+  chip.title = folder ? `Folder — ${folder}` : "Folder — pick where this session works";
+}
+async function pickChipFolder(dir: string): Promise<void> {
+  if (!dir) return;
+  setThreadFolder(dir);
+  paintFolderChip();
+  repaintSourceUi();
+  await checkWorkdirGate();
+}
+async function renderFolderMenu(): Promise<void> {
+  const menu = el("code-folder-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  head.textContent = "Folder";
+  menu.appendChild(head);
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search repo-drop-search ws-locus-search";
+  search.placeholder = "Search folders…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  search.addEventListener("click", (ev) => ev.stopPropagation());
+  menu.appendChild(search);
+  const list = document.createElement("div");
+  list.className = "ws-locus-list";
+  menu.appendChild(list);
+  // THE LAST FIVE the desktop remembers, then the folders the rail's threads
+  // ran in — the places this member actually works.
+  const w = wb() as (ReturnType<typeof wb> & { getCwdRecents?: () => Promise<string[]> }) | undefined;
+  const remembered = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
+  if (!menu.isConnected) return;
+  const rows = folderChipRows(chipFolderOf(), [...remembered, ...recentDesktopFolders()]);
+  const paint = (): void => {
+    list.textContent = "";
+    const q = search.value.trim().toLowerCase();
+    const shown = rows.filter((r) => !q || r.label.toLowerCase().includes(q) || r.sub.toLowerCase().includes(q));
+    for (const r of shown) {
+      const item = drillItem(r.label, r.sub, r.selected ? CHECK : "");
+      item.classList.add("code-folder-item");
+      if (r.selected) item.classList.add("selected");
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", r.selected ? "true" : "false");
+      item.addEventListener("click", (e) => { e.stopPropagation(); menu.classList.add("hidden"); void pickChipFolder(r.path); el("code-folder-chip")?.focus(); });
+      list.appendChild(item);
+    }
+    if (!shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">${rows.length ? "No folder matches." : "No recent folders yet."}</div>`);
+    const add = drillItem("Add folder…", "Choose any folder on this desktop", "");
+    add.classList.add("code-folder-add");
+    add.setAttribute("role", "menuitem");
+    add.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.classList.add("hidden");
+      void wb()?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) void pickChipFolder(dir); });
+    });
+    list.appendChild(add);
+  };
+  search.addEventListener("input", paint);
+  paint();
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
@@ -988,6 +1074,32 @@ function initComposerControls(): void {
     mm?.classList.toggle("hidden");
     if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
   });
+  // The Folder chip's drop-up (his order, 2026-10-07) — the Output chip's
+  // open rule: one picker at a time, placed by openChipDropUp.
+  const folderWrap = el("code-folder-wrap");
+  if (folderWrap) {
+    const fmenu = document.createElement("div");
+    fmenu.id = "code-folder-menu";
+    fmenu.className = "code-drop-up code-folder-menu hidden";
+    fmenu.setAttribute("role", "menu");
+    folderWrap.appendChild(fmenu);
+    fmenu.addEventListener("keydown", (e) => chipMenuKeys(fmenu, "code-folder-chip", e));
+    el("code-folder-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = fmenu.classList.contains("hidden");
+      if (!opening) { fmenu.classList.add("hidden"); return; }
+      void renderFolderMenu().then(() => {
+        if (!fmenu.isConnected) return;
+        fmenu.classList.remove("hidden");
+        openChipDropUp(fmenu);
+        fmenu.querySelector<HTMLInputElement>("input")?.focus();
+      });
+    });
+    el("code-folder-chip")?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" && fmenu.classList.contains("hidden")) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
+    });
+    paintFolderChip();
+  }
   // The Output chip's drop-up (his order, 2026-10-05) — the same open rule
   // as the model picker: one picker at a time, placed by openChipDropUp.
   const outputWrap = el("code-output-wrap");
@@ -997,7 +1109,7 @@ function initComposerControls(): void {
     omenu.className = "code-drop-up code-output-menu hidden";
     omenu.setAttribute("role", "menu");
     outputWrap.appendChild(omenu);
-    omenu.addEventListener("keydown", (e) => outputMenuKeys(omenu, e));
+    omenu.addEventListener("keydown", (e) => chipMenuKeys(omenu, "code-output-chip", e));
     el("code-output-chip")?.addEventListener("click", (e) => {
       e.stopPropagation();
       const opening = omenu.classList.contains("hidden");
@@ -3720,6 +3832,7 @@ function paintSourceReach(): void {
 function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
+  paintFolderChip();
   const cloud = activeSource().kind !== "local";
   // A CLOUD source browses the POD workspace with the folder chip (his ask,
   // 2026-08-20) — only the + (a machine mkdir) has nothing to do there.
@@ -7737,6 +7850,7 @@ export function initCode(): void {
     const wave = el("code-rec-wave");
     if (!wrap || !left || !right || !wave) return;
     const mode = el("code-mode-wrap");
+    const folder = el("code-folder-wrap");
     const output = el("code-output-wrap");
     const level = el("code-level-wrap");
     const model = el("code-model-wrap");
@@ -7761,10 +7875,10 @@ export function initCode(): void {
     if (work) {
       order(wrap, [plus]);
       seatBefore(mic, wrap, wave);
-      order(left, [output]);
+      order(left, [folder, output]);
       order(right, [model, level, mode, stop]);
     } else {
-      order(left, [plus, mic, mode, output]);
+      order(left, [plus, mic, mode, folder, output]);
       order(right, [model, level, stop]);
     }
   };
