@@ -122,10 +122,15 @@ export function createThreadPublisher(deps: PublishDeps) {
   /** Publish ONE thread (its index when moved, its new messages). Returns the
    *  last server verdict, or null when nothing was sent. Throws only on a
    *  transport failure (the caller decides whether the pass goes on). */
-  async function publishOne(c: RelayChat, states: ThreadStates, report?: PublishReport): Promise<PushThreadResult | null> {
+  async function publishOne(c: RelayChat, states: ThreadStates, report?: PublishReport, serverCount?: number): Promise<PushThreadResult | null> {
     const id = c.id!;
     const st = states[id] ?? { syncedUpTo: 0, metaSig: "", publishedAt: 0 };
     if (st.dead) { report?.skipped.push(id); return null; }
+    // THE SERVER LOST WHAT THIS SIDE SENT (his report, 2026-10-06: a metadata
+    // push with an empty list zeroed threads on the server): its count sits
+    // below what landed, so the transcript is sent whole again, as a shrink is.
+    const lost = serverCount !== undefined && st.syncedUpTo > 0 && serverCount < st.syncedUpTo;
+    if (lost) log(`thread ${id}: the server holds ${serverCount} of ${st.syncedUpTo} published messages — re-sent whole`);
     const index = threadIndexOf(c);
     const sig = metaSigOf(index);
     const messages = (Array.isArray(c.messages) ? c.messages : []).map(projectMessage).filter((m): m is SessionThreadMessage => !!m);
@@ -134,7 +139,7 @@ export function createThreadPublisher(deps: PublishDeps) {
     const nextClock = (): number => Math.max(index.updatedAt, st.publishedAt + 1);
 
     // A SHRUNK transcript (compaction, a cleared thread): replace it whole.
-    const shrank = messages.length < st.syncedUpTo;
+    const shrank = messages.length < st.syncedUpTo || lost;
     // A thread the server has never seen is CREATED with its first messages
     // in the one PUT; afterwards the index rides alone and messages append.
     const fresh = !st.publishedAt;
@@ -214,11 +219,16 @@ export function createThreadPublisher(deps: PublishDeps) {
   async function publishAllNow(): Promise<PublishReport> {
     const report: PublishReport = { indexed: [], appended: {}, replaced: [], skipped: [] };
     const states = deps.state.read();
+    // The server's counts, once per pass: a thread it holds fewer messages of
+    // than this side published is repaired below. Unreadable → no repair this pass.
+    const counts = new Map<string, number>();
+    try { for (const m of await deps.api.threads()) counts.set(m.id, m.messageCount ?? 0); }
+    catch (err) { if (err instanceof ConnectError || err instanceof AuthError) throw err; }
     try {
       for (const c of deps.chats()) {
         if (!c.id) continue;
         if (!madeHere(c)) { continue; }
-        try { await publishOne(c, states, report); }
+        try { await publishOne(c, states, report, counts.get(c.id)); }
         catch (err) {
           if (err instanceof ConnectError || err instanceof AuthError) throw err; // the pass is over
           log(`thread ${c.id}: ${err instanceof Error ? err.message : String(err)}`);
