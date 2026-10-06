@@ -6,9 +6,9 @@
  * is the OFFLINE CACHE (write-through):
  *   • web      — CLOUD threads live in the server's harness thread store
  *                (`/api/harness/threads[/:id]`, help/harness-api.ts); a thread
- *                bound to an attached DESKTOP lives on that machine and is
- *                read/written over the relay (`sessions.*`, as the mobile app
- *                does — web/src/desktop-sessions.ts). The cache is
+ *                a desktop made is the server's too — that desktop publishes
+ *                it (main/thread-publish.ts); nothing is read off a desktop
+ *                over the relay (his order, 2026-10-06). The cache is
  *                web-contract.js's per-user localStorage entry.
  *   • desktop  — server calls go through four thin IPC methods (threadsList/
  *                Get/Push/Delete → the MAIN-process SDK client, per the
@@ -76,13 +76,13 @@ interface DesktopThreadsIpc {
   threadsDelete?: (id: string) => Promise<void>;
 }
 
-/** The SDK attach surface (window.glyphhSdk.attach) — the member's machines
- *  with remote control on, each answering `sessions.*` over the relay. Mirrors
- *  web/src/desktop-sessions.ts (the mobile app's copy of the same lane). */
+/** The SDK attach surface (window.glyphhSdk.attach): which of the member's
+ *  machines have remote control on — a status, never a data read. A Code
+ *  session on a desktop folder runs there over the relay; its thread, like
+ *  every thread, is the server's. */
 interface AttachMachine { id: string; name?: string; app?: string; folders?: string[] }
 interface AttachSurface {
   status(): Promise<{ allowed?: boolean; attached?: boolean; machines?: AttachMachine[] }>;
-  dispatch<T>(method: string, params?: Record<string, unknown>, opts?: { machineId?: string }): Promise<T>;
 }
 const attachSurface = (): AttachSurface | null =>
   (window as unknown as { glyphhSdk?: { attach?: AttachSurface } }).glyphhSdk?.attach ?? null;
@@ -94,90 +94,28 @@ const attachSurface = (): AttachSurface | null =>
 let attachedSnapshot: Array<{ id: string; name: string; folders: string[] }> = [];
 export function attachedMachines(): ReadonlyArray<{ id: string; name: string; folders: string[] }> { return attachedSnapshot; }
 
-/** Which MACHINE each desktop-relay thread lives on (from the last list()). A
- *  machine's id changes on every reconnect, so this is refreshed per list. */
-const desktopHome = new Map<string, string>();
-const isDesktopThread = (id: string): boolean => {
-  if (desktopHome.has(id)) return true;
-  const c = chatsRef.find((x) => x.id === id);
-  const src = c?.source as { kind?: string; machineId?: string } | undefined;
-  return !!src && src.kind === "local" && !!src.machineId;
-};
-const desktopOpts = (id: string): { machineId?: string } => {
-  const m = desktopHome.get(id);
-  if (m) return { machineId: m };
-  const src = chatsRef.find((x) => x.id === id)?.source as { machineId?: string } | undefined;
-  return src?.machineId ? { machineId: src.machineId } : {};
-};
-
 /**
- * WEB: the server's harness thread store for CLOUD threads
- * (`/api/harness/threads[/:id]`, LWW on updatedAt — help/harness-api.ts lists
- * the routes), plus the member's attached DESKTOPS for machine-bound threads
- * (`sessions.list/get/put/delete` over the relay — the machine owns those
- * threads and writes a relayed turn's messages itself). One Transport, routed
- * per thread by where it lives.
+ * WEB: the server's harness thread store (`/api/harness/threads[/:id]`, LWW
+ * on updatedAt — help/harness-api.ts lists the routes) is the ONE transport
+ * (his order, 2026-10-06): a desktop publishes its threads there and the web
+ * reads them there. The attached desktops are read for their status only.
  */
 function webTransport(): Transport {
-  const desktopList = async (): Promise<ThreadMeta[]> => {
+  const refreshAttached = async (): Promise<void> => {
     const a = attachSurface();
-    if (!a) return [];
+    if (!a) { attachedSnapshot = []; return; }
     const st = await a.status().catch(() => null);
     const machines = st?.attached ? (st.machines ?? []) : [];
     attachedSnapshot = machines.map((m) => ({ id: m.id, name: m.name || m.app || "", folders: Array.isArray(m.folders) ? m.folders.filter((f): f is string => typeof f === "string") : [] }));
-    // EVERY session the desktop holds lists here (his order, 2026-10-04) —
-    // `sessions.list` is not folder-guarded (remote-control.ts passes it
-    // through); the grant applies when a session is OPENED or RUN, which the
-    // rail enforces with the snapshot above and the relay's own guard.
-    const lists = await Promise.all(machines.map(async (m) => {
-      const r = await a.dispatch<{ sessions?: ThreadMeta[] }>("sessions.list", {}, { machineId: m.id }).catch(() => null);
-      return (r?.sessions ?? []).map((t) => ({
-        ...t,
-        source: { ...((t.source as object | null) ?? {}), kind: "local", machineId: m.id, machineName: m.name || m.app || "" },
-      }));
-    }));
-    const all = lists.flat();
-    desktopHome.clear();
-    for (const t of all) {
-      const mid = (t.source as { machineId?: string }).machineId;
-      if (mid) desktopHome.set(t.id, mid);
-    }
-    return all;
   };
   return {
     list: async () => {
-      // The harness answer is the one that can be OFFLINE (reconcile's
-      // cache-only mode); a machine that is off simply lists nothing.
       const cloud = await harnessRequest<ThreadMeta[]>("GET", "/threads");
-      const desktop = await desktopList();
-      return [...(Array.isArray(cloud) ? cloud : []), ...desktop];
+      await refreshAttached();
+      return Array.isArray(cloud) ? cloud : [];
     },
-    get: async (id) => {
-      if (isDesktopThread(id)) {
-        const a = attachSurface();
-        if (!a) throw new HarnessHttpError(503, "no attached desktop");
-        const r = await a.dispatch<{ session?: ThreadFull }>("sessions.get", { id }, desktopOpts(id));
-        if (!r?.session) throw new HarnessHttpError(404, "thread not on the desktop");
-        return { ...r.session, messages: r.session.messages ?? [] };
-      }
-      return harnessRequest<ThreadFull>("GET", `/threads/${encodeURIComponent(id)}`);
-    },
+    get: (id) => harnessRequest<ThreadFull>("GET", `/threads/${encodeURIComponent(id)}`),
     push: async (id, body) => {
-      if (isDesktopThread(id)) {
-        const a = attachSurface();
-        if (!a) throw new HarnessHttpError(503, "no attached desktop");
-        // Title / type only: the machine's own store holds the messages.
-        await a.dispatch("sessions.put", {
-          id,
-          ...(body.title ? { title: body.title } : {}),
-          ...(body.mode ? { mode: body.mode } : {}),
-        }, desktopOpts(id));
-        const c = chatsRef.find((x) => x.id === id);
-        return {
-          applied: true,
-          thread: { id, title: body.title ?? c?.title ?? "", mode: body.mode ?? "", source: body.source ?? null, createdAt: c?.createdAt ?? body.updatedAt, updatedAt: body.updatedAt, messageCount: body.messages?.length ?? c?.messages.length ?? 0 },
-        };
-      }
       try {
         return await harnessRequest<PushResult>("PUT", `/threads/${encodeURIComponent(id)}`, body);
       } catch (err) {
@@ -191,29 +129,11 @@ function webTransport(): Transport {
         throw err;
       }
     },
-    del: async (id) => {
-      if (isDesktopThread(id)) {
-        const a = attachSurface();
-        if (!a) throw new HarnessHttpError(503, "no attached desktop");
-        await a.dispatch("sessions.delete", { id }, desktopOpts(id));
-        desktopHome.delete(id);
-        // THE SERVER'S COPY GOES TOO (his report, 2026-10-05: deleting over the
-        // relay "is not working" — the session came back). The desktop had
-        // published the thread to the index, and its own tombstone lands later
-        // and best-effort, so the next list adopted the copy right back. A 404
-        // means it was never there, or is already gone.
-        await harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`).catch((err) => {
-          if ((err as { httpStatus?: number })?.httpStatus === 404) return;
-          throw err;
-        });
-        return;
-      }
-      await harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`);
-    },
+    del: (id) => harnessRequest<void>("DELETE", `/threads/${encodeURIComponent(id)}`),
   };
 }
 
-/** Web target → the harness + desktop-relay transport; desktop → the
+/** Web target → the harness transport; desktop → the
  *  main-process client over IPC. Order matters: on web `window.glyphh` is a
  *  Proxy that fabricates a function for ANY name, so the surface marker is
  *  checked first. */

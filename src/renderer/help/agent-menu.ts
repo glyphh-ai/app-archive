@@ -120,7 +120,7 @@ export type MenuLocus = "local" | "cloud";
 /** A CLI agent row (preload / web-contract `cliAgentsList`). */
 export interface MenuCliRow { id: string; name: string }
 
-/** A desktop CLI session (preload / web-contract `cliSessionsList`). */
+/** A CLI session on this desktop (preload `cliSessionsList`; the web lists none). */
 export interface MenuCliSession { id: string; cli: string; title: string; cwd: string; mtime: number }
 
 /** The open session, or null on a fresh landing. */
@@ -137,8 +137,6 @@ export interface AgentMenuInput {
   /** attach.status's machines — is a desktop attached, and which. The
    *  desktop itself is always its own machine. */
   machines?: ReadonlyArray<MenuMachine>;
-  /** An attached desktop's own app rows (machine-tagged). */
-  apps?: ReadonlyArray<MenuAppRow>;
   /** The member's INSTALLED apps — the cloud instances, the one list. */
   installed?: ReadonlyArray<MenuAppRow>;
   clis?: ReadonlyArray<MenuCliRow>;
@@ -233,12 +231,14 @@ export function glyphhAppsOnly(rows: ReadonlyArray<MenuAppRow>): MenuAppRow[] {
  *  (__wbOpenTool(view)); a cloud instance — and on the desktop every row —
  *  opens as a panel of its own (__wbOpenApp); only a row that lives on an
  *  attached desktop, asked from the web, opens THERE (`panels.open {app}`). */
-export type AppRowOpen = { open: "house-panel"; view: string } | { open: "panel" } | { open: "desktop" };
-export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool" | "cloud">, surface: MenuSurface): AppRowOpen {
+export type AppRowOpen = { open: "house-panel"; view: string } | { open: "panel" };
+/** Where an apps row opens: a house row in its house panel, every other
+ *  installed app as a panel on THIS surface (his order, 2026-10-06: nothing
+ *  opens on a desktop from the web). */
+export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool" | "cloud">, _surface?: MenuSurface): AppRowOpen {
   const view = row.kind === GLYPHH_APP_KIND ? houseViewOf(row.tool) : null;
   if (view) return { open: "house-panel", view };
-  if (row.cloud || surface === "desktop") return { open: "panel" };
-  return { open: "desktop" };
+  return { open: "panel" };
 }
 
 /** The locus the ⋮ menu keys off, read from a session source: a local
@@ -288,10 +288,10 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   const session = sessionRowsFor(i.session);
   if (session.length) byKind.set("session", { kind: "session", label: SESSION_SECTION_LABEL, rows: session });
   // APPS = THE INSTALLED APPS, PERIOD (his order, 2026-10-05: "Only
-  // installed apps show period. not tied to desktop or not"): the cloud
-  // instances always, an attached desktop's rows beside them, one row per
-  // slug. No desktop is not a reason to hide the list.
-  const appRows = glyphhAppsOnly([...(i.installed ?? []), ...(machine ? (i.apps ?? []) : [])]);
+  // installed apps show period. not tied to desktop or not"): the member's
+  // instances, the one list on every surface (his order, 2026-10-06) —
+  // nothing read off a desktop joins it.
+  const appRows = glyphhAppsOnly(i.installed ?? []);
   byKind.set("apps", {
     kind: "apps",
     label: APPS_SECTION_LABEL,
@@ -362,6 +362,3 @@ export function toggleFold(state: FoldState, key: string): boolean {
 }
 
 /** The toast after an app opened on the desktop. */
-export function openedOnLine(machineName: string): string {
-  return `Opened on ${machineName || "your desktop"}`;
-}

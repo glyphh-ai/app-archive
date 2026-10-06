@@ -43,17 +43,15 @@ export interface RemoteControlView extends RemoteControlSetting {
   refused?: string;
 }
 
-/** Everything a phone may call — the server's REMOTE_METHODS, no more. The
- *  web terminal's pty.input/resize/close name a pty this door opened (relay-
- *  pty.ts keys them by id); only pty.open takes a path, guarded below.
- *  layouts.list/get and panelApps.list are the Customize libraries app.glyphh.ai
- *  reads off this machine (attach-handlers.ts) — reads, no path, no write.
- *  The fs and git doors are NOT here: they take paths, so remoteTable builds
- *  them around the grant guard (relay-fs.ts relayFsTable). */
+/** Everything the web may call — the server's REMOTE_METHODS, no more. The
+ *  relay DRIVES A SESSION on this machine and carries no data (his order,
+ *  2026-10-06): no thread, app, workspace or CLI-session list is read off it;
+ *  every record is the server's. The web terminal's pty.input/resize/close
+ *  name a pty this door opened (relay-pty.ts keys them by id); only pty.open
+ *  takes a path, guarded below. The fs and git doors are NOT here: they take
+ *  paths, so remoteTable builds them around the grant guard (relay-fs.ts). */
 const PASS_THROUGH = [
   "relay.ping",
-  "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
-  "layouts.list", "layouts.get", "panelApps.list",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME
@@ -146,10 +144,6 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
   });
   for (const [m, h] of Object.entries(fsDoor)) table[m] = async (p) => h(p);
 
-  table["sessions.put"] = async (p) => {
-    const workdir = str(p, "workdir");
-    return dispatch("sessions.put", { ...(p as object), ...(workdir ? { workdir: guard(workdir) } : {}) });
-  };
   table["agent.run"] = async (p) => {
     const workdir = str(p, "workdir");
     return dispatch("agent.run", { ...(p as object), ...(workdir ? { workdir: guard(workdir) } : {}) });

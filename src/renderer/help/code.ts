@@ -6299,14 +6299,6 @@ function renderRailSessions(): void {
     // list that failed to load.
     empty.textContent = q ? "No sessions match." : `No ${TYPE_LABEL[typeTab]} sessions yet.`;
     host.appendChild(empty);
-    // ON THE WEB a desktop's sessions list only while that desktop has remote
-    // control ON (it opens no socket otherwise) — say so, once, under the empty state.
-    if (onWebTarget() && !q && !threadStore.attachedMachines().length) {
-      const hint = document.createElement("div");
-      hint.className = "wb-session-empty wb-session-hint";
-      hint.textContent = "Turn on Remote control in Glyphh Desktop to see this machine's sessions.";
-      host.appendChild(hint);
-    }
     return;
   }
   for (const sec of sessSections(items)) {

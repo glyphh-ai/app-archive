@@ -85,9 +85,11 @@ describe('window.glyphhWeb.has — feature detection the Proxy cannot give', () 
     expect(has('pickWorkingDir')).toBe(false);
     expect(has('localMcpSetEnabled')).toBe(false);
     expect(has('remoteControlGet')).toBe(false);
-    // The desktop's CLI sessions DO list on the web now (his report,
-    // 2026-10-04): read off the attached desktop over the relay.
-    expect(has('cliSessionsList')).toBe(true);
+    // Nothing is read off a desktop over the relay (his order, 2026-10-06):
+    // a desktop's CLI sessions are not a web list.
+    expect(has('cliSessionsList')).toBe(false);
+    expect(has('desktopAppsList')).toBe(false);
+    expect(has('desktopPanelOpen')).toBe(false);
     expect(has('attachDevicesList')).toBe(true);
     expect(has('relaunch')).toBe(false);
     expect(has(42)).toBe(false);

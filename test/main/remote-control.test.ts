@@ -50,30 +50,20 @@ describe("the desktop's remote door", () => {
   it("serves the remote-safe methods and nothing else", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
-      "cliSessions.list",
       "fs.cwd", "fs.delete", "fs.gitDiff", "fs.gitInfo", "fs.list", "fs.listDir", "fs.mkdir", "fs.r2Diff", "fs.read", "fs.rename", "fs.search", "fs.unwatch", "fs.watch", "fs.write",
       "git.status",
-      "layouts.get", "layouts.list", "layouts.open",
+      "layouts.open",
       "panel.clipboard", "panel.close", "panel.input", "panel.nav", "panel.open", "panel.stats", "panel.webrtc",
-      "panelApps.list",
       "panels.close", "panels.list", "panels.open", "panels.switch",
       "pty.close", "pty.input", "pty.open", "pty.resize",
       "relay.ping",
-      "sessions.delete", "sessions.get", "sessions.list", "sessions.put",
       "settings.open",
     ]);
   });
 
-  it("passes the Customize library reads straight through — no path to guard", async () => {
+  it("carries no data read: the threads, the CLI sessions, the workspaces and the app tabs are the server's (his order, 2026-10-06)", () => {
     const t = table();
-    expect(await t["layouts.list"]!({})).toEqual({ ok: "layouts.list" });
-    expect(await t["layouts.get"]!({ name: "Research" })).toEqual({ ok: "layouts.get" });
-    expect(await t["panelApps.list"]!({})).toEqual({ ok: "panelApps.list" });
-    expect(calls).toEqual([
-      { m: "layouts.list", p: {} },
-      { m: "layouts.get", p: { name: "Research" } },
-      { m: "panelApps.list", p: {} },
-    ]);
+    for (const m of ["sessions.list", "sessions.get", "sessions.put", "sessions.delete", "cliSessions.list", "layouts.list", "layouts.get", "panelApps.list"]) expect(t[m]).toBeUndefined();
   });
 
   it("opens a web terminal only inside a granted folder (the first grant by default)", async () => {
@@ -116,7 +106,6 @@ describe("the desktop's remote door", () => {
   it("checks a turn's folder before the registry sees it", async () => {
     const t = table();
     await expect(t["agent.run"]!({ prompt: "x", workdir: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
-    await expect(t["sessions.put"]!({ id: "c", workdir: "/etc" })).rejects.toThrow(/not one this machine granted/);
     expect(calls).toEqual([]);
     await t["agent.run"]!({ prompt: "x", mode: "code", workdir: join(granted, "repo") });
     await t["agent.run"]!({ prompt: "y", mode: "work" });

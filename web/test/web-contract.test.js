@@ -430,15 +430,16 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(await c.layoutsSaveGrid({ name: ' ' })).toEqual({ error: 'A name is required.' });
   });
 
-  it('panelAppsList: the server\'s tabs first (tabRowOf), then every machine\'s the server lacks', async () => {
-    const c = buildContract(withDesktops(authedClient(), {
+  it('panelAppsList: the server\'s tabs (tabRowOf) are the one list — a machine\'s panelApps.list is never asked (his order, 2026-10-06)', async () => {
+    const attach = attachFor({
       m1: { 'panelApps.list': { apps: [DESK_TAB] } },
       m2: { 'panelApps.list': { apps: [STUDIO_TAB, { ...DESK_TAB, name: 'CRM (studio)' }] } },
-    }), deps);
+    });
+    const c = buildContract({ ...authedClient(), attach }, deps);
     const rows = await c.panelAppsList();
-    expect(rows.map((a) => a.name)).toEqual(['CRM', 'Mail']);               // the server's crm wins; Mail only a machine has
+    expect(rows.map((a) => a.name)).toEqual(['CRM']);
     expect(rows[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, url: 'https://crm', mcp: null, commands: {} });
-    expect(rows[1]).toEqual(STUDIO_TAB);
+    expect(attach.dispatch).not.toHaveBeenCalled();
   });
 
   it('panelAppsCreate / Update / Delete write the server; config vars never ride', async () => {
@@ -498,33 +499,11 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
     expect(await buildContract(authedClient(), deps).attachStatus()).toEqual({ attached: false, machines: [] });
   });
 
-  it('desktopAppsList: every machine\'s panelApps.list rows, menu-shaped, KINDED and tagged; system / nav rows and a dead machine drop', async () => {
-    const attach = attachFor({ m1: { 'panelApps.list': { apps: [APP, SYSTEM, NAV, GLYPHH, NATIVE] } }, m2: { 'panelApps.list': new Error('went away') } });
-    const c = buildContract({ ...authedClient(), attach }, deps);
-    const r = await c.desktopAppsList();
-    expect(r.ok).toBe(true);
-    expect(r.apps).toEqual([
-      { slug: 'gmail', name: 'Gmail', kind: 'web', icon: 'data:image/png;base64,AAAA', machineId: 'm1', machineName: 'MacBook' },
-      { slug: 'slides', name: 'Slides', kind: 'glyphh', icon: 'data:image/svg+xml;base64,BBBB', machineId: 'm1', machineName: 'MacBook' },
-      { slug: 'notes', name: 'Notes', kind: 'native', icon: 'https://cdn/notes.png', machineId: 'm1', machineName: 'MacBook' },
-    ]);
-    // The agent menu keeps ONLY the glyphh row (help/agent-menu.ts glyphhAppsOnly) — the kind is what it reads.
-    expect(r.apps.filter((a) => a.kind === 'glyphh').map((a) => a.slug)).toEqual(['slides']);
-    expect(attach.dispatch).toHaveBeenCalledWith('panelApps.list', {}, { machineId: 'm1' });
-    expect(await buildContract(authedClient(), deps).desktopAppsList()).toEqual({ ok: true, apps: [] });
-  });
-
-  it('desktopPanelOpen: panels.open {app} on the named machine; the desktop\'s refusal rides back', async () => {
-    const attach = attachFor({
-      m1: { 'panels.open': (p) => ({ app: p.app, name: 'Gmail', opened: true }) },
-      m2: { 'panels.open': new Error('Gmail did not open: no panel appeared within 15s') },
-    });
-    const c = buildContract({ ...authedClient(), attach }, deps);
-    expect(await c.desktopPanelOpen({ app: 'gmail', machineId: 'm1' })).toEqual({ ok: true, app: 'gmail', name: 'Gmail' });
-    expect(attach.dispatch).toHaveBeenCalledWith('panels.open', { app: 'gmail' }, { machineId: 'm1' });
-    expect(await c.desktopPanelOpen({ app: 'gmail', machineId: 'm2' })).toMatchObject({ ok: false, error: /did not open/ });
-    expect(await c.desktopPanelOpen({})).toMatchObject({ ok: false, error: /requires/ });
-    expect(await buildContract(authedClient(), deps).desktopPanelOpen({ app: 'gmail' })).toEqual({ ok: false, error: 'no desktop attached' });
+  it('the relay carries no data read: the contract has no desktopAppsList, no desktopPanelOpen, no cliSessionsList (his order, 2026-10-06)', () => {
+    const c = buildContract({ ...authedClient(), attach: attachFor({ m1: { 'panelApps.list': { apps: [APP] } } }) }, deps);
+    expect(c.desktopAppsList).toBeUndefined();
+    expect(c.desktopPanelOpen).toBeUndefined();
+    expect(c.cliSessionsList).toBeUndefined();
   });
 });
 

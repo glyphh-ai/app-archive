@@ -39,14 +39,13 @@ import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // A desktop session's chat lives on the member's desktop — read and written
 // over the attach socket; a cloud session's on the server's thread store
 // (cloud-sessions.ts, below).
-import { desktopSessions } from './desktop-sessions';
 import { resolveDefaultModel } from './default-model';
 // THE CLOUD LANE on app.glyphh.ai on a phone (his direction, 2026-10-05): a
 // Code session on a cloud worker with a GitHub repo checked out — the web's
 // locus rule (session-locus.ts) and the web's SDK calls, nothing new.
 import {
   cloudSource, cloudSendBlock, cloudLabel, envChipLabel, repoChipLabel, folderChipLabel,
-  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, splitRepo, mergeThreads, sessionSubline, sessionMark,
+  toggleRepo, setBranch, groupRepos, accountHeaders, manageRows, splitRepo, sessionSubline, sessionMark,
   toStoredMessages, picksOf, isCloudKind, defaultLocus, LOCUS_LOCKED_HINT,
   environmentIdOf, environmentName, environmentSubline, environmentFormError, maskedDotenv, NETWORK_OPTIONS, DEFAULT_ENVIRONMENT_ID,
   type RepoPick, type RepoRow, type BranchRow, type CloudSource, type Locus, type ListedThread, type EnvironmentRow, type EnvironmentNetwork,
@@ -354,11 +353,14 @@ function shortModelId(id: string): string { const i = id.indexOf('::'); return i
 /** The one loop's one role: the model pick falls back to the full available pool. */
 const AGENT_ROLES: RoleItem[] = [{ name: 'agent', label: 'Agent', modelId: null, choices: [] }];
 
-/* ── Sessions — real SDK data (desktopSessions.threads()). One thread = one
+/* ── Sessions — the server's thread store (cloudSessions.threads()). One thread = one
    session; there is no Chat/Work/Code bucketing anymore (spaces are gone). The
    `mode` field is still written as "code" for server compatibility, but nothing
    here branches on it. ────── */
 type ThreadMeta = ListedThread;
+/** The org's admin turned remote control off (attach.status `allowed`, read with the desktops). */
+let remoteControlOff = false;
+const remoteOff = (): boolean => remoteControlOff;
 interface ThreadMsg { role: string; text?: string; [k: string]: unknown; }
 
 /** Relative "when" label from an epoch-ms timestamp (now / 2h / Yesterday / Aug 1). */
@@ -708,7 +710,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, whereOf, o
         </div>
         <div className="m-devices">
           {desktops.length === 0
-            ? <div className="m-list-note m-list-note-tight">{desktopSessions.orgOff() ? 'Remote control is off for your organization.' : 'No computer has remote control on'}</div>
+            ? <div className="m-list-note m-list-note-tight">{remoteOff() ? 'Remote control is off for your organization.' : 'No computer has remote control on'}</div>
             : desktops.map((d) => (
               <button key={d.id || d.name || d.app} className="m-dev-chip" data-status="connected" onClick={() => onOpenDesktop(d)}>
                 <span className="m-dev-ico"><Icon name="laptop" /><i className="m-dev-dot" /></span>
@@ -3362,7 +3364,7 @@ function SelectorSheet({ open, section, onClose, roles, roleSel, setRoleSel, mod
                 <>
                   {/* A folder on a connected desktop — the existing picker tray. */}
                   {desktops.length === 0 && (
-                    <div className="m-list-note">{desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : "Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control."}</div>
+                    <div className="m-list-note">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : "Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control."}</div>
                   )}
                   {desktops.length > 0 && (
                     <div className="m-sel-group">
@@ -4002,7 +4004,7 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
         <div className="m-sel-body">
           <div className="m-code-label">Remote control</div>
           {desktops.length === 0
-            ? <div className="m-sel-group"><div className="m-list-note m-list-note-tight">{desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : 'No desktop is attached — turn remote control on in the Glyphh desktop app (Settings → Remote control).'}</div></div>
+            ? <div className="m-sel-group"><div className="m-list-note m-list-note-tight">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : 'No desktop is attached — turn remote control on in the Glyphh desktop app (Settings → Remote control).'}</div></div>
             : (
               <div className="m-sel-group">
                 {desktops.map((d) => {
@@ -4515,33 +4517,20 @@ function App() {
   // server still persists a `mode` field for compatibility, so we hardcode it.
   const SESSION_MODE = 'code' as const;
 
-  /** ONE list from both stores: the desktop's threads over the attach socket
-   *  and the server's CLOUD threads (mobile-cloud.ts mergeThreads). */
-  const loadThreads = async (): Promise<ThreadMeta[]> => {
-    const [d, c] = await Promise.all([
-      desktopSessions.threads().catch(() => [] as ThreadMeta[]),
-      cloudSessions.threads(),
-    ]);
-    return mergeThreads(Array.isArray(d) ? d : [], c);
-  };
+  /** ONE list, the server's thread store (his order, 2026-10-06): a desktop
+   *  publishes its threads there; nothing is read off a desktop. */
+  const loadThreads = async (): Promise<ThreadMeta[]> => cloudSessions.threads();
 
-  /** Name the thread on the desktop (its title, type and folder — the desktop
-   *  writes the turn's messages itself) or, for a cloud session, on the
-   *  server's thread store (with its transcript), then refresh the list so
-   *  the chat surfaces with its new title/timestamp. */
+  /** Name the thread on the server's thread store, then refresh the list so
+   *  the chat surfaces with its new title/timestamp. A desktop-run turn's
+   *  messages are published by that desktop; a cloud turn's ride here. */
   const persistThread = async (id: string) => {
     try {
       // Preserve a custom/renamed title (local override or the one already on the thread)
       // instead of re-deriving from the first message — otherwise a rename gets clobbered.
       const title = titles[id] ?? (threads ?? []).find((t) => t.id === id)?.title ?? (convoRef.current.find((m) => m.role === 'user')?.text?.slice(0, 60) || 'New chat');
       const src = chatFor(id).source;
-      if (isCloudKind(src?.kind)) {
-        // A cloud thread lives on the server's thread store, transcript and
-        // all — the worker does not write the thread itself.
-        await cloudSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, source: src, messages: toStoredMessages(convoRef.current) });
-      } else {
-        await desktopSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, ...(src?.kind === 'local' && src.path ? { workdir: src.path } : {}), ...(src?.kind === 'local' && src.machineId ? { machineId: src.machineId } : {}) });
-      }
+      await cloudSessions.pushThread(id, { title, mode: chatFor(id).mode ?? SESSION_MODE, source: src, ...(isCloudKind(src?.kind) ? { messages: toStoredMessages(convoRef.current) } : {}) });
       setThreads(await loadThreads());
     } catch { /* offline / not-ready — the transcript stays local for now */ }
   };
@@ -4627,9 +4616,7 @@ function App() {
   const loadSession = (s: Recent) => {
     stopObserving();
     convoRef.current = []; setMsgs(null);
-    const metaSrc0 = (threads ?? []).find((t) => t.id === s.id)?.source;
-    const inCloud = locusOf(s.id)?.kind === 'cloud' || isCloudKind(chatFor(s.id).source?.kind) || isCloudKind(metaSrc0?.kind);
-    (inCloud ? cloudSessions.thread(s.id) : desktopSessions.thread(s.id))
+    cloudSessions.thread(s.id)
       .then((t: { messages?: ThreadMsg[] }) => {
         // `streaming` here is a STALE CLOSURE (captured when loadSession ran).
         // If the user sent a turn while this fetch was in flight, the stale
@@ -4712,7 +4699,7 @@ function App() {
       } else {
         haptic();
         if (desktops[0]) { setFolderPick(desktops[0]); return; }
-        convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: desktopSessions.orgOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
+        convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
         renderConvo();
         return;
       }
@@ -5146,10 +5133,9 @@ function App() {
     // instant the socket reconnects (a server restart drops the attach WS, the
     // desktop re-attaches seconds later, but a single fetch never sees it).
     const loadDesktops = (): void => { void glyphh().attach.status()
-      .then((s: { machines?: AttachedMachine[] }) => { if (on) setDesktops(Array.isArray(s?.machines) ? s.machines : []); })
+      .then((s: { machines?: AttachedMachine[]; allowed?: boolean }) => { if (on) { setDesktops(Array.isArray(s?.machines) ? s.machines : []); remoteControlOff = s?.allowed === false; } })
       .catch(() => { if (on) setDesktops([]); });
-      // The chats live on the desktop (and the cloud ones on the server):
-      // re-read them on the same beat.
+      // The threads are the server's: re-read them on the same beat.
       void loadThreads().then((t: ThreadMeta[]) => { if (on) setThreads(t); }).catch(() => { /* keep the last list */ }); };
     loadDesktops();
     const desktopsTimer = setInterval(loadDesktops, 20000);
@@ -5254,11 +5240,10 @@ function App() {
     setSession((s) => (s && s.id === id ? { ...s, title } : s));
     // Sync to the server so the new title shows on every surface (Rename is only offered
     // from an OPEN session, so convoRef holds the messages to push alongside it).
-    void desktopSessions.pushThread(id, { title }).catch(() => { /* offline — the local override + list update still stand */ });
+    void cloudSessions.pushThread(id, { title }).catch(() => { /* offline — the local override + list update still stand */ });
   };
   const deleteSession = async (s: Recent) => {
-    const inCloud = locusOf(s.id)?.kind === 'cloud' || isCloudKind(chatFor(s.id).source?.kind) || isCloudKind((threads ?? []).find((t) => t.id === s.id)?.source?.kind);
-    try { await (inCloud ? cloudSessions.deleteThread(s.id) : desktopSessions.deleteThread(s.id)); } catch { /* best effort */ }
+    try { await cloudSessions.deleteThread(s.id); } catch { /* best effort */ }
     remoteChats.delete(s.id); forgetLocus(s.id);
     setThreads((t) => (t ?? []).filter((x) => x.id !== s.id));
     if (pins.has(s.id)) { const p = new Set(pins); p.delete(s.id); savePins(p); }

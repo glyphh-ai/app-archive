@@ -12,16 +12,6 @@
  *   machine.appOpen  {app}     → launch one by (fuzzy) name
  *   machine.openUrl  {url}     → open an http(s) url in the default browser
  *   scrape.page {url, wait?}   → load a URL headlessly, return title/text/html
- *   sessions.list {}           → this machine's chats, newest first (metadata)
- *   sessions.get  {id}         → one chat's last 200 messages
- *   sessions.put  {id, title?, mode?, workdir?} → create a chat / patch its metadata
- *   sessions.delete {id}       → delete one chat
- *   cliSessions.list {}        → the vendor CLIs' own sessions on this machine (Claude, Codex,
- *                                Gemini, Copilot, Cursor, the Glyphh CLI): the rows the desktop's
- *                                cli-sessions-list IPC lists, read-only, each with its resume handle
- *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
- *   layouts.get  {name}        → one workspace by name
- *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
  *   apps.install {path | url | bundleBase64} → a .glyphh bundle becomes a CLOUD INSTANCE
  *                                (glyphh-app-host.ts installGlyphhAppBundle): the local MCP's
  *                                app_install (docs/GLYPHH-APP-SPEC.md §3). Loopback only — the
@@ -29,17 +19,10 @@
  *                                are the gateway's (app_list_tools / app_call_tool), never a
  *                                machine's.
  *
- * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
- * live on this machine only (the chat store in agent-ipc.ts), so the phone
- * lists and opens them over the attach socket.
- *
- * layouts.* and panelApps.list are app.glyphh.ai's view of the Customize
- * libraries (his report, 2026-10-04: "none of my workspaces, app tabs, etc.
- * are showing on the web"). Since the purge of 2026-09-10 a workspace is a
- * folder under ~/.glyphh/workspaces and an app tab a folder under
- * ~/.glyphh/apps — files on this machine, never written to the server — so
- * the web reads them here, the way it reads the chats. READS ONLY: a change
- * is made on the desktop (the web's shims say so when a write is attempted).
+ * NO DATA RIDES THE RELAY (his order, 2026-10-06): the threads, the
+ * workspaces, the app tabs and the CLIs' sessions are the server's — this
+ * machine publishes and syncs them there and every surface reads them
+ * there. The relay drives a session on this machine, nothing else.
  *
  * loops.run / skills.run / agents.run are gone with the scheduler they ran on
  * (2026-09-21); tasks are programs the desktop runs, and the MCP tools that
@@ -52,10 +35,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node
 import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
-import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, type RelayChat } from "./agent-ipc.js";
-import { listCliSessions } from "./cli-agents.js";
-import { desktopLayouts, getLayoutManager, toLayoutRow } from "./layout-manager.js";
-import { fetchOrgApps } from "./org-apps.js";
 import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
@@ -80,75 +59,7 @@ export function gitStateOf(dir: string): { isRepo: boolean; branch?: string } {
   }
 }
 
-/** A chat as the phone lists it: never its messages. */
-function sessionMeta(c: RelayChat): Record<string, unknown> {
-  const folder = c.workdir || ((c.source as { kind?: string; path?: string } | undefined)?.kind === "local" ? (c.source as { path?: string }).path : undefined);
-  return {
-    id: c.id, title: c.title?.trim() || "New session",
-    createdAt: c.createdAt ?? c.updatedAt ?? 0, updatedAt: c.updatedAt ?? c.createdAt ?? 0,
-    mode: c.mode === "work" || c.mode === "chat" ? "work" : "code",
-    messageCount: c.messages?.length ?? 0,
-    ...(folder ? { source: { kind: "local", path: folder } } : {}),
-    ...(c.pinned ? { pinned: true } : {}),
-  };
-}
-
 export function installAttachHandlers(): void {
-  registerRelayHandler("sessions.list", async () => ({
-    sessions: listStoredChats().map(sessionMeta).sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt)),
-  }));
-
-  registerRelayHandler("sessions.get", async (params) => {
-    const id = str(params, "id");
-    if (!id) throw new Error("sessions.get requires { id }");
-    const c = getStoredChat(id);
-    if (!c) throw new Error(`no session ${id} on this machine`);
-    const messages = (c.messages ?? [])
-      .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-      .slice(-200)
-      .map((m) => ({ role: m.role, text: typeof m.text === "string" ? m.text : "" }));
-    return { session: { ...sessionMeta(c), messages } };
-  });
-
-  registerRelayHandler("sessions.put", async (params) => {
-    const id = str(params, "id");
-    if (!id) throw new Error("sessions.put requires { id }");
-    const chat = upsertStoredChat(id, { title: str(params, "title"), mode: str(params, "mode"), workdir: str(params, "workdir") });
-    return { session: sessionMeta(chat) };
-  });
-
-  // THE CLI SESSIONS TOO (his report, 2026-10-04: the web rail showed only
-  // the Glyphh threads — `sessions.list` is the Glyphh chat store alone).
-  // The same rows the desktop rail draws with the `>_` + vendor mark; `resume`
-  // is what the CLI's own --resume takes (the session id), `updatedAt` the
-  // file's clock. A read of the vendors' stores, never a write.
-  registerRelayHandler("cliSessions.list", async () => ({
-    sessions: listCliSessions().map((r) => ({ id: r.id, cli: r.cli, title: r.title, cwd: r.cwd, mtime: r.mtime, updatedAt: r.mtime, resume: r.id })),
-  }));
-
-  registerRelayHandler("sessions.delete", async (params) => {
-    const id = str(params, "id");
-    if (!id) throw new Error("sessions.delete requires { id }");
-    return { deleted: deleteStoredChat(id) };
-  });
-
-  // The Customize libraries, read-only — the same rows the desktop's own
-  // layouts-list / panel-apps-list IPC hand the renderer: this machine's
-  // workspaces are the ones made on a desktop (his order, 2026-10-06).
-  registerRelayHandler("layouts.list", async () => ({
-    layouts: desktopLayouts(await getLayoutManager().refreshAndList()).map(toLayoutRow),
-  }));
-
-  registerRelayHandler("layouts.get", async (params) => {
-    const name = str(params, "name");
-    if (!name) throw new Error("layouts.get requires { name }");
-    const hit = (await getLayoutManager().refreshAndList()).find((l) => l.name === name);
-    if (!hit) throw new Error(`no workspace "${name}" on this machine`);
-    return { layout: toLayoutRow(hit) };
-  });
-
-  registerRelayHandler("panelApps.list", async () => ({ apps: await fetchOrgApps() }));
-
   // INSTALL A BUNDLE IN THE CLOUD — the local MCP's app_install. A .glyphh
   // ({ path } on this machine, { url }, or { bundleBase64 }) is validated here
   // and becomes (or updates) the member's instance; its tab names it.
