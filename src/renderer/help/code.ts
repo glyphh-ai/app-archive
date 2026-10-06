@@ -524,7 +524,11 @@ function paintFolderChip(): void {
   const wrap = el("code-folder-wrap");
   const chip = el("code-folder-chip");
   if (!wrap || !chip) return;
-  if (onWebTarget()) { wrap.classList.add("hidden"); return; }
+  // WORK ONLY (his order, 2026-10-07): Code's folder lives in the row above
+  // the box; the web has no local folders.
+  const c = current();
+  const work = (c ? modeOf(c) : typeTab) === "work";
+  if (onWebTarget() || !work) { wrap.classList.add("hidden"); return; }
   wrap.classList.remove("hidden");
   const folder = chipFolderOf();
   const label = chip.querySelector<HTMLElement>("span");
@@ -7852,6 +7856,7 @@ export function initCode(): void {
     const mode = el("code-mode-wrap");
     const folder = el("code-folder-wrap");
     const output = el("code-output-wrap");
+    paintFolderChip();   // Work shows it, Code never does
     const level = el("code-level-wrap");
     const model = el("code-model-wrap");
     const stop = el("code-speak-wrap");
@@ -7878,7 +7883,7 @@ export function initCode(): void {
       order(left, [folder, output]);
       order(right, [model, level, mode, stop]);
     } else {
-      order(left, [plus, mic, mode, folder, output]);
+      order(left, [plus, mic, mode, output]);
       order(right, [model, level, stop]);
     }
   };
