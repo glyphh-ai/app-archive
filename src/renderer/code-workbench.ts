@@ -1,4 +1,5 @@
 import { CLI_MARK_URLS } from "./help/cli-marks.js";
+import { chooseRunPlace, type RunPlace, type RunPlaceInput } from "./help/run-place-modal.js";
 /**
  * Code workbench — the old workbench rails, hosted in the Code section.
  *
@@ -7073,7 +7074,7 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
-      if (t.cliAgent) { openAgentCliCard(t); return; }
+      if (t.cliAgent) { void openCliFromEcho(t); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -7200,6 +7201,19 @@ async function init(): Promise<void> {
      *  gateway env), then the composed line types into a terminal card named
      *  for the agent. The CLI window only — it never hops into the Glyphh panel. */
     type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };
+    /** A CLI tile from the Echo asks WHERE it runs first (his order,
+     *  2026-10-07): the environment chip's two sections as a modal; the pick
+     *  becomes the composer's source, then the CLI opens there. */
+    const openCliFromEcho = async (t: EchoTile): Promise<void> => {
+      const w = window as unknown as { __glyphhRunPlaceInputs?: () => Promise<RunPlaceInput>; __glyphhPickRunPlace?: (p: RunPlace) => void };
+      if (!w.__glyphhRunPlaceInputs || !w.__glyphhPickRunPlace) { openAgentCliCard(t); return; }
+      const inputs = await w.__glyphhRunPlaceInputs().catch(() => null);
+      if (!inputs) { openAgentCliCard(t); return; }
+      const place = await chooseRunPlace(inputs);
+      if (!place) return;
+      w.__glyphhPickRunPlace(place);
+      openAgentCliCard(t);
+    };
     const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
       const a = t.cliAgent;
       if (!a) return;
