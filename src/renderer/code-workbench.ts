@@ -53,6 +53,7 @@ import {
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
 import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines } from "./help/surface.js";
+import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
@@ -3645,7 +3646,8 @@ async function init(): Promise<void> {
       const glyphSvg = iconUrl || !(tool || a.appArchetype === "glyphh-app")
         ? undefined
         : svgOf((tool && VIEW_META[tool]?.icon) || VIEW_META.app.icon);
-      const cloud = typeof (a.launchConfig as { instanceKey?: unknown } | null | undefined)?.instanceKey === "string" || undefined;
+      // A CLOUD INSTANCE's row names its instance (`instance`, shared/app-instances.ts INSTANCE_CONFIG_KEY).
+      const cloud = typeof (a.launchConfig as { instance?: unknown } | null | undefined)?.instance === "string" || undefined;
       if (tool) {
         return { name: a.name, slug, appId: a.id, kind: "tool", toolView: tool as Exclude<ViewKind, "app">, iconUrl: iconUrl || undefined, glyphSvg, orderKey: `app:${slug}`, cloud, archetype: a.appArchetype ?? null };
       }
@@ -7436,6 +7438,13 @@ async function init(): Promise<void> {
           flash(existing.card);   // flash() lifts shadow too
           return;
         }
+        // A HOUSE APP (Images, Drive, …) is a cloud instance whose slug names a
+        // built-in panel (help/house-relay.ts): it opens THAT panel on either
+        // surface — the door its wall tile takes — never a frame of its
+        // instance's ui (his law, 2026-10-06: the apps carry their tools; the
+        // panel is the surface's own).
+        const house = app.glyphh ? HOUSE_VIEW_OF_APP[key] : undefined;
+        if (house) { (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool?.(house); return; }
         let tile: EchoTile | undefined = findTile(key)?.tile
           ?? ((app.url || app.glyphh) ? { name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, workbench: app.workbench, kind: "app" } : undefined);
         // A GLYPHH app (owned/dev or installed) is a LOCAL panel — never navigate it

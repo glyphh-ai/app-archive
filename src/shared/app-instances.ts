@@ -24,6 +24,7 @@
  */
 
 import { tabRowOf, type OrgAppRowLike, type TabRowLike } from "./member-library.js";
+import { houseViewOfApp } from "./house-store.js";
 
 export type InstanceKind = "org" | "personal";
 export type InstanceStatus = "pending" | "ready" | "stopped" | "error";
@@ -118,9 +119,15 @@ export const panelUrlOf = (apiBase: string, key: string): string => `${apiBase.r
 export const callPathOf = (key: string): string => `/app-host/${encodeURIComponent(key)}/call`;
 
 /** The launchConfig a tab row carries for an instance: the key, the kind, and
- *  the manifest's contract (the loop's tool list and the panel read the same keys). */
-export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "manifest">, manifest?: BundleManifestLike | null): Record<string, unknown> {
+ *  the manifest's contract (the loop's tool list and the panel read the same
+ *  keys) — and, for a HOUSE app (Images, Drive, …), the built-in panel its
+ *  slug names (`tool`): the one key every open door on both surfaces already
+ *  reads (the wall tile, the ⋮ menu, Settings → Apps → Open), so an instance
+ *  of one of the six opens the native panel over the member's records, never
+ *  its ui frame. */
+export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "slug" | "manifest">, manifest?: BundleManifestLike | null): Record<string, unknown> {
   const m = manifest ?? inst.manifest;
+  const tool = houseViewOfApp(inst.slug);
   return {
     [INSTANCE_CONFIG_KEY]: inst.key,
     instanceKind: inst.kind,
@@ -130,9 +137,18 @@ export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "man
     window: (manifest?.window ?? null) as Record<string, unknown> | null,
     // An installed app is a chromeless panel (his rule, 2026-08-20).
     workbench: true,
+    ...(tool ? { tool } : {}),
     ...(manifest?.release ? { release: manifest.release } : {}),
     ...(typeof manifest?.iconUrl === "string" ? { iconUrl: manifest.iconUrl } : {}),
   };
+}
+
+/** THE OPEN RULE for an instance's tab (the Settings → Apps card's Open, on
+ *  both surfaces): a house app answers its panel; anything else is a panel
+ *  of the instance's own UI. */
+export function instanceTabOpen(row: Pick<TabRowLike, "slug" | "name" | "config">): { slug: string; name: string; tool?: string } {
+  const tool = typeof row.config?.tool === "string" && row.config.tool ? row.config.tool : houseViewOfApp(row.slug);
+  return { slug: row.slug, name: row.name, ...(tool ? { tool } : {}) };
 }
 
 /** The tab row an instance gets (kind glyphh, no entry on any machine, config
@@ -196,24 +212,28 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
     if (tab.kind === "glyphh" && inst && !instanceKeyOfRow(tab)) {
       // A row from before the cloud whose slug is in the cloud: the instance
       // is the app; the old row stands behind it.
-      out.push(withStatus(tabRowOf(instanceTabRow(inst, null, tab, tab.updatedAt || nowIso)), inst));
+      out.push(withInstance(tabRowOf(instanceTabRow(inst, null, tab, tab.updatedAt || nowIso)), inst));
       continue;
     }
     const row = tabRowOf(tab);
     const named = instanceKeyOfRow(tab);
     const live = named ? instances.find((i) => i.key === named) : undefined;
-    out.push(live ? withStatus(row, live) : row);
+    out.push(live ? withInstance(row, live) : row);
   }
   for (const inst of bySlug.values()) {
     if (seen.has(inst.slug)) continue;
     seen.add(inst.slug);
-    out.push(withStatus(tabRowOf(instanceTabRow(inst, null, null, nowIso)), inst));
+    out.push(withInstance(tabRowOf(instanceTabRow(inst, null, null, nowIso)), inst));
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function withStatus(row: OrgAppRowLike, inst: AppInstanceSummary): OrgAppRowLike {
-  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), instanceStatus: inst.status, instanceAccess: inst.access, instancePublic: inst.public } };
+/** An instance-backed row carries the instance's live status — and a house
+ *  app's panel (`tool`), even on a tab the server wrote before this rule, so
+ *  every door opens it the same way. */
+function withInstance(row: OrgAppRowLike, inst: AppInstanceSummary): OrgAppRowLike {
+  const tool = typeof row.launchConfig?.tool === "string" && row.launchConfig.tool ? null : houseViewOfApp(inst.slug);
+  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), ...(tool ? { tool } : {}), instanceStatus: inst.status, instanceAccess: inst.access, instancePublic: inst.public } };
 }
 
 /** The Settings → Apps card of an instance — the shape the library page lists

@@ -36,7 +36,6 @@ import {
 } from '../../src/shared/member-library';
 import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
 import { HOUSE_VIEW_OF_APP } from '../../src/renderer/help/house-relay.ts';
-import { HOUSE_ROWS } from '../../src/shared/house-store.ts';
 import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
@@ -146,21 +145,13 @@ export function buildMemberLibrary(client, deps = {}) {
   };
 
   // ── App tabs ──────────────────────────────────────────────────────────────
-  // THE HOUSE APPS ARE BUILT-IN ROWS on every surface (shared/house-store.ts
-  // HOUSE_ROWS; his order, 2026-10-06): synthesized into the panel app list
-  // beside the server's tab rows (the desktop's fetchOrgApps does the same),
-  // each opening its built-in panel; a member's own row wins. Not Settings →
-  // Apps: that page lists what a member installed, on both surfaces.
-  const houseTabRows = (have) => HOUSE_ROWS.filter((h) => !have.has(h.slug)).map((h) => ({
-    id: h.slug, kind: 'glyphh', slug: h.slug, name: h.name, prodUrl: null, nativeRef: null, config: { tool: h.tool }, description: '',
-    access: 'members', owned: true, latestVersion: null, version: '', secretNames: [], requiredConnections: [], listing: null, createdAt: '', updatedAt: '',
-  }));
+  // THE HOUSE APPS ARE APPS (his law, 2026-10-06): Images, Drive and the rest
+  // are cloud instances the server installs for every member, listed here
+  // like any instance — never a synthesized row. Their tab's `tool` names the
+  // built-in panel (shared/app-instances.ts), which is where Open lands.
   const panelAppsList = async () => {
-    // The server read failing (signed out, offline) = no list at all, the
-    // built-in rows included: a list-shaped read answers [] then.
-    const [srv, desk, instances] = await Promise.all([lib().list('tab').catch(() => null), desktopRead('panelApps.list', 'apps'), appInstances.listInstances()]);
-    const own = (srv ?? []).filter((r) => isTabRow(r.data)).map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
-    const tabs = srv ? [...own, ...houseTabRows(new Set(own.map((r) => String(r.slug).toLowerCase())))] : own;
+    const [srv, desk, instances] = await Promise.all([listRows('tab'), desktopRead('panelApps.list', 'apps'), appInstances.listInstances()]);
+    const tabs = srv.filter((r) => isTabRow(r.data)).map((r) => ({ ...r.data, slug: r.id, updatedAt: new Date(r.updatedAt).toISOString() }));
     // THE LIST = INSTANCES: the server's tabs, every instance no tab names yet
     // — then the attached desktops' rows behind.
     const server = mergeAppRows(instances, tabs);

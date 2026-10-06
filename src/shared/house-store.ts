@@ -34,20 +34,21 @@ export type HouseKind = "design" | "deck" | "image" | "video" | "audio" | "file"
 export type MediaKind = "image" | "video" | "audio";
 export const MEDIA_KINDS: readonly MediaKind[] = ["image", "video", "audio"];
 
-/** The house app slugs (the desktop's tab rows carry them; the server's attach.py names the same set). */
-export const HOUSE_APP_SLUGS: readonly string[] = Object.freeze(["design", "slides", "images", "video", "audio", "drive"]);
-/** THE HOUSE APPS ARE BUILT-IN ROWS (his order, 2026-10-06: cloud is the one
- *  home; nothing of them is installed on a machine): every surface lists these
- *  six as tab rows whose panel is the built-in view, synthesized — never a
- *  record, never a folder. A row a member has by the same slug wins. */
-export const HOUSE_ROWS: ReadonlyArray<{ slug: string; name: string; tool: string }> = Object.freeze([
-  { slug: "design", name: "Design", tool: "gdesign" },
-  { slug: "slides", name: "Slides", tool: "gpoint" },
-  { slug: "images", name: "Images", tool: "gimage" },
-  { slug: "video", name: "Video", tool: "gvideo" },
-  { slug: "audio", name: "Audio", tool: "gsound" },
-  { slug: "drive", name: "Drive", tool: "gdrive" },
-]);
+/** THE HOUSE APPS ARE REAL APPS (his law, 2026-10-06: "the apps themselves
+ *  carry the skill for them and the tools each support"): six default apps on
+ *  the hub, installed for every member as cloud INSTANCES by the server, each
+ *  with its tools and SKILL.md. Nothing here synthesizes a row for them — the
+ *  list is the instances, like any app (shared/app-instances.ts mergeAppRows).
+ *  What IS theirs on every surface: the slug names the built-in work panel
+ *  that shows the member's records of that kind, so an instance of one of
+ *  these slugs opens that panel, never the instance's ui frame. The renderer
+ *  keeps its own copy of this table (help/house-relay.ts — it never imports
+ *  src/shared); test/main/house-relay.test.ts pins the two equal. */
+export const HOUSE_VIEW_OF_APP: Readonly<Record<string, string>> = Object.freeze({
+  design: "gdesign", slides: "gpoint", images: "gimage", video: "gvideo", audio: "gsound", drive: "gdrive",
+});
+/** The house panel an app slug names, or null for any other app. */
+export const houseViewOfApp = (slug: unknown): string | null => HOUSE_VIEW_OF_APP[String(slug ?? "").toLowerCase()] ?? null;
 /** The house app that owns each media kind. */
 export const APP_OF_MEDIA: Readonly<Record<MediaKind, string>> = Object.freeze({ image: "images", video: "video", audio: "audio" });
 

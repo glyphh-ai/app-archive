@@ -9,7 +9,7 @@
 import { createHash } from "crypto";
 import { describe, expect, it } from "vitest";
 import {
-  createHouseStore, serverLaneBytes, libraryIdOf, mediaRef, HOUSE_STALE_LINE, HOUSE_APP_SLUGS,
+  createHouseStore, serverLaneBytes, libraryIdOf, mediaRef, HOUSE_STALE_LINE, HOUSE_VIEW_OF_APP, houseViewOfApp,
   type HouseBytes, type HouseFile, type HouseItem, type HouseLib,
 } from "../../src/shared/house-store";
 import { slideCount } from "../../src/shared/deck-document";
@@ -87,8 +87,11 @@ describe("ids are the file names the Mac used, made library-safe", () => {
     for (const bad of ["sunset.png", "avatar/x.png", "image/", "image/../x", "", undefined]) expect(mediaRef(bad)).toBeNull();
   });
 
-  it("the six house app slugs", () => {
-    expect([...HOUSE_APP_SLUGS].sort()).toEqual(["audio", "design", "drive", "images", "slides", "video"]);
+  it("the six house apps are APPS (instances), each naming the built-in panel its slug opens — never a synthesized row", () => {
+    expect(Object.keys(HOUSE_VIEW_OF_APP).sort()).toEqual(["audio", "design", "drive", "images", "slides", "video"]);
+    expect(houseViewOfApp("images")).toBe("gimage");
+    expect(houseViewOfApp("Drive")).toBe("gdrive");
+    for (const other of ["crm", "", null, undefined, "gimage"]) expect(houseViewOfApp(other)).toBeNull();
   });
 });
 

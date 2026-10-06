@@ -15,7 +15,6 @@ import { APPS_DIR, type LocalAppRow } from "./apps-store.js";
 import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
 import { appCache } from "./glyphh-client.js";
 import { tabRowOf } from "../shared/member-library.js";
-import { HOUSE_ROWS } from "../shared/house-store.js";
 import { mergeAppRows } from "../shared/app-instances.js";
 import { listInstances } from "./app-instances.js";
 
@@ -121,25 +120,6 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
   launchConfig: { nav: n.nav },
 }));
 
-/** THE HOUSE APPS (shared/house-store.ts HOUSE_ROWS): built-in rows, like the
- *  nav rows — synthesized, never installed. Each opens its built-in panel
- *  (launchConfig.tool); a member's own row by the same slug takes its place. */
-const HOUSE_APP_ROWS: OrgAppRow[] = HOUSE_ROWS.map((h) => ({
-  ...GLYPHH_SELF_ROW,
-  id: `house-${h.slug}`,
-  name: h.name,
-  slug: h.slug,
-  system: false,
-  owned: true,
-  isBrowser: false,
-  appArchetype: "glyphh-app",
-  launchConfig: { tool: h.tool },
-}));
-const withHouseRows = (rows: OrgAppRow[]): OrgAppRow[] => {
-  const have = new Set(rows.map((r) => r.slug.toLowerCase()));
-  return [...rows, ...HOUSE_APP_ROWS.filter((h) => !have.has(h.slug))];
-};
-
 /** The tab row in the renderer's shape — ONE projection (shared/member-library.ts
  *  tabRowOf), the same the web applies to the server's record of the tab — plus
  *  the icon the row carries off this machine (app-icon-file.ts): a Glyphh app's
@@ -163,7 +143,9 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     // THE LIST = INSTANCES (his decision, 2026-10-04): the member's tab rows
     // and every cloud instance they may open that no row names yet
     // (shared/app-instances.ts mergeAppRows). A row's local icon still rides
-    // from this machine when it has one.
+    // from this machine when it has one. The house apps (Images, Drive, …)
+    // are instances like any other (his law, 2026-10-06): nothing here
+    // synthesizes a row for them; their tab's `tool` names the built-in panel.
     const [tabs, instances] = await Promise.all([appsStore.mine(), listInstances()]);
     const local = new Map(tabs.map((t) => [t.slug.toLowerCase(), t] as const));
     const rows = mergeAppRows(instances, tabs).map((row) => {
@@ -175,9 +157,9 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };
-      return [self, ...NAV_ROWS, ...withHouseRows(rows.filter((_, i) => i !== selfIdx))];
+      return [self, ...NAV_ROWS, ...rows.filter((_, i) => i !== selfIdx)];
     }
-    return [GLYPHH_SELF_ROW, ...NAV_ROWS, ...withHouseRows(rows)];
+    return [GLYPHH_SELF_ROW, ...NAV_ROWS, ...rows];
   });
 }
 

@@ -70,8 +70,6 @@ function rejectingClient() {
 
 const deps = { apiUrl: 'https://api.glyphh.ai', isAuthenticated: async () => true, signOut: async () => {} };
 
-// The six built-in house rows ride every signed-in panel app list (2026-10-06); these tests are about the member's own rows.
-const notHouse = (s) => !['audio', 'design', 'drive', 'images', 'slides', 'video'].includes(String(s).toLowerCase());
 describe('buildContract — AUTHED shapes', () => {
   const c = buildContract(authedClient(), deps);
 
@@ -125,7 +123,7 @@ describe('buildContract — AUTHED shapes', () => {
     ]) expect(c[name], name).toBeUndefined();
   });
   it('panelAppsList → SavedPanelApp rows', async () => {
-    expect((await c.panelAppsList()).find((r) => r.slug === 'crm')).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
+    expect((await c.panelAppsList())[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });
   it('library envelopes (skills/agents/models)', async () => {
     expect(await c.librarySkillsList()).toEqual({ ok: true, data: [{ id: 's' }] });
@@ -438,10 +436,9 @@ describe('buildContract — workspaces and app tabs read the server first, write
       m2: { 'panelApps.list': { apps: [STUDIO_TAB, { ...DESK_TAB, name: 'CRM (studio)' }] } },
     }), deps);
     const rows = await c.panelAppsList();
-    const own = rows.filter((a) => notHouse(a.slug));
-    expect(own.map((a) => a.name)).toEqual(['CRM', 'Mail']);               // the server's crm wins; Mail only a machine has
-    expect(own[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, url: 'https://crm', mcp: null, commands: {} });
-    expect(own[1]).toEqual(STUDIO_TAB);
+    expect(rows.map((a) => a.name)).toEqual(['CRM', 'Mail']);               // the server's crm wins; Mail only a machine has
+    expect(rows[0]).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, url: 'https://crm', mcp: null, commands: {} });
+    expect(rows[1]).toEqual(STUDIO_TAB);
   });
 
   it('panelAppsCreate / Update / Delete write the server; config vars never ride', async () => {
@@ -456,7 +453,7 @@ describe('buildContract — workspaces and app tabs read the server first, write
     expect(await c.panelAppsUpdate('crm', { name: 'CRM 2', isBrowser: false, execPath: '/Applications/CRM.app' })).toMatchObject({ ok: true, app: { name: 'CRM 2', isBrowser: false, execPath: '/Applications/CRM.app', appArchetype: 'native' } });
     expect(await c.panelAppsUpdate('nope', { name: 'x' })).toMatchObject({ ok: false });
     expect(await c.panelAppsDelete('crm')).toEqual({ ok: true });
-    expect((await c.panelAppsList()).map((a) => a.slug).filter(notHouse)).toEqual(['mail']);
+    expect((await c.panelAppsList()).map((a) => a.slug)).toEqual(['mail']);
   });
 
   it('what still needs the machine answers so, per action', async () => {

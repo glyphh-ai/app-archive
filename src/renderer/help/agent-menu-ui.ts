@@ -90,7 +90,7 @@ let clisCache: MenuCliRow[] = [];
  *  tab rows, every cloud instance, an attached desktop's rows behind —
  *  mapped to menu rows. A row the desktop did not report is a CLOUD one and
  *  opens as a panel on either surface. */
-interface InstalledAppLike { slug?: string; id?: string; name?: string; kind?: string; appArchetype?: string; iconDataUrl?: string | null; icon?: string | null; launchConfig?: { tool?: string } | null; config?: { tool?: string } | null; instanceKey?: string; machineId?: string; machineName?: string }
+interface InstalledAppLike { slug?: string; id?: string; name?: string; kind?: string; appArchetype?: string; iconDataUrl?: string | null; icon?: string | null; launchConfig?: { tool?: string; instance?: string } | null; config?: { tool?: string; instance?: string } | null; machineId?: string; machineName?: string }
 export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSlugs: ReadonlySet<string>, machine: MenuMachine | null): MenuAppRow[] {
   const out: MenuAppRow[] = [];
   for (const r of rows) {
@@ -98,7 +98,8 @@ export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSl
     if (!slug) continue;
     const kind = r.kind ?? (r.appArchetype === "glyphh-app" ? "glyphh" : "web");
     const onDesktop = desktopSlugs.has(slug.toLowerCase());
-    const cloud = !!r.instanceKey || !onDesktop;
+    // A cloud instance's row names its instance (`instance`, shared/app-instances.ts INSTANCE_CONFIG_KEY).
+    const cloud = !!(r.launchConfig?.instance ?? r.config?.instance) || !onDesktop;
     out.push({
       slug, name: String(r.name || slug), kind,
       icon: r.iconDataUrl ?? r.icon ?? null,
