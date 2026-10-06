@@ -663,6 +663,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   onNewSessionGesture: (cb: () => void) => {
     ipcRenderer.on("home:new-session", () => cb());
   },
+  onResetWorkspaceGesture: (cb: () => void) => {
+    ipcRenderer.on("home:reset-workspace", () => cb());
+  },
   onOpenCommandCenter: (cb: () => void) => {
     ipcRenderer.on("home:open-cc", () => cb());
   },
