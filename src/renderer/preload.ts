@@ -795,6 +795,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // ── voice settings ──
   catalogModels: () => ipcRenderer.invoke("catalog-models") as Promise<Array<{ id: string; name: string; providerSlug: string; modality: string; active: boolean }>>,
   catalogVoices: (provider: string) => ipcRenderer.invoke("catalog-voices", provider) as Promise<Array<{ id: string; name: string; providerSlug: string; previewUrl?: string; category?: string }>>,
+  /** The super admin's speech models (stt, tts, the tts voice) — the member's
+   *  own voice settings fill from these when unset (2026-10-06). */
+  voiceConfig: () => ipcRenderer.invoke("voice-config") as Promise<{ stt: string | null; tts: string | null; voice: string | null }>,
   voiceSettingsGet: () => ipcRenderer.invoke("voice-settings-get") as Promise<VoiceSettingsView>,
   voiceSettingsSet: (patch: Partial<VoiceSettingsView>) => ipcRenderer.invoke("voice-settings-set", patch) as Promise<VoiceSettingsView>,
   voiceTranscribe: (audio: ArrayBuffer, mime: string, model: string, ms: number) => ipcRenderer.invoke("voice-transcribe", audio, mime, model, ms) as Promise<{ text: string }>,

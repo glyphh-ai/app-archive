@@ -899,6 +899,7 @@ export function buildContract(client, deps) {
     // ── Voice settings (Settings › Voice) — same SDK calls the desktop IPC makes ──
     catalogModels: lib(() => client.catalog.models()),
     catalogVoices: lib((provider) => client.catalog.voices(provider)),
+    voiceConfig: lib(() => client.http.get('/api/voice/config').then((r) => (r && typeof r === 'object' && 'data' in r ? r.data : r))),
     voiceSettingsGet: lib(() => client.profile.voiceSettings()),
     voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
     // Drive file artifacts — metadata (+ signed URL), delete, and text

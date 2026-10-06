@@ -74,22 +74,70 @@ let cachedBrief = false;
 /** The steer to prepend to a turn's prompt, or "" when speech mode is off. */
 export function briefSteer(): string { return cachedBrief ? SPEECH_STEER : ""; }
 
+/** The super admin's speech models (GET /api/voice/config: stt, tts, voice),
+ *  read once a minute. The feature is always on and available (his order,
+ *  2026-10-06): a member who never picked models speaks and listens on these. */
+interface VoiceConfig { stt?: string | null; tts?: string | null; voice?: string | null }
+let configCache: { at: number; cfg: VoiceConfig } | null = null;
+async function voiceConfig(): Promise<VoiceConfig> {
+  if (configCache && Date.now() - configCache.at < 60_000) return configCache.cfg;
+  let cfg: VoiceConfig = {};
+  try {
+    const res = await g().voiceConfig?.();
+    if (res && typeof res === "object") {
+      const o = res as Record<string, unknown>;
+      cfg = ((o.data && typeof o.data === "object" ? o.data : o) as VoiceConfig) ?? {};
+    }
+  } catch { /* no config door — the member's own settings stand alone */ }
+  configCache = { at: Date.now(), cfg };
+  return cfg;
+}
+
 async function voicePref(): Promise<VoicePref> {
+  let pref: VoicePref = {};
   try {
     const res = await g().voiceSettingsGet?.();
     if (res && typeof res === "object") {
       const o = res as Record<string, unknown>;
       // web contract wraps the result ({ok,data}); desktop IPC returns it raw.
-      const pref = ((o.data && typeof o.data === "object" ? o.data : o) as VoicePref) ?? {};
+      pref = ((o.data && typeof o.data === "object" ? o.data : o) as VoicePref) ?? {};
       cachedBrief = !!pref.brief;   // keep the sync steer cache warm
-      return pref;
     }
   } catch { /* no voice settings */ }
-  return {};
+  // The super admin's models fill what the member left unset; a member's own
+  // picks (Settings › Voice) always win. With a transcription model on hand
+  // the mic is on by default — "off" is a choice the member makes there.
+  const cfg = await voiceConfig();
+  const merged: VoicePref = {
+    ...pref,
+    inputModel: pref.inputModel || cfg.stt || null,
+    outputModel: pref.outputModel || cfg.tts || null,
+    voiceId: pref.voiceId || cfg.voice || null,
+  };
+  if (merged.mode === undefined && merged.inputModel) merged.mode = "push-to-talk";
+  return merged;
 }
 
 async function setPref(patch: Partial<VoicePref>): Promise<void> {
   try { await g().voiceSettingsSet?.(patch); } catch { /* offline — keep going */ }
+}
+
+/** The "speak replies" chip beside the mic (his order, 2026-10-06: the voice
+ *  features are always on and available): reads and flips `autoplay`, and
+ *  paints the chip's pressed state. */
+export async function refreshSpeakToggle(): Promise<void> {
+  const btn = el<HTMLButtonElement>("code-speak-toggle");
+  if (!btn) return;
+  const p = await voicePref();
+  const on = !!p.autoplay;
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.classList.toggle("on", on);
+  btn.title = on ? "Replies are read aloud — click to stop speaking them" : "Speak replies aloud";
+}
+export async function toggleSpeakReplies(): Promise<void> {
+  const p = await voicePref();
+  await setPref({ autoplay: !p.autoplay });
+  await refreshSpeakToggle();
 }
 
 /** Show the mic chip only when a transcription model + non-off mode are set,

@@ -14003,6 +14003,10 @@ select:focus {
 }
 .code-chip.code-mic-chip.transcribing { opacity: 0.55; }
 /* The caret that opens the mic device/mode drop-up — a slim sibling of the chip. */
+/* Speak replies — the standing voice toggle beside the mic (2026-10-06). */
+.code-chip.code-speak-toggle { padding: 0 7px; color: var(--muted); }
+.code-chip.code-speak-toggle:hover { color: var(--text); }
+.code-chip.code-speak-toggle.on { color: var(--accent); border-color: var(--accent); }
 .code-chip.code-mic-caret {
   display: inline-flex;
   align-items: center;
@@ -14901,7 +14905,10 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    pattern, so nothing flies out past the panel's edge. */
 #code-plus-menu { width: min(272px, 92cqi); }
 .code-drop-item.code-plus-item { justify-content: flex-start; gap: 10px; }
-.code-drop-item.code-plus-item .drop-icon { display: inline-flex; width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.code-drop-item.code-plus-item .drop-icon { display: inline-flex; width: 16px; height: 16px; flex: none; color: var(--text-3); align-items: center; justify-content: center; }
+/* A connector row wears the Connections page's own logo (2026-10-06). */
+.code-drop-item.code-plus-item .drop-icon img { width: 16px; height: 16px; border-radius: 3px; object-fit: contain; display: block; }
+.code-drop-item.code-plus-item .drop-icon-initial { font-size: 11px; font-weight: 600; color: var(--text-2); line-height: 16px; }
 .code-drop-item.code-plus-item .drop-icon svg { width: 100%; height: 100%; }
 .code-drop-item.code-plus-item:hover .drop-icon, .code-drop-item.code-plus-item.selected .drop-icon { color: var(--text); }
 .code-drop-item.code-plus-item .drop-lines { gap: 1px; }

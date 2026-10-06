@@ -30,6 +30,7 @@
  * runs it bare; mountComposerPlus paints it into the composer's drop-up.
  */
 
+import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 export type PlusSurface = "desktop" | "web";
@@ -136,8 +137,8 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
 // ── The doors (the host's API, as the menu calls it) ─────────────────────
 type Env<T> = { ok: boolean; data?: T; error?: string };
 export interface PlusSkill { id: string; name: string; enabled: boolean; type?: string }
-export interface PlusConnection { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; org?: boolean }
-export interface PlusMcp { slug: string; name: string; enabled: boolean; kind?: string }
+export interface PlusConnection { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; org?: boolean; accountId?: string }
+export interface PlusMcp { slug: string; name: string; enabled: boolean; kind?: string; iconUrl?: string | null }
 export interface PlusApi {
   skillsList?: (kinds: string[]) => Promise<Env<PlusSkill[]>>;
   skillSetEnabled?: (id: string, on: boolean) => Promise<Env<PlusSkill>>;
@@ -176,6 +177,14 @@ export interface PlusConnectorRow {
   /** The slug the Connections page deep-links on (openConnectionOnLoad). */
   slug: string;
   org: boolean;
+  /** The connector's own logo, built exactly as the Connections page builds
+   *  it (app-icon.ts appIconInner: the account's logo once the icon cache
+   *  warms, a custom server's iconUrl, else the initial). His order,
+   *  2026-10-06: "pulled from the same place they are pulled from on the
+   *  connections page". */
+  icon: string;
+  /** What primes the logo cache for an account row (primeConnectedIcons). */
+  prime?: { accountId?: string; pipedreamSlug: string };
 }
 export async function readConnectorRows(api: PlusApi): Promise<PlusConnectorRow[]> {
   const [res, custom] = await Promise.all([
@@ -186,9 +195,17 @@ export async function readConnectorRows(api: PlusApi): Promise<PlusConnectorRow[
   const mcpSlugs = new Set(mcps.map((m) => m.slug));
   const conns = (res?.connections ?? []).filter((c) => !mcpSlugs.has(c.appSlug) && !mcpSlugs.has(c.id));
   return [
-    ...conns.map((c): PlusConnectorRow => ({ key: `pd:${c.id}`, name: c.label || c.appName, kind: "account", on: c.connected !== false, slug: c.appSlug, org: !!c.org })),
-    ...mcps.map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, kind: "mcp", on: !!m.enabled, slug: m.slug, org: m.kind === "org" })),
+    ...conns.map((c): PlusConnectorRow => {
+      const name = c.label || c.appName;
+      const prime = { accountId: c.accountId, pipedreamSlug: c.appSlug };
+      return { key: `pd:${c.id}`, name, kind: "account", on: c.connected !== false, slug: c.appSlug, org: !!c.org, icon: connectorIcon({ iconUrl: null, connection: prime }, name), prime };
+    }),
+    ...mcps.map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, kind: "mcp", on: !!m.enabled, slug: m.slug, org: m.kind === "org", icon: connectorIcon({ iconUrl: m.iconUrl ?? null }, m.name) })),
   ].sort((a, b) => a.name.localeCompare(b.name));
+}
+/** One connector's icon markup — the Connections page's own builder. */
+export function connectorIcon(app: { iconUrl: string | null; connection?: { accountId?: string; pipedreamSlug: string } }, name: string): string {
+  return appIconInner(app, name, "drop-icon-initial");
 }
 
 /** A custom MCP server's switch — the same door the Connections page's
@@ -490,10 +507,19 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     loading.remove();
     if (!pane.isConnected) return;
     if (!rows.length) emptyRow(pane, "Nothing connected yet.");
+    // The accounts' logos land once the icon cache warms (the Connections
+    // page does the same): repaint each row's icon then.
+    void primeConnectedIcons(rows.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
+      if (!pane.isConnected) return;
+      for (const r of rows) {
+        const ic = pane.querySelector<HTMLElement>(`[data-conn-key="${CSS.escape(r.key)}"] .drop-icon`);
+        if (ic && r.prime) ic.innerHTML = connectorIcon({ iconUrl: null, connection: r.prime }, r.name);
+      }
+    });
     for (const r of rows) {
       const switchable = r.kind === "mcp" && !r.org;
       const b = rowEl({
-        label: r.name, icon: PLUS_ICONS.connectors, kind: "check", checked: r.on,
+        label: r.name, icon: r.icon, kind: "check", checked: r.on,
         sub: r.kind === "mcp" ? (r.org ? "Org server" : "MCP server") : (r.org ? "Org account" : undefined),
         hint: switchable ? (r.on ? "On — click to turn off" : "Off — click to turn on") : (r.on ? "Connected — click to open" : "Not connected — click to open"),
       });

@@ -53,6 +53,7 @@ export function registerAccountIpc(): void {
   // ── voice settings (STT input + TTS output + voice) ───────────────────────
   ipcMain.handle("catalog-models", () => getClient().catalog.models());
   ipcMain.handle("catalog-voices", (_e, provider: string) => getClient().catalog.voices(provider));
+  ipcMain.handle("voice-config", () => getClient().http.get<{ data?: unknown }>("/api/voice/config").then((r) => (r && typeof r === "object" && "data" in r ? r.data : r)));
   ipcMain.handle("voice-settings-get", () => getClient().profile.voiceSettings());
   ipcMain.handle("voice-settings-set", (_e, patch: unknown) => getClient().profile.setVoiceSettings(patch as never));
   ipcMain.handle("voice-transcribe", (_e, audio: ArrayBuffer, mime: string, model: string, ms: number) =>

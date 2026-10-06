@@ -31,7 +31,7 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, refreshSpeakToggle, toggleSpeakReplies } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
@@ -1029,6 +1029,8 @@ function initComposerControls(): void {
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
+  el("code-speak-toggle")?.addEventListener("click", (e) => { e.stopPropagation(); void toggleSpeakReplies(); });
+  void refreshSpeakToggle();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSpeaking()) { e.stopPropagation(); stopReply(); } }, true);
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
@@ -7536,11 +7538,17 @@ export function initCode(): void {
     if (!mic || !plus || !agent) return;
     const docked = !!agent.closest(".ws-agent-holder");
     const expanded = !!agent.querySelector(".code-input-card.options-open");
+    const speak = el("code-speak-toggle-wrap");
     if (docked || expanded) {
-      // Bottom-left chip order (his rule, 2026-08-19): permissions, +, mic.
+      // Bottom-left chip order: permissions, +, Output, then the voice pair —
+      // the mic and the speak toggle sit to the RIGHT of the Output chip (his
+      // order, 2026-10-06).
       const mode = el("code-mode-wrap");
+      const output = el("code-output-wrap");
       if (mode && plus.previousElementSibling !== mode) mode.after(plus);
-      if (mic.previousElementSibling !== plus) plus.after(mic);
+      const anchor = output ?? plus;
+      if (mic.previousElementSibling !== anchor) anchor.after(mic);
+      if (speak && speak.previousElementSibling !== mic) mic.after(speak);
     } else {
       const wrap = agent.querySelector(".code-input-wrap");
       const wave = el("code-rec-wave");

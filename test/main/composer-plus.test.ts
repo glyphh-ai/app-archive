@@ -163,3 +163,23 @@ describe("Memory ✓ — the member's preference (there is no per-session flag)"
     expect(set).not.toHaveBeenCalled();
   });
 });
+
+
+describe("connector rows wear the Connections page's logos (his order, 2026-10-06)", () => {
+  it("an account row builds its icon from the connection (logo once cached, else the initial); a custom server from its iconUrl", async () => {
+    vi.stubGlobal("window", {});   // the icon helper reads the API base off window; none here
+    const { readConnectorRows } = await import("../../src/renderer/help/composer-plus");
+    const api = {
+      connectionsList: async () => ({ ok: true, connections: [{ id: "c1", appSlug: "gmail", appName: "Gmail", connected: true, accountId: "apn_1" }] }),
+      mcpConnectionsList: async () => ({ ok: true, connections: [{ slug: "miro", name: "Miro Developer App", enabled: true, iconUrl: "https://cdn/miro.png" }] }),
+    };
+    const rows = await readConnectorRows(api as never);
+    const gmail = rows.find((r) => r.key === "pd:c1")!;
+    const miro = rows.find((r) => r.key === "mcp:miro")!;
+    expect(gmail.prime).toEqual({ accountId: "apn_1", pipedreamSlug: "gmail" });
+    expect(gmail.icon).toMatch(/drop-icon-initial|<img/);
+    expect(miro.icon).toContain("<img");
+    expect(miro.icon).toContain("cdn/miro.png");
+    vi.unstubAllGlobals();
+  });
+});
