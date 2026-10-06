@@ -125,14 +125,21 @@
                     <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">+</button>
                   </div>
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
-                  <!-- Work seats the mic (+ its caret) and the speak toggle here,
-                       right of the input; Code seats them under the box. -->
+                  <!-- THE VOICE CONTROLS (his order, 2026-10-07, Claude's composer):
+                       the mic is DICTATE — the text streams into the box as the
+                       member speaks; the bigger button to its right is VOICE MODE —
+                       a spoken conversation, listen → reply aloud → listen; the caret
+                       opens the microphone picker. Work seats them right of the
+                       input; Code seats them under the box. -->
                   <div id="code-mic-wrap" class="code-chipwrap hidden">
-                    <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Hold to talk — press and hold, release to transcribe">
+                    <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Dictate" aria-label="Dictate">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
                     </button>
-                    <button id="code-mic-caret" class="code-chip code-mic-caret" type="button" title="Microphone &amp; recording mode" aria-label="Microphone settings">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+                    <button id="code-voice-mode" class="code-chip code-voice-mode" type="button" title="Voice mode" aria-label="Voice mode" aria-pressed="false">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></svg>
+                    </button>
+                    <button id="code-mic-caret" class="code-chip code-mic-caret" type="button" title="Voice options" aria-label="Voice options">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                   </div>
                   <!-- THE SLOT (his order, 2026-10-07, Claude's composer as the
@@ -206,15 +213,6 @@
                     </div>
                     <div id="code-mode-wrap" class="code-chipwrap">
                       <button id="code-mode-chip" class="code-chip" type="button"></button>
-                    </div>
-                    <!-- Speak replies — a standing toggle (his order, 2026-10-06: the
-                         voice features are always on and available); the reply is
-                         read aloud on the super admin's speech model. In Work it
-                         rides the input row beside the mic (seatMic). -->
-                    <div id="code-speak-toggle-wrap" class="code-chipwrap">
-                      <button id="code-speak-toggle" class="code-chip code-speak-toggle" type="button" aria-pressed="false" title="Speak replies aloud">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
-                      </button>
                     </div>
                     <!-- Appears only while the agent is speaking a reply aloud —
                          click (or Esc) to stop the voice. -->

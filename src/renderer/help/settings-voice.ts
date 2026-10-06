@@ -14,7 +14,7 @@
  * Settings › Voice page carried (enumerateDevices, no permission prompt here).
  */
 
-import { refreshMicChip, refreshSpeakToggle } from "./voice-mic.js";
+import { refreshMicChip } from "./voice-mic.js";
 import { keepIfHost } from "./web-surface.js";
 
 export type VoiceMode = "off" | "push-to-talk" | "continuous";
@@ -176,7 +176,6 @@ async function save(patch: Partial<VoicePrefView>): Promise<void> {
   } catch (e) { setErr(`Couldn't save — ${(e as Error).message}`); }
   // The composer's chips read the same settings: repaint them.
   void refreshMicChip();
-  void refreshSpeakToggle();
 }
 
 function wire(section: HTMLElement): void {
