@@ -1,41 +1,28 @@
 /**
- * Per-webContents capability grants for Glyphh apps. Both surfaces of an app —
- * the visible UI window and the hidden worker — get an entry here when they
- * start; the "glyphh-app:call" IPC handler consults it on every capability
- * call. Kept in its own module so glyphh-app-host.ts (IPC handler) and
- * glyphh-app-worker.ts (worker windows) can share it without importing each
- * other.
+ * Per-webContents grants for Glyphh-app panels: which cloud instance a
+ * panel's `glyphh.call` is forwarded to (app-instances.ts callInstanceBridge).
+ * The pod enforces the manifest's capabilities; this machine only knows which
+ * webContents stands for which instance. The "glyphh-app:call" IPC handler
+ * (glyphh-app-host.ts) consults it on every call.
  */
 
-export interface AppGrant {
+export interface PanelGrant {
   slug: string;
   name: string;
-  caps: Set<string>;
-  /** Connector app slugs (Pipedream) this app declared — the connector.*
-   *  capabilities can only reach these. */
-  connectors: Set<string>;
-  /** A CLOUD panel: the instance key its `glyphh.call` is forwarded to
-   *  (app-instances.ts callInstanceBridge); caps are the pod's to enforce. */
-  instance?: string;
+  /** The instance key the panel's calls land on. */
+  instance: string;
 }
 
-const grants = new Map<number, AppGrant>();
+const grants = new Map<number, PanelGrant>();
 
-export function grantAppCaps(
-  webContentsId: number,
-  slug: string,
-  name: string,
-  caps: Iterable<string>,
-  connectors: Iterable<string> = [],
-  instance?: string
-): void {
-  grants.set(webContentsId, { slug, name, caps: new Set(caps), connectors: new Set(connectors), ...(instance ? { instance } : {}) });
+export function grantPanel(webContentsId: number, slug: string, name: string, instance: string): void {
+  grants.set(webContentsId, { slug, name, instance });
 }
 
-export function revokeAppCaps(webContentsId: number): void {
+export function revokePanel(webContentsId: number): void {
   grants.delete(webContentsId);
 }
 
-export function getAppGrant(webContentsId: number): AppGrant | undefined {
+export function panelGrant(webContentsId: number): PanelGrant | undefined {
   return grants.get(webContentsId);
 }

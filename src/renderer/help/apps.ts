@@ -925,9 +925,9 @@ async function loadPanelTab() {
   // a sandboxed iframe of the app's public address instead. No machine IPC.
   if (IS_WEB) { renderWebPreview(app); return; }
 
-  // Installed glyphh-apps have no url — their UI lives on disk at execPath
-  // (~/.glyphh/custom-apps/<slug>/index.html). Mirror isGlyphhAppRow so native
-  // terminal/editor apps (also execPath, no url) still fall through to "no url".
+  // Installed glyphh-apps have no url — their UI is their cloud instance's,
+  // behind the preview-open IPC. Mirror isGlyphhAppRow so native
+  // terminal/editor apps (execPath, no url) still fall through to "no url".
   const isGlyphhApp = app.appArchetype === "glyphh-app" || /\.html?$/i.test(app.execPath || "");
 
   if (!app.url && !isGlyphhApp) {

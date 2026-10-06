@@ -861,10 +861,6 @@ export function buildContract(client, deps) {
       } catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
 
-    // The app's OWN cron handlers live in the DESKTOP's local app worker —
-    // the web has no such thing, so it reports none rather than fabricating.
-    appsCronList: async () => ({ ok: true, handlers: [] }),
-
     // Schedules — recurring agent runs against an app.
     appsSchedulesList: async (slug) => {
       try { return { ok: true, ...(await client.apps.schedules(slug)) }; }
@@ -1552,8 +1548,7 @@ export function buildArtifactsWeb(client, deps = {}) {
     // ── Notifications (his order, 2026-10-05; notify-web.js) ─────────────────
     // A cloud app's notification reaches the tab as a `notify` push on a relay
     // socket kept up for it; the workbench meets the member's pref and asks for
-    // the browser's own notification back through notifyShow. A local app's
-    // notify.send never happens on the web (no local host).
+    // the browser's own notification back through notifyShow.
     onNotify: (cb) => watchNotifications(() => client.token(), cb),
     notifyShow: async (n) => showBrowserNotification(n),
     notifyPrepare: () => askBrowserNotificationPermission(),

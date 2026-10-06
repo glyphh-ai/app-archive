@@ -30,27 +30,11 @@ vi.mock("../../src/main/org-apps.js", () => ({ fetchOrgApps: async () => [TAB] }
 // The house door's real stores (office store, deck cache, media library) are
 // house-deps.ts's; the door itself is pinned bare in house-doors.test.ts.
 vi.mock("../../src/main/house-deps.js", () => ({ realHouseDeps: () => ({ listDesigns: async () => [{ file: "brand.json", title: "Brand", size: 1, mtime: 2 }] }) }));
-// The hub install itself (hub-ipc.ts installHubItem) is the desktop's own door;
-// here only that apps.install hands it the item, routed as an app.
-const hubInstalls: Array<[string, string]> = [];
-vi.mock("../../src/main/hub-ipc.js", () => ({
-  installHubItem: async (ref: string, kind: string) => { hubInstalls.push([ref, kind]); return { id: `app:${ref.split(":")[1]}` }; },
-}));
-// The apps' tools (glyphh-app-host.ts): the rows the local MCP's app_list_tools
-// answers and the call its app_call_tool runs; pinned there, relayed here.
-const toolCalls: Array<[string, string, unknown]> = [];
-vi.mock("../../src/main/glyphh-app-host.js", () => ({
-  listInstalledAppTools: async () => [
-    { app: "recall", name: "Recall", data: "cloud", tools: [{ name: "ask" }] },
-    { app: "images", name: "Images", data: "local", tools: [{ name: "save_image", description: "File an image", inputSchema: { type: "object" } }, { name: "list_images" }] },
-  ],
-  callAppTool: async (app: string, tool: string, args: unknown) => { toolCalls.push([app, tool, args]); return { files: [] }; },
-  installGlyphhAppBundle: async (path: string) => { bundleInstalls.push(["path", path]); return { ok: true, name: "Recall", connectors: ["slack"] }; },
-  installGlyphhAppBundleFromBase64: async (b64: string) => { bundleInstalls.push(["base64", b64]); return { ok: true, name: "Recall", updated: true }; },
-}));
+// The bundle install (glyphh-app-host.ts): a .glyphh becomes a cloud instance; pinned there, relayed here.
 const bundleInstalls: Array<[string, string]> = [];
-vi.mock("../../src/main/glyphh-app-services.js", () => ({
-  connectorStatus: async (names: Set<string>) => [...names].map((connector) => ({ connector, connected: false })),
+vi.mock("../../src/main/glyphh-app-host.js", () => ({
+  installGlyphhAppBundle: async (path: string) => { bundleInstalls.push(["path", path]); return { ok: true, name: "Recall", connectors: ["slack"], instance: "recall~u1", tools: [{ name: "ask", description: "" }] }; },
+  installGlyphhAppBundleFromBase64: async (b64: string) => { bundleInstalls.push(["base64", b64]); return { ok: true, name: "Recall", updated: true, instance: "recall~u1", tools: [] }; },
 }));
 vi.mock("../../src/main/cli-agents.js", () => ({
   listCliSessions: () => [
@@ -84,22 +68,18 @@ describe("the Customize libraries over the attach socket", () => {
     expect(handlers.has("layouts.save")).toBe(false);
   });
 
-  it("apps.install installs a hub app on this machine through the desktop's own hub door (his verdict, 2026-10-05: a local-data app installs only on a desktop)", async () => {
+  it("apps.install takes a .glyphh bundle into the cloud — the local MCP's app_install — and nothing else (a hub item installs through hub-ipc, never the relay)", async () => {
     const h = handlers.get("apps.install")!;
-    expect(await h({ itemId: "pub-9", from: "glyphh" })).toEqual({ id: "app:pub-9" });
-    expect(await h({ itemId: "org-3", from: "org" })).toEqual({ id: "app:org-3" });
-    // No `from` reads as the Glyphh catalog; a stray word never becomes a route.
-    expect(await h({ itemId: "pub-1", from: "../../etc" })).toEqual({ id: "app:pub-1" });
-    expect(hubInstalls).toEqual([["glyphh:pub-9", "app"], ["org:org-3", "app"], ["glyphh:pub-1", "app"]]);
-    await expect(h({})).rejects.toThrow(/requires \{ itemId \}/);
-  });
-
-  it("apps.install also takes a .glyphh bundle — ONE handler for the hub form and the local MCP's app_install (the two registrations had been overwriting each other)", async () => {
-    const h = handlers.get("apps.install")!;
-    expect(await h({ bundleBase64: "UEs=" })).toEqual({ installed: "Recall", updated: true, requiredConnections: [] });
+    expect(await h({ bundleBase64: "UEs=" })).toEqual({ installed: "Recall", instance: "recall~u1", updated: true, requiredConnections: [], tools: [] });
     expect(bundleInstalls).toEqual([["base64", "UEs="]]);
     await expect(h({ path: "/nowhere/app.glyphh" })).rejects.toThrow(/bundle not found/);
-    expect(hubInstalls.length).toBe(3);
+    await expect(h({ itemId: "pub-9", from: "glyphh" })).rejects.toThrow(/requires \{ path \}/);
+    await expect(h({})).rejects.toThrow(/requires \{ path \}/);
+  });
+
+  it("the apps' tools never ride the relay: an app is a cloud instance, listed and run by the gateway (his order, 2026-10-06)", () => {
+    expect(handlers.has("apps.listTools")).toBe(false);
+    expect(handlers.has("apps.callTool")).toBe(false);
   });
 
   it("cliSessions.list hands the web the vendor CLIs' sessions with their resume handles (his report, 2026-10-04)", async () => {
@@ -142,24 +122,6 @@ describe("the Customize libraries over the attach socket", () => {
 
   it("panelApps.list hands the web the desktop's panel-apps-list rows", async () => {
     expect(await handlers.get("panelApps.list")!({})).toEqual({ apps: [TAB] });
-  });
-
-  it("apps.listTools answers the local MCP's app_list_tools rows, house apps and cloud instances alike, each saying where it answers (his report, 2026-10-05)", async () => {
-    expect(await handlers.get("apps.listTools")!({})).toEqual([
-      { app: "recall", name: "Recall", data: "cloud", tools: [{ name: "ask" }] },
-      { app: "images", name: "Images", data: "local", tools: [{ name: "save_image", description: "File an image", inputSchema: { type: "object" } }, { name: "list_images" }] },
-    ]);
-  });
-
-  it("apps.callTool runs an app's tool through the desktop's own callAppTool and answers { result }", async () => {
-    const h = handlers.get("apps.callTool")!;
-    expect(await h({ app: "images", tool: "list_images", args: { q: "sunset" } })).toEqual({ result: { files: [] } });
-    // No args is an empty object; a non-object is never handed to the app.
-    expect(await h({ app: "images", tool: "list_images" })).toEqual({ result: { files: [] } });
-    expect(await h({ app: "images", tool: "list_images", args: "q=sunset" })).toEqual({ result: { files: [] } });
-    expect(toolCalls).toEqual([["images", "list_images", { q: "sunset" }], ["images", "list_images", {}], ["images", "list_images", {}]]);
-    await expect(h({ app: "images" })).rejects.toThrow(/requires \{ app, tool \}/);
-    await expect(h({ tool: "list_images" })).rejects.toThrow(/requires \{ app, tool \}/);
   });
 
   it("app.call is registered for the web's own house panels and answers through house-doors (his order, 2026-10-05)", async () => {

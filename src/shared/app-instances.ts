@@ -25,10 +25,6 @@
 import { tabRowOf, type OrgAppRowLike, type TabRowLike } from "./member-library.js";
 
 export type InstanceKind = "org" | "personal";
-/** WHERE AN APP'S DATA LIVES — the author's word in the manifest (his
- *  verdict, 2026-10-05; the rules are renderer/help/app-data-rules.ts). */
-export type AppData = "cloud" | "local" | "per-home";
-export const appDataOfManifest = (m: { data?: unknown } | null | undefined): AppData => (m?.data === "local" || m?.data === "per-home" ? m.data : "cloud");
 export type InstanceStatus = "pending" | "ready" | "stopped" | "error";
 
 /** One row of `GET /api/app-instances` (the server's Instance.summary()). */
@@ -42,7 +38,7 @@ export interface AppInstanceSummary {
   members: string[];
   orgConnectionId: string | null;
   bundle: { sha256: string; bytes?: number };
-  manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string; data?: AppData | string };
+  manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string };
   /** `/app-host/<key>/` — the proxy prefix the server answers for it. */
   url: string;
 }
@@ -63,8 +59,6 @@ export interface BundleManifestLike {
   release?: { version: string; notes?: string | null; channel?: "dev" | "live"; releasedAt?: string | null };
   /** The bundle's icon.svg as a data URL, when the installer read one. */
   iconUrl?: string;
-  /** Where the app's data lives (default cloud). */
-  data?: AppData | string;
 }
 
 /** `POST /api/app-instances` body. */
@@ -108,8 +102,7 @@ export const panelUrlOf = (apiBase: string, key: string): string => `${apiBase.r
 export const callPathOf = (key: string): string => `/app-host/${encodeURIComponent(key)}/call`;
 
 /** The launchConfig a tab row carries for an instance: the key, the kind, and
- *  the manifest's contract (what the local host used to read from its row —
- *  the loop's tool list and the panel's grant read the same keys). */
+ *  the manifest's contract (the loop's tool list and the panel read the same keys). */
 export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "manifest">, manifest?: BundleManifestLike | null): Record<string, unknown> {
   const m = manifest ?? inst.manifest;
   return {
@@ -121,17 +114,15 @@ export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "man
     window: (manifest?.window ?? null) as Record<string, unknown> | null,
     // An installed app is a chromeless panel (his rule, 2026-08-20).
     workbench: true,
-    // The author's word on where the data lives rides the row to every surface.
-    data: appDataOfManifest(manifest ?? inst.manifest),
     ...(manifest?.release ? { release: manifest.release } : {}),
     ...(typeof manifest?.iconUrl === "string" ? { iconUrl: manifest.iconUrl } : {}),
   };
 }
 
-/** The tab row an instance gets (kind glyphh, no local entry, config names
- *  the instance). `existing` keeps the row's identity, dates and config vars;
- *  a local row (nativeRef = a file on this machine) is RETARGETED: its entry
- *  goes. */
+/** The tab row an instance gets (kind glyphh, no entry on any machine, config
+ *  names the instance). `existing` keeps the row's identity, dates and config
+ *  vars; a row from before the cloud (nativeRef = a file) is RETARGETED: its
+ *  entry goes. */
 export function instanceTabRow(inst: AppInstanceSummary, manifest: BundleManifestLike | null, existing: TabRowLike | null, nowIso: string): TabRowLike {
   const config = tabConfigOf(inst, manifest);
   const keptVars = existing?.config && typeof existing.config === "object"
@@ -187,8 +178,8 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
     seen.add(slug);
     const inst = bySlug.get(slug);
     if (tab.kind === "glyphh" && inst && !instanceKeyOfRow(tab)) {
-      // A local row whose slug is already in the cloud: the instance is the
-      // app; the local copy is hidden behind it.
+      // A row from before the cloud whose slug is in the cloud: the instance
+      // is the app; the old row stands behind it.
       out.push(withStatus(tabRowOf(instanceTabRow(inst, null, tab, tab.updatedAt || nowIso)), inst));
       continue;
     }
@@ -226,9 +217,6 @@ export interface InstanceCard {
   tool: null;
   /** Not a folder: the instance it stands for. */
   instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[] };
-  /** Its data is in the cloud (the Apps page's mark), as its author declared. */
-  locus: "cloud";
-  data: AppData;
 }
 
 export const instanceCardId = (key: string): string => `${INSTANCE_CARD_PREFIX}${key}`;
@@ -253,8 +241,6 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     icon: null,
     tool: null,
     instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools },
-    locus: "cloud",
-    data: appDataOfManifest(inst.manifest),
   };
 }
 

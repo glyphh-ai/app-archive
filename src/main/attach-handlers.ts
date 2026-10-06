@@ -26,25 +26,12 @@
  *                                Design / Slides / Images / Video / Audio / Drive panels fill
  *                                from this machine's app-data (his order, 2026-10-05). Reads
  *                                only, house apps only; bytes ride as capped data URLs.
- *   apps.install {itemId, from?} → A LOCAL-DATA HUB APP INSTALLS HERE (his verdict, 2026-10-05:
- *                                "Local is local, cloud is cloud"): the web's Install for an app
- *                                whose manifest says `data: local` (or per-home) rides to this
- *                                machine, which installs it with its local host (hub-ipc.ts
- *                                installHubItem — the same door the desktop's own Install uses).
- *
- *   apps.listTools {}          → THE APPS' TOOLS ON THIS MACHINE (his report, 2026-10-05: "even
- *                                though the app is installed the web agent is not getting its
- *                                tools"): the rows the local MCP's app_list_tools answers —
- *                                [{ app, name, data, tools: [{ name, description, inputSchema }] }],
- *                                the house apps' (Images: save_image / list_images / delete_image,
- *                                …) and every local-data app's, cloud instances beside them. The
- *                                gateway's app_list_tools (server mcp_apps.py) merges these rows
- *                                into a cloud session's list through the relay.
- *   apps.callTool {app, tool, args} → run one as the desktop's own agent would (glyphh-app-host.ts
- *                                callAppTool: the Tools tab's Never list, the app's own guardrails).
- *                                Over the relay the remote door (remote-control.ts) adds the
- *                                approval rule first: a tool set to Needs approval is refused,
- *                                never auto-allowed.
+ *   apps.install {path | url | bundleBase64} → a .glyphh bundle becomes a CLOUD INSTANCE
+ *                                (glyphh-app-host.ts installGlyphhAppBundle): the local MCP's
+ *                                app_install, GLYPHH-APP-SPEC §6's deploy. Loopback only — the
+ *                                server never lists it for remote control, and an app's tools
+ *                                are the gateway's (app_list_tools / app_call_tool), never a
+ *                                machine's.
  *
  * The sessions.* four are mobile.glyphh.ai's whole view of the chats: they
  * live on this machine only (the chat store in agent-ipc.ts), so the phone
@@ -75,9 +62,7 @@ import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { houseCall } from "./house-doors.js";
 import { realHouseDeps } from "./house-deps.js";
-import { installHubItem } from "./hub-ipc.js";
-import { connectorStatus } from "./glyphh-app-services.js";
-import { callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64, listInstalledAppTools } from "./glyphh-app-host.js";
+import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -173,19 +158,12 @@ export function installAttachHandlers(): void {
   // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
   registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
 
-  // INSTALL AN APP ON THIS MACHINE — one handler, two forms. A .glyphh bundle
-  // ({ path } on this machine, { url }, or { bundleBase64 }) is GLYPHH-APP-SPEC
-  // §5's deploy, the local MCP's app_install. A hub item ({ itemId, from }) is
-  // a LOCAL-DATA APP FROM THE WEB (his verdict, 2026-10-05): the web cannot
-  // install it alone, so its Install lands here and this machine's local host
-  // takes it — the desktop's own hub install, routed by the manifest's data.
+  // INSTALL A BUNDLE IN THE CLOUD — the local MCP's app_install. A .glyphh
+  // ({ path } on this machine, { url }, or { bundleBase64 }) is validated here
+  // and becomes (or updates) the member's instance; its tab names it.
   registerRelayHandler("apps.install", async (params) => {
-    const p = params as { itemId?: string; from?: string; bundleBase64?: string; path?: string; url?: string } | null;
-    if (p?.itemId) {
-      const from = p.from === "org" ? "org" : "glyphh";
-      return installHubItem(`${from}:${String(p.itemId)}`, "app");
-    }
-    let r: { ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] };
+    const p = params as { bundleBase64?: string; path?: string; url?: string } | null;
+    let r: InstallAnswer;
     if (p?.path) {
       // Preferred: the bundle is already on this machine — read it directly
       // instead of round-tripping megabytes of base64 through the LLM.
@@ -199,42 +177,12 @@ export function installAttachHandlers(): void {
     } else if (p?.bundleBase64) {
       r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
     } else {
-      throw new Error("apps.install requires { itemId } (a hub app), { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
+      throw new Error("apps.install requires { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
     }
     if (!r.ok) throw new Error(r.error || "install failed");
-
-    // Surface missing required connections in the install result so the
-    // caller (Claude etc.) tells the user immediately — the app's tools WILL
-    // fail until those accounts are connected in Glyphh → Connections.
-    let missing: string[] = [];
-    if (r.connectors?.length) {
-      try {
-        const status = await connectorStatus(new Set(r.connectors));
-        missing = status.filter((s) => !s.connected).map((s) => s.connector);
-      } catch { /* status unknown — don't block the install result */ }
-    }
-    return {
-      installed: r.name,
-      updated: !!r.updated,
-      requiredConnections: r.connectors ?? [],
-      ...(missing.length ? {
-        missingConnections: missing,
-        warning: `This app will NOT work until these accounts are connected in Glyphh → Connections: ${missing.join(", ")}. Tell the user to connect them.`,
-      } : {}),
-    };
-  });
-
-  // THE APPS' TOOLS ON THIS MACHINE (his report, 2026-10-05): the same two the
-  // local MCP's app_list_tools / app_call_tool run — one registry, one answer
-  // for the desktop's loop, a CLI over loopback and a cloud session over the
-  // relay. The approval rule for the relay is the remote door's.
-  registerRelayHandler("apps.listTools", () => listInstalledAppTools());
-  registerRelayHandler("apps.callTool", async (params) => {
-    const app = str(params, "app");
-    const tool = str(params, "tool");
-    if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
-    const args = (params as { args?: unknown } | null)?.args;
-    return { result: await callAppTool(app, tool, args && typeof args === "object" ? args as Record<string, unknown> : {}) };
+    // The connections the app declared ride the answer: the caller tells the
+    // user to connect them in Glyphh → Connections before the tools will work.
+    return { installed: r.name, instance: r.instance, updated: !!r.updated, requiredConnections: r.connectors ?? [], tools: r.tools ?? [] };
   });
 
   registerRelayHandler("fs.list", async (params) => {

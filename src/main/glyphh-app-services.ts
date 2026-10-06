@@ -1,59 +1,27 @@
 /**
- * glyphh-app-services — host-implemented data/runtime services for Glyphh apps
- * (spec v2). These are the capabilities that turn a .glyphh from "a thin UI
- * over one AppleScript" into a real local app:
+ * glyphh-app-services — this machine's per-app data home and the one store
+ * service left on it.
  *
- *   db.exec          { sql, params? }            per-app SQLite, one statement
- *   cron.schedule    { id, cron, handler, args? } persisted; fires a worker handler
- *   cron.cancel      { id }
- *   cron.list        { }
- *   notify.send      { title, body }             OS notification; click opens the app
- *   connector.status { }                         declared connectors + connected?
- *   connector.tools  { connector? }              tool catalog for declared connectors
- *   connector.call   { connector, tool, args? }  invoke a connector tool (Pipedream via yo-server)
+ *   appDataDir(slug)   ~/.glyphh/users/<id>/app-data/<slug> — the house
+ *                      panels' libraries (media-local.ts), the artifacts and
+ *                      the semantic stores keep their files here
+ *   db.exec            { sql, params? }  one statement on a slug's own SQLite
+ *                      — a task's data lane (task-runner.ts `data`)
  *
- * connector.* is what turns apps into integrations: an app declares the
- * connections it needs (manifest `connectors: ["salesforce","netsuite"]`) and
- * the host scopes every connector.* call to that list. Auth stays user-level —
- * the user connects Salesforce ONCE in Glyphh and every app that declared it
- * can use it; the app never sees tokens.
+ * An installed Glyphh app runs on its cloud instance (his order, 2026-10-06);
+ * its db, cron and notifications are the instance's. Nothing here serves one.
  *
- * Isolation model: every service call carries the calling app's slug (from its
- * capability grant) and is scoped to that slug — an app's database lives in
- * ~/.glyphh/app-data/<slug>/data.sqlite and its schedules are keyed by slug. Apps
- * cannot name another app's resources; there is no cross-app surface at all.
- *
- * The host injects resolveApp at init (initAppServices) so this module
- * never imports glyphh-app-host — host → services → worker, no cycles.
+ * Isolation model: every call carries the calling slug and is scoped to it —
+ * a database lives in app-data/<slug>/data.sqlite and nothing can name
+ * another slug's file.
  */
 
 import Database from "better-sqlite3";
-import cron, { ScheduledTask } from "node-cron";
 import fs from "fs";
 import path from "path";
-import { initLocalDb } from "./local-db.js";
-import { onUserZoneChange, userZone } from "./user-zone.js";
-import { getPreference, setPreference } from "./stores/preferences-db.js";
-import { userScopedPath, glyphhPath } from "./app-paths.js";
-import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
-import { getClient } from "./glyphh-client.js";
-import { appNotification, handToWorkbench } from "./notify.js";
+import { userScopedPath } from "./app-paths.js";
 
-// ── wiring (injected by glyphh-app-host at startup) ─────────
-
-interface AppServicesDeps {
-  /** Saved-app row → worker spec, or null if the app is gone/has no worker. */
-  resolveApp: (slug: string) => Promise<AppWorkerSpec | null>;
-}
-
-let deps: AppServicesDeps | null = null;
-
-function requireDeps(): AppServicesDeps {
-  if (!deps) throw new Error("app services not initialized");
-  return deps;
-}
-
-// ── per-app SQLite (db.exec) ────────────────────────────────
+// ── per-slug SQLite (db.exec) ───────────────────────────────
 
 const appDbs = new Map<string, Database.Database>();
 
@@ -74,7 +42,7 @@ function getAppDb(slug: string): Database.Database {
   return db;
 }
 
-/** Statements that reach outside the app's own database file (or reconfigure
+/** Statements that reach outside the slug's own database file (or reconfigure
  *  the engine) are host-only. better-sqlite3's prepare() is single-statement,
  *  and SQLite trigger bodies can't contain these, so a leading-keyword check
  *  is sufficient. */
@@ -83,7 +51,7 @@ const FORBIDDEN_SQL = /^\s*(ATTACH|DETACH|PRAGMA|VACUUM)\b/i;
 export function dbExec(slug: string, args: Record<string, unknown>): { rows?: unknown[]; changes?: number; lastInsertRowid?: number } {
   const sql = String(args.sql || "").trim();
   if (!sql) throw new Error("sql is required");
-  if (FORBIDDEN_SQL.test(sql)) throw new Error("ATTACH/DETACH/PRAGMA/VACUUM are not available to apps");
+  if (FORBIDDEN_SQL.test(sql)) throw new Error("ATTACH/DETACH/PRAGMA/VACUUM are not available here");
   const db = getAppDb(slug);
   const stmt = db.prepare(sql);
   const params = args.params;
@@ -91,186 +59,4 @@ export function dbExec(slug: string, args: Record<string, unknown>): { rows?: un
   if (stmt.reader) return { rows: stmt.all(...bound) };
   const info = stmt.run(...bound);
   return { changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) };
-}
-
-// ── cron (cron.schedule / cron.cancel / cron.list) ──────────
-
-const MAX_SCHEDULES_PER_APP = 20;
-
-interface ScheduleRow {
-  app_slug: string;
-  id: string;
-  cron: string;
-  handler: string;
-  args_json: string | null;
-}
-
-const armedTasks = new Map<string, ScheduledTask>(); // `${slug}\n${id}` → task
-
-function taskKey(slug: string, id: string): string {
-  return `${slug}\n${id}`;
-}
-
-function disarm(slug: string, id: string): void {
-  const key = taskKey(slug, id);
-  const task = armedTasks.get(key);
-  if (task) {
-    task.stop();
-    armedTasks.delete(key);
-  }
-}
-
-/** Armed on the member's zone (user-zone.ts): "0 8 * * *" is 08:00 there,
- *  the same clock the cloud clock and a pod's cron read. */
-function arm(row: ScheduleRow): void {
-  disarm(row.app_slug, row.id);
-  const task = cron.schedule(row.cron, () => {
-    void fireSchedule(row).catch((err) => {
-      console.error(`[glyphh-app] cron "${row.app_slug}/${row.id}" failed:`, err instanceof Error ? err.message : err);
-    });
-  }, { timezone: userZone() });
-  armedTasks.set(taskKey(row.app_slug, row.id), task);
-}
-
-async function fireSchedule(row: ScheduleRow): Promise<void> {
-  const spec = await requireDeps().resolveApp(row.app_slug);
-  if (!spec) {
-    // App was uninstalled (or lost its worker) — retire the schedule.
-    cronCancel(row.app_slug, { id: row.id });
-    return;
-  }
-  let args: Record<string, unknown> = {};
-  try { args = row.args_json ? JSON.parse(row.args_json) : {}; } catch { /* keep {} */ }
-  await invokeAppWorkerHandler(spec, row.handler, args);
-}
-
-export function cronSchedule(slug: string, args: Record<string, unknown>): { scheduled: true; id: string } {
-  const id = String(args.id || "").trim();
-  const expr = String(args.cron || "").trim();
-  const handler = String(args.handler || "").trim();
-  if (!id || !/^[a-z0-9_-]{1,64}$/i.test(id)) throw new Error("id is required ([a-zA-Z0-9_-], max 64)");
-  if (!handler) throw new Error("handler is required");
-  if (!cron.validate(expr)) throw new Error(`invalid cron expression: "${expr}"`);
-
-  const db = initLocalDb();
-  const count = (db.prepare("SELECT COUNT(*) AS n FROM app_schedules WHERE app_slug = ? AND id != ?").get(slug, id) as { n: number }).n;
-  if (count >= MAX_SCHEDULES_PER_APP) throw new Error(`schedule limit reached (${MAX_SCHEDULES_PER_APP} per app)`);
-
-  const argsJson = args.args && typeof args.args === "object" ? JSON.stringify(args.args) : null;
-  db.prepare(`
-    INSERT INTO app_schedules (app_slug, id, cron, handler, args_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT (app_slug, id) DO UPDATE SET
-      cron = excluded.cron, handler = excluded.handler,
-      args_json = excluded.args_json, updated_at = excluded.updated_at
-  `).run(slug, id, expr, handler, argsJson);
-
-  arm({ app_slug: slug, id, cron: expr, handler, args_json: argsJson });
-  return { scheduled: true, id };
-}
-
-export function cronCancel(slug: string, args: Record<string, unknown>): { cancelled: boolean } {
-  const id = String(args.id || "").trim();
-  if (!id) throw new Error("id is required");
-  disarm(slug, id);
-  const info = initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(slug, id);
-  return { cancelled: info.changes > 0 };
-}
-
-export function cronList(slug: string): Array<{ id: string; cron: string; handler: string; args?: unknown }> {
-  const rows = initLocalDb()
-    .prepare("SELECT id, cron, handler, args_json FROM app_schedules WHERE app_slug = ? ORDER BY id")
-    .all(slug) as Array<{ id: string; cron: string; handler: string; args_json: string | null }>;
-  return rows.map((r) => ({
-    id: r.id,
-    cron: r.cron,
-    handler: r.handler,
-    ...(r.args_json ? { args: JSON.parse(r.args_json) } : {}),
-  }));
-}
-
-/** Re-arm every persisted schedule (startup). Bad rows are dropped, not fatal. */
-function armAllSchedules(): void {
-  const rows = initLocalDb()
-    .prepare("SELECT app_slug, id, cron, handler, args_json FROM app_schedules")
-    .all() as ScheduleRow[];
-  for (const row of rows) {
-    if (!cron.validate(row.cron)) {
-      initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(row.app_slug, row.id);
-      continue;
-    }
-    arm(row);
-  }
-}
-
-/** Drop an app's schedules + worker state on reinstall (its worker restarts
- *  and re-registers what it still wants). */
-export function resetAppSchedules(slug: string): void {
-  for (const key of [...armedTasks.keys()]) {
-    if (key.startsWith(`${slug}\n`)) {
-      armedTasks.get(key)?.stop();
-      armedTasks.delete(key);
-    }
-  }
-  initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(slug);
-}
-
-/** Stop every armed cron task (app shutdown) so node-cron timers don't keep the
- *  process alive. Persisted schedules are untouched — they re-arm next launch. */
-export function stopAllSchedules(): void {
-  for (const task of armedTasks.values()) {
-    try { task.stop(); } catch { /* ignore */ }
-  }
-  armedTasks.clear();
-}
-
-// Schedule definitions used to roam through /api/me/app-schedules so they
-// survived reinstalls. That endpoint is gone; until a governed schedule
-// surface exists in the SDK, definitions live in this machine's local
-// app_schedules table and fire from here (cronSchedule/cronCancel above own
-// the writes directly — there is no server queue to keep).
-
-// ── connectors (connector.status / connector.tools / connector.call) ──
-//
-// `declared` is the manifest's `connectors` list, resolved from the caller's
-// grant — the only connectors these functions will ever touch for that app.
-
-const CATALOG_MAX_AGE_MS = 5 * 60_000;
-
-const CONNECTORS_DEAD = "connections are retired — the driving agent (your CLI) brings its own reach";
-
-/** THE PURGE: the governed connector catalog died with the server's
- *  connections domain. The three app-facing verbs stay ANSWERABLE so an old
- *  app gets a sentence instead of a dead socket. */
-export async function connectorStatus(declared: Set<string>): Promise<Array<{ connector: string; connected: boolean; healthy: boolean }>> {
-  return [...declared].map((connector) => ({ connector, connected: false, healthy: false }));
-}
-
-export async function connectorTools(_declared: Set<string>, _args: Record<string, unknown>): Promise<never> {
-  throw new Error(CONNECTORS_DEAD);
-}
-
-export async function connectorCall(_declared: Set<string>, _args: Record<string, unknown>): Promise<never> {
-  throw new Error(CONNECTORS_DEAD);
-}
-
-// ── notifications (notify.send) ─────────────────────────────
-
-/** A local app's notification meets the member's pref in the workbench
- *  (main/notify.ts): shown, asked about, or dropped there. */
-export function notifySend(slug: string, appName: string, args: Record<string, unknown>): { shown: boolean } {
-  return handToWorkbench(appNotification("local", { ...args, app: appName || slug, slug }, appName || "Glyphh"));
-}
-
-// ── init ────────────────────────────────────────────────────
-
-/** Wire the host callbacks and re-arm persisted schedules; a moved zone
- *  re-arms them on the new clock. Idempotent. */
-export function initAppServices(d: AppServicesDeps): void {
-  const first = !deps;
-  deps = d;
-  if (first) {
-    armAllSchedules();
-    onUserZoneChange(() => armAllSchedules());
-  }
 }

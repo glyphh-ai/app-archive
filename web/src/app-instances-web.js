@@ -5,11 +5,7 @@
  *
  *   list     GET /api/app-instances — the ones this member may open
  *   from hub POST /api/app-instances/from-hub {itemId} — a hub app as this
- *            member's personal instance, made server-side (the author's
- *            `data: cloud` / `per-home`; the server refuses `local` with a 400)
- *   local    a tab whose author said `data: local` has no instance: its panel
- *            answers the honest line — it runs on the desktop, or the desktop
- *            is offline (his verdict, 2026-10-05; help/app-data-rules.ts)
+ *            member's personal instance, made server-side
  *   open     a panel loads `/app-host/<key>/ui/index.html` ON THIS ORIGIN:
  *            web/app-host-proxy.mjs forwards it to the API with the session
  *            cookie turned into the bearer (an iframe cannot carry a header)
@@ -22,7 +18,6 @@ import {
   instanceCardOf, instanceDetailOf, instanceKeyOfCardId, instanceKeyOfRow, instanceTabRow, isInstanceCardId, panelPathOf, resolveInstance,
 } from '../../src/shared/app-instances';
 import { tabRecordOf } from '../../src/shared/member-library';
-import { appDataOf, localAppWebLine } from '../../src/renderer/help/app-data-rules.ts';
 
 export const PANEL_COOKIE = 'glyphh_session';
 
@@ -63,10 +58,6 @@ export function buildAppInstancesWeb(client, deps = {}) {
     invalidate();
     return inst;
   };
-  /** Is a desktop connected over the relay? (house-relay-web.js asks the same.) */
-  const desktopAttached = async () => {
-    try { const st = await client?.attach?.status?.(); return !!(st && st.attached); } catch { return false; }
-  };
   const userId = async () => {
     if (deps.userId) return deps.userId;
     try { const me = await client.me(); return String(me?.userId || me?.id || ''); } catch { return ''; }
@@ -88,14 +79,11 @@ export function buildAppInstancesWeb(client, deps = {}) {
     const key = String(slug || '').toLowerCase().trim();
     const row = rows.find((r) => String(r.slug || r.id || '').toLowerCase() === key);
     let instanceKey = row ? instanceKeyOfRow(row) : null;
-    // LOCAL IS LOCAL (his verdict, 2026-10-05): an app whose author kept its
-    // data on the machine has no instance to frame; the panel says where it runs.
-    if (!instanceKey && row && appDataOf(row) === 'local') return { ok: false, localApp: true, error: localAppWebLine(await desktopAttached()) };
     if (!instanceKey) {
       const inst = resolveInstance(await listInstances(), key, await userId());
       instanceKey = inst ? inst.key : null;
     }
-    if (!instanceKey) return { ok: false, error: `${row?.name || slug} is not installed in the cloud. Install it, or move it from the desktop it lives on.` };
+    if (!instanceKey) return { ok: false, error: `${row?.name || slug} is not installed in the cloud — add it from Settings → Build → Discover` };
     if (!(await grantPanelSession())) return { ok: false, error: 'sign in to open this app' };
     return { ok: true, fileUrl: panelPathOf(instanceKey), hosted: true };
   };

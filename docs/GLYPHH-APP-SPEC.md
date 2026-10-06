@@ -17,15 +17,18 @@ listing fields in §2.1 are all OPTIONAL and additive — older bundles install 
 
 ---
 
-## 0. Where an app runs (2026-10-04): in the cloud
+## 0. Where an app runs: in the cloud, and nowhere else
 
-Apps are installed **in the cloud**, as an **app instance** of the organization
-(server `glyphh/docs/app-instances.md`): one Fly machine per instance, the
-bundle on R2, the UI served by the server's proxy at `/app-host/<key>/ui/*`
-with the `window.glyphh.call` shim injected, the manifest's tools invoked at
-`/api/app-instances/<key>/invoke`. An org admin installs an **org instance**
-(every member, or a restricted list); anyone else a **personal** one
-(`<slug>~<user>`). Re-installing a slug updates the instance in place.
+An app has exactly one shape (his order, 2026-10-06: "Cloud is first and
+every surface pulls from it"): an **app instance** of the organization
+(server `glyphh/docs/app-instances.md`) — one Fly machine per instance, the
+bundle on R2, its data under an R2 prefix, the UI served by the server's
+proxy at `/app-host/<key>/ui/*` with the `window.glyphh.call` shim injected,
+the manifest's tools invoked at `/api/app-instances/<key>/invoke`. An org
+admin installs an **org instance** (every member, or a restricted list);
+anyone else a **personal** one (`<slug>~<user>`). Re-installing a slug updates
+the instance in place. There is no local app host, no `data` field, no "runs
+on your Mac": nothing of an app runs on a member's machine.
 
 What the surfaces do with that (app `src/shared/app-instances.ts`):
 
@@ -33,50 +36,36 @@ What the surfaces do with that (app `src/shared/app-instances.ts`):
   `.glyphh` drop all go through `installGlyphhAppBundle`: validate the bundle
   here, create the instance, PUT the zip to R2, `ready`, then write a `tab`
   library row whose `launchConfig.instance` names the key — the row syncs to
-  every surface. Nothing is unzipped into `~/.glyphh` and no worker starts.
+  every surface. A hub app installs server-side in one call
+  (`POST /api/app-instances/from-hub {itemId}`), from the web and the desktop
+  alike. Nothing is unzipped anywhere and no worker starts on a machine.
 - **List** — the wall, the dock, the command bar and Settings → Build → Apps
   show the member's tab rows plus every instance they may open that no row
-  names yet (`mergeAppRows`), one row per slug.
+  names yet (`mergeAppRows`), one row per slug. Settings → Apps lists each
+  instance as its own card; an app FOLDER in the apps home is source, not an
+  installed app.
 - **Before the cloud** — there is no migration (his word, 2026-10-05: "all
-  apps prior, the usage is zero, will be deleted"). An app folder from before
-  the cloud model — a bundle whose manifest says nothing about `data` (§0.1),
-  with no instance of its slug, that is not a house app — is removed once per
-  user on the first sign-in after the cut (`src/main/legacy-app-sweep.ts`);
-  skills, tasks, plugins, app-data stores and the user's files are not in
-  reach. A run that cannot list the instances waits for the next sign-in.
+  apps prior, the usage is zero, will be deleted"). Every app folder on the
+  machine — a bundle in the apps home (the house apps' bundles included), a
+  `.glyphh` unzipped under `~/.glyphh/apps` or `custom-apps/`, a glyphh tab
+  row whose entry was a file — is removed once per user on the first sign-in
+  after the cut (`src/main/legacy-app-sweep.ts`); a tab that names its
+  instance, a web or native tab, skills, tasks, plugins, app-data stores and
+  the user's files are not in reach.
 - **Open** — the desktop panel's `<webview>` loads
   `${api}/app-host/<key>/ui/index.html` with the session cookie set on its
   partition; its `glyphh.call` is the preload's (read-only on `window`) and
   rides main → `POST /app-host/<key>/call` as the member. On the web the panel
   is an iframe of the SAME path on the web origin — `web/app-host-proxy.mjs`
   turns the panel cookie into the bearer and rewrites the shim's `/call` to
-  the prefixed path. The loop's app tools (`app_list_tools` / `app_call_tool`)
-  are the instances' tools.
-- **House panels** (Images, Audio, Video, Files, Design, Slides…) are not
-  bundles; nothing here touches them.
-
-### 0.1 Where an app's DATA lives (2026-10-05): the author's word, `data`
-
-"An app is a row in the db." The user **never** picks where an app's data
-lives — the app's author declares it in the manifest (`"data"`, §2), and
-every surface routes by it. "Local is local, cloud is cloud."
-
-| `data`       | meaning | install | open |
-|--------------|---------|---------|------|
-| `"cloud"` (default) | the app and its store are a cloud instance | web and desktop alike: `POST /api/app-instances/from-hub {itemId}` (a hub app) or `installGlyphhAppBundle` (a bundle) → an instance | the instance's UI through the proxy |
-| `"local"`    | **the data never leaves the machine**: the desktop's local host (extract into the Glyphh home, the worker, per-app SQLite/cron, the capability table) runs it; it has no instance | the desktop installs it; the web installs it **only through a connected desktop** (`apps.install {itemId, from}` over the relay — attach.py `REMOTE_METHODS`); with no desktop the web's Install is disabled with "Local data — installs on your desktop; connect it to install from here" | on the desktop, from its folder; on the web the panel says "Runs on your Mac — open Glyphh Desktop", or "your Mac is offline" |
-| `"per-home"` | **a store per home**, each scoped to its home's documents: the cloud instance AND the local host on a connected desktop | both: `from-hub` (or the bundle's cloud install) **and** the local host on the desktop; on the web with no desktop, the cloud alone — no error | the desktop opens its own store; the web opens the instance's |
-
-The marketplace shows `local` as a badge of honor ("Local data"; `per-home`
-wears "Local + cloud"). The Apps page marks an installed app with the
-sessions' locus glyphs (a cloud, a monitor). The server refuses `from-hub`
-for a `local` item (400). The rules are one module:
-`src/renderer/help/app-data-rules.ts`.
-
-**Global override:** `GLYPHH_LOCAL_APPS=1` in the desktop's environment runs
-EVERY app on the local host (the sections below) whatever its manifest says,
-and lets every local row answer tools and open from disk. Without it the
-local host starts only for the apps whose `data` asks for it.
+  the prefixed path. A cloud app opens as a web panel everywhere.
+- **Tools** — `app_list_tools` / `app_call_tool` are the instances' tools, on
+  the gateway's `/mcp` and on the desktop's local MCP alike; the loop's catalog
+  reads the same list. A tool set to Never on the app's Tools tab is neither
+  listed nor run from that desktop. No app tool ever rides the relay to a
+  machine.
+- **House panels** (Images, Audio, Video, Drive, Design, Slides) are built-in
+  panels, not bundles; nothing here touches them.
 
 ---
 
@@ -92,11 +81,11 @@ worker.js          # optional — headless logic (the manifest `worker`, see §4
 …assets            # any CSS/JS/images the UI references (relative paths)
 ```
 
-Install extracts it to `~/.glyphh/custom-apps/<slug>/` and creates a normal Glyphh
-saved-app row, so the app appears on the Apps page, in the command overlay,
-answers to `.dip <slug>`, and can sit in a layout — **installed like any other
-app**. Re-importing the same slug **updates** the existing install (its worker
-is restarted on the new code; its cron schedules survive).
+Install makes the bundle a cloud instance (§0) and writes a tab row naming it,
+so the app appears on the Apps page, in the command overlay, answers to
+`.dip <slug>`, and can sit in a layout — **installed like any other app**.
+Re-importing the same slug **updates** the instance in place (its worker is
+restarted on the new code; its cron schedules survive).
 
 ---
 
@@ -112,15 +101,6 @@ is restarted on the new code; its cron schedules survive).
   "worker": "worker.js",          // OPTIONAL headless entry (see §4)
   "description": "…",             // one-line tagline; shown in the card + listing
   "window": { "width": 500, "height": 680 },
-
-  // WHERE THE APP'S DATA LIVES (§0.1) — the AUTHOR's word; the user never picks.
-  //   "cloud"    (default) a cloud instance; installs from the web and the desktop
-  //   "local"    the data never leaves the machine: the desktop's local host runs
-  //              it; no web install without a connected desktop; the marketplace
-  //              wears it as a badge ("Local data")
-  //   "per-home" a store per home, each scoped to its home's documents: the cloud
-  //              instance AND the local host on a connected desktop
-  "data": "cloud",
 
   // ── Marketplace listing (all OPTIONAL; see §2.1). These travel WITH the
   //    bundle, so a published app is self-describing — no separate metadata
@@ -159,9 +139,7 @@ is restarted on the new code; its cron schedules survive).
 
 Rules:
 - `slug` is unique per user. Re-install updates in place.
-- `data` is `"cloud"`, `"local"` or `"per-home"`; anything else reads as the
-  default. It is read at parse (`readGlyphhAppManifest`), carried on the tab
-  row's `launchConfig.data`, and on the hub/catalog row of a published app.
+- A `data` key, if present, is ignored: an app runs in the cloud (§0).
 - A tool declares `capability` **xor** `handler` — exactly one. Tools with
   neither/both are dropped at parse; a `handler` tool without a manifest
   `worker` fails install.
@@ -225,21 +203,9 @@ install anchor and always required).
   overlay). The UI talks to the host through `window.glyphh.call(method, args)`,
   where `method` is a declared capability. This is the human path.
 
-  The host publishes shared UI libraries to `~/.glyphh/custom-apps/_libs/`
-  (refreshed each startup, versioned with Glyphh), so apps get rich
-  visualization without vendoring or the network:
-
-  ```html
-  <script src="../_libs/chart.js"></script>  <!-- window.Chart   (Chart.js 4) -->
-  <script src="../_libs/three.js"></script>  <!-- window.THREE   (three.js)   -->
-  <script src="../_libs/flow.js"></script>   <!-- window.GlyphhFlow (React Flow) -->
-  ```
-
-  `GlyphhFlow.renderFlow(el, { nodes, edges, onChange, minimap })` is a
-  vanilla facade over React Flow — node/edge canvases with drag, connect,
-  and pan/zoom, no React knowledge required (`GlyphhFlow.React` /
-  `GlyphhFlow.ReactFlow` are exported for custom node types). Slugs starting
-  with `_` are reserved for host dirs like `_libs`.
+  Every library the UI needs ships IN the bundle (bundled at build time);
+  the instance serves the bundle's files and nothing else. Slugs starting
+  with `_` are reserved.
 
 - **Worker** (`worker`) — the app's own logic running **headless** in a hidden,
   sandboxed window (no Node, no DOM anyone sees, strict CSP — no network, no
@@ -304,7 +270,7 @@ OS permission prompts, and the security boundary.
 | `notify.send`   | `{ title, body }`                   | `{ shown }`                              |
 
 - **`db.exec`** — the app's own SQLite database at
-  `~/.glyphh/app-data/<slug>/data.sqlite` (WAL). One statement per call; `params`
+  the instance's own `data.sqlite` (WAL), mirrored to the app's R2 prefix. One statement per call; `params`
   is an array (`?` placeholders) or an object (named). `SELECT`s return
   `{ rows }`; writes return `{ changes, lastInsertRowid }`.
   `ATTACH`/`DETACH`/`PRAGMA`/`VACUUM` are host-only. There is **no cross-app
@@ -390,14 +356,14 @@ keys it expects, and gate features on their presence.
   `Xenova/all-MiniLM-L6-v2`, 384-dim). The model downloads once to
   `~/.glyphh/models` on first use — expect the first call to take longer. Batch up
   to 64 texts. Fully on-device.
-- **`vector.*`** — per-app vector store (`~/.glyphh/app-data/<slug>/vectors.sqlite`).
+- **`vector.*`** — per-app vector store (the instance's `vectors.sqlite`).
   `items: [{ id, text?, vector?, metadata? }]` — text is embedded
   automatically with the collection's model (pinned at creation). Search is
   exact cosine (normalized dot product); `filter` is exact-match on metadata
   keys. Typical pipeline: `llm.chunk` → `vector.upsert { items }` →
   `vector.search { query }`.
 - **`graph.cypher`** — a real knowledge graph: each app gets its own embedded
-  **Kuzu** database (`~/.glyphh/app-data/<slug>/graph.kuzu`) speaking full Cypher —
+  **Kuzu** database (the instance's `graph.kuzu`) speaking full Cypher —
   property graphs, MATCH patterns, variable-length paths (`-[:Owns*1..3]->`),
   shortest path, aggregations. Kuzu is schema-full; the app's first calls are
   DDL:
@@ -493,17 +459,18 @@ server registering per-user tools:
   how a consumer discovers what a specific user's Glyphh can do.
 
 - **`app_call_tool { app, tool, args }`** → runs `<app>`'s `<tool>` headlessly
-  on the user's machine and returns its result — a capability passthrough for
-  capability tools, a worker-handler invocation for handler tools.
+  on the app's own instance and returns its result — a capability passthrough
+  for capability tools, a worker-handler invocation for handler tools.
 
-- **`app_install { name?, bundleBase64 }`** → installs a `.glyphh` bundle for the
-  user (create/update the saved app + register its tools + warm-start its
-  worker). This is how Claude **deploys** an app it built, so it can
-  immediately use the app's tools.
+- **`app_install { bundleBase64, intent: "app" }`** → installs a `.glyphh`
+  bundle as the user's instance (create/update the instance + its tab row;
+  the instance warm-starts its worker). This is how Claude **deploys** an app
+  it built, so it can immediately use the app's tools.
 
-Under the hood each forwards to the user's live yo-client over the relay
-WebSocket (`apps.listTools` / `apps.callTool` / `apps.install`), through the
-same online check every relay tool uses.
+The gateway's `/mcp` serves all three off the instances (server
+`mcp_apps.py`); the desktop's local MCP serves the same names off the same
+instances (`app-instances.ts`), its `app_install` through the registry's
+`apps.install` (attach-handlers.ts) — never over the relay to a machine.
 
 ### Orchestration loop
 
@@ -521,9 +488,11 @@ adapts to whatever apps a given user has installed.
 
 ## 7. Security model
 
-- **Per-app capability allowlist.** The host grants a window / worker / tool
-  exactly the capabilities its manifest declared — nothing else is reachable,
-  even if the app's code asks. Enforced in the main process, not the sandbox.
+- **Per-app capability allowlist.** The instance grants a window / worker /
+  tool exactly the capabilities its manifest declared — nothing else is
+  reachable, even if the app's code asks. Enforced by the instance's bridge
+  (rrotor `app-host/bridge.ts`), not the sandbox; a capability that needs a
+  member's machine is refused there with its own line.
 - **Host-owned implementations.** Apps never get AppleScript, shell, file, or
   raw database-engine access. They get capability calls the host implements
   and can rate-limit, prompt for, or revoke.
@@ -537,8 +506,9 @@ adapts to whatever apps a given user has installed.
   native binaries. This is also what keeps marketplace distribution clean on
   macOS/Windows (Developer ID + notarization; direct distribution, not the
   Mac App Store).
-- **OS permissions still apply.** `messages.send` still triggers macOS's
-  Automation prompt for Messages the first time — the host doesn't bypass the OS.
+- **A machine's capabilities are not an instance's.** `contacts.search`,
+  `messages.send`, `fs.*`, `web.*` and the house stores name a member's
+  machine; an instance refuses them at call time.
 
 ---
 

@@ -17,7 +17,7 @@ import type { WebContents } from "electron";
 import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
 import { createHash } from "node:crypto";
 import { listSkills } from "./skills-fs.js";
-import { callAppTool, listInstalledAppTools } from "./glyphh-app-host.js";
+import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
@@ -80,14 +80,14 @@ const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringi
  *  seconds simply has no entries this time. */
 async function catalogEntries(): Promise<LoopCatalogEntry[]> {
   const out: LoopCatalogEntry[] = [];
-  const apps = await listInstalledAppTools().catch(() => []);
+  const apps = await listInstanceTools().catch(() => []);
   for (const a of apps) {
     for (const t of a.tools) {
       out.push({
         name: safe(`${a.app}_${t.name}`), description: (t.description || `${a.name}: ${t.name}`).slice(0, 1000), family: `app: ${a.name}`,
         ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}),
         run: async (args) => {
-          try { return { text: asText(await callAppTool(a.app, t.name, args)), failed: false }; }
+          try { return { text: asText(await callInstanceTool(a.app, t.name, args)), failed: false }; }
           catch (err) { return { text: err instanceof Error ? err.message : String(err), failed: true }; }
         },
       });

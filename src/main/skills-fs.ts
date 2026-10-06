@@ -23,10 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
-import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, listInstances } from "./app-instances.js";
-import { appDataOfManifest, type AppData } from "../shared/app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -67,10 +64,6 @@ export interface SkillSummary {
   icon?: string | null;
   /** An app that IS a built-in work panel names its view here ("gdesign"). */
   tool?: string | null;
-  /** An app: where its data lives, as its author declared (app.json `data`). */
-  data?: AppData;
-  /** An app: where its data sits on this machine's view — the Apps page's mark. */
-  locus?: "cloud" | "local";
 }
 export interface SkillFile { path: string; size: number }
 export interface SkillDetail extends SkillSummary {
@@ -194,29 +187,27 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   let updatedAt = "";
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
   const type = bundleType(dir, frontmatter.type);
-  const { icon, tool, data } = bundleMarks(dir, type);
+  const { icon, tool } = bundleMarks(dir, type);
   const id = idOf(source, name);
   return {
     id, source, type, name: frontmatter.name || name, description: frontmatter.description || "",
     author: frontmatter.author || frontmatter.from || installedAuthor(id), enabled, dir, fileCount: walk(dir).length, updatedAt,
-    icon, tool, ...(type === "app" ? { data } : {}),
+    icon, tool,
   };
 }
 
 /** What an app or task manifest says about how it LOOKS and what it opens: the
  *  icon.svg it ships, and the built-in panel it is (an app with a `tool` wears
  *  that panel's mark when it ships no icon of its own). */
-export function bundleMarks(dir: string, type: BundleType): { icon: string | null; tool: string | null; data: AppData } {
-  if (type !== "app" && type !== "task") return { icon: null, tool: null, data: "cloud" };
+export function bundleMarks(dir: string, type: BundleType): { icon: string | null; tool: string | null } {
+  if (type !== "app" && type !== "task") return { icon: null, tool: null };
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown; tool?: unknown; data?: unknown };
+    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown; tool?: unknown };
     const tool = typeof m.tool === "string" && m.tool ? m.tool : null;
-    // The author's word on where the app's data lives (app-data-rules.ts).
-    const data = appDataOfManifest(m);
-    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return { icon: null, tool, data };
+    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return { icon: null, tool };
     const svg = fs.readFileSync(safeJoin(dir, m.icon), "utf-8");
-    return { icon: svg.includes("<svg") && svg.length < 64_000 ? svg : null, tool, data };
-  } catch { return { icon: null, tool: null, data: "cloud" }; }
+    return { icon: svg.includes("<svg") && svg.length < 64_000 ? svg : null, tool };
+  } catch { return { icon: null, tool: null }; }
 }
 
 /** The target a CLI-directory symlink points at, or "" when it is not a link. */
@@ -446,17 +437,10 @@ export function writeSkillFile(id: string, rel: string, text: string): void {
 export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   const { source, name, dir, enabled } = dirOf(id);
   if (enabled === on) return summarize(source, name, dir, enabled)!;
-  const type = bundleType(dir);
   const dest = on ? path.join(ROOTS[source](), name) : path.join(DISABLED_ROOT(), source, name);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
   syncLinks();
-  // An app's TAB follows the switch: turned off it leaves the rail and the
-  // wall (its entry just moved out from under them), turned on it comes back.
-  if (type === "app") {
-    if (on) void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
-    else void unregisterBundleApp(dir, { keepSecrets: true });
-  }
   announceBundle(source, name);
   return summarize(source, name, dest, on)!;
 }
@@ -468,10 +452,8 @@ export function setInstallForgetter(fn: (id: string) => void): void { forgetInst
 
 export function deleteSkill(id: string): void {
   const { source, name, dir } = dirOf(id);
-  const type = bundleType(dir);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
-  if (type === "app") void unregisterBundleApp(dir);
   forgetInstall?.(id);
   announceBundleGone(source, name);
 }
@@ -716,74 +698,8 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   // the two writers verify their own work rather than trust it.
   if (!markerOf(dir)) throw new Error(`"${name}" was written without a SKILL.md, so nothing would list it`);
   syncLinks();
-  if (source === "app") void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   announceBundle(source, name);
   return summarize(source, name, dir, true)!;
-}
-
-/** THE CARD AN INSTALLED BUNDLE LEAVES (his report, 2026-09-17).
- *
- *  A `.glyphh` bundle installs its runnable payload into the app host's
- *  sandbox root and its tab row into the apps home, and the library reads
- *  SKILL.md + the manifest beside it. So an app an agent installed was on no
- *  page at all: "I don't see the skill anywhere". The installer writes the
- *  card beside the tab row, which makes the app a skill of type app like
- *  every other bundle, gives it the CLI mirror, and tells any agent reading
- *  that mirror which tools the app answers to.
- *
- *  A card we generated carries `generated: glyphh-bundle` and is rewritten on
- *  every reinstall. Drop that line and the file is the user's: left alone. */
-export interface AppCard {
-  slug: string;
-  name: string;
-  description: string;
-  /** Where the runnable payload actually sits (custom-apps/…), for the reader. */
-  bundleDir: string;
-  entry: string;
-  connectors: string[];
-  tools: Array<{ name: string; description?: string }>;
-  iconSvg?: string | null;
-}
-
-export function writeAppCard(card: AppCard): void {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(card.slug)) throw new Error(`bad app slug: ${card.slug}`);
-  const dir = path.join(ROOTS.app(), card.slug);
-  fs.mkdirSync(dir, { recursive: true });
-  if (card.iconSvg && card.iconSvg.includes("<svg")) fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
-  const input: AppCardInput = { ...card, hasIcon: fs.existsSync(path.join(dir, "icon.svg")) };
-  // THE BUNDLE'S OWN MANIFEST IS NEVER OURS TO REWRITE. A real app.json says
-  // what the app IS — its ui entry, its tools file, the built-in panel it is —
-  // and a card written over it silently took Design's `tool` away, so Open
-  // rendered a placeholder page (his report, 2026-09-17). We only write the
-  // file when it is absent or when we wrote it ourselves.
-  const manifestPath = path.join(dir, "app.json");
-  let ownManifest = true;
-  if (fs.existsSync(manifestPath)) {
-    try { ownManifest = isGeneratedCard(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))); } catch { ownManifest = false; }
-  }
-  if (ownManifest) fs.writeFileSync(manifestPath, JSON.stringify(appCardManifest(input), null, 2) + "\n", "utf-8");
-  const md = path.join(dir, "SKILL.md");
-  if (fs.existsSync(md)) {
-    let ours = false;
-    try { ours = parseSkillMd(fs.readFileSync(md, "utf-8")).frontmatter.generated === GENERATED_MARK; } catch { ours = false; }
-    if (!ours) { syncLinks(); return; }
-  }
-  fs.writeFileSync(md, appCardSkillMd(input), "utf-8");
-  if (!markerOf(dir)) throw new Error(`the card for "${card.slug}" has no SKILL.md, so nothing would list it`);
-  syncLinks();
-}
-
-/** Copy a folder's files in, never overwriting what the bundle already has. */
-function copyDirInto(src: string, dest: string, skip: (rel: string) => boolean = () => false): number {
-  let copied = 0;
-  for (const f of walk(src)) {
-    if (skip(f.path)) continue;
-    const to = safeJoin(dest, f.path);
-    if (fs.existsSync(to)) continue;
-    fs.mkdirSync(path.dirname(to), { recursive: true });
-    try { fs.copyFileSync(path.join(src, f.path), to); copied++; } catch { /* skip unreadable */ }
-  }
-  return copied;
 }
 
 /** Rewrite (or drop) the `type:` line in a SKILL.md's frontmatter. */
@@ -817,14 +733,6 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
   const dest = enabled ? path.join(ROOTS[target](), name) : path.join(DISABLED_ROOT(), target, name);
   if (fs.existsSync(dest)) throw new Error(`a ${to} named "${name}" is already here — rename one of them first`);
 
-  // Leaving app: the tab goes, and the bundle's own files come home.
-  if (from === "app") {
-    let payload = "";
-    try { payload = String((JSON.parse(fs.readFileSync(path.join(dir, "app.json"), "utf-8") || "{}") as { bundle?: unknown }).bundle || ""); } catch { payload = ""; }
-    if (payload && fs.existsSync(payload)) copyDirInto(payload, dir, (rel) => rel.startsWith(".glyphh-"));
-    void unregisterBundleApp(dir, { keepSecrets: true });
-  }
-
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
   fs.rmSync(path.join(dest, from === "app" ? "app.json" : "task.json"), { force: true });
@@ -857,7 +765,6 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
   setFrontmatterType(path.join(dest, "SKILL.md"), to === "skill" ? null : to);
   syncLinks();
   if (to === "app" && enabled) {
-    void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   }
   // A retype is a delete in one library kind and a save in another.
   announceBundleGone(source, name);
@@ -936,24 +843,11 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
   fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   syncLinks();
-  if (target === "app") void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   announceBundle(target, name);
   return summarize(target, name, dest, true)!;
 }
 
-/** Bundles already in the apps home (adopted, or from before tabs) get their tab once per run. */
-const tabbed = new Set<string>();
-function tabBundles(): void {
-  for (const s of listSkills("app")) {
-    const { dir, enabled } = dirOf(s.id);
-    if (!enabled || tabbed.has(dir)) continue;
-    tabbed.add(dir);
-    void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${s.name}" has no tab: ${r.error}`); });
-  }
-}
-
 export function registerSkillsIpc(): void {
-  tabBundles();
   const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
   const kindsOf = (k: unknown): HomeKind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
   ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
@@ -977,23 +871,12 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skills-list", async (_e, kind?: string | string[]) => {
     try {
       const kinds = kindsOf(kind);
-      if (kinds.includes("app")) tabBundles();
       const rows: SkillSummary[] = listSkills(kinds);
-      // THE LIST = INSTANCES (2026-10-04): the cloud apps this member may open
-      // join the page; one whose slug is a bundle folder here IS that card.
-      if (kinds.includes("app")) {
-        const folders = new Set(rows.filter((r) => r.source === "app").map((r) => r.id.slice(r.id.indexOf(":") + 1).toLowerCase()));
-        // WHERE EACH APP'S DATA SITS (his verdict, 2026-10-05), for the page's
-        // mark: a folder whose author said local / per-home is this machine's;
-        // a folder that stands for an instance is the cloud's.
-        const cloudSlugs = new Set((await listInstances().catch(() => [])).map((i) => i.slug));
-        for (const r of rows) {
-          if (r.source !== "app") continue;
-          const slug = r.id.slice(r.id.indexOf(":") + 1).toLowerCase();
-          r.locus = r.data === "local" || r.data === "per-home" ? "local" : cloudSlugs.has(slug) ? "cloud" : "local";
-        }
-        rows.push(...await instanceCards(folders));
-      }
+      // THE APPS ARE THE INSTANCES (2026-10-04; cloud is the one home,
+      // 2026-10-06): the cloud apps this member may open join the page as
+      // their own cards. An app FOLDER here is source — a scaffold, an import,
+      // an adopted bundle — and lists as such; it runs only once installed.
+      if (kinds.includes("app")) rows.push(...await instanceCards());
       return { ok: true, data: rows };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
@@ -1002,10 +885,11 @@ export function registerSkillsIpc(): void {
       if (isInstanceCardId(String(id))) return { ok: true, data: await instanceTab(String(id)) };
       const { dir } = dirOf(String(id));
       // The TYPE opens the tab, not the home it sits in: an app is an app
-      // wherever its app.json is (his ruling, 2026-09-17).
+      // wherever its app.json is (his ruling, 2026-09-17). A folder is the
+      // app's SOURCE; it opens once it is installed in the cloud.
       if (bundleType(dir) !== "app") return { ok: false, error: "only an app opens as a tab" };
-      const r = await registerBundleApp(dir, { name: opts?.name, slug: opts?.slug });
-      return r.ok ? { ok: true, data: { slug: r.slug, name: r.name, tool: r.tool } } : { ok: false, error: r.error };
+      void opts;
+      return { ok: false, error: "this app is a folder on this machine — an app runs in the cloud. Add it from Settings → Build → Discover, or install its bundle (app_install), and open it from there" };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("skill-get", async (_e, id: string) => {

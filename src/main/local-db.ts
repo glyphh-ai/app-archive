@@ -117,10 +117,9 @@ const MIGRATIONS: Migration[] = [
     sql: `ALTER TABLE agents ADD COLUMN system_prompt TEXT;`,
   },
   {
-    // Persisted cron schedules for installed Glyphh apps (spec v2 —
-    // cron.schedule/cancel/list capabilities). Keyed per app so an app can
-    // only ever see/replace its own schedules; re-armed at boot by
-    // glyphh-app-services.armAllSchedules().
+    // The cron schedules of the local app host, which is gone (an app's cron
+    // runs on its cloud instance, 2026-10-06). The table stays: migrations
+    // are append-only and nothing reads it.
     version: 4,
     sql: `
       CREATE TABLE IF NOT EXISTS app_schedules (

@@ -21168,11 +21168,6 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 .disc-row-installs { font-size: 12px; color: var(--text-3); white-space: nowrap; }
 .disc-chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--hover); color: var(--text-2); }
 .disc-chip.new { background: rgba(140, 59, 242, .18); color: var(--accent); }
-/* WHERE AN APP'S DATA LIVES (2026-10-05): "Local data" is a badge of honor. */
-.disc-chip.data { flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background: transparent; color: var(--accent); }
-.skill-row-locus { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--text-3); }
-.skill-row-locus svg { width: 12px; height: 12px; }
-.skill-hub-line { font-size: 11.5px; color: var(--text-2); margin-top: 4px; }
 
 /* ── Connections in the Skills grammar (his order, 2026-09-16) ── */
 .conn2-chips { display: flex; gap: 4px; margin: 2px 0 12px; }

@@ -5,9 +5,8 @@
  *
  *   ~/.glyphh/apps/<id>/app.json        — the registry row (id = slug)
  *
- * (installed glyphh-app bundles keep their extracted code where it already
- * lives — custom-apps/ — the row's nativeRef points at the entry; a future
- * consolidation can move the bytes here too).
+ * (an installed glyphh-app is a cloud instance; its row's config names it and
+ * nativeRef is null).
  *
  * The API mirrors the slice of the old SDK client the desktop used
  * (mine / createEntry / updateEntry / removeEntry), so call sites swap

@@ -10,11 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { hostHas, onWeb } from "./web-surface.js";
-import {
-  APP_LOCUS_TITLE, appDataBadge, appDataOf, appLocusOf, installButton, installRoute, type AppData, type AppLocus,
-} from "./app-data-rules.js";
-import { LOCUS_SVG } from "./session-locus.js";
+import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
@@ -34,10 +30,10 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; data?: AppData; locus?: AppLocus }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType; data?: AppData }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -108,9 +104,6 @@ let loadedText = "";
 let viewedVersion: { itemId: string; version: number; files: Record<string, string> } | null = null;
 /** The Discover item on the detail page (read-only, Add instead of Share), or null for a local skill. */
 let hubItem: DiscoverRow | null = null;
-/** WEB: is a desktop connected over the relay? A local-data app installs
- *  through it, or not at all (app-data-rules.ts). Desktop: this machine. */
-let desktopAttached = !onWeb();
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
@@ -123,17 +116,6 @@ const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.t
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
 const typeChip = (type: BundleType | undefined): string =>
   type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
-/** WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05): a hub app wears "Local
- *  data" as a badge of honor, a per-home one "Local + cloud"; the default
- *  wears nothing. The same chip style as the Discover rows'. */
-const dataChip = (d: { type?: BundleType; data?: AppData }): string => {
-  if (d.type !== "app") return "";
-  const b = appDataBadge(appDataOf(d));
-  return b ? `<span class="disc-chip data" title="${escapeHtml(b.title)}">${escapeHtml(b.label)}</span>` : "";
-};
-/** The Apps page's mark: the sessions' locus glyphs — a cloud, a monitor. */
-const locusMark = (locus: AppLocus | undefined): string =>
-  locus ? `<span class="skill-row-locus" title="${escapeHtml(APP_LOCUS_TITLE[locus])}">${LOCUS_SVG[locus]}</span>` : "";
 /** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
  *  IS, else its type's. The middle step matters for the work-panel apps —
  *  Design, Slides, Drive and the media panels are those panels, and the ones
@@ -252,10 +234,10 @@ function paintShareChip(): void {
 }
 
 /** The name, with the type beside it (never under it — his order, 2026-09-17). */
-const setDetailName = (name: string, type?: BundleType, extra: { data?: AppData; locus?: AppLocus } = {}): void => {
+const setDetailName = (name: string, type?: BundleType): void => {
   const host = el("skill-detail-name");
   if (!host) return;
-  host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}${dataChip({ type, data: extra.data })}${locusMark(extra.locus)}`;
+  host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}`;
   (host.querySelector(".skill-detail-title") as HTMLElement).textContent = name;
 };
 const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
@@ -437,28 +419,16 @@ async function loadDiscover(): Promise<void> {
   discoverRows = r.data ?? [];
   hubCategories = c.ok ? (c.data ?? []) : [];
   discoverView = { kind: "home" };
-  await refreshDesktopAttached();
-}
-
-/** WEB: ask once per Discover load whether a desktop is connected (the
- *  bridge's attachStatus); the Install buttons of local-data apps read it. */
-async function refreshDesktopAttached(): Promise<void> {
-  if (!onWeb()) { desktopAttached = true; return; }
-  if (!hostHas("attachStatus")) { desktopAttached = false; return; }
-  try {
-    const st = await (api() as unknown as { attachStatus: () => Promise<{ attached?: boolean }> }).attachStatus();
-    desktopAttached = !!st?.attached;
-  } catch { desktopAttached = false; }
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare; locus?: AppLocus }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
   r.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${iconOf(mark, opts.type)}</div>
     <div class="skill-row-main">
-      <div class="skill-row-name"><span class="skill-row-title"></span>${typeChip(opts.type)}${locusMark(opts.locus)}</div>
+      <div class="skill-row-name"><span class="skill-row-title"></span>${typeChip(opts.type)}</div>
       <div class="skill-row-sub"><span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
     </div>
     <div class="skill-row-right"></div>`;
@@ -589,8 +559,6 @@ function renderList(): void {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
-          // An installed app's mark: where its data sits (the sessions' locus glyphs).
-          locus: s.type === "app" ? appLocusOf(s) : undefined,
           share: shares[s.id],
           onOpen: () => void openDetail(s.id),
           action: up ? updateButton(s.id, up.latest) : undefined,
@@ -661,27 +629,21 @@ function updateButton(id: string, latest: number): HTMLButtonElement {
   return b;
 }
 
-/** AN APP INSTALLS WHERE ITS AUTHOR SAID (his verdict, 2026-10-05): the
- *  Install goes by the manifest's `data` and whether a desktop is connected
- *  (app-data-rules.ts installRoute) — the user never picks. A local-data app
- *  on the web with no desktop is a disabled button wearing the one line. */
-const appInstall = (d: { type?: BundleType; data?: AppData; installed: boolean }, wide: boolean): ReturnType<typeof installButton> | null =>
-  d.type === "app" ? installButton(installRoute(appDataOf(d), onWeb() ? "web" : "desktop", desktopAttached), d.installed, wide) : null;
+/** The Add button's face: an app installs in the cloud (its one shape), a
+ *  skill, task or plugin into the member's library. */
+const addFace = (d: { type?: BundleType; installed: boolean }, wide: boolean): { label: string; disabled: boolean; title: string } => {
+  const noun = d.type === "app" ? "apps" : "skills";
+  if (d.installed) return { label: wide ? "Added" : "✓", disabled: true, title: `Already in your ${noun}` };
+  return { label: wide ? "Add" : "+", disabled: false, title: d.type === "app" ? "Install in the cloud" : `Add to your ${noun}` };
+};
 function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = wide ? "action-btn skill-add-wide" : "action-btn skill-add-btn";
-  const app = appInstall(d, wide);
-  if (app) {
-    b.textContent = app.label;
-    b.disabled = app.disabled;
-    b.title = app.title;
-    if (app.disabled) return b;
-  } else {
-    b.textContent = d.installed ? (wide ? "Added" : "✓") : (wide ? "Add" : "+");
-    b.disabled = d.installed;
-    b.title = d.installed ? "Already in your skills" : "Add to your skills";
-  }
+  const face = addFace(d, wide);
+  b.textContent = face.label;
+  b.disabled = face.disabled;
+  b.title = face.title;
   b.addEventListener("click", (e) => { e.stopPropagation(); void installFrom(d, b); });
   return b;
 }
@@ -690,7 +652,7 @@ function discoverCard(d: DiscoverRow): HTMLElement {
   const c = document.createElement("div");
   c.className = "disc-card";
   const mark = markOf(d);
-  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"><span class="disc-card-title"></span>${typeChip(d.type)}${dataChip(d)}</div><div class="disc-card-desc"></div><div class="disc-card-meta"><span class="disc-card-metatext"></span></div></div>`;
+  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"><span class="disc-card-title"></span>${typeChip(d.type)}</div><div class="disc-card-desc"></div><div class="disc-card-meta"><span class="disc-card-metatext"></span></div></div>`;
   (c.querySelector(".disc-card-title") as HTMLElement).textContent = d.name;
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
   (c.querySelector(".disc-card-metatext") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
@@ -805,9 +767,9 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
     const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
     // The category being browsed leads the chips; the rest fold into +N.
     const lead = v.kind === "category" && d.categories.includes(v.id) ? v.id : d.categories[0];
-    // typeChip and dataChip escape their values; the rule cannot see through the call.
+    // typeChip escapes its value; the rule cannot see through the call.
   // nosemgrep: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
-  titleEl.insertAdjacentHTML("beforeend", typeChip(d.type) + dataChip(d));
+  titleEl.insertAdjacentHTML("beforeend", typeChip(d.type));
     const chips: string[] = [];
     if (isNew(d)) chips.push("New");
     if (lead) chips.push(catLabel(lead));
@@ -925,7 +887,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   editing = false;
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
-  setDetailName(d.name, d.type, { data: d.data });
+  setDetailName(d.name, d.type);
   (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
@@ -961,16 +923,11 @@ function paintDetailChrome(): void {
     el("skill-share")?.before(add);
   }
   add.classList.toggle("hidden", !hub);
-  // The one line under a local-data app's disabled Install on the web.
-  let line = el("skill-hub-line");
-  if (!line) { line = document.createElement("div"); line.id = cfg.id("skill-hub-line"); line.className = "skill-hub-line"; add.after(line); }
-  line.classList.add("hidden");
   if (hub) {
-    const app = appInstall(hubItem!, true);
-    add.textContent = app ? app.label : hubItem!.installed ? "Added" : "Add";
-    add.disabled = app ? app.disabled : hubItem!.installed;
-    add.title = app ? app.title : "";
-    if (app?.disabled && !hubItem!.installed) { line.textContent = app.title; line.classList.remove("hidden"); }
+    const face = addFace(hubItem!, true);
+    add.textContent = face.label;
+    add.disabled = face.disabled;
+    add.title = face.title;
   }
   // The detail's actions, resolved every time: a mixed list moves between an
   // app and a skill, and a stale Open must not survive the move.
@@ -1453,7 +1410,7 @@ async function openDetail(id: string): Promise<void> {
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
   const s = current;
-  setDetailName(s.name, s.type, s.type === "app" ? { data: s.data, locus: appLocusOf(s) } : {});
+  setDetailName(s.name, s.type);
   (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
   const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = s.enabled;
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }

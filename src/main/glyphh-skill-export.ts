@@ -47,7 +47,7 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 **Installed app tools — the marketplace** (headless; no window needed)
 - \`app_list_tools\` — discover the MCP tools the user's installed Glyphh apps expose: \`[{ app, name, tools: [{ name, description, inputSchema }] }]\`. Every user's apps differ — discover first, never assume.
 - \`app_call_tool { app, tool, args }\` — run one headlessly (send a message, query a graph, search a vector store, create an event). \`args\` must match the tool's \`inputSchema\`.
-- \`app_install { path }\` — install/update a \`.glyphh\` bundle already on the user's machine (absolute path — preferred). Also accepts \`{ url }\` to download, or \`{ bundleBase64 }\` for tiny bundles only.
+- \`app_install { bundleBase64 }\` — install/update a \`.glyphh\` bundle as an app in the cloud (an instance in the user's organization); its tools then light up for \`app_call_tool\` on every surface.
 
 **The user's agents** (sub-agents Glyphh hands work to — each with its own brief and model)
 - \`agents_list\` — the user's agents: \`[{ agent, name, description, model, hasBrief }]\`. \`description\` says when to use each one.
@@ -62,10 +62,10 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 
 ## Building a Glyphh app
 
-A Glyphh app is a portable \`.glyphh\` bundle (a zip) that installs onto the
-user's machine; its declared tools then light up for \`app_call_tool\` (and, if
-published, at a public URL). When no existing tool does the job, **build one**:
-author the bundle, then deploy it with \`app_install\`.
+A Glyphh app is a portable \`.glyphh\` bundle (a zip) that installs in the
+cloud as an instance of the user's organization; its declared tools then light
+up for \`app_call_tool\` on every surface. When no existing tool does the job,
+**build one**: author the bundle, then deploy it with \`app_install\`.
 
 **Bundle layout** — files at the zip root:
 - \`manifest.json\` (required — the app contract)
@@ -134,9 +134,9 @@ glyphh.handle("ask", async ({ q }) => {
 \`\`\`
 
 **Deploy** — install the bundle and its tools go live:
-\`app_install { path: "/absolute/path/recall.glyphh" }\` → then \`app_list_tools\`
-shows \`recall\`'s tools and \`app_call_tool { app:"recall", tool:"ask", args:{ q } }\`
-runs them. Re-install to update (the worker restarts; cron schedules survive).
+\`app_install { bundleBase64 }\` → then \`app_list_tools\` shows \`recall\`'s tools
+and \`app_call_tool { app:"recall", tool:"ask", args:{ q } }\` runs them.
+Re-install the same slug to update the instance in place.
 
 ## Publishing — give an app a public URL
 

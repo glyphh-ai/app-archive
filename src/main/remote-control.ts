@@ -31,7 +31,6 @@ import { getWorkingDirectory } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
 import { getPreference, loadPreferences, setPreference } from "./stores/preferences-db.js";
-import { effectiveToolMode } from "./conn-tool-modes.js";
 
 export interface RemoteControlSetting { enabled: boolean; folders: string[] }
 
@@ -60,15 +59,6 @@ const PASS_THROUGH = [
   // app-data through it — read-only, house apps only, fenced in
   // house-doors.ts (app data is the app's, not a granted folder).
   "app.call",
-  // A LOCAL-DATA HUB APP INSTALLS ON THIS MACHINE from the web (his verdict,
-  // 2026-10-05): `{itemId, from}` names the hub item — no path, no app data;
-  // the server allowlists the same name (attach.py REMOTE_METHODS).
-  "apps.install",
-  // THE APPS' TOOLS, LISTED (his report, 2026-10-05: a cloud session asked for
-  // the installed Images app and got []): the rows attach-handlers.ts answers,
-  // narrowed below to the apps on this machine. apps.callTool is NOT here: it
-  // goes through the approval rule (appsDoor) before the registry sees it.
-  "apps.listTools",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME
@@ -140,43 +130,6 @@ const str = (p: unknown, k: string): string => {
   return typeof v === "string" ? v : "";
 };
 
-/** One row of apps.listTools (glyphh-app-host.ts AppToolRow); `data` says where the app answers. */
-interface AppToolRow { app: string; data?: string; tools?: unknown[] }
-
-/**
- * THE APPS' TOOLS OVER THE RELAY (his report, 2026-10-05: "even though the app
- * is installed the web agent is not getting its tools"). A cloud session's
- * app_call_tool reaches a local-data app — the house apps first — only
- * through this machine, so the door serves the two registry handlers
- * attach-handlers.ts registers, with two rules the registry does not apply:
- *   · apps.listTools answers the apps ON THIS MACHINE (data local / per-home;
- *     a house app is local by nature) — the cloud instances are the server's
- *     own to list, so their echo is dropped here.
- *   · apps.callTool runs a tool only when the Tools tab (Settings → Build →
- *     Apps → <app> → Tools, the one rule in conn-tool-modes.ts) says Always
- *     allow. Needs approval is refused with the line that says so — nobody is
- *     at this machine to approve a cloud session's call, and a refusal is the
- *     desktop's own answer to an unattended run (task-runner.ts) — and Never
- *     is refused as it is everywhere. Nothing is auto-allowed.
- */
-export function appsDoor(dispatch: (m: string, p: unknown) => Promise<unknown>): Record<string, (params: unknown) => Promise<unknown>> {
-  return {
-    "apps.listTools": async () => {
-      const rows = await dispatch("apps.listTools", {});
-      return Array.isArray(rows) ? (rows as AppToolRow[]).filter((r) => r && typeof r === "object" && r.data !== "cloud") : [];
-    },
-    "apps.callTool": async (p) => {
-      const app = str(p, "app");
-      const tool = str(p, "tool");
-      if (!app || !tool) throw new Error("apps.callTool requires { app, tool }");
-      const mode = effectiveToolMode(`app:${app}`, tool);
-      if (mode === "never") throw new Error(`"${tool}" on ${app} is set to Never on this desktop (Settings → Build → Apps → ${app} → Tools)`);
-      if (mode !== "allow") throw new Error(`"${tool}" on ${app} needs approval on this desktop, and nobody is there to give it — a cloud session only runs an app tool set to Always allow (Settings → Build → Apps → ${app} → Tools)`);
-      return dispatch("apps.callTool", { app, tool, args: (p as { args?: unknown } | null)?.args ?? {} });
-    },
-  };
-}
-
 /** The table the socket serves, bounded to `folders()`. Exported for tests. */
 export function remoteTable(folders: () => string[], dispatch: (m: string, p: unknown) => Promise<unknown> = dispatchRelayMethod): Record<string, (params: unknown) => Promise<unknown>> {
   const guard = (path: string): string => {
@@ -222,7 +175,6 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
     return { path: dir, parent: roots.includes(dir) || !inGranted(up, folders()) ? null : up, entries };
   };
   table["fs.gitInfo"] = async (p) => gitStateOf(guard(str(p, "path")));
-  for (const [m, h] of Object.entries(appsDoor(dispatch))) table[m] = h;
   // A WEB TERMINAL on this machine (his order, 2026-10-04: a CLI tile on
   // app.glyphh.ai opens the desktop's shell for a desktop-bound session). The
   // shell starts inside a granted folder — the one asked for, else the first

@@ -181,7 +181,7 @@ export function installRelayHandlers(deps: Deps): void {
     throw new Error("local MCP servers are retired — custom MCP connections run server-side; use connector_call_tool");
   });
 
-  // Installed Glyphh apps — install, discovery and invocation (apps.install /
-  // apps.listTools / apps.callTool) are attach-handlers.ts's: one registry, one
-  // handler each, for the local MCP, the web and the gateway's /mcp alike.
+  // Installed Glyphh apps are cloud instances: the local MCP's app_install
+  // rides apps.install (attach-handlers.ts) and its app_list_tools /
+  // app_call_tool read the instances (app-instances.ts) — no registry lane.
 }
