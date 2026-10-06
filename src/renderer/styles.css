@@ -20153,6 +20153,8 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-value .settings-input { width: auto; }
 .set-pref-value input[type="text"], .set-pref-value input[type="url"] { width: 280px; }
 .set-pref-list .set-pref-row:last-child { border-bottom: none; }
+/* The Voice section is its own list (settings.html #voice-section): its last row draws no rule either (his report, 2026-10-07: an extra line). */
+#voice-section .set-pref-row:last-child { border-bottom: none; }
 
 /* ── APP Usage view (plan-limits look; the platform keeps its dashboard) ── */
 /* The DESKTOP modal floats expand/close top-right — page titles drop clear
