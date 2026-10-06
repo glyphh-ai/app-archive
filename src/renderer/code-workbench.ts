@@ -1484,7 +1484,7 @@ async function init(): Promise<void> {
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> }): void;
     /** THE WEB'S WORKSPACE OPEN (his order, 2026-10-05): only the cells the
      *  web renders (help/web-cut.ts webLayoutCells), the rest named. */
-    openLayoutWeb(layout: { name: string; splits: Array<{ panelId: string }> }): Promise<void>;
+    openLayoutWeb(layout: LayoutRow): Promise<void>;
     openSection(section: string): void;
     openAgent(): void;
     /** The agent was docked (parked out to the rail/dock) — close its now-empty
@@ -6018,17 +6018,19 @@ async function init(): Promise<void> {
      *  loose panels close; the agent stays seated), as a layout replaces the
      *  desktop's arrangement. The layout's folder is a desktop path — the
      *  web's panels read the session's own locus, so it is not switched. */
-    const openLayoutWeb = async (layout: { name: string; splits: Array<{ panelId: string }> }): Promise<void> => {
+    /** THE WEB OPENS A WORKSPACE THROUGH THE SAME LAYOUT MANAGER AS THE
+     *  DESKTOP (his order, 2026-10-05: "should just be identical to the
+     *  app"): the grid, the spans, the agent seat, the layout bar — with the
+     *  cells the web cannot host dropped FIRST (webLayoutCells), each named
+     *  on one line. The earlier web-only open laid the kept cells out flat. */
+    const openLayoutWeb = async (layout: LayoutRow): Promise<void> => {
       const apps = await webInstalledApps().catch(() => []);
       const plan = webLayoutCells(layout.splits || [], apps);
       const lines = webWorkspaceOpenLines(layout.name, plan);
       setShadow(false, false);   // a pick is a decision — the overlay drops
       if (lines.error) { toastErr(lines.error); return; }
-      webShowAgentOnly();
-      for (const k of plan.keep) {
-        if (k.kind === "tool") getOrOpenTool(k.view as Parameters<typeof getOrOpenTool>[0]);
-        else if (k.kind === "app") ctl.openApp({ slug: k.slug, name: k.name, url: "", glyphh: true, cloud: true });
-      }
+      const splits = (layout.splits || []).filter((c) => webLayoutCells([c], apps).keep.length > 0);
+      openLayoutInEcho({ ...layout, splits });
       if (lines.info) toasts()?.info(lines.info);
     };
     const openLayoutInEchoArranged = (layout: LayoutRow): void => {

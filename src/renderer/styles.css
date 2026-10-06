@@ -18468,7 +18468,10 @@ body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"
 /* CC + reset only while panels cover the wall (the workbench flips the class). */
 #code-cc-open, #code-reset-open { display: none; }
 body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-cc-open,
-body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-reset-open { display: flex; }
+body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-reset-open,
+/* on the web the agent is a flow card, never the centre root — the two buttons show as on the desktop (2026-10-05) */
+html.glyphh-web body.echo-cc-needed #code-cc-open,
+html.glyphh-web body.echo-cc-needed #code-reset-open { display: flex; }
 body.echo-cc-pinned #code-cc-open { color: var(--accent); }
 
 /* ── Peek ───────────────────────────────────────────────────────────────────
@@ -21893,12 +21896,11 @@ html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-pages,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-dots,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-search-wrap,
 html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-arrow,
-html.glyphh-web body:not(.echo-wall-lifted) .echo-topbar,
-html.glyphh-web body:not(.echo-wall-lifted) .echo-dock,
-html.glyphh-web body:not(.echo-wall-lifted) #echo-dock-layer,
-html.glyphh-web body:not(.echo-wall-lifted) .echo-dock-hotstrip,
-html.glyphh-web .echo-layout-bar,
-html.glyphh-web .echo-veil { display: none !important; }
+html.glyphh-web .echo-page-arrow-never { display: none !important; }
+/* THE DOCK ON THE WEB IS THE DESKTOP'S DOCK (his order, 2026-10-05: "the
+   mirror of the app"): no web gate — Appearance → Show the dock turns it on
+   (off by default), Hide the dock tucks it, the top edge reveals it. The
+   layout bar and the veil follow the desktop's rules alike. */
 html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
 /* THE AGENT MOVES ON THE WEB TOO (his review, 2026-10-05: "the glyphh agent
    panel should be draggable too… not fixed in place"). Its head stays — it is
@@ -21906,9 +21908,9 @@ html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-sh
    wireCardDrag, help/web-cut.ts agentCardMovable); only its close goes: the
    agent is the page, closing it would leave nothing. */
 html.glyphh-web .echo-card.echo-agent-card > .echo-card-head .echo-card-close { display: none; }
-/* The composer's command-center and reset buttons open what the web no longer has. */
-html.glyphh-web #code-cc-open,
-html.glyphh-web #code-reset-open { display: none !important; }
+/* The composer's command-center and close-all buttons act on the web as on
+   the desktop (his order, 2026-10-05): the Echo lifts, close all opens a
+   fresh session. */
 
 /* The agent window's top-right ⋮ on the web (help/web-agent-menu-ui.ts):
    three sections — Apps, Agents / CLIs, Panels — in the same menu frame. */

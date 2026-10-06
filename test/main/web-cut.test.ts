@@ -265,6 +265,8 @@ describe("WORKSPACES ON THE WEB render only what is web native (his order, 2026-
       "the unnamed panel (not hosted on the web)",
     ]);
     for (const v of WEB_TOOL_VIEWS) expect(webLayoutCells([cell(`tool:${v}`)], []).keep).toEqual([{ kind: "tool", view: v }]);
+    expect(webLayoutCells([cell("tool:editor")], []).keep).toEqual([{ kind: "tool", view: "monaco" }]);   // the saved alias (his dev workspace, 2026-10-05)
+    expect(webLayoutCells([cell("tool:browser")], []).skipped[0]).toContain("preview");
   });
   it("keeps a CLOUD Glyphh app (by slug or id, any case); a desktop-installed bundle, a URL tab, a native app and an unknown id drop, each named", () => {
     const plan = webLayoutCells([cell("CRM"), cell("slides"), cell("gmail"), cell("notes"), cell("ghost")], apps);

@@ -356,7 +356,9 @@ export function webLayoutCells(cells: ReadonlyArray<WebLayoutCellIn>, apps: Read
     if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
     if (id.toLowerCase().startsWith("agent:")) { skipped.push(`the CLI agent "${id.slice(6)}" (desktop only)`); continue; }
     if (id.startsWith("tool:")) {
-      const view = id.slice(5);
+      // a saved cell may name a view by its older alias (the desktop's open does the same)
+      const raw = id.slice(5);
+      const view = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
       if (webToolAllowed(view)) keep.push({ kind: "tool", view });
       else skipped.push(`the ${view || "unnamed"} panel (not hosted on the web)`);
       continue;
