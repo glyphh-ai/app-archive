@@ -80,9 +80,13 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   // The hub's `installed` only knows about installs, and an author never
   // installed their own work, so the folder on disk is the honest answer. The
   // row STAYS and says it is already here.
-  const mine = new Set(listSkills(["skill", "app", "task", "plugin"])
+  // APPS ARE NOT IN THIS SET: an app is installed when the member has an
+  // INSTANCE of it, nothing else (his report, 2026-10-07). The app folders
+  // the desktop carries on disk — the house apps among them — are not
+  // installs, and counting them ticked Drive, Audio, Video, Images and Slides
+  // on Discover while Your apps stood at zero (his report, 2026-10-07).
+  const mine = new Set(listSkills(["skill", "task", "plugin"])
     .map((sk) => `${kindOfId(sk.id)}:${sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase()}`));
-  // AN APP IS INSTALLED WHEN THE MEMBER HAS AN INSTANCE OF IT (his report, 2026-10-07).
   if (kinds.includes("app")) for (const i of await listInstances().catch(() => [])) mine.add(`app:${i.slug.toLowerCase()}`);
   const have = (kind: Kind, slug: string): boolean => mine.has(`${kind}:${(slug || "").toLowerCase()}`);
   const rows: DiscoverRow[] = [];
