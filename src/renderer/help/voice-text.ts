@@ -13,6 +13,14 @@ export function dictationText(base: string, transcript: string): string {
   return /\s$/.test(base) ? base + t : `${base} ${t}`;
 }
 
+/** THE VOICE-MODE STEER (brief replies): prepended to a turn's prompt while
+ *  voice mode is on and Brief is on. It shapes BOTH the spoken reply and what
+ *  is rendered, since it steers the turn itself. One text on every surface. */
+export const SPEECH_STEER =
+  "[Speech mode is on: the user is talking to you by voice and hearing your reply read aloud. " +
+  "Answer in at most one to three short, conversational sentences. Lead with the answer. " +
+  "Do not use lists, tables, headings, or code blocks unless explicitly asked. Keep it tight.]";
+
 /** WHAT A FAILED TRANSCRIPTION SAYS on the mic chip (his report, 2026-10-07:
  *  the mic heard him and nothing landed — the wall had refused the model and
  *  the desktop swallowed the error). Electron wraps a main-process throw as

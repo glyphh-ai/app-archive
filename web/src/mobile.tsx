@@ -28,6 +28,8 @@ import { runRemoteTurn, answerPending, attachToActiveRun,
 // The app's real working indicator — the tumbling wireframe cube + typed phrase.
 // Pure DOM/Canvas, so we mount it verbatim (brand parity in the chat thread).
 import { createGlyphhSpinner } from '../../src/renderer/glyphh-spinner';
+import { dictationText, partialDue, SPEECH_STEER } from '../../src/renderer/help/voice-text';
+import { readVoiceConfig, readVoicePref, voicePatch, voiceSectionModel, type VoiceConfigView, type VoicePrefView } from '../../src/renderer/help/settings-voice';
 import { installAutofillGuard } from '../../src/renderer/autofill-guard';
 // Real markdown + code blocks (copy/fold), tool-step group + diff badges. Own file
 // (mobile.tsx is large); marked + dompurify are bundled — no CDN.
@@ -220,7 +222,7 @@ const LEGAL = {
   help: 'https://glyphh.ai',
 };
 
-type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic'
+type IconName = SpaceId | 'menu' | 'plus' | 'chevron' | 'filter' | 'search' | 'back' | 'dots' | 'send' | 'mic' | 'waveform' | 'mute'
   | 'laptop' | 'monitor' | 'monitor-off' | 'cloud' | 'branch' | 'caret' | 'arrowdown'
   | 'circle' | 'progress' | 'check' | 'copy'
   | 'close' | 'info' | 'user' | 'dollar' | 'chart' | 'bell' | 'shield' | 'link'
@@ -245,6 +247,8 @@ const ICON: Record<IconName, React.ReactNode> = {
   dots: <><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></>,
   send: <path d="M12 19V5M5 12l7-7 7 7" />,
   mic: <><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" /></>,
+  waveform: <><line x1="4" y1="10" x2="4" y2="14" /><line x1="8" y1="7" x2="8" y2="17" /><line x1="12" y1="4" x2="12" y2="20" /><line x1="16" y1="7" x2="16" y2="17" /><line x1="20" y1="10" x2="20" y2="14" /></>,
+  mute: <><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" /><line x1="4" y1="4" x2="20" y2="20" /></>,
   laptop: <><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M2 20h20" /></>,
   monitor: <><rect x="3" y="4" width="18" height="12" rx="2" /><line x1="8" y1="20" x2="16" y2="20" /></>,
   'monitor-off': <><rect x="3" y="4" width="18" height="12" rx="2" /><line x1="8" y1="20" x2="16" y2="20" /><line x1="3.5" y1="3" x2="20.5" y2="20" /></>,
@@ -494,29 +498,36 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
   const voice = useVoice(onDictate);
-  // Server voice (desktop parity): live state + callback bind for this composer.
-  const [srvLive, setSrvLive] = useState(false);
+  // Server voice — THE DESKTOP'S COMPOSER (his order, 2026-10-07: "the mic and
+  // those changes did not make it to mobile"): the mic is DICTATE, the words
+  // stream into the box as the member speaks; the bigger button right of it is
+  // VOICE MODE, a spoken conversation under its own bar (mute · level · ✕).
+  const [, bump] = useState(0);
   const [micErr, setMicErr] = useState('');
   const [micMenu, setMicMenu] = useState(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
     voiceCtl.prime();  // cache the voice pref so the mic tap doesn't await before getUserMedia (iOS)
-    return voiceCtl.subscribe(() => {
-      setSrvLive(voiceCtl.isListening() || voiceCtl.isTranscribing());
-      setMicErr(voiceCtl.error());
-    });
+    return voiceCtl.subscribe(() => { setMicErr(voiceCtl.error()); bump((n) => n + 1); });
   }, []);
-  useEffect(() => { voiceCtl.bind({ onText: onDictate, onSend: onVoiceSend }); });
+  useEffect(() => { voiceCtl.bind({ onLive: setDraft, onSend: onVoiceSend, getDraft: () => draftRef.current }); });
   const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting && !sendBlock;
   const submit = () => { if (canSend) onSend(); };
   const onMic = () => {
     void (async () => {
-      // Settings › Voice configured → the desktop-parity server path (STT model,
-      // cues, hands-free). Unconfigured → Web Speech where available; otherwise
+      // The platform's transcription model → dictation through the server (live
+      // transcript). None configured → Web Speech where available; otherwise
       // focus the field so the keyboard's own dictation mic is one tap away (iOS).
-      if (await voiceCtl.toggle()) return;
+      if (await voiceCtl.toggleDictate()) return;
       if (!voice.toggle()) { ref.current?.focus(); }
     })();
   };
+  const onVoiceMode = () => { haptic(); void voiceCtl.startVoiceMode(); };
+  const voiceMode = voiceCtl.isVoiceMode();
+  const live = voice.listening || voiceCtl.isListening() || voiceCtl.isTranscribing();
+  const dictating = !voiceMode && (voiceCtl.isListening() || voiceCtl.isTranscribing());
+  const level = voiceCtl.level();
   const onPaste = (e: { clipboardData: DataTransfer | null; preventDefault: () => void }) => {
     const imgs = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
     if (imgs.length) { e.preventDefault(); onPasteFiles(imgs); }
@@ -539,7 +550,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           <Icon name="mic" /><span>{micErr}</span><Icon name="close" />
         </div>
       )}
-      <div className="m-composer-box">
+      <div className={'m-composer-box' + (dictating ? ' dictating' : '')}>
         {attachments.length > 0 && (
           <div className="m-attach-strip">
             {attachments.map((a) => (
@@ -557,6 +568,18 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
           onPaste={onPaste}
           autoComplete="off" autoCorrect="on" autoCapitalize="sentences" enterKeyHint="send" {...NOFILL} />
+        {voiceMode ? (
+          <div className="m-voice-bar" role="group" aria-label="Voice mode">
+            <button className={'m-voice-mute' + (voiceCtl.isMuted() ? ' on' : '')} aria-label={voiceCtl.isMuted() ? 'Unmute' : 'Mute'} aria-pressed={voiceCtl.isMuted()} onClick={() => { haptic(); voiceCtl.toggleMute(); }}>
+              <Icon name={voiceCtl.isMuted() ? 'mute' : 'mic'} />
+            </button>
+            <span className="m-voice-dots" aria-hidden="true">
+              {[0.35, 0.7, 1, 0.7, 0.35].map((k, i) => <i key={i} style={{ transform: `scaleY(${Math.max(0.18, Math.min(1, level * 2.2 * k + 0.1))})` }} />)}
+            </span>
+            <span className="m-voice-state">{voiceCtl.isTranscribing() ? 'Thinking…' : voiceCtl.isListening() ? (voiceCtl.isMuted() ? 'Muted' : 'Listening…') : 'Speaking…'}</span>
+            <button className="m-voice-end" aria-label="End voice mode" onClick={() => { haptic(); voiceCtl.endVoiceMode(); }}><Icon name="close" /></button>
+          </div>
+        ) : (
         <div className="m-composer-tools">
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           {/* The permission pill. The model is picked at the top of the screen —
@@ -565,13 +588,15 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
               screen why here also?"). */}
           <button className={'m-tool-pill m-pill-cfg' + (permId === 'auto' ? ' m-pill-auto' : '')} onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
           <span className="m-composer-spacer" />
-          <button className={`m-tool-mic${voice.listening || srvLive ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
+          <button className={`m-tool-mic${live ? ' m-mic-live' : ''}`} aria-label={live ? 'Stop dictating' : 'Dictate'} title="Dictate" onClick={onMic}><Icon name="mic" /></button>
+          <button className="m-tool-mic m-tool-voice" aria-label="Voice mode" title="Voice mode" onClick={onVoiceMode}><Icon name="waveform" /></button>
           <button className="m-tool-mic m-tool-mic-caret" aria-label="Voice options" onClick={() => { haptic(); setMicMenu((v) => !v); }}><Icon name="chevron" /></button>
           {micMenu && <MicMenu onClose={() => { setMicMenu(false); voiceCtl.prime(); }} />}
           {sending
             ? <button className="m-composer-send m-composer-stop" aria-label="Stop" onClick={() => onStop?.()}><span className="m-stop-sq" aria-hidden="true" /></button>
             : <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}><Icon name="send" /></button>}
         </div>
+        )}
       </div>
     </div>
   );
@@ -827,12 +852,30 @@ function useVoice(onText: (t: string) => void) {
    Unconfigured → the caller falls back to Web Speech dictation. A module
    singleton (not a hook): the chat's turn-settle lives outside the Composer,
    and both need to reach the same live session. ── */
-type VoiceMode = 'off' | 'push-to-talk' | 'continuous';
-interface VoicePrefM { mode: VoiceMode; inputModel: string | null; outputModel: string | null; voiceId: string | null; deviceId: string | null; autoplay: boolean; brief: boolean }
+interface VoicePrefM { inputModel: string | null; outputModel: string | null; voiceId: string | null; deviceId: string | null; autoplay: boolean; brief: boolean }
+interface VoiceConfigM { stt?: string | null; tts?: string | null; voice?: string | null }
 
+/** The member's voice settings with the PLATFORM'S models filled in (the
+ *  desktop's voicePref): always on — a member who never picked anything
+ *  speaks and listens on the models the super admin flagged, hears the
+ *  default voice, and gets brief spoken replies unless they turned Brief off. */
 async function voicePrefM(): Promise<VoicePrefM> {
-  try { return await (glyphh() as { profile: { voiceSettings: () => Promise<VoicePrefM> } }).profile.voiceSettings(); }
-  catch { return { mode: 'off', inputModel: null, outputModel: null, voiceId: null, deviceId: null, autoplay: true, brief: false }; }
+  let pref: Partial<VoicePrefM & { brief?: boolean | null }> = {};
+  let cfg: VoiceConfigM = {};
+  try { pref = (await (glyphh() as { profile: { voiceSettings: () => Promise<Partial<VoicePrefM>> } }).profile.voiceSettings()) ?? {}; } catch { /* no settings yet */ }
+  try {
+    const r = await (glyphh() as { http: { get: (p: string) => Promise<unknown> } }).http.get('/api/voice/config');
+    const o = (r && typeof r === 'object' ? r : {}) as { data?: VoiceConfigM } & VoiceConfigM;
+    cfg = (o.data && typeof o.data === 'object' ? o.data : o) ?? {};
+  } catch { /* the member's own picks stand alone */ }
+  return {
+    inputModel: pref.inputModel || cfg.stt || null,
+    outputModel: pref.outputModel || cfg.tts || null,
+    voiceId: pref.voiceId || cfg.voice || null,
+    deviceId: pref.deviceId ?? null,
+    autoplay: pref.autoplay !== false,
+    brief: pref.brief !== false,
+  };
 }
 
 const voiceCtl = (() => {
@@ -840,15 +883,26 @@ const voiceCtl = (() => {
   let stream: MediaStream | null = null;
   let chunks: Blob[] = [];
   let startedAt = 0;
-  let handsFree = false;
+  let handsFree = false;      // the take belongs to voice mode (submits)
+  let voiceMode = false;      // the voice-mode SESSION is on (listen → reply → listen)
+  let muted = false;
   let awaitingReply = false;
   let transcribing = false;
   let audioCtx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   let vadTimer: ReturnType<typeof setInterval> | null = null;
   let playing: HTMLAudioElement | null = null;
-  let onText: (t: string) => void = () => {};
+  let lastLevel = 0;
+  // THE LIVE TRANSCRIPT (the desktop's voice-text contract): the box shows the
+  // draft that was there plus the take so far; every partial replaces the last.
+  let dictBase = '';
+  let takeId = 0;
+  let partialTimer: ReturnType<typeof setInterval> | null = null;
+  let partialInflight: Promise<void> | null = null;
+  let partialAt = 0;
+  let onLive: (t: string) => void = () => {};
   let onSend: (t: string) => void = () => {};
+  let getDraft: () => string = () => '';
   const subs = new Set<() => void>();
   const emit = () => { for (const s of [...subs]) { try { s(); } catch { /* */ } } };
   // Voice pref CACHE — read SYNCHRONOUSLY at mic-tap so getUserMedia stays inside
@@ -880,11 +934,13 @@ const voiceCtl = (() => {
   const stopMeter = () => {
     if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
     analyser = null;
+    lastLevel = 0;
     if (audioCtx) { try { void audioCtx.close(); } catch { /* */ } audioCtx = null; }
   };
 
-  /** Hands-free silence detection — same constants as desktop. */
-  const startVad = (src: MediaStream) => {
+  /** The level meter (the voice bar's dots) and, in voice mode, the silence
+   *  detector — a second of quiet ends the utterance, as on the desktop. */
+  const startMeter = (src: MediaStream) => {
     try {
       audioCtx = new AudioContext();
       const node = audioCtx.createMediaStreamSource(src);
@@ -894,13 +950,17 @@ const voiceCtl = (() => {
       const buf = new Uint8Array(analyser.fftSize);
       let spoke = false, silenceAt = 0;
       const openedAt = Date.now();
-      const SPEAK = 0.025, SILENCE_MS = 1300, MAX_MS = 30000;
+      const SPEAK = 0.025, SILENCE_MS = 1000, MAX_MS = 30000;
       vadTimer = setInterval(() => {
         if (!analyser) return;
         analyser.getByteTimeDomainData(buf);
         let sum = 0;
         for (let i = 0; i < buf.length; i++) { const x = (buf[i] - 128) / 128; sum += x * x; }
         const rms = Math.sqrt(sum / buf.length);
+        lastLevel = muted ? 0 : Math.min(1, rms * 8);
+        emit();
+        if (!handsFree) return;
+        if (muted) { spoke = false; silenceAt = 0; return; }
         const now = Date.now();
         if (rms > SPEAK) { spoke = true; silenceAt = 0; }
         else if (spoke) { if (!silenceAt) silenceAt = now; else if (now - silenceAt > SILENCE_MS) stopRecording(); }
@@ -909,10 +969,34 @@ const voiceCtl = (() => {
     } catch { /* metering unsupported — manual stop still works */ }
   };
 
+  const takeBlob = () => new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
+  const transcribeBlob = async (blob: Blob, model: string): Promise<string> => {
+    if (!blob.size) return '';
+    const r = await (glyphh() as { voice: { transcribe: (b: Uint8Array, m: string, ct: string, ms: number) => Promise<{ text?: string }> } })
+      .voice.transcribe(new Uint8Array(await blob.arrayBuffer()), model, blob.type || 'audio/webm', Date.now() - startedAt);
+    return typeof r?.text === 'string' ? r.text : '';
+  };
+  const paintLive = (text: string) => onLive(dictationText(dictBase, text));
+  const startPartials = (model: string) => {
+    stopPartials();
+    partialAt = 0;
+    partialTimer = setInterval(() => {
+      if (!recorder || recorder.state !== 'recording') return;
+      if (!partialDue(Date.now(), startedAt, partialAt, !!partialInflight)) return;
+      partialAt = Date.now();
+      const mine = takeId;
+      partialInflight = transcribeBlob(takeBlob(), model)
+        .then((text) => { if (mine === takeId && recorder && recorder.state === 'recording' && text) paintLive(text); })
+        .catch((e) => console.warn('[voice] partial transcript:', e))
+        .finally(() => { partialInflight = null; });
+    }, 500);
+  };
+  const stopPartials = () => { if (partialTimer) { clearInterval(partialTimer); partialTimer = null; } };
+
   const stopReply = () => { if (playing) { try { playing.pause(); } catch { /* */ } playing = null; } };
 
   async function startRecording(p: VoicePrefM): Promise<boolean> {
-    if (!p.inputModel || p.mode === 'off' || recorder) return false;
+    if (!p.inputModel || recorder) return false;
     stopReply();                       // never capture the agent's own voice
     // getUserMedia MUST be the first await after the tap (see cachedPref) — the pref
     // is passed in, never fetched here, so nothing awaits before this call.
@@ -937,11 +1021,16 @@ const voiceCtl = (() => {
     catch { stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; emit(); return false; }
     chunks = [];
     startedAt = Date.now();
+    takeId += 1;
+    muted = false;
+    // DICTATION appends to the draft in the box; VOICE MODE owns the box.
+    dictBase = handsFree ? '' : getDraft();
     recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    recorder.onstop = () => { stopMeter(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
-    recorder.start();
+    recorder.onstop = () => { stopMeter(); stopPartials(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
+    recorder.start(1000);               // one-second slices: the live transcript reads them as they land
     cue('start');
-    if (handsFree) startVad(stream);
+    startPartials(p.inputModel);
+    startMeter(stream);
     emit();
     return true;
   }
@@ -953,47 +1042,96 @@ const voiceCtl = (() => {
   async function transcribe(model: string): Promise<void> {
     transcribing = true; emit();
     let text = '';
+    let failed = false;
     try {
-      const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
-      const ms = Date.now() - startedAt;
-      if (blob.size > 0) {
-        const r = await (glyphh() as { voice: { transcribe: (b: Uint8Array, m: string, ct: string, ms: number) => Promise<{ text?: string }> } })
-          .voice.transcribe(new Uint8Array(await blob.arrayBuffer()), model, blob.type || 'audio/webm', ms);
-        text = typeof r?.text === 'string' ? r.text : '';
-      }
-    } catch (e) { console.error('[voice] transcribe failed', e); }
+      if (partialInflight) await partialInflight;
+      text = await transcribeBlob(takeBlob(), model);
+    } catch (e) {
+      // SAID, NOT SWALLOWED: the reason shows above the box until dismissed.
+      failed = true;
+      const raw = e instanceof Error ? e.message : String(e ?? '');
+      micErr = raw ? `Transcription failed — ${raw.replace(/^(?:Error|GlyphhError):\s*/, '')}` : 'Transcription failed.';
+      console.error('[voice] transcribe failed', e);
+    }
     transcribing = false;
     recorder = null;
     chunks = [];
-    if (!handsFree) { if (text.trim()) onText(text.trim()); emit(); return; }
-    // Hands-free: a real utterance submits the turn; silence just re-listens.
-    if (text.trim()) { awaitingReply = true; cue('submit'); onSend(text.trim()); }
-    else if (handsFree && cachedPref) { void startRecording(cachedPref); }
+    const myTake = takeId;
+    if (!handsFree) { if (!failed) paintLive(text); emit(); return; }
+    // VOICE MODE: a real utterance submits the turn (the box is cleared — the
+    // take was the whole text); silence just re-listens.
+    if (text.trim()) {
+      onLive('');
+      awaitingReply = true;
+      cue('submit');
+      onSend(text.trim());
+      void myTake;
+    } else if (voiceMode && cachedPref) { void startRecording(cachedPref); }
     emit();
   }
 
+  /** ✕ — the session ends. What was captured stays in the box WITHOUT
+   *  submitting (the desktop's rule); the reply stops talking. */
+  const endVoiceMode = (): void => {
+    voiceMode = false; handsFree = false; awaitingReply = false;
+    stopReply();
+    if (recorder && recorder.state === 'recording') stopRecording();
+    emit();
+  };
+
   return {
     /** Composer + chat wire their callbacks here (idempotent re-bind). */
-    bind(cbs: { onText: (t: string) => void; onSend: (t: string) => void }) { onText = cbs.onText; onSend = cbs.onSend; },
+    bind(cbs: { onLive: (t: string) => void; onSend: (t: string) => void; getDraft: () => string }) { onLive = cbs.onLive; onSend = cbs.onSend; getDraft = cbs.getDraft; },
     subscribe(cb: () => void): () => void { subs.add(cb); return () => subs.delete(cb); },
     isListening: () => !!recorder && recorder.state === 'recording',
     isTranscribing: () => transcribing,
+    isVoiceMode: () => voiceMode,
+    isMuted: () => muted,
+    /** The mic level right now, 0..1 (the voice bar's dots). */
+    level: () => lastLevel,
+    /** The steer a voice-mode turn carries: brief replies unless Brief is off. */
+    briefSteer: () => (voiceMode && cachedPref?.brief !== false ? SPEECH_STEER : ''),
+    /** MUTE in voice mode (the bar's first button): the track goes quiet and
+     *  the silence detector waits; the session stays on. */
+    toggleMute(): void {
+      muted = !muted;
+      stream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+      emit();
+    },
+    /** VOICE MODE ON: a spoken conversation — listen, submit, speak the
+     *  reply, listen again — until ✕. */
+    async startVoiceMode(): Promise<boolean> {
+      if (voiceMode) return true;
+      const p = cachedPref;
+      if (!p) { void primePref(); return false; }
+      if (!p.inputModel) { micErr = 'No transcription model is set up for your organization yet.'; emit(); return false; }
+      if (recorder && recorder.state === 'recording') stopRecording();   // a dictation in progress ends first
+      voiceMode = true; handsFree = true; micErr = '';
+      const ok = await startRecording(p);
+      if (!ok) { voiceMode = false; handsFree = false; }
+      emit();
+      return ok;
+    },
+    endVoiceMode,
     /** Load + cache the voice pref (call on mount / after settings change) so the
      *  next mic tap can start recording without an await before getUserMedia. */
     prime(): void { void primePref(); },
     /** The last mic failure, for the composer to surface (empty = none). */
     error: () => micErr,
     clearError(): void { if (micErr) { micErr = ''; emit(); } },
-    /** Mic tap. True = the server path handled it; false = unconfigured (fall
-     *  back to Web Speech / keyboard dictation). Reads the CACHED pref synchronously
+    /** The mic — DICTATE. One tap starts, the words stream into the box, the
+     *  next tap stops and the text stays for the member to send. True = the
+     *  server path handled it; false = no transcription model (fall back to
+     *  Web Speech / keyboard dictation). Reads the CACHED pref synchronously
      *  so getUserMedia runs inside the tap's transient activation on iOS. */
-    async toggle(): Promise<boolean> {
+    async toggleDictate(): Promise<boolean> {
+      if (voiceMode) { endVoiceMode(); return true; }
       if (recorder && recorder.state === 'recording') { handsFree = false; awaitingReply = false; stopRecording(); return true; }
       if (recorder) return true;                     // mid-transcribe — ignore stray taps
       const p = cachedPref;
       if (!p) { void primePref(); return false; }    // not primed yet — this tap falls back, next has it
-      if (!p.inputModel || p.mode === 'off') return false;
-      handsFree = p.mode === 'continuous';
+      if (!p.inputModel) return false;
+      handsFree = false;
       micErr = '';
       return startRecording(p);
     },
@@ -1015,7 +1153,7 @@ const voiceCtl = (() => {
           });
         } catch { /* TTS unavailable — stay silent */ }
       }
-      if (handsFree && awaitingReply && cachedPref) { awaitingReply = false; void startRecording(cachedPref); }
+      if (voiceMode && awaitingReply && cachedPref) { awaitingReply = false; handsFree = true; void startRecording(cachedPref); }
     },
   };
 })();
@@ -1052,18 +1190,12 @@ function MicMenu({ onClose }: { onClose: () => void }) {
     void (glyphh() as { profile: { setVoiceSettings: (p: Partial<VoicePrefM>) => Promise<unknown> } }).profile.setVoiceSettings(patch).catch(() => {});
   };
   if (!pref) return null;
-  const modeRow = (m: VoiceMode, label: string) => (
-    <button key={m} className={`m-micmenu-row${pref.mode === m ? ' on' : ''}`} onClick={() => { haptic(); save({ mode: m }); }}>
-      <span>{label}</span>{pref.mode === m && <Icon name="check" />}
-    </button>
-  );
+  // THE DESKTOP'S CARET MENU (his order, 2026-10-07): the microphone, and the
+  // one switch — Brief replies in voice mode, on by default. Dictation, voice
+  // mode and spoken replies are always on.
   return (
     <div className="m-micmenu" ref={boxRef}>
-      <div className="m-micmenu-label">Mode</div>
-      {modeRow('off', 'Off')}
-      {modeRow('push-to-talk', 'Push to talk')}
-      {modeRow('continuous', 'Hands-free')}
-      {!pref.inputModel && <div className="m-micmenu-note">Pick a transcription model in Settings → Voice to use these modes.</div>}
+      {!pref.inputModel && <div className="m-micmenu-note">No transcription model is set up for your organization yet.</div>}
       {devices.length > 0 && <>
         <div className="m-micmenu-label">Microphone</div>
         <button className={`m-micmenu-row${!pref.deviceId ? ' on' : ''}`} onClick={() => { haptic(); save({ deviceId: null }); }}>
@@ -1075,12 +1207,9 @@ function MicMenu({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </>}
-      <div className="m-micmenu-label">Replies</div>
-      <button className={`m-micmenu-row${pref.autoplay ? ' on' : ''}`} onClick={() => { haptic(); save({ autoplay: !pref.autoplay }); }}>
-        <span>Speak replies</span>{pref.autoplay && <Icon name="check" />}
-      </button>
+      <div className="m-micmenu-label">Voice mode</div>
       <button className={`m-micmenu-row${pref.brief ? ' on' : ''}`} onClick={() => { haptic(); save({ brief: !pref.brief }); }}>
-        <span>Short spoken answers</span>{pref.brief && <Icon name="check" />}
+        <span>Brief replies</span>{pref.brief && <Icon name="check" />}
       </button>
     </div>
   );
@@ -2766,74 +2895,45 @@ const THEMES: { id: string; name: string; desc?: string }[] = [
   { id: 'synthwave', name: 'Synthwave' },
   { id: 'matrix', name: 'Matrix' },
 ];
-/* Settings › Voice — the desktop panel's fields on the mobile tray: the STT
-   model that transcribes speech, the TTS model + voice that speaks replies,
-   capture mode, and the reply toggles. Saved to the account (SDK), so desktop
-   and mobile share one voice config. */
+/* Settings › Voice — THE DESKTOP'S ROWS (his order, 2026-10-07): the voice the
+   member hears, from the speech model the super admin flagged (the config's
+   list, the default marked), and the one switch — Brief replies in voice
+   mode, on by default. Dictation, voice mode and spoken replies are always
+   on. Saved to the account (SDK), so desktop and mobile share one choice. */
 function VoiceTray() {
-  type CatModel = { id: string; name: string; providerSlug: string; modality?: string };
-  type CatVoice = { id: string; name: string };
-  const [pref, setPref] = useState<VoicePrefM | null>(null);
-  const [models, setModels] = useState<CatModel[] | null>(null);
-  const [voices, setVoices] = useState<CatVoice[]>([]);
+  const [pref, setPref] = useState<VoicePrefView | null>(null);
+  const [cfg, setCfg] = useState<VoiceConfigView | null>(null);
   const [saved, setSaved] = useState(false);
-  const providerOf = (id: string) => (id.includes('::') ? id.slice(0, id.indexOf('::')) : '');
   useEffect(() => {
-    void voicePrefM().then(setPref);
-    void (glyphh() as { catalog: { models: () => Promise<CatModel[]> } }).catalog.models().then(setModels).catch(() => setModels([]));
+    void (glyphh() as { profile: { voiceSettings: () => Promise<unknown> } }).profile.voiceSettings().then((p) => setPref(readVoicePref(p))).catch(() => setPref(readVoicePref({})));
+    void (glyphh() as { http: { get: (p: string) => Promise<unknown> } }).http.get('/api/voice/config').then((c) => setCfg(readVoiceConfig(c))).catch(() => setCfg(readVoiceConfig(null)));
   }, []);
-  useEffect(() => {
-    const out = pref?.outputModel;
-    if (!out) { setVoices([]); return; }
-    void (glyphh() as { catalog: { voices: (p: string) => Promise<CatVoice[]> } }).catalog.voices(providerOf(out)).then(setVoices).catch(() => setVoices([]));
-  }, [pref?.outputModel]);
-  const save = (patch: Partial<VoicePrefM>) => {
+  const save = (patch: Partial<VoicePrefView>) => {
     setPref((p) => (p ? { ...p, ...patch } : p));
-    void (glyphh() as { profile: { setVoiceSettings: (p: Partial<VoicePrefM>) => Promise<unknown> } }).profile.setVoiceSettings(patch)
-      .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1300); }).catch(() => {});
+    void (glyphh() as { profile: { setVoiceSettings: (p: Partial<VoicePrefView>) => Promise<unknown> } }).profile.setVoiceSettings(patch)
+      .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1300); voiceCtl.prime(); }).catch(() => {});
   };
-  if (!pref || !models) return <div className="m-set-loading">Loading…</div>;
-  const stt = models.filter((m) => m.modality === 'transcription');
-  const tts = models.filter((m) => m.modality === 'speech');
-  const sel = (value: string, onPick: (v: string) => void, empty: string, rows: Array<{ id: string; label: string }>) => (
-    <select className="m-field-in" value={value} onChange={(e) => onPick(e.currentTarget.value)}>
-      <option value="">{empty}</option>
-      {rows.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-    </select>
-  );
+  if (!pref || !cfg) return <div className="m-set-loading">Loading…</div>;
+  const model = voiceSectionModel(cfg, pref);
   return (
     <>
-      <div className="m-field-note">Talk to your agent — pick the model that transcribes your speech and the model + voice that speaks replies. {saved && <span className="m-saved">Saved</span>}</div>
-      <div className="m-set-label">Voice input</div>
+      <div className="m-field-note">The voice that reads replies to you — one of the speech model's. {saved && <span className="m-saved">Saved</span>}</div>
+      <div className="m-set-label">Voice</div>
       <div className="m-set-form">
-        {sel(pref.inputModel || '', (v) => save({ inputModel: v || null }), 'Off — no voice input',
-          stt.map((m) => ({ id: m.id, label: `${m.name} · ${m.providerSlug}` })))}
-      </div>
-      <div className="m-set-label">Capture mode</div>
-      <div className="m-set-form">
-        {sel(pref.mode, (v) => save({ mode: (v || 'off') as VoiceMode }), 'Off',
-          [{ id: 'push-to-talk', label: 'Push to talk — tap to record, tap to stop' }, { id: 'continuous', label: 'Hands-free — listens, sends, listens again' }])}
-      </div>
-      <div className="m-set-label">Voice output</div>
-      <div className="m-set-form">
-        {sel(pref.outputModel || '', (v) => save({ outputModel: v || null, voiceId: null }), 'Off — replies stay silent',
-          tts.map((m) => ({ id: m.id, label: `${m.name} · ${m.providerSlug}` })))}
-        {pref.outputModel && voices.length > 0 && sel(pref.voiceId || '', (v) => save({ voiceId: v || null }), 'Provider default voice',
-          voices.map((v) => ({ id: v.id, label: v.name })))}
+        {model.voiceOptions
+          ? <select className="m-field-in" value={model.voiceValue} onChange={(e) => save(voicePatch.voice(e.currentTarget.value))}>
+              {model.voiceOptions.map((o) => <option key={o.value || '__default'} value={o.value}>{o.label}</option>)}
+            </select>
+          : <div className="m-field-note">{model.voicesLine}</div>}
       </div>
       <div className="m-set-group">
         <div className="m-set-row m-set-row-toggle">
           <span className="m-set-ico"><Icon name="voice" /></span>
-          <span className="m-set-name">Speak replies automatically</span>
-          <Switch on={pref.autoplay} onClick={() => { haptic(); save({ autoplay: !pref.autoplay }); }} />
-        </div>
-        <div className="m-set-row m-set-row-toggle">
-          <span className="m-set-ico"><Icon name="voice" /></span>
-          <span className="m-set-name">Short spoken answers</span>
-          <Switch on={pref.brief} onClick={() => { haptic(); save({ brief: !pref.brief }); }} />
+          <span className="m-set-name">Brief replies in voice mode</span>
+          <Switch on={model.brief} onClick={() => { haptic(); save(voicePatch.brief(!model.brief)); }} />
         </div>
       </div>
-      <div className="m-field-note">Short answers steer the agent to reply in a couple of conversational sentences while speech mode is on.</div>
+      <div className="m-field-note">While you talk to Glyphh by voice, replies come back in a few spoken sentences — no lists, tables or code unless you ask.</div>
     </>
   );
 }
@@ -4658,7 +4758,7 @@ function App() {
 
   /** Send the composer draft — minting the chat on the first message, then
    *  streaming the agent's reply into the transcript. */
-  const sendPrompt = async (override?: string, opts?: { noUserBubble?: boolean }) => {
+  const sendPrompt = async (override?: string, opts?: { noUserBubble?: boolean; steer?: string }) => {
     const prompt = (override ?? draft).trim();
     // Dot-commands run LOCALLY — the same composer grammar as desktop/web
     // (help/code.ts send()). They are never a turn and never reach the agent.
@@ -4804,8 +4904,10 @@ function App() {
       const live = name ? desktops.find((d) => (d.name || d.app) === name) : undefined;
       if (live) chat.source = { ...chat.source, machineId: live.id };
     }
+    // A STEER (voice mode's brief replies) rides the prompt the model sees;
+    // the bubble shows what the member said.
     const outcome = await runRemoteTurn(
-      chat, prompt, () => {},
+      chat, opts?.steer ? `${opts.steer}\n\n${prompt}` : prompt, () => {},
       {
         onToken: (delta) => { setConnecting(false); appendText(delta); },
         onAnswer: () => { setConnecting(false); },
@@ -5008,9 +5110,9 @@ function App() {
     sending: streaming,
     connecting,
     onDictate: (text) => setDraft((d) => (d.trim() ? `${d} ${text}` : text)),
-    // Hands-free voice: the utterance IS the turn — send it directly (the
-    // draft stays whatever the user was typing).
-    onVoiceSend: (text) => { void sendPrompt(text); },
+    // Voice mode: the utterance IS the turn — sent directly, with the brief
+    // steer unless the member turned Brief off.
+    onVoiceSend: (text) => { void sendPrompt(text, { steer: voiceCtl.briefSteer() }); },
     attachments: attachImgs,
     onRemoveAttachment: (id) => setAttachImgs((cur) => cur.filter((a) => a.id !== id)),
     onPasteFiles: addImageFiles,

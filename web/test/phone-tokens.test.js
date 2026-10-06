@@ -45,6 +45,18 @@ const desk = rules(strip(desktop));
 const themeRules = mob.filter((r) => /\[data-theme=/.test(r.selector));
 
 describe('the phone wears the desktop tokens', () => {
+  it('wears the display face on every title — JetBrains Mono 700, the desktop\'s own rule (his order, 2026-10-07)', () => {
+    expect(mobile).toMatch(/--font-display:\s*var\(--font-mono\)/);
+    const face = rules(strip(mobile)).filter((r) => /font-family:\s*var\(--font-display\)\s*!important/.test(r.body));
+    expect(face.length).toBeGreaterThanOrEqual(1);
+    const sel = face.map((r) => r.selector).join(' ');
+    for (const cls of ['h1', '.m-chats-title', '.m-prompt-title', '.m-sel-title', '.m-confirm-title', '.m-profile-name', '.m-login-title']) {
+      expect(sel, `${cls} is not in the display-face rule`).toContain(cls);
+    }
+    expect(face.every((r) => /font-weight:\s*700\s*!important/.test(r.body))).toBe(true);
+    const d = rules(strip(desktop)).find((r) => /font-family:\s*var\(--font-display\)\s*!important/.test(r.body));
+    expect(d, 'the desktop has no display-face rule').toBeTruthy();
+  });
   it('names styles.css as the source and says to change both together', () => {
     expect(mobile).toMatch(/src\/renderer\/styles\.css/);
     expect(mobile).toMatch(/Change a value there and here together/);
