@@ -7219,7 +7219,8 @@ async function init(): Promise<void> {
       if (!w.__glyphhRunPlaceInputs || !w.__glyphhPickRunPlace) { openAgentCliCard(t); return; }
       const inputs = await w.__glyphhRunPlaceInputs().catch(() => null);
       if (!inputs) { openAgentCliCard(t); return; }
-      const place = await chooseRunPlace(inputs);
+      const browse = (window as unknown as { __glyphhRunPlaceBrowse?: () => Promise<string | null> }).__glyphhRunPlaceBrowse;
+      const place = await chooseRunPlace(inputs, isWebTarget() || !browse ? {} : { browse });
       if (!place) return;
       w.__glyphhPickRunPlace(place);
       openAgentCliCard(t);
