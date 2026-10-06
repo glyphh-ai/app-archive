@@ -19,7 +19,6 @@
 // The presenter overlay is a DOM layer over the whole app — the same
 // BrowserView freeze/hide dance every DOM modal needs (panels paint above).
 import { hidePanelsForModal, restorePanelsForModal } from "./yo-modal.js";
-import { isNotAttached } from "./help/house-relay.js";
 import { officePager, officePage } from "./wb-office-ui.js";
 
 export interface GPointDeck { file: string; title: string; slides: number; mtime: number; size: number }
@@ -454,9 +453,7 @@ export function initGPoint(host: GPointHost): GPointPanel {
       return;
     }
     if (!res.ok) {
-      // No desktop attached on the web: the connect line, bare (his order,
-      // 2026-10-05; help/house-relay.ts) — an empty state, not an error.
-      showEmpty(isNotAttached(res) ? res.error : `Couldn't read the deck library.<br>${res.error ?? "Unknown error."}`);
+      showEmpty(`Couldn't read the deck library.<br>${res.error ?? "Unknown error."}`);
       return;
     }
     const decks = Array.isArray(res.decks) ? res.decks : [];

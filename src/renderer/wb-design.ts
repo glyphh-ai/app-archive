@@ -13,7 +13,6 @@
  */
 
 import { officePager, officePage } from "./wb-office-ui.js";
-import { isNotAttached } from "./help/house-relay.js";
 
 // ── document shape (mirror of the SDK contract; structural, no import) ──────
 interface DFont { family: string; fallback?: string; weights?: number[]; source?: string }
@@ -343,10 +342,7 @@ export function initDesign(host: DesignHost): DesignPanel {
     if (!body.isConnected) return;
     if (!res || !Array.isArray(res.designs) || (!res.ok && !res.designs.length)) {
       if (empty) {
-        // No desktop attached on the web: the connect line, bare — the honest
-        // empty state, not an error (his order, 2026-10-05; help/house-relay.ts).
-        if (isNotAttached(res)) empty.textContent = res.error;
-        else empty.innerHTML = res && !res.ok ? `Couldn't load the library.<br>${res.error ?? "Unknown error."}` : "This surface has no design library.";
+        empty.innerHTML = res && !res.ok ? `Couldn't load the library.<br>${res.error ?? "Unknown error."}` : "This surface has no design library.";
         empty.classList.remove("hidden");
       }
       return;

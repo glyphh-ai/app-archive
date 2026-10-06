@@ -55,11 +55,6 @@ const PASS_THROUGH = [
   "relay.ping",
   "sessions.list", "sessions.get", "sessions.delete", "cliSessions.list",
   "layouts.list", "layouts.get", "panelApps.list",
-  // THE HOUSE APPS' READ DOOR (his order, 2026-10-05): the web's own Design /
-  // Slides / Images / Video / Audio / Drive panels read this machine's
-  // app-data through it — read-only, house apps only, fenced in
-  // house-doors.ts (app data is the app's, not a granted folder).
-  "app.call",
   // A LOCAL-DATA HUB APP INSTALLS ON THIS MACHINE from the web (his verdict,
   // 2026-10-05): `{itemId, from}` names the hub item — no path, no app data;
   // the server allowlists the same name (attach.py REMOTE_METHODS).

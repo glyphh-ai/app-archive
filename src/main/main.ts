@@ -96,6 +96,7 @@ import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
 import { registerDesignIpc } from "./design";
+import { registerDriveIpc } from "./drive";
 import { registerMediaPanelIpc } from "./media-panel";
 import { registerMusicPanelIpc } from "./music-panel";
 import { registerSupportIpc } from "./support-ipc";
@@ -1120,6 +1121,8 @@ async function boot() {
   registerOfficeSheetsIpc();
   registerDesignIpc();
   registerMediaPanelIpc();
+  // Glyphh Drive — the folders and the view across everything the house apps made.
+  registerDriveIpc();
   registerMusicPanelIpc();
 
   // Support (threaded ticketing) — the settings panel's transport.

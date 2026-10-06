@@ -50,7 +50,7 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 // desktop pulls what the web wrote on its next sync (member-library-web.js).
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 // THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
-import { createHouseRelay } from './house-relay-web.js';
+import { createHouseStoreWeb } from './house-store-web.js';
 import { askBrowserNotificationPermission, showBrowserNotification, watchNotifications } from './notify-web.js';
 
 /**
@@ -216,7 +216,7 @@ export function buildContract(client, deps) {
   // cloud's rows only (two worlds, his order 2026-10-05).
   const library = buildMemberLibrary(client, { desktopRead, apiUrl });
   const { layoutsList, panelAppsList } = library;
-  const house = createHouseRelay({ client });
+  const house = createHouseStoreWeb({ client, apiUrl });
 
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
@@ -367,11 +367,10 @@ export function buildContract(client, deps) {
     // and Settings → General hides the row (help/settings.ts).
 
     // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio, Drive ──────────────
-    // (his order, 2026-10-05): the web's own panels, their files pulled off the
-    // attached desktop over the relay (`app.call` — house-relay-web.js). These
-    // used to read the SERVER's designs / officeSlides / media / officeDrive
-    // APIs, the wrong source now that the desktop is the home of apps. Same
-    // wire shapes as the desktop preload; writes answer the one honest line.
+    // (his order, 2026-10-06: cloud is the one home): the web's own panels
+    // over the member library — the same store the desktop's panels read
+    // (shared/house-store.ts, house-store-web.js). Same wire shapes as the
+    // desktop preload; reads and writes alike.
     ...house,
 
     // ── Glyphh Office · Docs (OfficeDocsClient) — same wire shapes as preload ──

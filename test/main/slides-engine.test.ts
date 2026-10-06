@@ -11,7 +11,7 @@ import {
   renderDeck, renderSection, validateDeck, validateSlideSpec,
   layoutCatalog, themeCatalog, SLIDE_LAYOUTS, SLIDE_THEMES, resolveTheme, themeFromDesign,
 } from "@glyphh/sdk/slides";
-import { lockDeckSections, buildDeckDocument, slideSpans, normalizeDeckHtml } from "../../src/main/gpoints";
+import { lockDeckSections, buildDeckDocument, slideSpans, normalizeDeckHtml } from "../../src/shared/deck-document";
 
 const deck = async (specs: unknown[], opts = {}) =>
   renderDeck(specs as never, { resolveMedia: async () => null, ...opts });

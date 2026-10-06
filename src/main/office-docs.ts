@@ -82,48 +82,6 @@ export function registerOfficeDocsIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
-  ipcMain.handle("gdrive-list", async (_e, q: unknown) => {
-    try {
-      const listing = await store.listDrive(q ? String(q) : undefined);
-      return { ok: true, ...listing };
-    } catch (err) {
-      return { ok: false, error: errText(err), folders: [], files: [] };
-    }
-  });
-  ipcMain.handle("gdrive-mkdir", async (_e, name: unknown, parentId: unknown) => {
-    try {
-      return { ok: true, folder: await store.createFolder(String(name ?? ""), parentId ? String(parentId) : null) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("gdrive-move", async (_e, kind: unknown, file: unknown, folderId: unknown) => {
-    try {
-      // Drive is the UNIVERSAL surface: every kind moves through one seam.
-      const KINDS = ["slides", "docs", "sheets", "design", "media", "music", "file"] as const;
-      const k = String(kind ?? "") as (typeof KINDS)[number];
-      if (!KINDS.includes(k)) throw new Error(`unknown drive kind "${String(kind)}"`);
-      await store.moveToFolder(k, String(file ?? ""), folderId ? String(folderId) : null);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("gdrive-folder-rename", async (_e, id: unknown, name: unknown) => {
-    try {
-      return { ok: true, folder: await store.updateFolder(String(id ?? ""), { name: String(name ?? "") }) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("gdrive-folder-delete", async (_e, id: unknown) => {
-    try {
-      await store.deleteFolder(String(id ?? ""));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
   ipcMain.handle("gdoc-templates", async () => {
     try {
       return { ok: true, templates: DOC_TEMPLATES };

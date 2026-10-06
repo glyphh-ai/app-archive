@@ -53,7 +53,6 @@ describe("the desktop's remote door", () => {
   it("serves the remote-safe methods and nothing else", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
-      "app.call",
       "apps.callTool", "apps.install", "apps.listTools",
       "cliSessions.list",
       "fs.cwd", "fs.delete", "fs.gitDiff", "fs.gitInfo", "fs.list", "fs.listDir", "fs.mkdir", "fs.r2Diff", "fs.read", "fs.rename", "fs.search", "fs.unwatch", "fs.watch", "fs.write",

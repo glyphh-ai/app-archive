@@ -22,10 +22,6 @@
  *   layouts.list {}            → this machine's workspaces (the layouts-list rows)
  *   layouts.get  {name}        → one workspace by name
  *   panelApps.list {}          → this machine's app tabs (the panel-apps-list rows)
- *   app.call {app, tool, args} → THE HOUSE APPS' READ DOOR (house-doors.ts): the web's own
- *                                Design / Slides / Images / Video / Audio / Drive panels fill
- *                                from this machine's app-data (his order, 2026-10-05). Reads
- *                                only, house apps only; bytes ride as capped data URLs.
  *   apps.install {itemId, from?} → A LOCAL-DATA HUB APP INSTALLS HERE (his verdict, 2026-10-05:
  *                                "Local is local, cloud is cloud"): the web's Install for an app
  *                                whose manifest says `data: local` (or per-home) rides to this
@@ -73,8 +69,6 @@ import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, typ
 import { listCliSessions } from "./cli-agents.js";
 import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
-import { houseCall } from "./house-doors.js";
-import { realHouseDeps } from "./house-deps.js";
 import { installHubItem } from "./hub-ipc.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import { callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64, listInstalledAppTools } from "./glyphh-app-host.js";
@@ -168,10 +162,6 @@ export function installAttachHandlers(): void {
   });
 
   registerRelayHandler("panelApps.list", async () => ({ apps: await fetchOrgApps() }));
-
-  // THE HOUSE APPS' FILES FOR THE WEB'S OWN PANELS (his order, 2026-10-05):
-  // the same store calls the panels' IPC runs on, fenced in house-doors.ts.
-  registerRelayHandler("app.call", (params) => houseCall(params, realHouseDeps()));
 
   // INSTALL AN APP ON THIS MACHINE — one handler, two forms. A .glyphh bundle
   // ({ path } on this machine, { url }, or { bundleBase64 }) is GLYPHH-APP-SPEC

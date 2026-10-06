@@ -31,7 +31,7 @@ import { appsRoot, getActiveUserId, userScopedPath } from "./app-paths.js";
 import { APPS_DIR, readRow, type LocalAppRow } from "./apps-store.js";
 import { localAppsEnabled } from "./app-instances.js";
 import { getClient } from "./glyphh-client.js";
-import { HOUSE_APPS } from "./house-doors.js";
+import { HOUSE_APP_SLUGS } from "../shared/house-store.js";
 import { instanceKeyOfRow } from "../shared/app-instances.js";
 import { payloadDirOf } from "../shared/bundle-shape.js";
 
@@ -95,7 +95,7 @@ function readJson(file: string): Record<string, unknown> | null | undefined {
 }
 
 const isHouseApp = (slug: string, manifest: Record<string, unknown> | null | undefined): boolean =>
-  Object.prototype.hasOwnProperty.call(HOUSE_APPS, slug) || (!!manifest && typeof manifest.tool === "string" && !!manifest.tool);
+  HOUSE_APP_SLUGS.includes(slug) || (!!manifest && typeof manifest.tool === "string" && !!manifest.tool);
 
 /** The folders in the apps home as the rule sees them, with where each one's
  *  bytes are (the folder itself, plus an unzipped payload elsewhere). */

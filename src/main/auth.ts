@@ -112,6 +112,10 @@ function attachStart(): void {
   // PRE-CLOUD APP FOLDERS ARE DELETED, NO MIGRATION (his word, 2026-10-05):
   // once per user, the first sign-in after the cut sweeps them.
   void import("./legacy-app-sweep.js").then((m) => m.runLegacyAppSweep()).catch((e) => console.warn("[legacy-apps] sweep failed", String(e)));
+  // THE HOUSE APPS' FILES GO UP, ONCE (his order, 2026-10-06: migrate the
+  // data, delete everything local): designs, decks, media and Drive's folders
+  // into the member library, then their folders on this Mac are removed.
+  void import("./house-migration.js").then((m) => m.runHouseMigration()).catch((e) => console.warn("[house-migration] failed", String(e)));
 }
 function attachStop(): void {
   void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined);

@@ -27,9 +27,6 @@ vi.mock("../../src/main/agent-ipc.js", () => ({
 }));
 const TAB = { id: "crm", orgId: "", createdBy: "", name: "CRM", slug: "crm", system: false, url: "https://crm.example", isBrowser: true, execPath: null, appArchetype: "web", launchConfig: null, access: "members", owned: true, latestVersion: null, version: "", secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null, listing: null, mcp: null, commands: {}, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" };
 vi.mock("../../src/main/org-apps.js", () => ({ fetchOrgApps: async () => [TAB] }));
-// The house door's real stores (office store, deck cache, media library) are
-// house-deps.ts's; the door itself is pinned bare in house-doors.test.ts.
-vi.mock("../../src/main/house-deps.js", () => ({ realHouseDeps: () => ({ listDesigns: async () => [{ file: "brand.json", title: "Brand", size: 1, mtime: 2 }] }) }));
 // The hub install itself (hub-ipc.ts installHubItem) is the desktop's own door;
 // here only that apps.install hands it the item, routed as an app.
 const hubInstalls: Array<[string, string]> = [];
@@ -160,11 +157,5 @@ describe("the Customize libraries over the attach socket", () => {
     expect(toolCalls).toEqual([["images", "list_images", { q: "sunset" }], ["images", "list_images", {}], ["images", "list_images", {}]]);
     await expect(h({ app: "images" })).rejects.toThrow(/requires \{ app, tool \}/);
     await expect(h({ tool: "list_images" })).rejects.toThrow(/requires \{ app, tool \}/);
-  });
-
-  it("app.call is registered for the web's own house panels and answers through house-doors (his order, 2026-10-05)", async () => {
-    expect(handlers.has("app.call")).toBe(true);
-    expect(await handlers.get("app.call")!({ app: "design", tool: "list" })).toEqual({ designs: [{ file: "brand.json", title: "Brand", size: 1, mtime: 2 }] });
-    await expect(handlers.get("app.call")!({ app: "crm", tool: "list" })).rejects.toThrow(/house apps only/);
   });
 });
