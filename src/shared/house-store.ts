@@ -146,6 +146,11 @@ export interface FetchLike {
  * R2 URLs cross-origin, and this lane stores the file's own content type,
  * which the presigned GET a panel plays from then serves.
  */
+const serverLine = async (res: { arrayBuffer(): Promise<ArrayBuffer> }): Promise<string | null> => {
+  try { const j = JSON.parse(new TextDecoder().decode(await res.arrayBuffer())) as { detail?: unknown }; return typeof j?.detail === "string" && j.detail ? j.detail : null; }
+  catch { return null; }
+};
+
 export function serverLaneBytes(deps: { apiUrl: string; token: () => Promise<string | null>; fetchImpl: FetchLike }): HouseBytes {
   const base = deps.apiUrl.replace(/\/+$/, "");
   const url = (kind: string, id: string, path: string): string =>
@@ -162,7 +167,8 @@ export function serverLaneBytes(deps: { apiUrl: string; token: () => Promise<str
     },
     async put(kind, id, path, bytes, mime) {
       const res = await deps.fetchImpl(url(kind, id, path), { method: "PUT", headers: await headers({ "content-type": mime || "application/octet-stream" }), body: bytes });
-      if (!res.ok) throw new Error(res.status === 400 ? "that file is too large for the library (25 MB)" : `upload ${path}: HTTP ${res.status}`);
+      // The cap is the server's and per kind (a video 2 GB, a skill 25 MB): its line names both.
+      if (!res.ok) throw new Error(res.status === 400 ? await serverLine(res) ?? "that file is too large for the library" : `upload ${path}: HTTP ${res.status}`);
     },
   };
 }

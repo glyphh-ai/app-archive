@@ -257,13 +257,13 @@ describe("serverLaneBytes — the bytes through the server, on the member's own 
     const calls: Array<[string, { method?: string; headers?: Record<string, string>; body?: Uint8Array } | undefined]> = [];
     const lane = serverLaneBytes({
       apiUrl: "https://api.test/", token: async () => "tok",
-      fetchImpl: async (url, init) => { calls.push([url, init]); const s = url.endsWith("/missing") ? 404 : url.includes("/big.mp4") ? 400 : 200; return { ok: s === 200, status: s, arrayBuffer: async () => text("hi").buffer as ArrayBuffer }; },
+      fetchImpl: async (url, init) => { calls.push([url, init]); const s = url.endsWith("/missing") ? 404 : url.includes("/big.mp4") ? 400 : 200; return { ok: s === 200, status: s, arrayBuffer: async () => (s === 400 ? text(JSON.stringify({ error: "bad-body", detail: "a video file is at most 2 GB" })) : text("hi")).buffer as ArrayBuffer }; },
     });
     expect(await lane.get("deck", "q3 review.html", "deck.html")).toEqual(text("hi"));
     expect(calls[0]).toEqual(["https://api.test/api/library/v2/deck/q3%20review.html/files/deck.html", { method: "GET", headers: { authorization: "Bearer tok" } }]);
     await lane.put("image", "a.png", "a.png", text("png"), "image/png");
     expect(calls[1]).toEqual(["https://api.test/api/library/v2/image/a.png/files/a.png", { method: "PUT", headers: { authorization: "Bearer tok", "content-type": "image/png" }, body: text("png") }]);
     await expect(lane.get("file", "x", "missing")).rejects.toThrow("that file is no longer in your library");
-    await expect(lane.put("video", "big.mp4", "big.mp4", text("x"), "video/mp4")).rejects.toThrow("too large for the library (25 MB)");
+    await expect(lane.put("video", "big.mp4", "big.mp4", text("x"), "video/mp4")).rejects.toThrow("a video file is at most 2 GB");   // the server's per-kind cap line (2026-10-06)
   });
 });
