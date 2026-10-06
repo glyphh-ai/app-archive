@@ -73,3 +73,23 @@ export function wallTilesFor<T>(i: WallTilesInput<T>): T[] {
   for (const t of i.wallItems) take(t);
   return out;
 }
+
+
+/** WHAT THE DOCK KEEPS when its families are re-read (his report, 2026-10-07:
+ *  "the desktop is not remembering the state of the dock after restarts").
+ *  A key is pruned only when its family answered a LIST that lacks it. A read
+ *  that failed (null) or answered nothing at all (a cold start before the
+ *  server, a CLI list not ready) says nothing about the dock and prunes
+ *  nothing: an empty answer is not a deletion. Nav slots and folders are never
+ *  this rule's business. */
+export interface DockLive { apps?: readonly string[] | null; layouts?: readonly string[] | null; agents?: readonly string[] | null }
+export function keepDockKeys(keys: readonly string[], live: DockLive): string[] {
+  const known = (list: readonly string[] | null | undefined): Set<string> | null => (Array.isArray(list) && list.length ? new Set(list) : null);
+  const apps = known(live.apps), layouts = known(live.layouts), agents = known(live.agents);
+  return keys.filter((k) => {
+    if (k.startsWith("app:")) return !apps || apps.has(k);
+    if (k.startsWith("layout:")) return !layouts || layouts.has(k);
+    if (k.startsWith("agent:")) return !agents || agents.has(k);
+    return true;
+  });
+}

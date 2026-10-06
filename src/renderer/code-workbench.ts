@@ -28,6 +28,7 @@ import { createCloudWb, createWbRouter, type CloudFsLaneApi } from "./help/wb-cl
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
+import { keepDockKeys } from "./help/dock-items.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 import { hostHas } from "./help/web-surface.js";
@@ -3776,8 +3777,10 @@ async function init(): Promise<void> {
       if (!saved?.length) {
         dockKeys = DEFAULT_DOCK;
       } else {
-        // An `agent:*` key is a CLI agent's tile: it stays while that CLI exists.
-        dockKeys = saved.filter((k) => !k.startsWith("agent:") || liveAgent.has(k));
+        // An `agent:*` key is a CLI agent's tile: it stays while that CLI exists —
+        // and stays when the CLI list did not answer (keepDockKeys: an empty
+        // read prunes nothing; his report, 2026-10-07).
+        dockKeys = keepDockKeys(saved, { agents: [...liveAgent] });
         // A slot that shipped after this dock was saved joins it — unless the
         // user deliberately parked it on the pages, which the page order says.
         const parked = new Set((Array.isArray(orderPref) ? (orderPref as unknown[]).map(legacyKey) : []).flatMap((k) => [k, k.replace(/^dock:/, "")]));
@@ -4052,13 +4055,12 @@ async function init(): Promise<void> {
           const liveKeys = new Set<string>();
           if (Array.isArray(fresh)) for (const l of fresh) liveKeys.add(`layout:${(l.name || "").toLowerCase()}`);
           if (Array.isArray(rows)) for (const a of rows.filter(wallAppRow)) liveKeys.add(`app:${(a.slug || a.id).toLowerCase()}`);
-          const kept = dockKeys.filter((k) => {
-            // Only OUR two dynamic families are prunable — nav slots, folders
-            // and anything else the dock carries are none of this code's
-            // business, and a partial fetch must never drop them.
-            if (k.startsWith("layout:")) return !Array.isArray(fresh) || liveKeys.has(k);
-            if (k.startsWith("app:")) return !Array.isArray(rows) || liveKeys.has(k);
-            return true;
+          // Only OUR dynamic families are prunable — nav slots, folders and
+          // anything else the dock carries are none of this code's business —
+          // and a read that answered nothing prunes nothing (keepDockKeys).
+          const kept = keepDockKeys(dockKeys, {
+            apps: Array.isArray(rows) ? [...liveKeys].filter((k) => k.startsWith("app:")) : null,
+            layouts: Array.isArray(fresh) ? [...liveKeys].filter((k) => k.startsWith("layout:")) : null,
           });
           if (kept.length !== dockKeys.length) {
             dockKeys = kept;
