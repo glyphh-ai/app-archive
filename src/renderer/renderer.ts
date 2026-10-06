@@ -86,30 +86,6 @@ type PanelAppInput = {
   access?: "public" | "members";
 };
 
-/** Mirrors preload.ts AppReleaseRow — one immutable build of an app. */
-type AppReleaseRow = {
-  id: string;
-  version: string;
-  status: "pending" | "uploading" | "building" | "ready" | "failed";
-  error: string | null;
-  notes: string | null;
-  channel: "dev" | "live";
-  promotedAt: string | null;
-  /** The ORG approval ladder (co-working) — null until submitted to the org admins. */
-  orgReview?: "submitted" | "approved" | "rejected" | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-/** Mirrors preload.ts AppCollaboratorRow — a co-working seat on a user-owned app. */
-type AppCollaboratorRow = {
-  userId: string;
-  role: "read" | "edit" | "admin";
-  email: string;
-  name: string | null;
-  addedAt: string;
-};
-
 /** Mirrors preload.ts EdgeTrafficDayRow — apex-edge stats, one day or host. */
 type EdgeTrafficDayRow = {
   day: string;
@@ -175,45 +151,7 @@ type MarketingLinkRow = {
   durationMsSum: number;
 };
 
-/** Mirrors preload.ts AppSnapshotRow — one entry of the source snapshot chain. */
-type AppSnapshotRow = {
-  hash: string;
-  parentHash: string | null;
-  createdAt: string;
-  createdByEmail: string | null;
-  note: string | null;
-  isHead: boolean;
-};
-
-/** Mirrors preload.ts OrgPendingReleaseRow — the org admin's approval queue. */
-type OrgPendingReleaseRow = {
-  appId: string;
-  slug: string;
-  name: string;
-  releaseId: string;
-  version: string;
-  submittedAt: string;
-  ownerEmail: string | null;
-};
-
 declare global {
-  // A custom domain + the DNS records to publish — mirror of the SDK CustomDomain
-  // contract (Phase F). Global so the app-detail hosting tab (help/apps.ts) shares it.
-  type CustomDomainWire = {
-    id: string;
-    deploymentId: string;
-    hostname: string;
-    status: string;
-    dnsInstructions: {
-      hostname: string;
-      isApex: boolean;
-      records: Array<{ type: "CNAME" | "A" | "AAAA" | "TXT"; name: string; value: string }>;
-      apexUnsupported: boolean;
-    };
-    error: string | null;
-    verifiedAt: string | null;
-    createdAt: string;
-  };
 
   interface Window {
     glyphh: {
@@ -275,41 +213,14 @@ declare global {
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
       connectionSetEnabled?: (id: string, enabled: boolean, isOrg?: boolean) => Promise<{ ok: boolean; error?: string }>;
       connectionSetScope?: (id: string, scope: "org" | "personal") => Promise<{ ok: boolean; error?: string }>;
-      // App proxies — public <slug>.glyphh.app tunnels
-      appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>;
-      appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) => Promise<{ ok: boolean; error?: string }>;
-      appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-      hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
-      hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
-      hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      appServersList: () => Promise<{ ok: boolean; images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>; error?: string }>;
-      appServerDeploy: (slug: string, imageKey: string, releaseId?: string) => Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>;
-      appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
-      appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
-      appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
-      appDomainAdd: (slug: string, deploymentId: string | null, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
-      appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
-      // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
       appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      appBuildDeploy: (slug: string, opts?: { deploy?: boolean }) => Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>;
-      appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
-      appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
-      appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
-      // Co-working — collaborators on a user-owned app + per-release org approval.
-      appCollaborators: (slug: string) => Promise<{ ok: boolean; collaborators: AppCollaboratorRow[]; error?: string }>;
-      appCollaboratorSet: (slug: string, userId: string, role: "read" | "edit" | "admin") => Promise<{ ok: boolean; collaborators?: AppCollaboratorRow[]; error?: string }>;
-      appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
-      appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
-      appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
-      appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
-      appClone: (slug: string, input: { slug: string; name?: string }) => Promise<{ ok: boolean; id?: string; slug?: string; name?: string; error?: string }>;
       orgClients: () => Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>;
       orgClientCreate: (name: string) => Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;
       orgClientCap: (id: string, monthlyCapCredits: number) => Promise<{ ok: boolean; error?: string }>;
@@ -327,8 +238,6 @@ declare global {
       marketingLinkCreate: (input: { name: string; targetUrl: string; appId?: string }) => Promise<{ ok: boolean; link?: MarketingLinkRow; error?: string }>;
       marketingLinkUpdate: (id: string, patch: { name?: string; archived?: boolean }) => Promise<{ ok: boolean; error?: string }>;
       marketingLinkDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      appSourceHistory: (slug: string) => Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>;
-      appSourceRestore: (slug: string, hash: string) => Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 
       // Layouts
@@ -532,12 +441,6 @@ declare global {
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: (chatId?: string) => Promise<boolean>;
-      appVersionSet: (slug: string, version: string) => Promise<{ ok: boolean; version?: string; error?: string }>;
-      appsSchedulesList: (slug: string) => Promise<{ ok: boolean; schedules?: unknown[]; error?: string }>;
-      appsScheduleCreate: (slug: string, input: { name: string; cron: string; prompt: string }) => Promise<{ ok: boolean; schedule?: unknown; error?: string }>;
-      appsScheduleUpdate: (slug: string, id: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; schedule?: unknown; error?: string }>;
-      appsScheduleDelete: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
-      appsScheduleRun: (slug: string, id: string) => Promise<{ ok: boolean; schedule?: unknown; error?: string }>;
       glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") => Promise<{ updated: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentThinking?: (cb: (d: { runId: string; text: string }) => void) => void;

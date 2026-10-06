@@ -109,6 +109,21 @@ describe('buildContract — AUTHED shapes', () => {
     expect(typeof p.then).toBe('function');
     expect(await p).toEqual([]);
   });
+  it("the dead /api/apps lane has no contract methods — client.apps / client.hosting / client.appServers left the SDK (2026-10-06)", () => {
+    const client = authedClient();
+    delete client.apps;
+    const c = buildContract(client, deps);
+    for (const name of [
+      'appSecretsList', 'appSecretsSet', 'appSecretsDelete', 'appBuildDeploy',
+      'appsSchedulesList', 'appsScheduleCreate', 'appsScheduleUpdate', 'appsScheduleDelete', 'appsScheduleRun',
+      'appReleases', 'appReleaseNotes', 'appReleasePromote',
+      'appCollaborators', 'appCollaboratorSet', 'appCollaboratorRemove', 'appReleaseOrgReview', 'appOrgPendingReleases',
+      'appTraffic', 'appClone', 'appSourceHistory', 'appSourceRestore', 'appVersionSet',
+      'hostingStatus', 'hostingDeploy', 'hostingDestroy',
+      'appServersList', 'appServerDeploy', 'appServerDeployments', 'appServerDestroy',
+      'appDomainsList', 'appDomainAdd', 'appDomainRemove',
+    ]) expect(c[name], name).toBeUndefined();
+  });
   it('panelAppsList → SavedPanelApp rows', async () => {
     expect((await c.panelAppsList()).find((r) => r.slug === 'crm')).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });

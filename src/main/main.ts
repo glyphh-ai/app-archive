@@ -26,9 +26,8 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage,
 
 // Stop Chromium from encrypting its own internal cookie/session storage via
 // the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
-// anything our own code does (app-secrets.ts and auth.ts avoid safeStorage
-// already) — it's Chromium's automatic behavior for
-// ANY persistent session partition (e.g. `persist:yo`, used by webviews and
+// anything our own code does (auth.ts avoids safeStorage already) — it's
+// Chromium's automatic behavior for ANY persistent session partition (e.g. `persist:yo`, used by webviews and
 // browser tabs), and it's what was still triggering a keychain prompt on
 // every launch. In an unsigned/dev build, macOS can't remember the "Always
 // Allow" grant across relaunches (the app's signature changes each build),

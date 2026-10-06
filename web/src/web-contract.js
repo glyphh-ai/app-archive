@@ -799,140 +799,15 @@ export function buildContract(client, deps) {
     panelAppsUpdate: library.panelAppsUpdate,
     panelAppsDelete: library.panelAppsDelete,
 
-    // ── App config vars (write-only secrets) — SDK apps.secrets surface.
-    // The desktop's `appReadable` flag is a LOCAL concept; the cloud store
-    // has no read-back path at all, so the flag is accepted and dropped.
-    appSecretsList: async (idOrSlug) => {
-      try { return { ok: true, secrets: await client.apps.secrets(idOrSlug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appSecretsSet: async (idOrSlug, key, value, _appReadable) => {
-      try { await client.apps.setSecret(idOrSlug, key, value); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appSecretsDelete: async (idOrSlug, key) => {
-      try { await client.apps.removeSecret(idOrSlug, key); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
+    // The old `/api/apps/*` lane (client.apps / client.hosting / client.appServers —
+    // config vars, build + deploy, schedules, releases, collaborators, org review,
+    // per-app traffic, clone, source history, hosting, app servers, domains) left
+    // the SDK on 2026-10-06; the server no longer serves it. Nothing here shims it.
 
-    // ── Dedicated app servers + custom domains (Phase F). Straight to the SDK; the
-    // main process contributes nothing, so desktop and web share one renderer.
-    // Deploy tab (dev-host) — the DESKTOP's hosting-* IPC, twinned (his bug,
-    // 2026-08-25: deploy from the web silently no-oped — the fabricating proxy
-    // swallowed the missing shims while the desktop worked).
-    // Build & deploy — the SOURCE-OF-RECORD build: the org's regional pod pulls
-    // the app's R2 snapshot head, npm install + build, and publishes via
-    // build_app — all server-proxied, so the browser needs no pod binding.
-    // (his bug, 2026-08-25: the missing shim made the web button fail flat.)
-    appBuildDeploy: async (slug, opts) => {
-      try {
-        const r = await client.apps.buildFromSource(slug, opts || {});
-        // NO SNAPSHOT (a legacy app whose source never left the desktop): the
-        // right action is still available — ship the latest BUILT release.
-        // Nothing could have changed server-side without a snapshot anyway.
-        // NEVER when the user said "No hosting" (his bug, 2026-08-25: the
-        // fallback deployed regardless of the choice).
-        if (!r?.ok && r?.stage === 'source') {
-          if (opts && opts.deploy === false) {
-            return { ok: false, error: 'No source snapshot and "No hosting" selected — there is nothing to build server-side. Build once from the machine that holds the project; after that, web builds work with or without hosting.' };
-          }
-          try {
-            const dep = await client.hosting.deploy({ appSlug: slug });
-            return {
-              ok: true,
-              result: { url: dep.url || undefined },
-              note: 'No source snapshot yet — deployed the latest built release instead. Build once from the machine that holds the project and web rebuilds turn on.',
-            };
-          } catch {
-            return { ok: false, error: `${r.stage}: ${r.error}` };
-          }
-        }
-        if (!r?.ok) return { ok: false, error: r?.error ? `${r.stage ? `${r.stage}: ` : ''}${r.error}` : 'cloud build failed' };
-        let info = {};
-        try {
-          const p = JSON.parse(r.result || '');
-          info = {
-            version: typeof p.version === 'string' ? p.version : undefined,
-            url: typeof p.url === 'string' ? p.url : (typeof p.deployUrl === 'string' ? p.deployUrl : undefined),
-          };
-        } catch { /* non-JSON text — no structured fields */ }
-        return { ok: true, result: info };
-      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-
-    // Schedules — recurring agent runs against an app.
-    appsSchedulesList: async (slug) => {
-      try { return { ok: true, ...(await client.apps.schedules(slug)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appsScheduleCreate: async (slug, input) => {
-      try { return { ok: true, ...(await client.apps.createSchedule(slug, input)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appsScheduleUpdate: async (slug, id, patch) => {
-      try { return { ok: true, ...(await client.apps.updateSchedule(slug, id, patch)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appsScheduleDelete: async (slug, id) => {
-      try { await client.apps.deleteSchedule(slug, id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appsScheduleRun: async (slug, id) => {
-      try { return { ok: true, ...(await client.apps.runScheduleNow(slug, id)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-
-    // Releases — the web reads the SAME control-plane history the desktop does
-    // (his bug, 2026-08-25: the missing shims left the web claiming "release
-    // history isn't available on this surface").
-    appReleases: async (slug) => {
-      try { return { ok: true, releases: await client.apps.releases(slug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err), releases: [] }; }
-    },
-    appReleaseNotes: async (slug, releaseId, notes) => {
-      try { return { ok: true, release: await client.apps.updateReleaseNotes(slug, releaseId, notes) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appReleasePromote: async (slug, releaseId) => {
-      try { return { ok: true, release: await client.apps.promoteRelease(slug, releaseId) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    // Co-working — collaborators + per-release org approval (same surface as desktop).
-    appCollaborators: async (slug) => {
-      try { return { ok: true, collaborators: await client.apps.collaborators(slug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err), collaborators: [] }; }
-    },
-    appCollaboratorSet: async (slug, userId, role) => {
-      try {
-        await client.apps.setCollaborator(slug, userId, role);
-        return { ok: true, collaborators: await client.apps.collaborators(slug) };
-      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appCollaboratorRemove: async (slug, userId) => {
-      try { await client.apps.removeCollaborator(slug, userId); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appReleaseOrgReview: async (slug, releaseId, action) => {
-      try { await client.apps.orgReview(slug, releaseId, action); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appOrgPendingReleases: async () => {
-      try { return { ok: true, pending: await client.apps.pendingOrgReleases() }; }
-      catch (err) { return { ok: false, error: err?.message || String(err), pending: [] }; }
-    },
-    // Edge traffic — the apex fleet's per-hostname stats.
-    appTraffic: async (slug, days) => {
-      try { return { ok: true, ...(await client.apps.traffic(slug, days ?? 30)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
-    },
+    // Edge traffic — the apex fleet's per-hostname stats (org-wide).
     orgDomainsTraffic: async (days, filter) => {
       try { return { ok: true, ...(await client.org.domainsTraffic(days ?? 30, filter)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
-    },
-    // Duplicate an owned app as a template.
-    appClone: async (slug, input) => {
-      try { return { ...(await client.apps.clone(slug, input)), ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     // Agency client orgs — workspaces the org creates and funds for its clients.
     orgClients: async () => {
@@ -1005,13 +880,6 @@ export function buildContract(client, deps) {
       try { await client.org.deleteMarketingLink(id); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
-    // Version history — the same chain the desktop shows; restore needs a
-    // local working folder, which only the desktop has.
-    appSourceHistory: async (slug) => {
-      try { return { ok: true, history: await client.apps.sourceHistory(slug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err), history: [] }; }
-    },
-    appSourceRestore: async () => ({ ok: false, error: "Restoring a version needs the desktop app (it writes into your working folder)." }),
     // Org switcher — memberships + this session's active org.
     orgMemberships: async () => {
       try { return await client.memberships.orgs(); }
@@ -1019,57 +887,6 @@ export function buildContract(client, deps) {
     },
     orgSwitch: async (orgId) => {
       try { await client.memberships.setActiveOrg(orgId); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appVersionSet: async (slug, version) => {
-      try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    hostingStatus: async (slug) => {
-      try {
-        const deployments = await client.hosting.list();
-        return { ok: true, deployment: deployments.find((x) => x.appSlug === slug) ?? null };
-      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    hostingDeploy: async (slug) => {
-      try { return { ok: true, deployment: await client.hosting.deploy({ appSlug: slug }) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    hostingDestroy: async (id) => {
-      try { await client.hosting.destroy(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appServersList: async () => {
-      try { return { ok: true, images: await client.appServers.list() }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appServerDeploy: async (slug, imageKey, releaseId) => {
-      try { return { ok: true, queued: await client.hosting.deployToServer(slug, releaseId ? { imageKey, releaseId } : { imageKey }) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appServerDeployments: async (slug) => {
-      try { return { ok: true, deployments: await client.hosting.serverDeployments(slug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appServerDestroy: async (slug, id) => {
-      try { await client.hosting.destroyServer(slug, id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appDomainsList: async (slug) => {
-      try { return { ok: true, domains: await client.hosting.domains(slug) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appDomainAdd: async (slug, deploymentId, hostname) => {
-      try {
-        // OMIT deploymentId when null/empty — the zod schema is .optional()
-        // (undefined), and a literal null 400s as "invalid request body".
-        // No deploymentId = the domain binds to the app's hosted deployment.
-        return { ok: true, domain: await client.hosting.addDomain(slug, { ...(deploymentId ? { deploymentId } : {}), hostname }) };
-      }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    appDomainRemove: async (slug, id) => {
-      try { await client.hosting.removeDomain(slug, id); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
 

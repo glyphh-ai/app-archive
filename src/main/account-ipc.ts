@@ -134,64 +134,6 @@ export function registerAccountIpc(): void {
     catch (err) { return fail(err); }
   });
   // Organization SSO (WorkOS) — status, admin-portal link, require-SSO toggle.
-  // ── App ingest webhooks (the Webhooks settings page) ────────────────────
-  ipcMain.handle("apps-ingest-installed", async () => {
-    try { return { ok: true as const, apps: await getClient().apps.installed() }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-ingest-list", async (_e, slug: string) => {
-    try { return { ok: true as const, ...(await getClient().apps.ingest(String(slug))) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-ingest-token-create", async (_e, slug: string, label: string, expiresDays?: number) => {
-    try { return { ok: true as const, ...(await getClient().apps.createIngestToken(String(slug), String(label ?? ""), expiresDays)) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-ingest-token-revoke", async (_e, slug: string, id: string) => {
-    try { await getClient().apps.revokeIngestToken(String(slug), String(id)); return { ok: true as const }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-ingest-hook-create", async (_e, slug: string, input: { name: string; table: string; embed?: string[]; description?: string }) => {
-    try { return { ok: true as const, hook: await getClient().apps.createIngestHook(String(slug), input) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-ingest-hook-delete", async (_e, slug: string, name: string) => {
-    try { await getClient().apps.removeIngestHook(String(slug), String(name)); return { ok: true as const }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-webhooks-list", async (_e, slug: string) => {
-    try { return { ok: true as const, ...(await getClient().apps.webhooks(String(slug))) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-webhook-create", async (_e, slug: string, input: { url: string; description?: string }) => {
-    try { return { ok: true as const, ...(await getClient().apps.createWebhook(String(slug), input)) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-webhook-delete", async (_e, slug: string, id: string) => {
-    try { await getClient().apps.removeWebhook(String(slug), String(id)); return { ok: true as const }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-schedules-list", async (_e, slug: string) => {
-    try { return { ok: true as const, ...(await getClient().apps.schedules(String(slug))) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-schedule-create", async (_e, slug: string, input: { name: string; cron: string; prompt: string }) => {
-    try { return { ok: true as const, ...(await getClient().apps.createSchedule(String(slug), input)) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-schedule-update", async (_e, slug: string, id: string, patch: Record<string, unknown>) => {
-    try { return { ok: true as const, ...(await getClient().apps.updateSchedule(String(slug), String(id), patch)) }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-schedule-delete", async (_e, slug: string, id: string) => {
-    try { await getClient().apps.deleteSchedule(String(slug), String(id)); return { ok: true as const }; }
-    catch (err) { return fail(err); }
-  });
-  ipcMain.handle("apps-schedule-run", async (_e, slug: string, id: string) => {
-    try { return { ok: true as const, ...(await getClient().apps.runScheduleNow(String(slug), String(id))) }; }
-    catch (err) { return fail(err); }
-  });
-
   ipcMain.handle("account-user-image", async (_e, bytes: ArrayBuffer) => {
     try { return { ok: true as const, media: await getClient().profile.uploadImage(new Uint8Array(bytes)) }; }
     catch (err) { return fail(err); }

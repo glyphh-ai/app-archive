@@ -5731,40 +5731,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   flex: 1;
 }
 
-/* General tab: separates the app form from the pick-elements/commands
-   section rendered below it (was its own "Panel" tab). */
-.app-detail-section-sep {
-  border-top: 1px solid var(--border);
-  margin: 16px 0;
-}
-
-/* Config Vars tab: one row per var — key, masked value, delete. Values are
-   write-only (encrypted at save); the mask is a constant, not the length. */
-.config-var-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 6px;
-  background: var(--surface, transparent);
-}
-.config-var-key {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.config-var-masked {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-3);
-  letter-spacing: 2px;
-}
-
 /* ── Dashboard placeholder ────────────────────────────── */
 
 /* App dashboard right panel — compact sizing like dash-split-col */
@@ -13703,13 +13669,6 @@ select:focus {
 .mcp-tool-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); }
 .mcp-tool-desc { font-size: 11.5px; color: var(--text-2); line-height: 1.45; }
 
-/* Host-only (credential) config-var badge — key never reaches the sandbox. */
-.config-var-hostonly {
-  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
-  font-size: 10px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
-  color: #4ade80; background: rgba(74, 222, 128, .12); vertical-align: middle;
-}
-
 /* ── Code — the William agent surface (chats | agent | workbench) ───────── */
 /* Full-bleed inside #help-content when active (other sections keep padding). */
 #page-body:has(.help-section[data-section="code"].active) {
@@ -15975,42 +15934,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   background: rgba(0, 0, 0, .62); color: #fff;
 }
 .listing-shot-remove:hover { background: var(--danger, #f87171); }
-
-/* ── App-detail Releases tab ──────────────────────────────────────── */
-.release-selected { font-size: 13px; color: var(--text); }
-.release-count { font-size: 11.5px; color: var(--text-3); }
-.release-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
-
-.release-row {
-  display: block; width: 100%; text-align: left; cursor: pointer;
-  padding: 9px 11px; border: 1px solid var(--border-2); border-radius: 8px;
-  background: var(--surface); color: var(--text); font: inherit;
-}
-.release-row:hover { border-color: var(--border-3); }
-.release-row.selected { border-color: var(--accent); background: var(--surface-2); }
-
-.release-row-head { display: flex; align-items: center; gap: 8px; }
-.release-version { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
-.release-date { margin-left: auto; font-size: 11px; color: var(--text-3); }
-
-.release-check { flex: 0 0 14px; vertical-align: -2px; margin-right: 2px; }
-.release-badge {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
-  padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-3);
-}
-.release-badge.live { background: rgba(52, 211, 153, .16); color: #34d399; }
-/* A build that never finished is the row an author is looking for. */
-.release-state { font-size: 10.5px; color: var(--text-3); }
-.release-state.failed { color: var(--danger, #f87171); }
-
-.release-notes-preview { margin-top: 5px; font-size: 11.5px; color: var(--text-2); line-height: 1.45; }
-.release-build-error {
-  margin-top: 6px; padding: 5px 7px; border-radius: 5px;
-  background: rgba(248, 113, 113, .10); color: var(--danger, #f87171);
-  font-family: var(--font-mono); font-size: 10.5px; white-space: pre-wrap; word-break: break-word;
-}
-
-
 
 /* ── Models (org admin) — desktop mirror of platform Configure → Models ── */
 #models-tabs { padding: 0; margin: 8px 0 20px; }
@@ -20585,11 +20508,6 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   box-shadow: 0 2px 8px var(--shadow);
 }
 
-
-/* Inline notes under a version row (his order, 2026-08-25): the head toggles,
-   the textarea saves on blur, Promote rides the expanded area. */
-.release-row .release-row-head { all: unset; display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; box-sizing: border-box; }
-.release-notes-inline { padding: 8px 2px 2px; }
 
 /* ── Wall tour — the first-run guided overlay (wall-tour.ts) ─────────────── */
 .wtour { position: fixed; inset: 0; z-index: 9500; }
