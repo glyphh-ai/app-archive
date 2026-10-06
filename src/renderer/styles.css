@@ -1603,7 +1603,7 @@ body.account-locked #dl-btn-wrap {
    user popup instead; the PANEL stays (only the nav item hides), centered
    like the Dashboard. */
 .glyphh-web .settings-nav > .settings-nav-item[data-sub="account"] { display: none !important; }
-/* THE WEB CUT'S GROUP ROWS (web-cut.ts WEB_CUT_ROW_CLASS): Build + Customize rows leave the
+/* THE GROUP ROWS (help/surface.ts WEB_CUT_ROW_CLASS): Build + Customize rows leave the
    Settings nav on the web but are never `.hidden`, so the full-screen group pages list them
    exactly as the desktop does. */
 html.glyphh-web .settings-nav-item.web-cut-row { display: none !important; }
@@ -1758,8 +1758,8 @@ html.glyphh-web body[data-session-space="work"] #code-tools-more { display: none
    the console's own file; the desktop keeps its traffic lights there. */
 .app-rail-logo { display: none; }
 /* THE ECHO ICON LEADS THE RAIL ON THE WEB (his order, 2026-10-05: "the top
-   left of the app web should have the echo icon"; web-cut.ts
-   webRailEchoLeads — the wordmark that sat there is WEB_HIDDEN_RAIL now).
+   left of the app web should have the echo icon"; help/surface.ts
+   WEB_RAIL_ECHO_BUTTONS — the wordmark holds the traffic lights' spot).
    The desktop's strip is untouched: Collapse, then Echo at the right. */
 /* THE RAIL HEADER ON THE WEB IS THE DESKTOP'S (his order, 2026-10-05): the wordmark
    holds the traffic lights' spot (the desktop's 84px inset becomes the logo's own
@@ -15825,6 +15825,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 .code-view-more-menu .code-view-menu-item svg { flex: 0 0 auto; }
 .code-view-more-menu .code-view-menu-item:hover { background: var(--hover); color: var(--text); }
+/* A row the surface cannot act on (a CLI on a desktop path with no desktop attached — help/agent-menu.ts): dim, inert. */
+.code-view-more-menu .code-view-menu-item:disabled { opacity: 0.45; cursor: default; }
+.code-view-more-menu .code-view-menu-item:disabled:hover { background: transparent; color: inherit; }
 .code-view-more-menu .code-view-menu-item.active { color: var(--accent-light); }
 .code-view-more-menu .code-view-menu-item svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -17919,8 +17922,8 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
 .echo-topbar-stacked { max-width: 92%; }
-/* THE WEB'S ECHO = THE DESKTOP'S, FILTERED (his order, 2026-10-05; web-cut.ts
-   webEchoSurface): the same dock, search and grid; only the empty line is
+/* ONE ECHO ON BOTH SURFACES (his order, 2026-10-06; help/surface.ts
+   surfaceHostsTile): the same dock, search and grid; only the empty line is
    the web's own. */
 
 
@@ -21881,8 +21884,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 /* ── THE WEB IS THE DESKTOP (his order, 2026-10-05/06: "restore the layout
    manager on the web, just filter the tabs off"): the command center, its
    wall, search, pages, dock, layout bar and veil run on the web under the
-   DESKTOP'S OWN rules — nothing here hides them. What the web does not host
-   is filtered out of the tiles (help/web-cut.ts webWallKeeps); the wall and
+   DESKTOP'S OWN rules — nothing here hides them. What a browser cannot host
+   (a native app) leaves the tiles (help/surface.ts surfaceHostsTile); the wall and
    the dock still do not BOOT (the web lands on Work → New) and the rail's
    Echo icon lifts them. Only the agent card's chrome differs below. ── */
 /* The agent card on the web is the desktop's card: same border, radius, inset and close (his order, 2026-10-06: "the desktop is set into the grid correctly... the browser is not"). */
@@ -21890,9 +21893,9 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    the desktop (his order, 2026-10-05): the Echo lifts, close all opens a
    fresh session. */
 
-/* The agent window's top-right ⋮ on the web (help/web-agent-menu-ui.ts):
+/* The agent window's top-right ⋮ on both surfaces (help/agent-menu-ui.ts):
    three sections — Apps, Agents / CLIs, Panels — in the same menu frame. */
-.code-view-more-menu.web-agent-menu { min-width: 240px; max-width: 320px; max-height: min(88vh, 760px); overflow: auto; }
+.code-view-more-menu.agent-menu-folds { min-width: 240px; max-width: 320px; max-height: min(88vh, 760px); overflow: auto; }
 .code-view-more-menu .code-menu-head {
   padding: 8px 10px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--text-3, var(--text-2)); user-select: none;

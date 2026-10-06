@@ -53,8 +53,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webDockDoorAllowed, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webRestorePlan, webWallMemory, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, webEchoOpens, webEchoSurface, webWallKeeps, webLayoutCells, webWorkspaceOpenLines } from "./help/web-cut.js";
-import { webInstalledApps } from "./help/agent-menu-ui.js";
+import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines } from "./help/surface.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
@@ -396,6 +395,11 @@ function streamsOffCard(): HTMLElement {
 }
 /** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
 function openNewTabForm(): void {
+  // NEW TAB IN A BROWSER IS A BROWSER TAB (his order, 2026-10-06; help/
+  // surface.ts): the desktop's form adds a URL tab to the library; a browser
+  // opens the one kind of tab it has. The dock's row and its shift-click
+  // share this door.
+  if (IS_WEB_TARGET) { window.open("about:blank", "_blank", "noopener"); return; }
   (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
   let tries = 0;
   const tick = (): void => {
@@ -436,12 +440,11 @@ const legacyKey = (k: unknown): string => {
   }
   return KEY_ALIASES[s] ?? s;
 };
-type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string; solo?: boolean };
-/** `agentAt` — the agent card's seat among the cards (how many precede it)
- *  — and a tool card's `solo` (driven to a side, its own column) are written
- *  by the WEB only (help/web-cut.ts webWallMemory; his order, 2026-10-05).
- *  The desktop never writes or reads them. */
-type WallState = { layout: string | null; cards: WallCard[]; agentAt?: number | null };
+type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string };
+/** ONE SHAPE ON BOTH SURFACES (his order, 2026-10-06): the open layout by
+ *  name, else the ad-hoc cards in their order — saved and replayed the same
+ *  way on the desktop and the web. */
+type WallState = { layout: string | null; cards: WallCard[] };
 
 // ── Browser panel: start page + error pages ─────────────────────────────
 //
@@ -1482,9 +1485,6 @@ async function init(): Promise<void> {
   interface EchoCtlType {
     openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; cloud?: boolean }): void;
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> }): void;
-    /** THE WEB'S WORKSPACE OPEN (his order, 2026-10-05): only the cells the
-     *  web renders (help/web-cut.ts webLayoutCells), the rest named. */
-    openLayoutWeb(layout: LayoutRow): Promise<void>;
     openSection(section: string): void;
     openAgent(): void;
     /** The agent was docked (parked out to the rail/dock) — close its now-empty
@@ -1501,11 +1501,7 @@ async function init(): Promise<void> {
     refreshForCwd(): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"): void;
-    /** The web's wall restore (his order, 2026-10-05): open these tool
-     *  panels in order (a `solo` one owns its column, as the edge-drop left
-     *  it), then reseat the agent card at `agentAt` of the open order. */
-    restoreWebWall(open: Array<{ toolView: string; solo?: boolean }>, agentAt: number): void;
-    /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/web-cut.ts):
+    /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/surface.ts):
      *  Artifacts / Build / Customize fill the page over the agent and every
      *  open card (kept mounted); close restores exactly what was showing. */
     openWebFullPanel(key: string): void;
@@ -2409,9 +2405,8 @@ async function init(): Promise<void> {
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
-    // THE WEB'S ECHO (his order, 2026-10-05; help/web-cut.ts webEchoSurface):
-    // the desktop's Echo, filtered to the cloud's tiles; the class marks the
-    // body for the web's empty line.
+    // ONE ECHO ON BOTH SURFACES (his order, 2026-10-06): the same wall, dock
+    // and search; the tiles pass the capability filter (help/surface.ts).
     // FIRST PAINT WITHOUT A FLASH OF THE DOCK (his order, 2026-10-04: off by
     // default). The pref lands asynchronously (readAutoHide, below); the dock
     // markup lands now. So the body class is set BEFORE the markup, from the
@@ -2614,7 +2609,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; /** a cloud app instance (two worlds: what the web's wall keeps) */ cloud?: boolean; archetype?: string | null; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; /** a cloud app instance */ cloud?: boolean; archetype?: string | null; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
@@ -2772,9 +2767,6 @@ async function init(): Promise<void> {
       const out: TileEntry[] = [];
       for (const k of dockKeys) {
         if (dockItemFor(k)) {
-          // THE WEB'S FILTER AT PAINT (help/web-cut.ts webWallKeeps): a slot the
-          // web cannot serve stays in the saved order, unpainted here.
-          if (IS_WEB_TARGET && !webWallKeeps({ kind: "tool", navKey: k })) continue;
           let e = dockNavEntries.get(k);
           if (!e) { const t = navTileFor(k); if (!t) continue; e = { tile: t, img: null }; dockNavEntries.set(k, e); }
           out.push(e);
@@ -3086,9 +3078,6 @@ async function init(): Promise<void> {
       for (const [k, el] of have) if (!dockKeys.includes(k)) el.remove();
       let prev: HTMLElement | null = null;
       for (const k of dockKeys) {
-        // THE WEB'S FILTER AT PAINT (help/web-cut.ts webWallKeeps): a nav slot
-        // the web cannot serve (New tab) stays in the saved order, unpainted.
-        if (IS_WEB_TARGET && dockItemFor(k) && !webWallKeeps({ kind: "tool", navKey: k })) { have.get(k)?.remove(); continue; }
         let el = have.get(k) ?? null;
         if (!el) {
           const item = DOCK_ITEMS.find((d) => d.key === k);
@@ -3213,7 +3202,7 @@ async function init(): Promise<void> {
     let pendingPagesRender = false;
     /** CLOSE ALL PANELS — the one helper the dock's and the tiles' menus
      *  share. Every card closes; ON THE WEB a fresh session then starts in
-     *  place in the rail's current type (help/web-cut.ts webCloseAllOpensNew;
+     *  place in the rail's current type (help/surface.ts webCloseAllOpensNew;
      *  his order, 2026-10-05: "close all panels in web -> closes all panels
      *  -> opens new either work or code depending on what was opened last").
      *  The web's agent card is in-document and never instanced, so it stays
@@ -3760,10 +3749,11 @@ async function init(): Promise<void> {
       cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
-      // THE WEB'S ECHO = THE DESKTOP'S, FILTERED (his order, 2026-10-05;
-      // help/web-cut.ts webWallKeeps): the cloud's half of two worlds.
+      // ONE LIST ON BOTH SURFACES (his order, 2026-10-06; help/surface.ts
+      // surfaceHostsTile): every tile this surface can host — the browser
+      // drops only a native app. The desktop keeps everything.
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)]
-        .filter((t) => !IS_WEB_TARGET || webWallKeeps(t));
+        .filter((t) => surfaceHostsTile(t, surfaceCaps(IS_WEB_TARGET)));
       // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
       // right to left as Close all, Command center, Settings, with the two
       // openers ahead of them — but it is only the DEFAULT. Once the dock has
@@ -3823,28 +3813,21 @@ async function init(): Promise<void> {
       }
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
-      // THE WEB CUT (his order, 2026-10-05): the web boots NO WALL — no
-      // tiles, no "Welcome back", no dock; the agent is the page
-      // (restoreWallOnce seats it). THE SAVED STATE RIDES ALONG (his order,
-      // 2026-10-05: the web remembers its open panels across a refresh and
-      // a login) — restoreWallOnce replays what the web can host.
-      if (!bootsSurface(IS_WEB_TARGET, "wall")) {
-        // …but the wall is BUILT, filtered to the cloud's tiles (webEchoSurface,
-        // webWallKeeps): the rail's Echo icon lifts it, dock and all.
-        void webEchoSurface;
-        // a folder emptied by the filter stays in the pref, unpainted
-        const shown = [...pageTiles, ...rest].filter((t) => t.kind !== "folder" || (t.cells?.length ?? 0) > 0);
-        buildWall([shown]);
-        restoreWallOnce(layouts || [], savedWall as WallState | null);
-        return;
-      }
-      buildWall([[...pageTiles, ...rest]]);
+      // THE SAME WALL ON BOTH SURFACES (his order, 2026-10-06). A folder the
+      // capability filter emptied stays in the pref, unpainted (a folder the
+      // member left empty still paints). The web does not PAINT the wall at
+      // boot (bootsSurface): the agent is the page and the rail's Echo icon
+      // lifts the wall, dock and all; the saved state replays the same way.
+      const emptiedByFilter = (t: EchoTile): boolean =>
+        t.kind === "folder" && (t.cells?.length ?? 0) === 0 && !!folders.find((f) => f.id === t.folderId)?.keys.length;
+      buildWall([[...pageTiles, ...rest].filter((t) => !emptiedByFilter(t))]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
       // First run: the guided tour points at the live dock + tiles, once per
       // USER (server pref) — after the wall has painted, never over a restore
-      // that re-opened panels (the tour orients the EMPTY landing).
-      void maybeStartWallTour();
+      // that re-opened panels (the tour orients the EMPTY landing). The web
+      // paints no wall at boot, so there is nothing to point at there.
+      if (bootsSurface(IS_WEB_TARGET, "wall")) void maybeStartWallTour();
     }).catch(() => buildWall([[]]));
 
     // ── Wall-state persistence (save + restore) ──────────────────────────────
@@ -3855,11 +3838,8 @@ async function init(): Promise<void> {
     function serializeWall(): WallState {
       if (echoLayoutName) return { layout: echoLayoutName, cards: [] };
       const cards: WallCard[] = [];
-      let agentAt: number | null = null;
       for (const e of openList) {
         const t = e.tile;
-        // The agent's SEAT: how many saved cards precede it (web only, below).
-        if (t.kind === "agent" && agentAt === null) agentAt = cards.length;
         if (t.kind === "agent" || t.slug === "glyphh-home") continue;
         if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
         // A CLI agent card is NOT a bare terminal — losing the id here is why
@@ -3873,7 +3853,6 @@ async function init(): Promise<void> {
         else if (t.slug && t.slug.startsWith("agent-panel:")) continue;
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
-      void agentAt;
       return { layout: null, cards };
     }
     function scheduleWallSave(): void {
@@ -3916,31 +3895,19 @@ async function init(): Promise<void> {
         reveal();
         return;
       }
-      // THE WEB IS THE AGENT (his order, 2026-10-05): no default workspace —
-      // the Glyphh agent is the page. The composer restores its own session
-      // as ever. AND THE WEB REMEMBERS (his order, 2026-10-05: open panels
-      // come back after a refresh and a login): the saved tool panels reopen
-      // in their order with the agent back in its seat — help/web-cut.ts
-      // webRestorePlan decides; what the web cannot host is named, never
-      // replayed. A panel opened before the session restores fills once it
-      // does (wb.onCwdChanged → refreshForCwd, webFsReady's retry) — the
-      // desktop's own boot order.
-      // THE WEB IS THE DESKTOP (his order, 2026-10-06): the same replay — the
-      // agent is seated first (the web's page), a saved layout opens by name
-      // through the web's cell filter, the saved cards come back as they were.
-      if (IS_WEB_TARGET) {
-        activateGlyphh();
-        if (saved?.layout) {
-          const name = saved.layout;
-          const row = layouts.find((l) => (l.name || "").toLowerCase() === name.toLowerCase());
-          if (row) void openLayoutWeb(row);
-          return;
-        }
-      }
+      // THE SAME REPLAY ON BOTH SURFACES (his order, 2026-10-06). The web
+      // lands on Work → New only because the agent is seated FIRST — it is
+      // the web's page; the composer restores its own session as ever. A
+      // panel opened before the session restores fills once it does
+      // (wb.onCwdChanged → refreshForCwd, webFsReady's retry).
+      if (IS_WEB_TARGET) activateGlyphh();
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
       // replay: the composer restores its own session (or sits waiting fresh).
+      // Each card passes the capability check where it is used
+      // (help/surface.ts): a streamed panel — the Browser, an embedded URL
+      // page — needs streamedPanels; the rest replays everywhere.
       try {
         if (!echoCtl) return;
         if (saved?.layout) {
@@ -3950,13 +3917,20 @@ async function init(): Promise<void> {
           return;
         }
         if (saved?.cards?.length) {
+          const caps = surfaceCaps(IS_WEB_TARGET);
           for (const c of saved.cards) {
             if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
             // A saved agent card comes back as an agent PANEL — the shell
             // never seats a CLI of its own anymore.
             else if (c.kind === "agent" && c.agent) (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(c.agent);
-            else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
-            else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
+            else if (c.kind === "tool" && c.toolView) {
+              if (surfaceHostsView(c.toolView, caps)) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
+              else console.warn("[echo] saved panel needs a streamed panel here:", c.toolView);
+            }
+            else if (c.kind === "app" && c.slug) {
+              if (c.url && !caps.streamedPanels) console.warn("[echo] saved tab is an embedded page — needs a streamed panel here:", c.slug);
+              else echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
+            }
           }
           return;
         }
@@ -4661,27 +4635,17 @@ async function init(): Promise<void> {
     };
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
-    /** THE WEB'S ECHO (his order, 2026-10-05: "when clicked the echo overlay
-     *  shows but only the workspaces render. no dock so search at the top
-     *  etc. but with workspaces in the grid only"): the SAME overlay the
-     *  desktop lifts — the wall over the open cards — toggled by the rail's
-     *  Echo icon; its wall holds workspace tiles only (built so at boot), the
-     *  search at the top filters them, the dock is CSS-hidden (.web-echo).
-     *  Closing (the X, Esc, or a pick) returns to the agent. A full-screen
-     *  page up at the time closes first — the overlay lifts over the agent. */
-    const openWebEcho = (): void => {
-      if (!openList.length) { console.warn("[web-cut] Echo: no agent seated yet"); return; }
+    /** ONE ECHO BUTTON ON BOTH SURFACES (his order, 2026-10-06): the wall
+     *  lifts over the open cards and the same click drops it. A full-screen
+     *  page up at the time closes first (his order, 2026-10-05) — the overlay
+     *  lifts over the agent; the search is cleared and takes the focus so a
+     *  hand can type straight into it. */
+    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
+      if (!openList.length) return;
       const on = !shadowPinned;
       if (on) closeWebFullPanel();
       setShadow(on, on);
       if (on) { searchEl.value = ""; paintSearch(); searchEl.focus(); }
-    };
-    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
-      if (IS_WEB_TARGET && webEchoOpens(IS_WEB_TARGET)) { openWebEcho(); return; }
-      // THE WEB CUT: there is no command center to lift on the web.
-      if (!bootsSurface(IS_WEB_TARGET, "echo")) { console.warn("[web-cut] the command center does not open on the web"); return; }
-      if (!openList.length) return;
-      setShadow(!shadowPinned, !shadowPinned);
     };
     // ESC closes the lifted command center when apps/a layout are open behind
     // it (his rule, 2026-08-19). Deliberately DEFERS to more local Escapes:
@@ -4728,7 +4692,7 @@ async function init(): Promise<void> {
         if (gridRects()?.has(e)) return;
         // The agent (chat or CLI) owns its column — never reflowed by a drag
         // on the desktop. ON THE WEB it is a movable panel like the rest (his
-        // review, 2026-10-05; help/web-cut.ts agentCardMovable): it reorders
+        // review, 2026-10-05; help/surface.ts agentCardMovable): it reorders
         // and drives to a side, still solo in its column (flowColumns).
         if (isAgentEntry(e) && !agentCardMovable(IS_WEB_TARGET)) return;
         const startX = ev.clientX, startY = ev.clientY;
@@ -4824,10 +4788,9 @@ async function init(): Promise<void> {
             card.classList.remove("echo-card-dragging");
             document.body.classList.remove("echo-drag");
             layoutCards();
-            // A MOVE IS STATE on the web (his order, 2026-10-05): the new
-            // order persists like an open or a close. The desktop's saves
-            // are untouched (help/web-cut.ts webWallMemory).
-            if (webWallMemory(IS_WEB_TARGET)) scheduleWallSave();
+            // A MOVE IS STATE (his order, 2026-10-05): the new order persists
+            // like an open or a close — the same save on both surfaces.
+            scheduleWallSave();
           }
         };
         head.addEventListener("pointermove", move);
@@ -5973,7 +5936,38 @@ async function init(): Promise<void> {
     /** A LAYOUT opened inside Echo: every cell becomes an Echo card, in the
      *  layout's reading order. The agent cell adopts the singleton (or is
      *  skipped when the agent is already on screen). */
-    const openLayoutInEcho = (layout: LayoutRow): void => {
+    /** The app rows a workspace cell can name, for the capability filter:
+     *  the wall's catalog (a house default carries no row) and the panel-app
+     *  rows — the two the arrange routine itself resolves a cell through. */
+    const layoutAppsList = (): Array<{ slug: string; id?: string; name?: string; kind?: string }> => {
+      const kindOf = (archetype: string | null | undefined, native: boolean): string =>
+        archetype === "glyphh-app" ? "glyphh" : native || archetype === "native" ? "native" : archetype === "glyphh-nav" ? "nav" : "web";
+      const out: Array<{ slug: string; id?: string; name?: string; kind?: string }> = [];
+      for (const t of wallCatalog.values()) {
+        if (!t.slug || (t.kind !== "app" && !t.appId)) continue;
+        out.push({ slug: t.slug, id: t.appId, name: t.name, kind: t.glyphh ? "glyphh" : kindOf(t.archetype, false) });
+      }
+      for (const a of echoRows) out.push({ slug: (a.slug || a.id).toLowerCase(), id: a.id, name: a.name, kind: kindOf(a.appArchetype, !!a.execPath) });
+      return out;
+    };
+    const openLayoutInEcho = (layoutIn: LayoutRow): void => {
+      // THE CAPABILITY FILTER FIRST, ON BOTH SURFACES (his order, 2026-10-06;
+      // help/surface.ts surfaceLayoutCells): the cells this surface cannot
+      // host — a native app without a native window, the Browser or an
+      // embedded page without a streamed panel — are dropped and named in
+      // one toast line; nothing hosted → one error line and nothing changes.
+      // With desktop caps nothing is dropped. The grid, the spans, the agent
+      // seat and the layout bar are the same open on both surfaces.
+      const apps = layoutAppsList();
+      const caps = surfaceCaps(IS_WEB_TARGET);
+      const plan = surfaceLayoutCells(layoutIn.splits || [], apps, caps);
+      const lines = workspaceOpenLines(layoutIn.name, plan);
+      setShadow(false, false);   // a pick is a decision — the overlay drops
+      if (lines.error) { toastErr(lines.error); return; }
+      const layout = plan.skipped.length
+        ? { ...layoutIn, splits: (layoutIn.splits || []).filter((c) => surfaceLayoutCells([c], apps, caps).keep.length > 0) }
+        : layoutIn;
+      if (lines.info) toasts()?.info(lines.info);
       // The layout's FOLDER leads the open — same contract as the standard
       // path: switch first, arrange after, so terminals and workspace panels
       // spawn rooted in the layout's folder instead of wherever cwd last was.
@@ -5993,31 +5987,6 @@ async function init(): Promise<void> {
         return;
       }
       openLayoutInEchoArranged(layout);
-    };
-    /** A WORKSPACE ON THE WEB (his order, 2026-10-05: "they just render only
-     *  apps and panels that are truly web native"): help/web-cut.ts
-     *  webLayoutCells decides — the in-document tool panels open through
-     *  getOrOpenTool, a cloud Glyphh app as a web panel (ctl.openApp, cloud),
-     *  the agent's own cell is the seated agent; the rest is named in one
-     *  toast line. Nothing kept → one error line and nothing changes. The
-     *  workspace replaces what was showing (the full-screen page and the
-     *  loose panels close; the agent stays seated), as a layout replaces the
-     *  desktop's arrangement. The layout's folder is a desktop path — the
-     *  web's panels read the session's own locus, so it is not switched. */
-    /** THE WEB OPENS A WORKSPACE THROUGH THE SAME LAYOUT MANAGER AS THE
-     *  DESKTOP (his order, 2026-10-05: "should just be identical to the
-     *  app"): the grid, the spans, the agent seat, the layout bar — with the
-     *  cells the web cannot host dropped FIRST (webLayoutCells), each named
-     *  on one line. The earlier web-only open laid the kept cells out flat. */
-    const openLayoutWeb = async (layout: LayoutRow): Promise<void> => {
-      const apps = await webInstalledApps().catch(() => []);
-      const plan = webLayoutCells(layout.splits || [], apps);
-      const lines = webWorkspaceOpenLines(layout.name, plan);
-      setShadow(false, false);   // a pick is a decision — the overlay drops
-      if (lines.error) { toastErr(lines.error); return; }
-      const splits = (layout.splits || []).filter((c) => webLayoutCells([c], apps).keep.length > 0);
-      openLayoutInEcho({ ...layout, splits });
-      if (lines.info) toasts()?.info(lines.info);
     };
     const openLayoutInEchoArranged = (layout: LayoutRow): void => {
       // The layout REPLACES the echo arrangement — cards sit at the layout's
@@ -6798,7 +6767,7 @@ async function init(): Promise<void> {
     };
     (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly = webShowAgentOnly;
     // OPEN WORKSPACE CLOSES ITS HOST FIRST (his order, 2026-10-05; help/
-    // web-cut.ts workspaceOpenClosesHosts): help/layouts.ts closes the
+    // surface.ts workspaceOpenClosesHosts): help/layouts.ts closes the
     // full-screen page through this door on the web, and the Customize work
     // panel (a page card) on the desktop, before the workspace opens.
     (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel = () => closeWebFullPanel();
@@ -6811,7 +6780,7 @@ async function init(): Promise<void> {
       // starts on a NEW session (his order, 2026-09-29).
       if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
       // THE WEB'S ONE AGENT is in-document and never instanced: with it
-      // seated, + New starts the new session IN it (help/web-cut.ts
+      // seated, + New starts the new session IN it (help/surface.ts
       // webNewSessionInPlace; his report, 2026-10-05: + New did nothing —
       // this open found the card and only repainted it).
       // + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05): the
@@ -6822,7 +6791,7 @@ async function init(): Promise<void> {
       if (webNewSessionInPlace(IS_WEB_TARGET, seated)) {
         const fresh = (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession;
         if (fresh) { fresh(); return; }
-        console.warn("[web-cut] + New: the agent panel has not bound __glyphhNewSession yet");
+        console.warn("[surface] + New: the agent panel has not bound __glyphhNewSession yet");
       }
       openAgentForLoop(GLYPHH_LOOP_ID);
     };
@@ -7047,10 +7016,6 @@ async function init(): Promise<void> {
      *  the dock). Keys are help/dock-items.ts (DOCK_ITEMS). */
     const openDockItem = (key: string): void => {
       const w = window as unknown as { __wbOpenSection?: (s: string) => void; __glyphhOpenSettings?: () => void; __wbEchoShadowPin?: () => void };
-      // THE WEB CUT: the dock never paints on the web, and its command-center
-      // doors (cc, close all, new tab) mean nothing there — only a new agent
-      // session and Settings act (help/web-cut.ts). Never silent.
-      if (IS_WEB_TARGET && !webDockDoorAllowed(key)) { console.warn("[web-cut] dock door refused on the web:", key); return; }
       if (key === "glyphh") {
         // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
         // ALWAYS load a new agent with a new session no matter what… for some
@@ -7096,7 +7061,10 @@ async function init(): Promise<void> {
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.cliAgent) { openAgentCliCard(t); return; }
-      if (t.layoutRow) { if (IS_WEB_TARGET) { void openLayoutWeb(t.layoutRow); return; } openLayoutInEcho(t.layoutRow); return; }
+      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
+      // A URL TAB IN A BROWSER IS A BROWSER TAB (help/surface.ts: a browser
+      // can open a URL; an embedded page there would need a streamed panel).
+      if (IS_WEB_TARGET && t.url && !t.glyphh) { window.open(t.url, "_blank", "noopener"); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
@@ -7452,6 +7420,8 @@ async function init(): Promise<void> {
         // A CLOUD-INSTALLED app is a panel here — its UI through the instance
         // proxy (mountGlyphhAppWebView), no desktop needed (his order,
         // 2026-10-05); every other app still opens on the desktop.
+        // A URL TAB IN A BROWSER IS A BROWSER TAB (help/surface.ts).
+        if (IS_WEB_TARGET && app.url && !app.glyphh && key !== "browser") { window.open(app.url, "_blank", "noopener"); return; }
         if (IS_WEB_TARGET && !(app.glyphh && app.cloud)) { openAppOnDesktopWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
@@ -7487,7 +7457,6 @@ async function init(): Promise<void> {
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
-      openLayoutWeb: (layout) => openLayoutWeb(layout),
       openSection: (section) => {
         // Section pages (Apps, Workspaces, Agents, …) follow the ONE open
         // rule everything else does now (his order, 2026-08-30): the card
@@ -7513,18 +7482,6 @@ async function init(): Promise<void> {
       },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
-      restoreWebWall: (open, agentAt) => {
-        for (const c of open) {
-          const entry = getOrOpenTool(c.toolView as Parameters<typeof getOrOpenTool>[0]);
-          if (c.solo) entry.flowSolo = true;
-        }
-        const i = openList.findIndex((x) => x.tile.kind === "agent");
-        if (i >= 0) {
-          const [agent] = openList.splice(i, 1);
-          openList.splice(Math.max(0, Math.min(Math.trunc(agentAt), openList.length)), 0, agent);
-        }
-        layoutCards();
-      },
       openTerminalWith: (cmd) => {
         const entry = getOrOpenTool("terminal");
         let tries = 0;
@@ -10736,15 +10693,6 @@ async function init(): Promise<void> {
    *  the saved snapshot contributes GEOMETRY ONLY — the widths and heights
    *  the user dragged to last time. */
   function openLayoutRow(layout: LayoutRow, appRows: PanelAppRow[]): void {
-    // THE WEB (his order, 2026-10-05): a workspace renders only its
-    // web-native cells — Echo's own web open decides (openLayoutWeb); the
-    // ⋮ menu's Workspaces rows, the Echo tiles and the Workspaces page's
-    // Open all land here by name (__wbOpenLayoutByName).
-    if (IS_WEB_TARGET) {
-      if (echoCtl) void echoCtl.openLayoutWeb(layout);
-      else console.warn("[web-cut] workspace open before Echo mounted:", layout.name);
-      return;
-    }
     // A DESKTOP-target layout never panels — main opens it on the desktop
     // (native launches + external browsers), same as .dip and the agent.
     if (layout.target === "desktop") {
@@ -11199,10 +11147,10 @@ async function init(): Promise<void> {
     const v = view === "editor" ? "monaco" : view;
     if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound", "artifacts"].includes(v)) return;
     // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
-    // not reachable on the web from any door (help/web-cut.ts).
-    if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[web-cut] tool refused on the web:", v); return; }
+    // not reachable on the web from any door (help/surface.ts).
+    if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[surface] the Browser needs a streamed panel — not reachable here:", v); return; }
     // THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05): Artifacts opens
-    // full screen in place of everything showing (help/web-cut.ts).
+    // full screen in place of everything showing (help/surface.ts).
     if (IS_WEB_TARGET && webPanelOpensFullScreen(v)) { openEchoSurface(); echoCtl?.openWebFullPanel(v); return; }
     // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
     // slot beside the panel (his report, 2026-09-26: Files opened inside the

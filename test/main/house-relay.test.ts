@@ -10,7 +10,7 @@ import {
   HOUSE_VIEW_OF_APP, HOUSE_TOOL_VIEWS, HOUSE_APPS, houseViewOf, connectDesktopLine, isNotAttached, houseEmptyText,
   HOUSE_READ_ONLY_LINE, HOUSE_TOO_LARGE_LINE,
 } from "../../src/renderer/help/house-relay.js";
-import { webToolReachable } from "../../src/renderer/help/web-cut.js";
+import { webToolReachable } from "../../src/renderer/help/surface.js";
 
 describe("the house apps on the web (his order, 2026-10-05)", () => {
   it("six house apps, each a built-in work panel the web hosts itself", () => {

@@ -65,7 +65,7 @@ import { greeting } from "./dashboard.js";
 import { pickGreeting, firstNameOf } from "./landing-greeting.js";
 import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, type StoredOutputFormat } from "./output-format.js";
 import { artifactStandingLine } from "./artifact-rules.js";
-import { defaultTypeTab } from "./web-cut.js";
+import { defaultTypeTab } from "./surface.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -7111,7 +7111,7 @@ export function initCode(): void {
   }
   // A NET-NEW USER ON THE WEB STARTS ON WORK → NEW (his order, 2026-10-05):
   // the saved tab wins; with none saved the web lands on Work, the desktop
-  // on Code (web-cut.ts defaultTypeTab).
+  // on Code (surface.ts defaultTypeTab).
   void window.glyphh.getPreference?.(TYPE_TAB_PREF, "").then((v) => {
     typeTab = defaultTypeTab(onWebTarget(), v);
     applyTypeTab();

@@ -1,20 +1,97 @@
 /**
- * web-cut.ts — THE WEB IS THE GLYPHH AGENT, NOTHING FOR BUILDING (his order,
- * 2026-10-05: "cut down the web to remove everything for building to help me
- * see it better. Remove Echo and just have the Glyphh agent window be what's
- * loaded").
+ * surface.ts — ONE LIST FOR EVERYTHING; the web cut collapsed into CAPABILITY
+ * CHECKS (his order, 2026-10-06: "Cloud is first and every surface pulls from
+ * it. Way less complicated." — after "the web should just be identical to the
+ * app").
  *
- * The desktop is where building and installing happens; app.glyphh.ai is for
- * reaching that desktop and, without one, running a chat with your
- * connections. So on the web the command center never boots — no wall, no
- * dock, no dock tiles, no Echo — and the agent panel is the page, with the
- * left rail (sessions, search, filter, the user chip) beside it. Settings
- * drops the Build and Customize groups. Every rule here is PURE data so the
- * workbench, the settings nav and the tests read the same answer; nothing
- * here touches the desktop build (the callers gate on `onWeb()`).
+ * The desktop and the web run the SAME code on every surface — the Echo
+ * (wall, dock, search, folders), the workspaces, the ⋮ menu, the Build /
+ * Customize pages — reading the same server records and prefs. The only
+ * differences are CAPABILITIES a browser does not have, checked where the
+ * capability is used, never as "two worlds":
  *
- * Unit-tested in test/main/web-cut.test.ts.
+ *   nativeWindows   a native app's window (a desktop binary) — the browser
+ *                   cannot launch one, so a native app's tile and cell are
+ *                   the desktop's alone.
+ *   streamedPanels  a page streamed from a worker (the Browser panel, an
+ *                   embedded URL page in a grid cell) — not reachable from
+ *                   the web, whatever asks.
+ *
+ * surfaceCaps(web) answers both; surfaceHostsTile / surfaceHostsView /
+ * surfaceLayoutCells apply them. On the desktop every check passes.
+ *
+ * What stays below is NOT a world-split but one of his explicit orders about
+ * the web's page: + New closes everything, Close all opens a fresh session,
+ * Artifacts / Build / Customize open full screen, the rail header's order,
+ * the type tab a net-new user lands on, and the settings rows for a
+ * capability the browser lacks. Every rule here is PURE data so the
+ * workbench, the settings nav and the tests read the same answer.
+ *
+ * Unit-tested in test/main/surface.test.ts.
  */
+
+// ── THE CAPABILITY MODEL ───────────────────────────────────────────────────
+
+/** What a surface can host beyond the in-document panels. */
+export type SurfaceCaps = { nativeWindows: boolean; streamedPanels: boolean };
+
+/** The desktop hosts everything. */
+export const DESKTOP_CAPS: Readonly<SurfaceCaps> = Object.freeze({ nativeWindows: true, streamedPanels: true });
+/** A browser launches no native window and reaches no streamed panel. */
+export const BROWSER_CAPS: Readonly<SurfaceCaps> = Object.freeze({ nativeWindows: false, streamedPanels: false });
+
+/** The capabilities of this surface. */
+export function surfaceCaps(web: boolean): Readonly<SurfaceCaps> {
+  return web ? BROWSER_CAPS : DESKTOP_CAPS;
+}
+
+/** The one tool view that needs a streamed panel: the Browser. */
+export const STREAMED_VIEWS: ReadonlyArray<string> = Object.freeze(["preview"]);
+
+/** Does this surface host a tool view? Every in-document panel (Files,
+ *  Terminal, Editor, Diff, Plan, Agents, Artifacts, the house panels) — and
+ *  the Browser only where a streamed panel can be. */
+export function surfaceHostsView(view: string, caps: Readonly<SurfaceCaps>): boolean {
+  return !STREAMED_VIEWS.includes(view) || caps.streamedPanels;
+}
+
+/** A wall / dock tile as the workbench carries it (EchoTile's capability-
+ *  bearing fields). `archetype` is the app row's appArchetype: "native" is a
+ *  desktop binary; "web" a URL tab; "glyphh-app" a Glyphh app; "glyphh-nav"
+ *  a section. */
+export type SurfaceTileIn = {
+  kind: "app" | "layout" | "tool" | "agent" | "folder";
+  toolView?: string; navKey?: string; archetype?: string | null;
+  /** a CLI agent's tile (kind "tool" on the wall) */
+  cliAgent?: unknown;
+  /** a dock nav slot's app (a section tile traded onto the pages) */
+  navApp?: { archetype?: string; execPath?: string | null } | null;
+};
+
+/** THE ONE RULE FOR THE WALL AND THE DOCK: a surface hosts every layout,
+ *  every app (a URL tab opens in a browser tab on the web — code-workbench's
+ *  activateTile), every section, the Glyphh agent, every CLI agent, every
+ *  dock control (New tab opens a browser tab on the web) and every tool view
+ *  it can host — the Browser needs a streamed panel. It drops ONLY a native
+ *  app where there is no native window. The desktop keeps everything. The
+ *  filter paints; it never rewrites the member's saved dock order or folders. */
+export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>): boolean {
+  switch (t.kind) {
+    case "layout": return true;
+    case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
+    case "agent": return true;
+    case "tool":
+      if (t.cliAgent || t.navKey) return true;
+      return !!t.toolView && surfaceHostsView(t.toolView, caps);
+    case "app": {
+      const native = t.archetype === "native" || t.navApp?.archetype === "native" || !!t.navApp?.execPath;
+      return !native || caps.nativeWindows;
+    }
+    default: return false;
+  }
+}
+
+// ── WHAT THE HOME SHELL BOOTS INTO ─────────────────────────────────────────
 
 /** What the home shell can boot into. */
 export type BootSurface = "agent" | "wall" | "dock" | "echo";
@@ -22,37 +99,40 @@ export type BootSurface = "agent" | "wall" | "dock" | "echo";
 /** The desktop boots the whole command center. */
 export const DESKTOP_BOOT_SURFACES: ReadonlyArray<BootSurface> = Object.freeze(["wall", "dock", "echo", "agent"]);
 
-/** THE ONE RULE: on the web the only surface is the agent. A caller that
- *  asks for a surface this list lacks must not paint it. */
+/** THE WEB'S PAGE IS THE AGENT (his order, 2026-10-05): the wall and the dock
+ *  are BUILT on the web — the same wall, the same dock — but do not paint at
+ *  boot; the rail's Echo icon lifts them over the seated agent. */
 export function webBootSurfaces(web: boolean): ReadonlyArray<BootSurface> {
   return web ? Object.freeze(["agent"] as BootSurface[]) : DESKTOP_BOOT_SURFACES;
 }
 
-/** Does this surface boot here? */
+/** Does this surface paint at boot? */
 export function bootsSurface(web: boolean, surface: BootSurface): boolean {
   return webBootSurfaces(web).includes(surface);
 }
 
-/** The settings pages of the BUILD group that leave the web: Skills, Agents,
- *  Apps, Tasks and the Claude Code plugins. Connections stays — the web's
- *  chat runs with your connections. */
+// ── SETTINGS: THE GROUP PAGES ──────────────────────────────────────────────
+
+/** The settings pages of the BUILD group: Skills, Agents, Apps, Tasks and the
+ *  Claude Code plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
 /** The CUSTOMIZE group, whole: Tabs, Workspaces, Drips, Schedules. */
 export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["tabs", "layouts", "drips", "schedules"]);
 
-/** The settings nav group headers that have nothing left under them on web. */
+/** The settings nav group headers the web's Settings modal does not list —
+ *  the rail's Build / Customize pages carry those tabs on the web. */
 export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-group-build", "nav-group-customize"]);
 
-/** The pages that KEEP showing on the web (the test pins this list against
- *  the hidden ones so a page can never be on both sides). */
+/** The pages the web's Settings modal lists (the test pins this list against
+ *  the desktop-only ones so a page can never be on both sides). */
 export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
   "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "connections-cfg",
   "billing", "support", "about",
 ]);
 
-/** The MCP Server page is the DESKTOP's local MCP door — it has nothing to
- *  show on the web (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
+/** The MCP Server page is the DESKTOP's local MCP door — a capability the
+ *  browser lacks (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
 export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
 
 /** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
@@ -87,19 +167,19 @@ export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
 
-/** THE BUILD AND CUSTOMIZE PAGES ON THE WEB ARE THE DESKTOP'S (his order,
+/** THE BUILD AND CUSTOMIZE PAGES ARE THE SAME ON BOTH SURFACES (his order,
  *  2026-10-05: "why is the web build tab different than the desktop one?").
  *  A group page lists its tabs ONE way on both hosts: the group's nav rows
- *  that are not `.hidden` (navigation.ts groupTabs) — Skills, Agents,
- *  Connections, Plugins for Build; Tabs, Workspaces, Drips, Schedules for
- *  Customize. The web cut therefore never marks those rows `.hidden`: it
- *  marks them WEB_CUT_ROW_CLASS (CSS-hidden in the Settings nav only), and
- *  their panels stay mounted for the full-screen page to adopt. */
+ *  that are not `.hidden` (navigation.ts groupTabs) — Skills, Agents, Apps,
+ *  Tasks, Connections, Plugins for Build; Tabs, Workspaces, Drips, Schedules
+ *  for Customize. The web's Settings modal therefore never marks those rows
+ *  `.hidden`: it marks them WEB_CUT_ROW_CLASS (CSS-hidden in the Settings
+ *  nav only), and their panels stay mounted for the full-screen page to adopt. */
 export const WEB_CUT_ROW_CLASS = "web-cut-row";
-/** The settings rows the full-screen group pages own on the web. */
+/** The settings rows the group pages own: every Build and Customize tab. */
 export const WEB_GROUP_ROWS: ReadonlyArray<string> = Object.freeze([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
-/** Is this settings row a group page's on the web — its panel stays MOUNTED
- *  (not CSS-hidden) and its nav row wears WEB_CUT_ROW_CLASS, never `.hidden`? */
+/** Is this settings row a group page's — its panel stays MOUNTED (not
+ *  CSS-hidden) and its nav row wears WEB_CUT_ROW_CLASS, never `.hidden`? */
 export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
@@ -144,93 +224,46 @@ export function webRailWordmark(web: boolean): boolean {
   return web;
 }
 
-/** THE WEB'S ECHO IS THE DESKTOP'S ECHO WITH A DIFFERENT FILTER (his order,
- *  2026-10-05: "echo should be the mirror of the app … just a different
- *  filter"): the same wall, the same dock, the same search — holding only
- *  what the cloud can host (webWallKeeps). The wall and the dock still never
- *  BOOT on the web (bootsSurface stays false; the web lands on Work → New);
- *  the rail's Echo icon lifts them. The dock is OFF by default here as on
- *  the desktop (Appearance → Show the dock turns it on). */
-export type WebEchoSurface = { search: boolean; dock: boolean; tiles: "cloud" };
-export function webEchoSurface(): Readonly<WebEchoSurface> {
-  return Object.freeze({ search: true, dock: true, tiles: "cloud" as const });
-}
-
-/** What the web's wall (and dock) keeps of the desktop's tiles — the cloud's
- *  half of two worlds: a cloud app instance, a panel the web hosts itself
- *  (WEB_TOOL_VIEWS, and the house panels it fills over the relay), a cloud
- *  workspace (the web's list is already cloud-only), the dock's own
- *  controls, and the CLI agents (the CLIs bridge the two worlds, his rule).
- *  Gone: URL tabs and native apps, desktop-only Glyphh apps, the section
- *  tiles (the rail has those pages), New tab. The filter paints; it never
- *  rewrites the member's saved dock order or folders. */
-export type WebWallTileIn = {
-  kind: "app" | "layout" | "tool" | "agent" | "folder";
-  toolView?: string; navKey?: string; cloud?: boolean; archetype?: string | null;
-  /** a CLI agent's tile (kind "tool" on the desktop's wall) — desktop only */
-  cliAgent?: unknown;
-};
-export const WEB_HOUSE_VIEWS: ReadonlyArray<string> = Object.freeze(["gdesign", "gpoint", "gimage", "gvideo", "gsound", "gdrive"]);
-export const WEB_DOCK_NAV: ReadonlyArray<string> = Object.freeze(["glyphh", "settings", "cc", "closeall"]);
-export function webWallKeeps(t: WebWallTileIn): boolean {
-  switch (t.kind) {
-    case "layout": return true;
-    case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
-    case "agent": return false;
-    case "tool":
-      if (t.cliAgent) return true;   // the CLIs BRIDGE (his rule, 2026-10-05): a CLI tile stays on the web's wall and dock
-      if (t.navKey) return WEB_DOCK_NAV.includes(t.navKey);
-      return !!t.toolView && (WEB_TOOL_VIEWS.includes(t.toolView) || WEB_HOUSE_VIEWS.includes(t.toolView));
-    case "app":
-      return t.cloud === true;
-    default: return false;
-  }
-}
-/** Does the Echo button lift the web's Echo here? Web only — the desktop's
- *  button opens the command center as ever. */
-export function webEchoOpens(web: boolean): boolean {
-  return web;
-}
-
-/** The rail's doors into the command center — hidden on web (ids and
- *  selectors, applied by web-surface.ts). Build and Customize left this list
- *  on 2026-10-05: they are the rail's full-screen pages now. */
+/** The rail's More toggle — hidden on the web (ids and selectors, applied by
+ *  web-surface.ts). Build and Customize left this list on 2026-10-05: they
+ *  are the rail's full-screen pages now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-more-toggle",
 ]);
 
-/** Settings rows that govern surfaces the web no longer has: the streamed
- *  web panels (General). The dock's rows (Appearance → Show the dock, auto-
- *  hide, reveal) are back on the web (his order, 2026-10-05): the web's
- *  Echo carries the dock, off by default like the desktop's. */
+/** Settings rows for a CAPABILITY the browser lacks: the streamed web
+ *  panels (General). The dock's rows (Appearance → Show the dock, auto-hide,
+ *  reveal) show on the web: the web's Echo carries the dock. */
 export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
   "#streamed-panels-row",
 ]);
 
-/** The dock's nav keys that act on the web: a new agent session, Settings,
- *  the command center (the Echo itself) and Close all (a fresh session, per
- *  webCloseAllOpensNew). New tab is a URL tab's door and never acts here. */
-export function webDockDoorAllowed(key: string): boolean {
-  return WEB_DOCK_NAV.includes(key);
+// ── THE TOOL VIEWS ─────────────────────────────────────────────────────────
+
+/** The workbench's in-document tool views in the ⋮ menu's order; the
+ *  Browser among them needs a streamed panel. */
+export const DESKTOP_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "preview", "diff", "plan", "agents"]);
+
+/** The tool views this surface hosts, in the one order. */
+export function toolViewsHosted(caps: Readonly<SurfaceCaps>): ReadonlyArray<string> {
+  return Object.freeze(DESKTOP_TOOL_VIEWS.filter((v) => surfaceHostsView(v, caps)));
 }
 
-/** The workbench tool views the agent's ⋮ menu offers on the web: the
- *  in-document panels that read the session's own locus (the attached
- *  desktop over the relay, or a cloud session's pod). The Browser is a
- *  streamed panel — a code path the web no longer reaches. */
-export const WEB_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "diff", "plan", "agents"]);
+/** The tool views the browser hosts: the desktop's list through BROWSER_CAPS
+ *  (no streamed Browser). */
+export const WEB_TOOL_VIEWS: ReadonlyArray<string> = toolViewsHosted(BROWSER_CAPS);
 
-/** Is this tool view reachable from the web's agent menu? */
+/** Is this tool view hosted on the web? */
 export function webToolAllowed(view: string): boolean {
-  return WEB_TOOL_VIEWS.includes(view);
+  return surfaceHostsView(view, BROWSER_CAPS);
 }
 
 /** The views the web's workbench door (__wbOpenTool) refuses outright: the
- *  Browser is a page streamed from a worker — a code path the web no longer
- *  reaches, whatever asks (the rail's More, a saved wall, an agent tool). */
-export const WEB_UNREACHABLE_VIEWS: ReadonlyArray<string> = Object.freeze(["preview"]);
+ *  Browser is a page streamed from a worker — a capability the browser lacks,
+ *  whatever asks (the rail's More, a saved wall, an agent tool). */
+export const WEB_UNREACHABLE_VIEWS: ReadonlyArray<string> = STREAMED_VIEWS;
 export function webToolReachable(view: string): boolean {
-  return !WEB_UNREACHABLE_VIEWS.includes(view);
+  return surfaceHostsView(view, BROWSER_CAPS);
 }
 
 /** THE PANELS MOVE ON THE WEB — THE AGENT TOO (his review of the web cut,
@@ -258,61 +291,6 @@ export function webNewSessionInPlace(web: boolean, agentSeated: boolean): boolea
   return web && agentSeated;
 }
 
-/** THE WEB REMEMBERS ITS PANELS (his order, 2026-10-05: "on the web when the
- *  user opens work panels and apps the ui should remember that state, even
- *  after refresh and login / logout"). The desktop saves its open cards to
- *  the server-side `echoWallState` preference (per user, so a login brings
- *  it back) and replays them at boot; the web cut threw that state away at
- *  boot (restoreWallOnce(…, null)) and showed the agent alone. Now the web
- *  replays what it can HOST — the in-document tool panels (WEB_TOOL_VIEWS)
- *  in their saved order, a card driven to a side (`solo`) back in its own
- *  column, the agent card back in its seat — and names
- *  what it cannot (a layout, an app card, a section, a CLI agent, a
- *  streamed panel) instead of crashing or faking it. The desktop never
- *  takes this path (its branch already restores). */
-export type WebWallCard = { kind: string; toolView?: string; slug?: string; section?: string; agent?: string; name?: string; solo?: boolean };
-export type WebWallState = { layout?: string | null; cards?: WebWallCard[] | null; agentAt?: number | null };
-
-/** Can the web host this saved card? Only a tool panel the agent's ⋮ menu
- *  offers on the web (files, terminal, monaco, diff, plan, agents). */
-export function webRestorableCard(card: WebWallCard | null | undefined): boolean {
-  return !!card && card.kind === "tool" && typeof card.toolView === "string" && webToolAllowed(card.toolView);
-}
-
-/** Why a saved card stays closed on the web — one line naming it, for the
- *  console.warn that replaces a silent drop. */
-export function webCardSkipReason(card: WebWallCard | null | undefined): string {
-  if (!card || typeof card !== "object") return "a malformed card";
-  if (card.kind === "tool") return `the ${card.toolView || "unnamed"} panel (not hosted on the web)`;
-  if (card.kind === "app") return `the app card "${card.name || card.slug || "unnamed"}" (apps open on the desktop)`;
-  if (card.kind === "section") return `the section "${card.section || "unnamed"}" (desktop only)`;
-  if (card.kind === "agent") return `the CLI agent "${card.name || card.agent || "unnamed"}" (desktop only)`;
-  return `a "${card.kind}" card (unknown kind)`;
-}
-
-/** The web's replay of a saved wall: the tool panels to open, in order; the
- *  cards it skips, named; and the agent card's seat among the opened panels
- *  (its index, clamped — a seat saved beside panels that no longer open
- *  still lands). A layout opens nothing: the web boots no wall. */
-export function webRestorePlan(saved: WebWallState | null | undefined): { open: WebWallCard[]; skipped: string[]; agentAt: number } {
-  if (!saved || typeof saved !== "object") return { open: [], skipped: [], agentAt: 0 };
-  if (saved.layout) return { open: [], skipped: [`the layout "${saved.layout}" (the web boots no wall)`], agentAt: 0 };
-  const open: WebWallCard[] = [];
-  const skipped: string[] = [];
-  for (const c of Array.isArray(saved.cards) ? saved.cards : []) {
-    if (webRestorableCard(c)) open.push(c); else skipped.push(webCardSkipReason(c));
-  }
-  const at = typeof saved.agentAt === "number" && Number.isFinite(saved.agentAt) ? Math.trunc(saved.agentAt) : 0;
-  return { open, skipped, agentAt: Math.max(0, Math.min(at, open.length)) };
-}
-
-/** Does this surface keep the wall's memory the web way — the agent's seat
- *  written beside the cards, and a drag (reorder / drive to a side) saved
- *  like an open or a close? The desktop keeps its own saves untouched. */
-export function webWallMemory(web: boolean): boolean {
-  return web;
-}
-
 /** CLOSE ALL PANELS ON THE WEB OPENS A NEW SESSION (his order, 2026-10-05:
  *  "close all panels in web -> closes all panels -> opens new either work
  *  or code depending on what was opened last"). Every card closes; on the
@@ -322,33 +300,31 @@ export function webCloseAllOpensNew(web: boolean): boolean {
   return web;
 }
 
-// ── WORKSPACES ON THE WEB (his order, 2026-10-05: "the web can still have
-// these they just render only apps and panels that are truly web native") ──
+// ── WORKSPACE CELLS: THE SAME CAPABILITY RULE PER CELL ─────────────────────
 
 /** A workspace cell as the layout rows carry it: `tool:<view>` or an app's id / slug. */
-export type WebLayoutCellIn = { panelId: string };
-/** An installed-app row as the web's ⋮ menu reads it (agent-menu-ui.ts
- *  installedRowsOf): kind "glyphh" = a Glyphh app bundle; `cloud` = a
- *  personal instance / a row the attached desktop did not report. */
-export type WebLayoutApp = { slug: string; id?: string; name?: string; kind?: string; cloud?: boolean };
-/** `agent` = the layout's Glyphh agent cell (tool:coding): on the web the
- *  agent is always seated, so the cell is kept and opens nothing new. */
-export type WebLayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" };
+export type LayoutCellIn = { panelId: string };
+/** An installed-app row as the ⋮ menu reads it (agent-menu-ui.ts
+ *  installedRowsOf) or the wall's rows carry it: kind "glyphh" = a Glyphh app,
+ *  "web" = a URL tab, "native" = a desktop binary. */
+export type LayoutApp = { slug: string; id?: string; name?: string; kind?: string };
+/** `agent` = the layout's Glyphh agent cell (tool:coding), kept as is. */
+export type LayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" } | { kind: "cli"; id: string };
 /** The layout's own Glyphh agent cell. */
 export const LAYOUT_AGENT_CELL = "tool:coding";
-export type WebLayoutPlan = { keep: WebLayoutKeep[]; skipped: string[] };
+export type LayoutPlan = { keep: LayoutKeep[]; skipped: string[] };
 
-/** THE WEB-NATIVE RULE: a tool cell stays when its view is one the web's
- *  ⋮ menu hosts in-document (WEB_TOOL_VIEWS — Artifacts is a full-screen
- *  page on the web, never a grid panel); an app cell stays when its row is
- *  a Glyphh app installed in the CLOUD. Native apps, URL tabs, desktop-only
- *  Glyphh apps, the streamed Browser, a CLI agent's cell and unknown ids
- *  are dropped, each named on one line. The Glyphh agent's own cell is
- *  kept as is — the web's agent is already seated. */
-export function webLayoutCells(cells: ReadonlyArray<WebLayoutCellIn>, apps: ReadonlyArray<WebLayoutApp>): WebLayoutPlan {
-  const keep: WebLayoutKeep[] = [];
+/** THE CAPABILITY RULE PER CELL, on both surfaces: a tool cell opens when
+ *  the surface hosts its view (the Browser needs a streamed panel); a Glyphh
+ *  app cell opens; a URL tab cell is an embedded page — a streamed panel; a
+ *  native app cell needs a native window; a CLI agent cell opens on the
+ *  session's folder; the Glyphh agent's own cell is kept as is. An id no row
+ *  answers to is named. With desktop caps nothing is skipped but an unknown
+ *  id. Each skip is one line. */
+export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: ReadonlyArray<LayoutApp>, caps: Readonly<SurfaceCaps>): LayoutPlan {
+  const keep: LayoutKeep[] = [];
   const skipped: string[] = [];
-  const rowOf = (id: string): WebLayoutApp | undefined => {
+  const rowOf = (id: string): LayoutApp | undefined => {
     const k = id.toLowerCase();
     return apps.find((a) => (a.slug || "").toLowerCase() === k || (a.id || "").toLowerCase() === k);
   };
@@ -356,31 +332,39 @@ export function webLayoutCells(cells: ReadonlyArray<WebLayoutCellIn>, apps: Read
     const id = String(c?.panelId ?? "").trim();
     if (!id) { skipped.push("an empty cell"); continue; }
     if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
-    if (id.toLowerCase().startsWith("agent:")) { skipped.push(`the CLI agent "${id.slice(6)}" (desktop only)`); continue; }
+    if (id.toLowerCase().startsWith("agent:")) { keep.push({ kind: "cli", id: id.slice(6) }); continue; }
     if (id.startsWith("tool:")) {
-      // a saved cell may name a view by its older alias (the desktop's open does the same)
+      // a saved cell may name a view by its older alias (the open does the same)
       const raw = id.slice(5);
       const view = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
-      if (webToolAllowed(view)) keep.push({ kind: "tool", view });
-      else skipped.push(`the ${view || "unnamed"} panel (not hosted on the web)`);
+      if (!view) { skipped.push("an unnamed panel"); continue; }
+      if (surfaceHostsView(view, caps)) keep.push({ kind: "tool", view });
+      else skipped.push(`the ${view} panel (needs a streamed panel)`);
       continue;
     }
     const row = rowOf(id);
     const name = row?.name || row?.slug || id;
     if (!row) { skipped.push(`the app "${id}" (not in your library)`); continue; }
-    if (row.kind === "native") { skipped.push(`the app "${name}" (desktop only)`); continue; }
-    if (row.kind !== "glyphh") { skipped.push(`the tab "${name}" (opens on the desktop)`); continue; }
-    if (!row.cloud) { skipped.push(`the app "${name}" (installed on the desktop)`); continue; }
+    if (row.kind === "native") {
+      if (caps.nativeWindows) keep.push({ kind: "app", slug: row.slug || id, name });
+      else skipped.push(`the app "${name}" (needs a native window)`);
+      continue;
+    }
+    if (row.kind === "web") {
+      if (caps.streamedPanels) keep.push({ kind: "app", slug: row.slug || id, name });
+      else skipped.push(`the tab "${name}" (an embedded page needs a streamed panel)`);
+      continue;
+    }
     keep.push({ kind: "app", slug: row.slug || id, name });
   }
   return { keep, skipped };
 }
 
-/** The toasts after a workspace opens on the web: nothing kept → one error
- *  line; something skipped → one line listing what. Both null = quiet. */
-export function webWorkspaceOpenLines(name: string, plan: WebLayoutPlan): { error: string | null; info: string | null } {
-  const error = plan.keep.length ? null : `Nothing in "${name}" runs on the web`;
-  const info = plan.skipped.length && plan.keep.length ? `Skipped on the web: ${plan.skipped.join(", ")}` : null;
+/** The toasts after a workspace opens: nothing kept → one error line;
+ *  something skipped → one line listing what. Both null = quiet. */
+export function workspaceOpenLines(name: string, plan: LayoutPlan): { error: string | null; info: string | null } {
+  const error = plan.keep.length ? null : `Nothing in "${name}" opens here`;
+  const info = plan.skipped.length && plan.keep.length ? `Skipped here: ${plan.skipped.join(", ")}` : null;
   return { error, info };
 }
 

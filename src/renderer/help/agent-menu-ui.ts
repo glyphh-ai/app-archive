@@ -1,32 +1,29 @@
 /**
- * agent-menu-ui.ts — paints agent-menu.ts's model into the agent window's
+ * agent-menu-ui.ts — THE AGENT WINDOW'S ONE ⋮ MENU, painted: the composer's
  * top-right ⋮ (#code-tools-menu), on the web AND the desktop (his order,
- * 2026-10-05: ONE menu on the agent's top row, never an empty dropdown).
+ * 2026-10-05: one menu, never an empty dropdown; 2026-10-06: the same menu
+ * on both surfaces — help/agent-menu.ts is the model, this file paints it).
  *
- * WEB: the Apps rows come off the attached desktop (web-contract.js
- * desktopAppsList → `panelApps.list` over the relay). A HOUSE row (Design,
- * Slides, Images, Video, Audio, Drive — agent-menu.ts appRowOpen) opens the
- * web's OWN panel through __wbOpenTool, filled over the relay (his order,
- * 2026-10-05); any other Glyphh app opens THERE (desktopPanelOpen →
- * `panels.open {app}`) and the web only toasts "Opened on <machine>". The CLI rows open the worker's terminal through the
- * workbench's own door (__wbOpenAgentCli — a cloud session's CLI runs on its
- * pod); a desktop CLI session under them resumes on the desktop through the
- * rail's own open (help/code.ts sessOpen, handed in).
- * WEB: the Workspaces rows (last, a fold) open the workspace THE WEB WAY
- * through the workbench's own door (__wbOpenLayoutByName → web-cut.ts
- * webLayoutCells: the in-document tool panels and the cloud Glyphh apps open,
- * the rest is named in a toast).
- * BOTH: the Panels rows open the workbench views for the session's type; the
- * Session rows are the old head kebab's (Rename / Pin / New agent panel /
- * Delete), handed in from code.ts, shown only while a session is open.
+ * THE READS (readSurface): attach.status (is a desktop attached), the
+ * attached desktop's app rows (`panelApps.list` over the relay), the member's
+ * installed apps (panelAppsList — the cloud instances, the one list), the CLI
+ * agents, the desktop's CLI sessions and the member's workspaces
+ * (layoutsList). Each door is probed with hostHas: a surface without one
+ * reads an empty.
  *
- * THE ORDER IS THE DESKTOP'S (agent-menu.ts MENU_SECTION_ORDER): Panels,
- * Session first on both surfaces; the web's Apps and Agents / CLIs after
- * them, as EXPANDABLE HEADS (a chevron and a count), COLLAPSED on every open;
- * a CLI's desktop sessions nest under its row behind its own chevron.
- * Keyboard: Enter / Space toggles a head, ← collapses, → expands, ↑ ↓ move.
+ * THE DOORS: a house row opens its own work panel (__wbOpenTool); a cloud
+ * instance opens as a panel (__wbOpenApp); a row living on an attached
+ * desktop, asked from the web, opens THERE (desktopPanelOpen → `panels.open
+ * {app}`) and the web toasts "Opened on <machine>". A CLI row opens on the
+ * session's folder through the workbench's door (__wbOpenAgentCli — the
+ * attached desktop over remote control, or the cloud worker's pty); a
+ * desktop CLI session under it resumes on the desktop (the rail's own open).
+ * A workspace row opens through __wbOpenLayoutByName (surface.ts filters the
+ * cells the surface cannot host).
  *
- * Every open repaints from the last answer at once and refreshes behind it.
+ * THE FOLDS: Apps, Agents / CLIs and Workspaces are expandable heads,
+ * collapsed on every open; a CLI's desktop sessions nest under its row
+ * behind its own chevron.
  */
 import { hostHas, onWeb } from "./web-surface.js";
 import { toolViewIcon } from "./layouts.js";
@@ -84,16 +81,15 @@ const IC = {
 /** The fold chevron (▸ collapsed, rotated to ▾ by the CSS when expanded). */
 const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>`;
 
-/** The web's last relay answer (machines, apps, CLIs, sessions) — painted at once on the next open. */
-type WebRead = { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
-let lastWeb: WebRead | null = null;
+/** The last read (machines, apps, CLIs, sessions, workspaces) — painted at once on the next open. */
+type SurfaceRead = { machines: MenuMachine[]; apps: MenuAppRow[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
+let lastRead: SurfaceRead | null = null;
 let clisCache: MenuCliRow[] = [];
 
-/** The web's three relay reads + the CLI list, in parallel; each failure is an empty. */
-/** THE INSTALLED APPS (his order, 2026-10-05): the web's panelAppsList —
- *  the server's tab rows, every cloud instance, the attached desktop's rows
- *  behind — mapped to menu rows. A row the desktop did not report is a
- *  CLOUD one and opens as a panel here. */
+/** THE INSTALLED APPS (his order, 2026-10-05): panelAppsList — the server's
+ *  tab rows, every cloud instance, an attached desktop's rows behind —
+ *  mapped to menu rows. A row the desktop did not report is a CLOUD one and
+ *  opens as a panel on either surface. */
 interface InstalledAppLike { slug?: string; id?: string; name?: string; kind?: string; appArchetype?: string; iconDataUrl?: string | null; icon?: string | null; launchConfig?: { tool?: string } | null; config?: { tool?: string } | null; instanceKey?: string; machineId?: string; machineName?: string }
 export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSlugs: ReadonlySet<string>, machine: MenuMachine | null): MenuAppRow[] {
   const out: MenuAppRow[] = [];
@@ -115,7 +111,8 @@ export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSl
   return out;
 }
 
-async function readWeb(): Promise<WebRead> {
+/** The reads, in parallel, on both surfaces; a door the host lacks reads an empty. */
+async function readSurface(): Promise<SurfaceRead> {
   const a = api();
   const [status, apps, installed, clis, sessions, layouts] = await Promise.all([
     hostHas("attachStatus") ? a.attachStatus!().catch(() => null) : Promise.resolve(null),
@@ -134,17 +131,7 @@ async function readWeb(): Promise<WebRead> {
   return { machines, apps: deskRows, installed: installedRowsOf(Array.isArray(installed) ? installed : [], deskSlugs, machines[0] ?? null), sessions, workspaces };
 }
 
-/** THE WEB'S INSTALLED APPS, as the ⋮ menu reads them — for the workbench's
- *  workspace open (web-cut.ts webLayoutCells needs each row's kind and
- *  whether it lives in the cloud). A fresh read; the menu's cache follows. */
-export async function webInstalledApps(): Promise<MenuAppRow[]> {
-  if (!onWeb()) return [];
-  const read = await readWeb();
-  lastWeb = read;
-  return read.installed;
-}
-
-function modelFor(doors: AgentMenuDoors, web: WebRead | null): AgentMenu {
+function modelFor(doors: AgentMenuDoors, web: SurfaceRead | null): AgentMenu {
   const src = (shell() as unknown as { __glyphhActiveSource?: () => { kind?: unknown } | null }).__glyphhActiveSource?.() ?? null;
   return agentMenuModel({
     surface: onWeb() ? "web" : "desktop",
@@ -209,6 +196,24 @@ function appIcon(a: MenuAppRow): string {
   return IC.app;
 }
 
+/** The one line under a section's rows, with its Settings link when it has one. */
+function noteLine(text: string, link: { label: string; settingsSub: string } | null, close: () => void): HTMLDivElement {
+  const note = document.createElement("div");
+  note.className = "code-menu-note disabled";
+  note.textContent = text;
+  if (link) {
+    note.append(" · ");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "code-menu-link";
+    b.textContent = link.label;
+    const sub = link.settingsSub;
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); close(); shell().__glyphhOpenSettings?.(sub); });
+    note.appendChild(b);
+  }
+  return note;
+}
+
 /** Paint the model: one block per section, separators between. The fold
  *  state is the menu's own for this open; a toggle repaints in place. */
 function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions: RailSessionLike[], folds: FoldState): void {
@@ -235,40 +240,29 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
       for (const a of s.rows) {
         const b = under(row(appIcon(a), a.name, "wam-app wam-sub"), open);
         const where = appRowOpen(a, m.surface);
-        b.title = where.open === "web-panel"
-          ? `Open ${a.name} here — its files come from ${a.machineName || "your desktop"}`
-          : where.open === "cloud-panel" ? `Open ${a.name} — installed in the cloud`
+        b.title = where.open === "house-panel"
+          ? `Open ${a.name}`
+          : where.open === "panel" ? `Open ${a.name} — installed in the cloud`
           : `Open ${a.name} on ${a.machineName || "your desktop"}`;
         b.addEventListener("click", () => {
           close();
-          if (where.open === "web-panel") { shell().__wbOpenTool?.(where.view); return; }
-          if (where.open === "cloud-panel") { (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true }); return; }
+          if (where.open === "house-panel") { shell().__wbOpenTool?.(where.view); return; }
+          if (where.open === "panel") { (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true }); return; }
           void openOnDesktop(a);
         });
         menu.appendChild(b);
       }
-      if (s.note) {
-        const note = document.createElement("div");
-        note.className = "code-menu-note" + (s.enabled ? "" : " disabled");
-        note.textContent = s.note;
-        if (s.link) {
-          note.append(" · ");
-          const link = document.createElement("button");
-          link.type = "button";
-          link.className = "code-menu-link";
-          link.textContent = s.link.label;
-          const sub = s.link.settingsSub;
-          link.addEventListener("click", (ev) => { ev.stopPropagation(); close(); shell().__glyphhOpenSettings?.(sub); });
-          note.appendChild(link);
-        }
-        menu.appendChild(note);
-      }
+      if (s.note) menu.appendChild(under(noteLine(s.note, s.link, close), open));
     } else if (s.kind === "clis") {
       const open = fold(s.kind, s.label, s.count);
       for (const c of s.rows) {
-        const b = under(row(IC.cli, c.name, "wam-cli wam-sub"), open);
-        b.title = `Open ${c.name} in a cloud terminal`;
+        const b = under(row(IC.cli, c.name, "wam-cli wam-sub"), open) as HTMLButtonElement;
+        // A CLI OPENS ON THE SESSION'S FOLDER (his order, 2026-10-06): a
+        // desktop path with no desktop attached → the row says so, disabled.
+        b.title = s.enabled ? `Open ${c.name} on this session's folder` : s.note || "";
+        b.disabled = !s.enabled;
         b.addEventListener("click", () => {
+          if (!s.enabled) return;
           close();
           const door = shell().__wbOpenAgentCli;
           if (!door) { console.warn("[agent-menu] no CLI door — the workbench has not booted"); return; }
@@ -301,15 +295,16 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
           menu.appendChild(sb);
         }
       }
+      if (s.note) menu.appendChild(under(noteLine(s.note, s.link, close), open));
     } else if (s.kind === "workspaces") {
       // THE WORKSPACES FOLD (his order, 2026-10-05): one row per workspace;
-      // a click closes the menu and opens it the web way through the
-      // workbench's door (webLayoutCells decides what renders).
+      // a click closes the menu and opens it through the workbench's door
+      // (surface.ts surfaceLayoutCells filters what this surface cannot host).
       const open = fold(s.kind, s.label, s.count);
       for (const ws of s.rows) {
         const b = under(row(IC.layout, ws.name, "wam-workspace wam-sub"), open);
         b.dataset.workspace = ws.name;
-        b.title = `Open ${ws.name} — its web-native panels and apps`;
+        b.title = `Open ${ws.name}`;
         b.addEventListener("click", () => {
           close();
           const door = shell().__wbOpenLayoutByName;
@@ -350,17 +345,17 @@ async function openOnDesktop(a: MenuAppRow): Promise<void> {
 
 let seq = 0;
 /** Wire the ⋮: a click toggles the menu, painted from what is known at
- *  once; on the web the desktop's answer repaints it as soon as it lands. */
+ *  once; the fresh read repaints it as soon as it lands. */
 export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: AgentMenuDoors): void {
   const web = onWeb();
-  menu.classList.toggle("web-agent-menu", web);
+  menu.classList.add("agent-menu-folds");   // the sizing of a menu with folds (styles.css)
   if (web) {
     // The workbench's app doors (ctl.openApp / __wbOpenApp — an agent's
     // panels.open tool, a .dip, appLaunch) land here on the web: the app
     // opens on the attached desktop, by slug, on the first machine that has it.
     (window as unknown as { __glyphhOpenAppOnDesktop?: (a: { slug: string; name: string }) => void }).__glyphhOpenAppOnDesktop = (a) => {
-      const known = lastWeb?.apps.find((r) => r.slug.toLowerCase() === a.slug.toLowerCase());
-      const machine = lastWeb?.machines[0];
+      const known = lastRead?.apps.find((r) => r.slug.toLowerCase() === a.slug.toLowerCase());
+      const machine = lastRead?.machines[0];
       void openOnDesktop(known ?? { slug: a.slug, name: a.name || a.slug, machineId: machine?.id ?? "", machineName: machine?.name ?? "" });
     };
   }
@@ -368,9 +363,9 @@ export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: A
   let folds: FoldState = menuFoldState();
   const refresh = async (): Promise<void> => {
     const mine = ++seq;
-    const read = await readWeb();
+    const read = await readSurface();
     if (mine !== seq) return;   // a later open repainted already
-    lastWeb = read;
+    lastRead = read;
     if (!menu.classList.contains("hidden")) paint(menu, modelFor(doors, read), doors, read.sessions, folds);
   };
   moreBtn.addEventListener("click", (ev) => {
@@ -379,8 +374,8 @@ export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: A
     menu.classList.toggle("hidden");
     if (!opening) return;
     folds = menuFoldState();
-    paint(menu, modelFor(doors, lastWeb), doors, lastWeb?.sessions ?? [], folds);
-    if (web) void refresh();
+    paint(menu, modelFor(doors, lastRead), doors, lastRead?.sessions ?? [], folds);
+    void refresh();
   });
   // KEYBOARD: ↑ ↓ move between the visible rows; on a fold head → expands,
   // ← collapses (Enter / Space are the button's own click); Esc closes.
@@ -400,7 +395,7 @@ export function mountAgentMenu(menu: HTMLElement, moreBtn: HTMLElement, doors: A
     if (key && (ev.key === "ArrowRight" || ev.key === "ArrowLeft")) {
       ev.preventDefault();
       const open = isExpanded(folds, key);
-      if ((ev.key === "ArrowRight") !== open) { toggleFold(folds, key); paint(menu, modelFor(doors, lastWeb), doors, lastWeb?.sessions ?? [], folds); menu.querySelector<HTMLElement>(`[data-fold="${key}"]`)?.focus(); }
+      if ((ev.key === "ArrowRight") !== open) { toggleFold(folds, key); paint(menu, modelFor(doors, lastRead), doors, lastRead?.sessions ?? [], folds); menu.querySelector<HTMLElement>(`[data-fold="${key}"]`)?.focus(); }
       return;
     }
     if (ev.key === "Escape") { menu.classList.add("hidden"); moreBtn.focus(); }

@@ -13,7 +13,7 @@
  * never left to silently no-op (his order, 2026-10-04).
  */
 
-import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_CUT_ROW_CLASS, WEB_DESKTOP_ONLY_EXTRA, WEB_GROUP_ROWS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, webGroupPanelKept } from "./web-cut.js";
+import { WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_CUT_ROW_CLASS, WEB_DESKTOP_ONLY_EXTRA, WEB_GROUP_ROWS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, webGroupPanelKept } from "./surface.js";
 
 interface GlyphhWebProbe { has?: (name: string) => boolean }
 
@@ -64,11 +64,14 @@ export async function copyText(text: string): Promise<boolean> {
  *  BACK on 2026-10-05 with the web cut below: the pages still work from the
  *  server, but building is the desktop's job and the web no longer shows
  *  them. The library doors in web-contract.js stay for the agent's tools. */
-/** THE WEB CUT (his order, 2026-10-05): "everything for building" leaves the
- *  web too — the whole Build group (Skills, Agents, Apps, Tasks, plugins) and
- *  the whole Customize group (Tabs, Workspaces, Drips, Schedules); the lists
- *  are web-cut.ts's. A deep link to any of them lands on General
- *  (navigation.ts settingsSubAlias). */
+/** The Settings MODAL on the web lists neither the Build group (Skills,
+ *  Agents, Apps, Tasks, plugins) nor the Customize group (Tabs, Workspaces,
+ *  Drips, Schedules) — the rail's full-screen Build / Customize pages carry
+ *  those tabs, the same rows as the desktop's (surface.ts WEB_GROUP_ROWS,
+ *  panels kept mounted). The rest of this set are CAPABILITY pages the
+ *  browser lacks: the local MCP server, remote control, the plugins' folder.
+ *  A deep link to any of them lands on General (navigation.ts
+ *  settingsSubAlias). */
 export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, ...WEB_DESKTOP_ONLY_EXTRA]);
 
 /** Hide every desktop-only settings row + panel on web (idempotent; the

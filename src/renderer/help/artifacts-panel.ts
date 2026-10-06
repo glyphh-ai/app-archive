@@ -12,7 +12,7 @@
  *
  * One body for both surfaces: on the desktop it is an ordinary work panel
  * (code-workbench.ts mounts it into a card; the viewer swaps in with a back
- * arrow); on the web it fills the full-screen host (web-cut.ts
+ * arrow); on the web it fills the full-screen host (surface.ts
  * webPanelOpensFullScreen) whose own header carries "‹ Artifacts". The rules
  * are artifact-rules.ts's; the transport is `window.glyphh.artifacts*` — the
  * desktop's IPC into main (artifacts-ipc.ts) or the web's SDK shims

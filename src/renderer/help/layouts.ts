@@ -4,7 +4,7 @@
 
 import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./shared.js";
 import { keepIfHost, onWeb } from "./web-surface.js";
-import { workspaceOpenClosesHosts } from "./web-cut.js";
+import { workspaceOpenClosesHosts } from "./surface.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
@@ -46,7 +46,7 @@ async function remapLayoutTileKey(from: string, to: string): Promise<void> {
 }
 
 /** The Workspaces page's hosts, closed before a workspace opens (the rule
- *  is web-cut.ts workspaceOpenClosesHosts; each door is a no-op when that
+ *  is surface.ts workspaceOpenClosesHosts; each door is a no-op when that
  *  host is not up). */
 function closeWorkspaceHosts(): void {
   const w = window as unknown as { __wbCloseWebFullPanel?: () => void; __wbClosePage?: (section: string) => void };
@@ -69,7 +69,7 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   // -> edit -> open workspace -> close the customize or settings menu and
   // open the workspace"): whatever hosts this page goes before the open —
   // the web's full-screen Customize panel; the desktop's Settings modal or
-  // its Customize work panel (web-cut.ts workspaceOpenClosesHosts).
+  // its Customize work panel (surface.ts workspaceOpenClosesHosts).
   closeWorkspaceHosts();
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
