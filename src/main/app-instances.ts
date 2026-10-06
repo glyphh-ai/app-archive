@@ -7,24 +7,23 @@
  *
  *   install   POST /api/app-instances → PUT the zip to R2 → POST …/ready
  *   from hub  POST /api/app-instances/from-hub {itemId} — a hub app as the
- *             caller's personal instance, server-side (data: cloud / per-home;
- *             the server refuses data: local with a 400)
+ *             caller's personal instance, server-side
  *   list      GET  /api/app-instances (the ones this member may open)
  *   tools     the manifest's tools; a call is POST …/{key}/invoke
  *   bridge    a panel's `glyphh.call` is POST /app-host/{key}/call, as the member
  *   delete    DELETE /api/app-instances/{key}
  *
- * The LOCAL app host (glyphh-app-host.ts: unzip into ~/.glyphh, a worker, a
- * SQLite per app) runs for the apps whose AUTHOR said so — `data: "local"`
- * or `"per-home"` in the manifest (his verdict, 2026-10-05: "Local is local,
- * cloud is cloud"; renderer/help/app-data-rules.ts); `GLYPHH_LOCAL_APPS=1`
- * is the global override that runs it for every app (documented in
- * docs/GLYPHH-APP-SPEC.md). Nothing here touches Electron, so the pure parts
+ * AN APP HAS ONE SHAPE (his order, 2026-10-06: "Cloud is first and every
+ * surface pulls from it"): the instance. Nothing of an app runs on this
+ * machine. The Tools tab's Never list (Settings → Build → Apps → <app> →
+ * Tools) is the one thing this machine adds: a tool set to Never is neither
+ * listed nor run from here. Nothing here touches Electron, so the pure parts
  * are tested under test/main.
  */
 
 import * as appsStore from "./apps-store.js";
 import { getActiveUserId } from "./app-paths.js";
+import { getPreference } from "./stores/preferences-db.js";
 import { appCache, getClient, SERVER_URL } from "./glyphh-client.js";
 import {
   instanceCardOf, instanceDetailOf, instanceRequestOf, instanceTabRow, instanceToolRows, isInstanceCardId, instanceKeyOfCardId,
@@ -34,10 +33,6 @@ import {
 
 export type { AppInstanceSummary, InstanceCard, InstanceKind } from "../shared/app-instances.js";
 export { isInstanceCardId, instanceKeyOfCardId, instanceKeyOfRow, panelUrlOf } from "../shared/app-instances.js";
-
-/** The global override: the local app host (unzip + worker + db) runs for
- *  EVERY app, whatever its manifest says. */
-export const localAppsEnabled = (): boolean => process.env.GLYPHH_LOCAL_APPS === "1";
 
 const CACHE_KEY = "app-instances";
 
@@ -98,8 +93,7 @@ export async function installBundleAsInstance(bytes: Buffer, manifest: BundleMan
 
 /** A HUB APP AS THIS MEMBER'S PERSONAL INSTANCE, made server-side: the hub
  *  item's bundle becomes the instance without a round trip through this
- *  machine. The server answers the instance (or `{instance}`); it refuses a
- *  `data: local` item with a 400 — that one installs with the local host. */
+ *  machine. The server answers the instance (or `{instance}`). */
 export async function installFromHub(itemId: string): Promise<AppInstanceSummary> {
   const id = String(itemId || "").trim();
   if (!id) throw new Error("installFromHub needs the hub item's id");
@@ -111,8 +105,8 @@ export async function installFromHub(itemId: string): Promise<AppInstanceSummary
 }
 
 /** The `tab` row for an instance: written through apps-store so it is
- *  announced to the member library and reaches every surface. A legacy local
- *  row of the same slug is retargeted (its folder stays; nothing points at it). */
+ *  announced to the member library and reaches every surface. A row of the
+ *  same slug from before the cloud is retargeted at the instance. */
 export async function ensureInstanceTab(inst: AppInstanceSummary, manifest: BundleManifestLike | null): Promise<appsStore.LocalAppRow> {
   const existing = appsStore.readRow(inst.slug);
   const row = instanceTabRow(inst, manifest, existing, new Date().toISOString());
@@ -122,15 +116,28 @@ export async function ensureInstanceTab(inst: AppInstanceSummary, manifest: Bund
   return appsStore.createEntry({ kind: "glyphh", slug: inst.slug, name: row.name, description: row.description, config: row.config ?? tabConfigOf(inst, manifest) });
 }
 
-/** Every instance's declared tools, for app_list_tools and the loop's catalog. */
-export async function listInstanceTools(): Promise<ReturnType<typeof instanceToolRows>> {
-  return instanceToolRows(await listInstances());
+/** Tools the member set to Never on the app's Tools tab, by instance key. */
+function hiddenAppTools(key: string): Set<string> {
+  const list = getPreference<unknown>(`appHiddenTools:${key}`, []);
+  return new Set(Array.isArray(list) ? list.map(String) : []);
+}
+
+/** One row of app_list_tools: an instance and the tools it answers to. */
+export type AppToolRow = ReturnType<typeof instanceToolRows>[number];
+
+/** Every instance's declared tools, less the ones set to Never, for
+ *  app_list_tools and the loop's catalog. */
+export async function listInstanceTools(): Promise<AppToolRow[]> {
+  return instanceToolRows(await listInstances())
+    .map((r) => ({ ...r, tools: r.tools.filter((t) => !hiddenAppTools(r.app).has(t.name)) }))
+    .filter((r) => r.tools.length > 0);
 }
 
 /** app_call_tool's path: the instance's machine runs the tool as this member. */
 export async function callInstanceTool(ref: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
   const inst = await findInstance(ref);
-  if (!inst) throw new Error(`unknown app: ${ref} — not installed in the cloud (app_list_tools names what is)`);
+  if (!inst) throw new Error(`no app instance ${ref} — not installed in the cloud (app_list_tools names what is)`);
+  if (hiddenAppTools(inst.key).has(tool)) throw new Error(`tool "${tool}" is set to Never for this app`);
   const answer = await getClient().http.post<unknown>(`/api/app-instances/${encodeURIComponent(inst.key)}/invoke`, { tool, args: args || {} }, { raw: true });
   const body = answer as { result?: unknown; error?: unknown; detail?: unknown } | null;
   if (body && typeof body === "object" && "error" in body && body.error) throw new Error(String(body.detail || body.error));
@@ -175,19 +182,18 @@ export async function sessionBearer(): Promise<string | null> {
 export async function deleteInstance(key: string): Promise<void> {
   await getClient().http.del(`/api/app-instances/${encodeURIComponent(key)}`);
   invalidateInstances();
-  // The tab that named it goes with it (a legacy local folder is never touched).
+  // The tab that named it goes with it.
   const slug = key.split("~", 1)[0];
   const row = appsStore.readRow(slug);
-  if (row && row.kind === "glyphh" && !row.nativeRef) await appsStore.removeEntry(slug).catch(() => undefined);
+  if (row && row.kind === "glyphh") await appsStore.removeEntry(slug).catch(() => undefined);
 }
 
 // ── Settings → Apps cards ───────────────────────────────────────────────────
 
-/** The cards of the instances that have no folder on this machine (an
- *  instance whose slug is a bundle folder in the apps home is that card). */
-export async function instanceCards(haveFolders: Set<string>): Promise<InstanceCard[]> {
+/** The Settings → Apps cards: one per instance this member may open. */
+export async function instanceCards(): Promise<InstanceCard[]> {
   const now = new Date().toISOString();
-  return (await listInstances()).filter((i) => !haveFolders.has(i.slug)).map((i) => instanceCardOf(i, now));
+  return (await listInstances()).map((i) => instanceCardOf(i, now));
 }
 
 export async function instanceDetail(id: string): Promise<ReturnType<typeof instanceDetailOf>> {

@@ -233,7 +233,6 @@ describe('schedules on web — the record, with the runs left to the desktop clo
 
 // ── THE HUB ON THE WEB (his report, 2026-10-05: "Nothing to discover yet" on
 // every Build tab; "why can't plugins be installed on the web?") ─────────────
-import { LOCAL_NEEDS_DESKTOP_LINE } from '../../src/renderer/help/app-data-rules.ts';
 
 /** The control plane's hub routes as `client.http`: every call is recorded. */
 function fakeHttp(routes) {
@@ -251,9 +250,8 @@ const PUB = [
   { id: 'pub-2', slug: 'weekly', name: 'Weekly digest', description: 'Mail digest', sourceOrg: 'Glyphh', installed: false, installs: 3, version: 1, updatedAt: '2026-10-01T00:00:00.000Z', createdAt: '2026-10-01T00:00:00.000Z', kind: 'task', categories: ['productivity'], icon: '<svg/>' },
   { id: 'pub-3', slug: 'glyphh', name: 'Glyphh', description: 'The Glyphh plugin', sourceOrg: 'Glyphh', installed: false, installs: 40, version: 3, updatedAt: '2026-10-04T00:00:00.000Z', createdAt: '2026-09-20T00:00:00.000Z', kind: 'plugin', categories: ['apps'], icon: null },
   { id: 'pub-4', slug: 'crm', name: 'CRM', description: 'An app', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-29T00:00:00.000Z', createdAt: '2026-09-29T00:00:00.000Z', kind: 'app', categories: [], icon: null },
-  // WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05): the author's word on the row, or in its manifest.
-  { id: 'pub-5', slug: 'vault', name: 'Vault', description: 'Local data', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-28T00:00:00.000Z', createdAt: '2026-09-28T00:00:00.000Z', kind: 'app', categories: [], icon: null, data: 'local' },
-  { id: 'pub-6', slug: 'ledger', name: 'Ledger', description: 'Per home', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-27T00:00:00.000Z', createdAt: '2026-09-27T00:00:00.000Z', kind: 'app', categories: [], icon: null, manifest: { data: 'per-home' } },
+  // An app row from before the cloud may still carry a `data` word; it says nothing now (his order, 2026-10-06).
+  { id: 'pub-5', slug: 'vault', name: 'Vault', description: 'An app', sourceOrg: 'Glyphh', installed: false, installs: 0, version: 1, updatedAt: '2026-09-28T00:00:00.000Z', createdAt: '2026-09-28T00:00:00.000Z', kind: 'app', categories: [], icon: null, data: 'local' },
 ];
 const ORG_SKILLS = [
   { id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', installed: false, installs: 1, headVersion: 1, pendingVersion: 2, rejectedVersion: null, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null },
@@ -284,9 +282,9 @@ const hubLib = (seed = fakeLibrary(), routes = hubRoutes(), deps = {}, client = 
   const lib = buildMemberLibrary({ memberLibrary: seed, http, token: async () => 'tok', ...client }, { now: () => 9_000, apiUrl: 'https://api', ...deps });
   return { lib, http, api: seed };
 };
-/** An attach client: the connected desktops, and what `apps.install` answers. */
-const attachOf = (machines, answer = async () => ({ id: 'app:vault' })) => ({
-  attach: { status: vi.fn(async () => ({ attached: machines.length > 0, machines })), dispatch: vi.fn(answer) },
+/** An attach client: the connected desktops. An install never dispatches to one. */
+const attachOf = (machines) => ({
+  attach: { status: vi.fn(async () => ({ attached: machines.length > 0, machines })), dispatch: vi.fn(async () => { throw new Error('never dispatched'); }) },
 });
 const MAC = { id: 'm1', name: "Chris's MacBook" };
 
@@ -303,9 +301,9 @@ describe('Discover on web — the same catalog reads as hub-ipc', () => {
     // Only the asked kinds: the Plugins page sees the plugin alone, the app never (no app home here).
     expect((await lib.skillsDiscover('plugin')).data.map((d) => d.ref)).toEqual(['glyphh:pub-3']);
     const withApps = (await lib.skillsDiscover(['skill', 'app', 'task'])).data;
-    expect(withApps.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4', 'glyphh:pub-5', 'glyphh:pub-6']);
-    // An app row carries where its data lives (the badge, the Install route); the others carry nothing.
-    expect(withApps.map((d) => d.data)).toEqual([undefined, undefined, undefined, 'cloud', 'local', 'per-home']);
+    expect(withApps.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4', 'glyphh:pub-5']);
+    // No row carries a word on where its data lives: an app is a cloud instance.
+    expect(withApps.every((d) => !('data' in d))).toBe(true);
   });
 
   it('already yours is not addable: a library row with the item\'s slug marks it installed', async () => {
@@ -456,50 +454,29 @@ describe('standings, updates, shares, versions and publish on web', () => {
   });
 });
 
-// ── AN APP INSTALLS WHERE ITS AUTHOR SAID (his verdict, 2026-10-05: the user
-// never picks; "Local is local, cloud is cloud") ─────────────────────────────
-describe('an app installs by its manifest\'s data', () => {
+// ── AN APP IS A CLOUD INSTANCE (his order, 2026-10-06: cloud is the one home) ─
+describe('an app installs as this member\'s instance', () => {
   const INST = { key: 'crm~u1', slug: 'crm', kind: 'personal', status: 'ready', manifest: { name: 'CRM' } };
   const routes = (fromHub = INST) => ({ ...hubRoutes(), 'POST /api/app-instances/from-hub': fromHub });
 
-  it('cloud (the default): POST /api/app-instances/from-hub {itemId} — desktop or not — and the instance card is the id', async () => {
+  it('POST /api/app-instances/from-hub {itemId} — desktop attached or not — and the instance card is the id; nothing rides the relay', async () => {
     for (const machines of [[], [MAC]]) {
-      const { lib, http, api } = hubLib(fakeLibrary(), routes(), {}, attachOf(machines));
+      const client = attachOf(machines);
+      const { lib, http, api } = hubLib(fakeLibrary(), routes(), {}, client);
       expect(await lib.skillInstall('glyphh:pub-4', 'app')).toEqual({ ok: true, data: { id: 'app-instance:crm~u1' } });
       expect(http.calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: '/api/app-instances/from-hub', body: { itemId: 'pub-4' } }]);
       expect(api.put).not.toHaveBeenCalled();
+      expect(client.attach.dispatch).not.toHaveBeenCalled();
     }
     // The server may wrap the instance; both shapes read the same.
     const { lib } = hubLib(fakeLibrary(), routes({ instance: INST }), {}, attachOf([]));
     expect(await lib.skillInstall('glyphh:pub-4', 'app')).toEqual({ ok: true, data: { id: 'app-instance:crm~u1' } });
   });
 
-  it('local: only through a connected desktop (apps.install over the relay); with none the one line, and nothing is posted', async () => {
-    const none = hubLib(fakeLibrary(), routes(), {}, attachOf([]));
-    expect(await none.lib.skillInstall('glyphh:pub-5', 'app')).toEqual({ ok: false, error: LOCAL_NEEDS_DESKTOP_LINE });
-    expect(none.http.calls.filter((c) => c.method === 'POST')).toEqual([]);
-    const client = attachOf([MAC]);
-    const { lib, http } = hubLib(fakeLibrary(), routes(), {}, client);
-    expect(await lib.skillInstall('glyphh:pub-5', 'app')).toEqual({ ok: true, data: { id: 'app:vault', machine: "Chris's MacBook" } });
-    expect(client.attach.dispatch.mock.calls).toEqual([['apps.install', { itemId: 'pub-5', from: 'glyphh' }, { machineId: 'm1' }]]);
-    expect(http.calls.filter((c) => c.method === 'POST')).toEqual([]);
-    // The desktop refusing it is the answer — no cloud copy to fall back on.
-    const refusing = attachOf([MAC], async () => { throw new Error('that app is no longer available to you'); });
-    expect(await hubLib(fakeLibrary(), routes(), {}, refusing).lib.skillInstall('glyphh:pub-5', 'app')).toEqual({ ok: false, error: 'that app is no longer available to you' });
-  });
-
-  it('per-home: the cloud and, when a desktop is connected, the desktop too; with none the cloud alone and no error', async () => {
-    const alone = hubLib(fakeLibrary(), routes({ ...INST, key: 'ledger~u1', slug: 'ledger' }), {}, attachOf([]));
-    expect(await alone.lib.skillInstall('glyphh:pub-6', 'app')).toEqual({ ok: true, data: { id: 'app-instance:ledger~u1' } });
-    const client = attachOf([MAC], async () => ({ id: 'app:ledger' }));
-    const both = hubLib(fakeLibrary(), routes({ ...INST, key: 'ledger~u1', slug: 'ledger' }), {}, client);
-    expect(await both.lib.skillInstall('glyphh:pub-6', 'app')).toEqual({ ok: true, data: { id: 'app-instance:ledger~u1', machine: "Chris's MacBook" } });
-    expect(both.http.calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: '/api/app-instances/from-hub', body: { itemId: 'pub-6' } }]);
-    expect(client.attach.dispatch.mock.calls).toEqual([['apps.install', { itemId: 'pub-6', from: 'glyphh' }, { machineId: 'm1' }]]);
-    // The desktop not taking it leaves the cloud copy standing, reported as a warning.
-    const half = attachOf([MAC], async () => { throw new Error('busy'); });
-    expect(await hubLib(fakeLibrary(), routes({ ...INST, key: 'ledger~u1' }), {}, half).lib.skillInstall('glyphh:pub-6', 'app'))
-      .toEqual({ ok: true, data: { id: 'app-instance:ledger~u1', warning: 'installed in the cloud; your desktop did not take it: busy' } });
+  it('an app whose old row still says data: local installs the same way', async () => {
+    const { lib, http } = hubLib(fakeLibrary(), routes({ ...INST, key: 'vault~u1', slug: 'vault' }), {}, attachOf([]));
+    expect(await lib.skillInstall('glyphh:pub-5', 'app')).toEqual({ ok: true, data: { id: 'app-instance:vault~u1' } });
+    expect(http.calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', path: '/api/app-instances/from-hub', body: { itemId: 'pub-5' } }]);
   });
 });
 
@@ -514,7 +491,9 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
     const rows = (await lib.skillsList(['skill', 'app', 'task'])).data;
     expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);
-    expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', locus: 'cloud', data: 'cloud', author: 'you' });
+    expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', author: 'you' });
+    expect(rows[0]).not.toHaveProperty('locus');
+    expect(rows[0]).not.toHaveProperty('data');
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
     expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: true } });
   });
@@ -524,7 +503,7 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     fake.list = vi.fn(async (kind) => (kind === 'tab' ? [...rows, { id: 'images', updatedAt: 7_500, data: { ...rows[0].data, id: 'images', slug: 'images', name: 'Images', nativeRef: '/Users/me/.glyphh/apps/images/app.json', config: null } }] : []));
     const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
     expect(await lib.skillTab('app-tab:images')).toEqual({ ok: true, data: { slug: 'images', name: 'Images', tool: 'gimage', cloud: false } });
-    expect((await lib.skillsList(['app'])).data.find((r) => r.id === 'app-tab:images')).toMatchObject({ tool: 'gimage', locus: 'local' });
+    expect((await lib.skillsList(['app'])).data.find((r) => r.id === 'app-tab:images')).toMatchObject({ tool: 'gimage' });
     expect((await lib.skillsList('skill')).data).toEqual([]);
   });
 });

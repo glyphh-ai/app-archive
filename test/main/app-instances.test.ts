@@ -32,7 +32,8 @@ const tab = (over: Partial<TabRowLike>): TabRowLike => ({
   id: "crm", kind: "web", slug: "crm", name: "CRM", prodUrl: "https://crm", nativeRef: null, config: null, description: "", access: "members", owned: true,
   latestVersion: null, version: "0.1.0", secretNames: [], requiredConnections: [], listing: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z", ...over,
 });
-const LOCAL = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk (local)", nativeRef: "/Users/me/.glyphh/apps/expense-desk/index.html", config: { capabilities: ["db.exec"], secrets: { K: "v" }, data: "local" } });
+/** A glyphh row from before the cloud: its entry a file on a machine. */
+const LOCAL = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk (local)", nativeRef: "/Users/me/.glyphh/apps/expense-desk/index.html", config: { capabilities: ["db.exec"], secrets: { K: "v" } } });
 
 describe("instanceRequestOf — the create body a bundle makes", () => {
   it("carries slug, kind, the zip's identity and the manifest as it is", () => {
@@ -58,7 +59,7 @@ describe("instanceTabRow — the tab record an instance gets", () => {
     expect(row.requiredConnections).toEqual([{ slug: "gmail", actAs: "user", connected: false }]);
     expect(instanceKeyOfRow(row)).toBe("expense-desk");
   });
-  it("retargets a local row: entry gone, identity, dates and config vars kept", () => {
+  it("retargets a row from before the cloud: entry gone, identity, dates and config vars kept", () => {
     const row = instanceTabRow(ORG, MANIFEST, LOCAL, "2026-10-04T10:00:00.000Z");
     expect(row.nativeRef).toBeNull();
     expect(row.id).toBe("expense-desk");
@@ -74,7 +75,7 @@ describe("instanceTabRow — the tab record an instance gets", () => {
 });
 
 describe("mergeAppRows — THE LIST", () => {
-  it("lists tab rows and every instance no tab names, one row per slug (a local row never beside its instance)", () => {
+  it("lists tab rows and every instance no tab names, one row per slug (an old row never beside its instance)", () => {
     const rows = mergeAppRows([ORG, PERSONAL], [tab({}), LOCAL], "2026-10-04T00:00:00.000Z");
     expect(rows.map((r) => r.slug).sort()).toEqual(["crm", "expense-desk", "notes"]);
     const desk = rows.find((r) => r.slug === "expense-desk")!;
@@ -85,11 +86,11 @@ describe("mergeAppRows — THE LIST", () => {
     const notes = rows.find((r) => r.slug === "notes")!;
     expect(notes.launchConfig).toMatchObject({ instance: "notes~u1", instanceKind: "personal" });
   });
-  it("lists a local-data app that has no instance once, from its folder, with no extra flag", () => {
+  it("lists an old row that has no instance once, as it is, with no extra flag", () => {
     const rows = mergeAppRows([], [LOCAL, LOCAL]);
     expect(rows).toHaveLength(1);
     expect(rows[0].execPath).toBe(LOCAL.nativeRef);
-    expect(rows[0].launchConfig).toMatchObject({ data: "local" });
+    expect(rows[0].launchConfig).not.toHaveProperty("data");
     expect(rows[0].launchConfig).not.toHaveProperty("legacyLocal");
   });
   it("an org instance wins a personal one of the same slug for the row", () => {

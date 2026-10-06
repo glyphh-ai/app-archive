@@ -17,15 +17,11 @@ import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills, setInstallForgetter, removeSkillFiles } from "./skills-fs.js";
 import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
-import { ensureInstanceTab, installFromHub, localAppsEnabled } from "./app-instances.js";
-import { appDataOfManifest, instanceCardId, type AppData } from "../shared/app-instances.js";
+import { ensureInstanceTab, installFromHub } from "./app-instances.js";
+import { instanceCardId } from "../shared/app-instances.js";
 
-/** A hub app row's word on where its data lives: on the row, or in the manifest it carries. */
-interface DataBearing { data?: unknown; manifest?: { data?: unknown } | null }
-interface OrgItem extends DataBearing { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
-interface PublicItem extends DataBearing { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
-const dataOfRow = (r: DataBearing): AppData => appDataOfManifest(r.data !== undefined ? r : r.manifest);
-
+interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
+interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
 export interface DiscoverRow {
   ref: string;
   from: "org" | "glyphh";
@@ -44,8 +40,6 @@ export interface DiscoverRow {
   icon?: string | null;
   /** What kind of skill this is — the hub kind it was listed under. */
   type: Kind;
-  /** An app: where its data lives, as its author declared (default cloud). */
-  data?: AppData;
 }
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
@@ -90,11 +84,11 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   for (const [kind, org] of orgLists) {
     for (const it of Array.isArray(org) ? org : []) {
       if (!it.headVersion) continue;
-      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind, ...(kind === "app" ? { data: dataOfRow(it) } : {}) });
+      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
     }
   }
   for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind))) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind, ...(p.kind === "app" ? { data: dataOfRow(p) } : {}) });
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -141,49 +135,29 @@ export async function installHubItem(ref: string, kind: Kind): Promise<{ id: str
   if (from !== "org" && from !== "glyphh") throw new Error(`not a hub item: ${ref}`);
   const base = from === "org" ? `/api/library/${kind}/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
   const rows = from === "org" ? await client.http.get<OrgItem[]>(`/api/library/${kind}`) : await client.http.get<PublicItem[]>("/api/hub/public");
-  const meta = (rows as Array<DataBearing & { id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null; author?: string; sourceOrg?: string }>).find((r) => r.id === id);
+  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null; author?: string; sourceOrg?: string }>).find((r) => r.id === id);
   if (!meta) throw new Error(`that ${kind} is no longer available to you`);
   const author = from === "glyphh" ? "Glyphh" : (meta.author || "your organization");
   const origin = (skillId: string, files: string[]): void => {
     setPreference(ORIGIN_KEY(skillId), { from, itemId: id, kind, slug: meta.slug, version: versionOf(meta), files, installedAt: new Date().toISOString(), author } satisfies InstallOrigin);
   };
 
-  // AN APP INSTALLS WHERE ITS AUTHOR SAID (his verdict, 2026-10-05): `data:
-  // cloud` (the default) becomes this member's personal instance, made
-  // server-side; `local` installs with the local host — the folder on this
-  // machine, its tab's entry on disk, its worker and store here; `per-home`
-  // does both. The user never picks.
-  const data: AppData = kind === "app" ? dataOfRow(meta) : "cloud";
+  // AN APP IS A CLOUD INSTANCE (his order, 2026-10-06): a hub app becomes
+  // this member's personal instance, made server-side, and its tab names it.
+  // Nothing of it lands on this machine.
   if (kind === "app") {
-    let instanceId: string | null = null;
-    if (data !== "local") {
-      const inst = await installFromHub(id);
-      await ensureInstanceTab(inst, null);
-      instanceId = instanceCardId(inst.key);
-    }
-    if (data === "cloud" && !localAppsEnabled()) return { id: instanceId! };
+    const inst = await installFromHub(id);
+    await ensureInstanceTab(inst, null);
+    return { id: instanceCardId(inst.key) };
   }
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
-  if (kind === "app") stampAppData(files, data);
   const installed = installSkill(meta.slug, files, kind);
   origin(installed.id, Object.keys(files));
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
 }
 const install = installHubItem;
-
-/** The folder's own manifest carries the author's `data` word, so the tab
- *  registered off it (glyphh-app-host registerBundleApp) reads it on every
- *  boot — nothing hangs on a row field a re-registration would rewrite. */
-function stampAppData(files: Record<string, string>, data: AppData): void {
-  const raw = files["app.json"];
-  if (typeof raw !== "string") return;
-  try {
-    const m = JSON.parse(raw) as Record<string, unknown>;
-    if (m.data !== "local" && m.data !== "per-home" && m.data !== "cloud") files["app.json"] = JSON.stringify({ ...m, data }, null, 2) + "\n";
-  } catch { /* not ours to fix; registerBundleApp will say so */ }
-}
 
 /** A catalog row's LIVE version, or 0 when nothing of it is approved yet. It
  *  used to default to 1, so an item whose only version was sitting on the

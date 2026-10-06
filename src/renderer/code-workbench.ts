@@ -20,7 +20,6 @@ import { CLI_MARK_URLS } from "./help/cli-marks.js";
 import { formatMarkdown } from "./format-markdown.js";
 import { mountAgentsPanel } from "./agents-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
-import { isLocalAppAnswer, LOCAL_APP_DESKTOP_OFFLINE } from "./help/app-data-rules.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { podCliCommand, terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
 import { panelFsRoute, type PanelFsRoute } from "./help/panel-fs-route.js";
@@ -59,7 +58,6 @@ import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts
 import { cssColorToHex } from "./help/css-color.js";
 import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
-import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
@@ -7446,13 +7444,13 @@ async function init(): Promise<void> {
         // ONE path with the wall's own tiles (activateGlyphh) — the two
         // entries can never disagree.
         if (key === "glyphh-home") { activateGlyphh(); return; }
-        // THE WEB CUT (his order, 2026-10-05): an app opens ON THE DESKTOP
-        // (panels.open over the relay, help/web-agent-menu-ui.ts) — the web
-        // never hosts or streams one. No desktop → that door says so.
-        // A CLOUD-INSTALLED app is a panel here — its UI through the instance
-        // proxy (mountGlyphhAppWebView), no desktop needed (his order,
-        // 2026-10-05); every other app still opens on the desktop.
-        if (IS_WEB_TARGET && !(app.glyphh && app.cloud)) { openAppOnDesktopWeb(app); return; }
+        // THE WEB CUT (his order, 2026-10-05): a URL or native tab opens ON
+        // THE DESKTOP (panels.open over the relay, help/web-agent-menu-ui.ts)
+        // — the web never hosts or streams one. No desktop → that door says
+        // so. A GLYPHH APP is a cloud instance (his order, 2026-10-06) and a
+        // panel here — its UI through the instance proxy
+        // (mountGlyphhAppWebView), no desktop needed.
+        if (IS_WEB_TARGET && !app.glyphh) { openAppOnDesktopWeb(app); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -8026,51 +8024,20 @@ async function init(): Promise<void> {
   }
 
   /**
-   * WEB: the interior of a Glyphh-app panel that has NO hosted deployment.
-   * The app itself is installed on the user's desktop and a file:// entry has
-   * no web transport, so the panel's job is the HONEST state card the streamed
-   * panels show — same panelStateFragment states, same wording family, same
-   * working "Try again" — never a dead iframe pointed at a URL that serves
-   * nothing. Shared by the Echo card and the rail-slot holder.
+   * WEB: the interior of a Glyphh-app panel that could not open — the app has
+   * no cloud instance (not installed, or the sign-in is gone), so the panel's
+   * job is the HONEST state card the streamed panels show — same
+   * panelStateFragment states, same wording family — never a dead iframe
+   * pointed at a URL that serves nothing. Shared by the Echo card and the
+   * rail-slot holder.
    */
-  function mountGlyphhAppWebState(name: string, answer?: { ok: boolean; localApp?: boolean; error?: string } | null): HTMLElement {
+  function mountGlyphhAppWebState(name: string, answer?: { ok: boolean; error?: string } | null): HTMLElement {
     const el = document.createElement("div");
     el.className = "ws-glyphh-app-state";
     el.style.cssText = "flex:1 1 auto;min-height:0;width:100%;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:24px;background:var(--surface)";
-    const render = (state: PanelStateKey, detail: string, retry: boolean): void => {
-      el.innerHTML = panelStateFragment(state, { detail, ...(retry ? { retryAttrs: 'data-app-retry="1"' } : {}) });
-      el.querySelector<HTMLButtonElement>("[data-app-retry]")?.addEventListener("click", () => { void check(); });
-    };
-    const check = async (): Promise<void> => {
-      // A LOCAL-DATA APP (his verdict, 2026-10-05: "Local is local"): its UI
-      // runs on the desktop — this version carries no webview panel over the
-      // relay — so the card says so honestly; with the desktop gone, that it
-      // is offline, and a retry asks again.
-      if (isLocalAppAnswer(answer)) {
-        const offline = answer.error === LOCAL_APP_DESKTOP_OFFLINE;
-        render(offline ? "desktop-offline" : "failed", `${name}: ${answer.error}.`, offline);
-        if (offline) answer = null; // a retry probes the desktop afresh
-        return;
-      }
-      el.innerHTML = `<div style="color:var(--text-2);font:13px system-ui,sans-serif">Checking your desktop…</div>`;
-      const client = relaySdk();
-      if (!client) {
-        render("signed-out", `${name} is a Glyphh app on your own account, so it needs a sign-in before this panel can say where it lives.`, true);
-        return;
-      }
-      let attached = false;
-      try { attached = (await client.attach.status()).attached; } catch { attached = false; }
-      if (!el.isConnected) return;
-      if (!attached) {
-        render("desktop-offline", `${name} is installed on your desktop. Open the Glyphh desktop app and sign in, then try again.`, true);
-        return;
-      }
-      // Desktop reachable, but an installed app renders from its own disk —
-      // there is no web transport for it (only DEPLOYED apps render here).
-      // An honest dead-end with directions beats a retry that can't succeed.
-      render("failed", `${name} is installed on your desktop and isn't deployed to the web yet. Open it in the desktop app, or deploy it to use it here.`, false);
-    };
-    void check();
+    const detail = answer?.error ? `${name}: ${answer.error}.` : `${name} is not installed in the cloud — add it from Settings → Build → Discover.`;
+    const state: PanelStateKey = /sign in/i.test(answer?.error || "") ? "signed-out" : "failed";
+    el.innerHTML = panelStateFragment(state, { detail });
     return el;
   }
 
@@ -8094,7 +8061,7 @@ async function init(): Promise<void> {
       frame.style.cssText = "flex:1 1 auto;min-height:0;width:100%;border:0;background:var(--bg-2)";
       return frame;
     };
-    const open = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string) => Promise<{ ok: boolean; fileUrl?: string; error?: string; localApp?: boolean }> } }).glyphh?.glyphhAppPreviewOpen;
+    const open = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string) => Promise<{ ok: boolean; fileUrl?: string; error?: string }> } }).glyphh?.glyphhAppPreviewOpen;
     if (slot.url) {
       holder.appendChild(frameOf(slot.url));
     } else if (typeof open === "function") {

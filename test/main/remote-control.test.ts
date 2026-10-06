@@ -19,12 +19,9 @@ vi.mock("../../src/main/relay-client.js", () => ({ dispatchRelayMethod: async ()
 vi.mock("../../src/main/attach-handlers.js", () => ({ gitStateOf: (d: string) => ({ isRepo: d.endsWith("repo") }) }));
 vi.mock("../../src/main/glyphh-client.js", () => ({ getClient: () => ({}) }));
 vi.mock("../../src/main/broadcast.js", () => ({ broadcast: () => undefined }));
-// The Tools tab's modes (conn-tool-modes.ts reads them by prefix): what the
-// apps door consults before a cloud session's app_call_tool reaches the app.
-const toolModes: Record<string, Record<string, string>> = {};
 vi.mock("../../src/main/stores/preferences-db.js", () => ({
   getPreference: () => null, setPreference: () => undefined, loadPreferences: async () => undefined,
-  preferencesByPrefix: () => toolModes,
+  preferencesByPrefix: () => ({}),
 }));
 vi.mock("../../src/main/relay-pty.js", () => ({ killAllRelayPtys: () => undefined }));
 vi.mock("../../src/main/glyphh-app-builder.js", () => ({ r2DiffWorkdir: async () => ({ status: null, text: "" }), appDirInWorkdir: (p: string) => p }));
@@ -54,7 +51,6 @@ describe("the desktop's remote door", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
       "app.call",
-      "apps.callTool", "apps.install", "apps.listTools",
       "cliSessions.list",
       "fs.cwd", "fs.delete", "fs.gitDiff", "fs.gitInfo", "fs.list", "fs.listDir", "fs.mkdir", "fs.r2Diff", "fs.read", "fs.rename", "fs.search", "fs.unwatch", "fs.watch", "fs.write",
       "git.status",
@@ -79,35 +75,6 @@ describe("the desktop's remote door", () => {
       { m: "layouts.get", p: { name: "Research" } },
       { m: "panelApps.list", p: {} },
     ]);
-  });
-
-  it("apps.listTools hands a cloud session the apps ON this machine — the cloud instances are the server's own to list (his report, 2026-10-05)", async () => {
-    const rows = [
-      { app: "recall", name: "Recall", data: "cloud", tools: [{ name: "ask" }] },
-      { app: "images", name: "Images", data: "local", tools: [{ name: "save_image" }, { name: "list_images" }] },
-      { app: "notes", name: "Notes", data: "per-home", tools: [{ name: "list_notes" }] },
-    ];
-    const t = remoteTable(() => [granted], async (m, p) => { calls.push({ m, p }); return m === "apps.listTools" ? rows : { ok: m }; });
-    expect(await t["apps.listTools"]!({})).toEqual([rows[1], rows[2]]);
-    expect(calls).toEqual([{ m: "apps.listTools", p: {} }]);
-    // A registry that answers no list is an empty list, never a throw.
-    expect(await table()["apps.listTools"]!({})).toEqual([]);
-  });
-
-  it("apps.callTool runs only a tool the Tools tab set to Always allow; Needs approval and Never are refused before the registry sees them", async () => {
-    const t = table();
-    // The one rule (conn-tool-modes.ts): a read-only name is allowed by default, a write asks.
-    expect(await t["apps.callTool"]!({ app: "images", tool: "list_images", args: { q: "sunset" } })).toEqual({ ok: "apps.callTool" });
-    expect(calls).toEqual([{ m: "apps.callTool", p: { app: "images", tool: "list_images", args: { q: "sunset" } } }]);
-    await expect(t["apps.callTool"]!({ app: "images", tool: "save_image", args: { name: "a.png" } })).rejects.toThrow(/needs approval on this desktop/);
-    // The member's own setting on the Tools tab, by the app key the page stores it under.
-    toolModes["app:images"] = { save_image: "allow", list_images: "never" };
-    expect(await t["apps.callTool"]!({ app: "images", tool: "save_image" })).toEqual({ ok: "apps.callTool" });
-    expect(calls[1]).toEqual({ m: "apps.callTool", p: { app: "images", tool: "save_image", args: {} } });
-    await expect(t["apps.callTool"]!({ app: "images", tool: "list_images" })).rejects.toThrow(/set to Never/);
-    delete toolModes["app:images"];
-    await expect(t["apps.callTool"]!({ app: "images" })).rejects.toThrow(/requires \{ app, tool \}/);
-    expect(calls).toHaveLength(2);
   });
 
   it("opens a web terminal only inside a granted folder (the first grant by default)", async () => {

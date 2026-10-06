@@ -9,7 +9,6 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { buildAppInstancesWeb, panelCookieOf, PANEL_COOKIE } from '../src/app-instances-web.js';
-import { LOCAL_APP_DESKTOP_OFFLINE, LOCAL_APP_RUNS_ON_DESKTOP } from '../../src/renderer/help/app-data-rules.ts';
 import { buildMemberLibrary } from '../src/member-library-web.js';
 import { fakeLibrary, CRM } from './helpers/member-library.js';
 
@@ -120,8 +119,8 @@ describe('the member library folds instances in', () => {
   });
 });
 
-// ── WHERE AN APP'S DATA LIVES (his verdict, 2026-10-05) ──────────────────────
-describe('a hub app as this member\'s instance, and a local app\'s panel on the web', () => {
+// ── AN APP IS A CLOUD INSTANCE (his order, 2026-10-06) ───────────────────────
+describe('a hub app as this member\'s instance, and a tab\'s panel on the web', () => {
   it('installFromHub posts the item id and answers the instance — bare or wrapped — and drops the cached list', async () => {
     const c = fakeClient({ fromHub: MINE });
     const w = buildAppInstancesWeb(c, { document: fakeDoc() });
@@ -136,15 +135,13 @@ describe('a hub app as this member\'s instance, and a local app\'s panel on the 
     await expect(w.installFromHub('')).rejects.toThrow(/needs the hub item/);
   });
 
-  it('a local-data tab (no instance) answers the honest line: it runs on the Mac, or the Mac is offline', async () => {
-    const rows = [{ slug: 'vault', name: 'Vault', launchConfig: { data: 'local' } }];
+  it('a tab with no instance answers the honest line, whatever its old row said; a tab that names its instance opens it', async () => {
+    const rows = [{ slug: 'vault', name: 'Vault', launchConfig: { data: 'local' } }, { slug: 'notes', name: 'Notes', launchConfig: { instance: 'notes~u1' } }];
     const on = buildAppInstancesWeb(fakeClient({ attached: true }), { document: fakeDoc() });
-    expect(await on.previewOpen('vault', rows)).toEqual({ ok: false, localApp: true, error: LOCAL_APP_RUNS_ON_DESKTOP });
-    const off = buildAppInstancesWeb(fakeClient({ attached: false }), { document: fakeDoc() });
-    expect(await off.previewOpen('vault', rows)).toEqual({ ok: false, localApp: true, error: LOCAL_APP_DESKTOP_OFFLINE });
-    // No attach client at all reads as offline; a per-home tab that names its instance opens the instance.
-    expect(await buildAppInstancesWeb(fakeClient(), { document: fakeDoc() }).previewOpen('vault', rows)).toMatchObject({ localApp: true, error: LOCAL_APP_DESKTOP_OFFLINE });
-    const perHome = [{ slug: 'notes', name: 'Notes', launchConfig: { data: 'per-home', instance: 'notes~u1' } }];
-    expect(await on.previewOpen('notes', perHome)).toEqual({ ok: true, fileUrl: '/app-host/notes~u1/ui/index.html', hosted: true });
+    const answer = await on.previewOpen('vault', rows);
+    expect(answer.ok).toBe(false);
+    expect(answer.error).toMatch(/not installed in the cloud/);
+    expect(answer).not.toHaveProperty('localApp');
+    expect(await on.previewOpen('notes', rows)).toEqual({ ok: true, fileUrl: '/app-host/notes~u1/ui/index.html', hosted: true });
   });
 });

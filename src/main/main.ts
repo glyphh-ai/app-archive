@@ -65,8 +65,6 @@ function isNewerVersion(latest: string, current: string): boolean {
 import { setMainWindowRef } from "./main-window-ref";
 import { initRailCollapse } from "./screen-layout";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
-import { stopAllAppWorkers } from "./glyphh-app-worker";
-import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
@@ -466,7 +464,7 @@ async function boot() {
     registerAgentIpc();
     registerRemoteControlIpc();
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
-    registerNotifyIpc({ openApp: (slug) => { void openAppByRef(slug).catch(() => { /* app no longer resolvable */ }); } });
+    registerNotifyIpc();
     registerAgentLiveIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
@@ -1133,7 +1131,7 @@ async function boot() {
     getMainWindow: () => mainWindow,
   });
 
-  // Installable Glyphh apps (marketplace unit) — capability-scoped windows.
+  // Installable Glyphh apps (marketplace unit) — cloud instances, panels here.
   registerGlyphhAppHost();
 
   // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
@@ -1403,14 +1401,12 @@ function cleanupAll(backstopMs = 4000) {
   } catch {}
   // Each step is isolated so one failure can't strand the rest (or the exit).
   // Order: unregister shortcuts, stop timers/loops, kill children, then close
-  // the background handles + hidden app-worker windows that otherwise keep the
-  // Node event loop alive and window-all-closed from firing.
+  // the background handles that otherwise keep the Node event loop alive and
+  // window-all-closed from firing.
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["authTimers", () => cleanupAuthTimers()],
     ["localMcpServer", () => stopLocalMcpServer()],
-    ["appWorkers", () => stopAllAppWorkers()],
-    ["schedules", () => stopAllSchedules()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],
     ["taskRunner", () => stopTaskRunner()],

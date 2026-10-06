@@ -1,33 +1,15 @@
 /**
- * The bundle-shape rules as tests — the three failures of 2026-09-17, each
- * pinned so it cannot come back:
- *
- *   1. an installed app that appeared on NO page (no library card)
- *   2. a required connection that rendered as nothing (bare-string deps)
- *   3. a deleted app whose tile stayed on the echo wall (row not matched)
- *
- * plus the authoring gate that stops an agent shipping an app when the user
- * asked for a skill.
+ * The bundle-shape rules as tests: a required connection that rendered as
+ * nothing (bare-string deps; his report, 2026-09-17), pinned so it cannot come
+ * back, plus the authoring gate that stops an agent shipping an app when the
+ * user asked for a skill.
  */
 
 import { describe, it, expect } from "vitest";
-import path from "path";
 import {
-  normalizeConnDeps, appCardManifest, appCardSkillMd, GENERATED_MARK,
-  rowOwnedByBundle, payloadDirOf, hasAppFace, NO_FACE_ERROR, checkBundlePath,
-  WHERE_TO_SEE, checkNoForeignManifest, isGeneratedCard, connDepNames, type AppCardInput,
+  normalizeConnDeps, hasAppFace, NO_FACE_ERROR, checkBundlePath,
+  WHERE_TO_SEE, checkNoForeignManifest, connDepNames,
 } from "../../src/shared/bundle-shape";
-
-const card = (over: Partial<AppCardInput> = {}): AppCardInput => ({
-  slug: "daily-schedule-reporter",
-  name: "Daily Schedule Reporter",
-  description: "Reads Gmail and Calendar to build a morning report",
-  bundleDir: "/Users/x/.glyphh/custom-apps/daily-schedule-reporter",
-  entry: "index.html",
-  connectors: ["gmail", "google_calendar"],
-  tools: [{ name: "generate_report", description: "Build today's report" }],
-  ...over,
-});
 
 describe("connection dependencies", () => {
   it("takes the object shape the manifest documents", () => {
@@ -56,76 +38,6 @@ describe("connection dependencies", () => {
   });
 });
 
-describe("an installed app's library card", () => {
-  it("writes connections in the shape the UI reads and the hub validates", () => {
-    const deps = (appCardManifest(card()).dependencies as { connections: unknown }).connections;
-    expect(deps).toEqual([{ app: "gmail", as: "member" }, { app: "google_calendar", as: "member" }]);
-  });
-
-  it("types the folder as an app, which is what puts it on the Skills page", () => {
-    const m = appCardManifest(card());
-    expect(m.kind).toBe("glyphh-app");
-    expect(m.name).toBe("daily-schedule-reporter");
-    expect(m.tools).toEqual(["generate_report"]);
-  });
-
-  it("names the payload folder so the reader can find the code", () => {
-    expect(appCardManifest(card()).bundle).toBe("/Users/x/.glyphh/custom-apps/daily-schedule-reporter");
-  });
-
-  it("claims an icon only when one is actually there", () => {
-    expect(appCardManifest(card()).icon).toBeUndefined();
-    expect(appCardManifest(card({ hasIcon: true })).icon).toBe("icon.svg");
-  });
-
-  it("marks itself generated, which is how a user's edits survive a reinstall", () => {
-    expect(appCardSkillMd(card())).toContain(`generated: ${GENERATED_MARK}`);
-  });
-
-  it("carries the frontmatter the library lists it by", () => {
-    const md = appCardSkillMd(card());
-    expect(md.startsWith("---\nname: daily-schedule-reporter\n")).toBe(true);
-    expect(md).toContain("type: app");
-    expect(md).toContain("description: Reads Gmail and Calendar to build a morning report");
-  });
-
-  it("tells an agent the tools and says the connections are required", () => {
-    const md = appCardSkillMd(card());
-    expect(md).toContain("`generate_report` — Build today's report");
-    expect(md).toContain("`gmail` — required");
-    expect(md).toContain("`google_calendar` — required");
-  });
-
-  it("keeps a one-line description on one line", () => {
-    expect(appCardSkillMd(card({ description: "two\nlines  here" }))).toContain("description: two lines here");
-  });
-
-  it("says so plainly when an app declares no tools", () => {
-    expect(appCardSkillMd(card({ tools: [] }))).toContain("declares no tools");
-  });
-
-  it("says so plainly when an app needs no account", () => {
-    expect(appCardSkillMd(card({ connectors: [] }))).toContain("It needs no connected account.");
-  });
-});
-
-describe("a card never overwrites a bundle's own manifest", () => {
-  it("marks its own cards", () => {
-    expect(isGeneratedCard(appCardManifest(card()))).toBe(true);
-  });
-
-  it("does not claim a real bundle manifest", () => {
-    const real = { name: "Design", ui: "ui/index.html", tool: "gdesign", tools: "tools/manifest.json" };
-    expect(isGeneratedCard(real)).toBe(false);
-  });
-
-  it("does not claim nothing, or a manifest that failed to parse", () => {
-    expect(isGeneratedCard(null)).toBe(false);
-    expect(isGeneratedCard(undefined)).toBe(false);
-    expect(isGeneratedCard("{}")).toBe(false);
-  });
-});
-
 describe("the connections a manifest declares, by name", () => {
   it("reads either shape, which is what a run checks a call against", () => {
     expect(connDepNames([{ app: "gmail", as: "org" }, "google_calendar"])).toEqual(["gmail", "google_calendar"]);
@@ -134,63 +46,6 @@ describe("the connections a manifest declares, by name", () => {
   it("answers nothing for nothing, never [undefined]", () => {
     expect(connDepNames(undefined)).toEqual([]);
     expect(connDepNames([{ as: "member" }] as never)).toEqual([]);
-  });
-});
-
-describe("which saved-app row a bundle folder owns", () => {
-  const dir = "/Users/x/.glyphh/users/u1/apps/standup-board";
-
-  it("matches the recorded bundle dir", () => {
-    expect(rowOwnedByBundle({ slug: "standup-board", config: { bundleDir: dir } }, dir)).toBe(true);
-  });
-
-  it("matches an entry file living inside the folder", () => {
-    expect(rowOwnedByBundle({ slug: "whatever", nativeRef: `${dir}/ui/index.html` }, dir)).toBe(true);
-  });
-
-  it("matches an installed app by slug, which had no bundleDir at all", () => {
-    const row = { slug: "standup-board", kind: "glyphh", nativeRef: "/Users/x/.glyphh/custom-apps/standup-board/index.html" };
-    expect(rowOwnedByBundle(row, dir)).toBe(true);
-  });
-
-  it("never takes a web or native row of the same name with it", () => {
-    expect(rowOwnedByBundle({ slug: "standup-board", kind: "web", nativeRef: null }, dir)).toBe(false);
-  });
-
-  it("leaves another app's row alone", () => {
-    expect(rowOwnedByBundle({ slug: "design", kind: "glyphh", nativeRef: "/Users/x/.glyphh/custom-apps/design/index.html" }, dir)).toBe(false);
-  });
-});
-
-describe("the payload folder a delete may remove", () => {
-  const apps = "/Users/x/.glyphh/apps";
-  const custom = "/Users/x/.glyphh/custom-apps";
-
-  it("takes the org-scoped install folder, not just the entry's own directory", () => {
-    expect(payloadDirOf(`${apps}/org_1/recall/ui/index.html`, apps, custom)).toBe(path.join(apps, "org_1", "recall"));
-  });
-
-  it("takes the legacy flat install folder", () => {
-    expect(payloadDirOf(`${custom}/recall/index.html`, apps, custom)).toBe(path.join(custom, "recall"));
-  });
-
-  it("refuses anything outside both roots, so a folder the user picked is safe", () => {
-    expect(payloadDirOf("/Users/x/code/my-app/index.html", apps, custom)).toBeNull();
-  });
-
-  it("refuses the roots themselves and a bare child of the org root", () => {
-    expect(payloadDirOf(`${apps}/index.html`, apps, custom)).toBeNull();
-    expect(payloadDirOf(`${apps}/org_1/index.html`, apps, custom)).toBeNull();
-    expect(payloadDirOf(`${custom}/index.html`, apps, custom)).toBeNull();
-  });
-
-  it("refuses the shared host folders", () => {
-    expect(payloadDirOf(`${custom}/_libs/react/index.js`, apps, custom)).toBeNull();
-  });
-
-  it("refuses nothing at all", () => {
-    expect(payloadDirOf(null, apps, custom)).toBeNull();
-    expect(payloadDirOf("", apps, custom)).toBeNull();
   });
 });
 

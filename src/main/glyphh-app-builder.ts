@@ -4,7 +4,8 @@
  * The one-shot LLM builder (create_app / buildGlyphhApp) is retired: frontier
  * agents build apps as REAL Vite projects in the working folder now, and the
  * loop ships them through update_app → updateAppFromWorkdir → the host's
- * install gate. Two shapes are handled:
+ * install gate, which makes (or updates) the app's CLOUD INSTANCE (his order,
+ * 2026-10-06: nothing runs in place on this machine). Two shapes are handled:
  *   - BUILT Vite project (glyphh.app.json + dist/index.html) → package the
  *     compiled dist/ (flattened) + manifest + worker; source never ships.
  *   - Legacy single-file app (manifest.json + inline index.html) → package the
@@ -19,7 +20,7 @@ import { createHash } from "node:crypto";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/sdk";
 import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
-import { installGlyphhAppBundle, registerAppInPlace } from "./glyphh-app-host";
+import { installGlyphhAppBundle, type InstallAnswer } from "./glyphh-app-host";
 import * as appsStore from "./apps-store";
 
 // The ten built-in work panels (Office / Design / Memory / Media) are
@@ -36,7 +37,7 @@ function refuseBuiltinWorkpanel(slug: string): void {
 }
 
 /** Zip a text Bundle and run it through the host's real install gate. */
-async function packageAndInstall(bundle: AppBundle): Promise<{ ok: boolean; name?: string; error?: string }> {
+async function packageAndInstall(bundle: AppBundle): Promise<InstallAnswer> {
   const zip = new AdmZip();
   for (const [file, content] of Object.entries(bundle)) {
     zip.addFile(file, Buffer.from(content, "utf8"));
@@ -45,7 +46,7 @@ async function packageAndInstall(bundle: AppBundle): Promise<{ ok: boolean; name
 }
 
 /** Zip on-disk files (binary-safe) + a normalized manifest, then install. */
-async function packageBuiltAndInstall(files: InstallFile[], manifestJson: string): Promise<{ ok: boolean; name?: string; error?: string }> {
+async function packageBuiltAndInstall(files: InstallFile[], manifestJson: string): Promise<InstallAnswer> {
   const zip = new AdmZip();
   zip.addFile("manifest.json", Buffer.from(manifestJson, "utf8"));
   for (const f of files) {
@@ -56,7 +57,7 @@ async function packageBuiltAndInstall(files: InstallFile[], manifestJson: string
   return installZip(zip);
 }
 
-async function installZip(zip: AdmZip): Promise<{ ok: boolean; name?: string; error?: string }> {
+async function installZip(zip: AdmZip): Promise<InstallAnswer> {
   const tmp = path.join(os.tmpdir(), `glyphh-build-${Date.now().toString(36)}.glyphh`);
   fs.writeFileSync(tmp, zip.toBuffer());
   try {
@@ -87,7 +88,7 @@ function resolveAppDir(wd: string): string {
  */
 export async function updateAppFromWorkdir(
   lookup?: (slug: string) => string[] | null,
-): Promise<{ slug: string; name: string; warnings: string[]; entryPath?: string }> {
+): Promise<{ slug: string; name: string; warnings: string[]; instance?: string }> {
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
   const dir = resolveAppDir(wd);
@@ -108,15 +109,12 @@ export async function updateAppFromWorkdir(
 
     const m = JSON.parse(built.manifestJson) as { slug: string; name: string };
     refuseBuiltinWorkpanel(m.slug);
-    // RUN IN PLACE (his rule, 2026-08-30): register the working folder's build where
-    // it lives — no copy into custom-apps. open_app then opens the developer's ACTUAL
-    // build (a rebuild shows on the next open); copy-install (installGlyphhAppBundle)
-    // is reserved for installing someone else's PUBLISHED app.
-    const r = await registerAppInPlace(dir, built.manifestJson);
-    if (!r.ok) throw new Error(r.error || "register failed");
-    // Name WHERE it registered — "success" without the path made a
-    // stale-row open failure undiagnosable (2026-09-09).
-    return { slug: m.slug, name: r.name || m.name, warnings: [], entryPath: path.join(dir, "dist", "index.html") };
+    // THE BUILD SHIPS TO THE CLOUD: the compiled dist/ + manifest become (or
+    // update) the app's instance, and open_app opens that. Name WHERE it
+    // landed — "success" without a place made an open failure undiagnosable.
+    const r = await packageBuiltAndInstall(built.files, built.manifestJson);
+    if (!r.ok) throw new Error(r.error || "install failed");
+    return { slug: m.slug, name: r.name || m.name, warnings: [], instance: r.instance };
   }
 
   // ── Legacy single-file app: package the folder's text files as before ─────
@@ -137,15 +135,6 @@ export async function updateAppFromWorkdir(
   return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, warnings: v.warnings };
 }
 
-/**
- * PUBLISH the working folder's built app to the web at <slug>.glyphh.app.
- *
- * Unlike updateAppFromWorkdir (which installs the app LOCALLY on this machine),
- * this ships the compiled dist/ to the control plane: ensure the owned app
- * entry exists, cut a release, upload the static source (the server builds +
- * serves it), and deploy it live. Returns the release outcome — `ready` with a
- * public URL, or `failed` with the build error to fix.
- */
 /** Folders never packed into the SOURCE snapshot — build products + machinery
  *  (mirrors the pod's source-sync rules; the two must agree byte-for-byte so
  *  identical trees hash identically). */
@@ -170,12 +159,13 @@ function packProjectSource(dir: string): Buffer {
   return zip.toBuffer();
 }
 
+/**
+ * The Releases tab's build: the working folder's built project becomes (or
+ * updates) the app's cloud instance — the same rails update_app rides — and
+ * the row's version advances so the Releases surface has an honest story.
+ * Sharing an app's source is git's job.
+ */
 export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?: boolean } = {}): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
-  // THE PURGE (2026-09-10): the build IS the deliverable, and it lives HERE.
-  // No control plane, no upload, no hosting — validate the working folder's
-  // built project, register it to run in place (the same rails update_app
-  // rides), and advance the LOCAL row's version so the Releases surface has
-  // an honest story. Sharing an app's source is git's job now.
   void opts;
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
@@ -194,7 +184,7 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
     throw new Error(`the working folder builds '${slug}', not '${expectSlug}' — open that app's project folder and try again`);
   }
 
-  // Same remote-asset guard the local install runs.
+  // Same remote-asset guard the install runs.
   const textAssets: Record<string, string> = {};
   for (const f of built.files) {
     if (!/\.(html?|css|m?js|jsx|ts|tsx)$/i.test(f.archivePath)) continue;
@@ -204,10 +194,10 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   const remote = lintRemoteAssets(textAssets);
   if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
 
-  const r = await registerAppInPlace(dir, built.manifestJson);
+  const r = await packageBuiltAndInstall(built.files, built.manifestJson);
   if (!r.ok) return { slug, version: "", status: "failed", error: r.error };
 
-  // Version: bump the local row's patch (a manifest version seeds the first).
+  // Version: bump the row's patch (a manifest version seeds the first).
   const row = (await appsStore.mine()).find((a) => a.slug === slug);
   const base = row?.version || manifest.version || "0.1.0";
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(base);

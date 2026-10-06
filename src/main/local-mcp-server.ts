@@ -24,6 +24,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
+import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
@@ -641,22 +642,27 @@ function buildMcpServer(): McpServer {
     async ({ name, mode }) => via("layouts.open", { name, mode }),
   );
 
-  // ── Installed Glyphh apps — discover / invoke / deploy ─
+  // ── Installed Glyphh apps — discover / invoke / deploy. An app is a cloud
+  //    instance (his order, 2026-10-06); the same answers the gateway's /mcp gives.
+  const cloud = async (fn: () => Promise<unknown>) => {
+    try { return text(await fn()); }
+    catch (err) { return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }; }
+  };
   mcp.tool(
     "app_list_tools",
-    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances, their own, and the apps on this machine (the house apps Images / Video / Audio / Drive / Design / Slides and any local-data app). Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, data ('cloud' | 'local' | 'per-home'), tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
+    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances and their own. Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, kind, status, tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
     {},
-    async () => via("apps.listTools", {}),
+    async () => cloud(() => listInstanceTools()),
   );
   mcp.tool(
     "app_call_tool",
-    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user, or on this machine for a local-data or house app.",
+    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user.",
     {
       app: z.string().describe("App key — from app_list_tools"),
       tool: z.string().describe("Tool name — from app_list_tools"),
       args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments matching the tool's inputSchema"),
     },
-    async ({ app, tool, args }) => via("apps.callTool", { app, tool, args: args || {} }),
+    async ({ app, tool, args }) => cloud(() => callInstanceTool(app, tool, args || {})),
   );
   mcp.tool(
     "app_install",

@@ -39,7 +39,6 @@ vi.mock("better-sqlite3", () => {
 vi.mock("../../src/main/glyphh-loop.js", () => ({ runGlyphhHeadless: async () => ({ ok: true, text: "" }) }));
 vi.mock("../../src/main/app-paths.js", () => ({ userScopedPath: (...s: string[]) => join(root, "user", ...s), userScopedDir: () => join(root, "user"), glyphhPath: (...s: string[]) => join(root, ...s), GLYPHH_DIR: root }));
 vi.mock("../../src/main/stores/preferences-db.js", () => ({ getPreference: (_k: string, d: unknown) => d }));
-vi.mock("../../src/main/glyphh-app-host.js", () => ({ registerBundleApp: async () => ({ ok: true }), unregisterBundleApp: async () => undefined }));
 vi.mock("../../src/main/glyphh-client.js", () => ({ appCache: { cached: async (_k: string, fn: () => unknown) => fn(), invalidate: () => undefined } }));
 vi.mock("../../src/main/local-agents.js", () => ({
   listAgents: () => [...agents.values()],

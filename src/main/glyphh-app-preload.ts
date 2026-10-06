@@ -1,8 +1,8 @@
 /**
  * Preload for installed Glyphh apps (glyphh-app-host). The ENTIRE surface an
- * app gets is `glyphh.call(method, args)` — the main process enforces the
- * manifest's capability list per-window, so an app can only reach what it
- * declared at install time (e.g. "contacts.search", "messages.send").
+ * app gets is `glyphh.call(method, args)` — main forwards it to the app's
+ * cloud instance as the member, and the instance enforces the manifest's
+ * capability list (e.g. "db.exec", "notify.send").
  */
 
 import { contextBridge, ipcRenderer } from "electron";
