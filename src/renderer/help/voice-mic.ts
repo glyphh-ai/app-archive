@@ -50,14 +50,16 @@ let endAfterUtterance = false;
 // disabled, and would have CANCELLED a live run.
 let submitFn: (() => void) | null = null;
 export function registerComposerSubmit(fn: () => void): void { submitFn = fn; }
-function submitComposer(): void {
+/** True when the submit fired; false when the composer was gated. */
+function submitComposer(): boolean {
   // Mirror the Enter key's reach: a gated composer takes no keydown, so a
   // gated hands-free utterance stays in the box for the user instead of
   // firing into a source that isn't ready.
   const ta = el<HTMLTextAreaElement>("code-input");
-  if (ta?.disabled) return;
+  if (ta?.disabled) return false;
   if (submitFn) submitFn();
   else el("code-send")?.click();
+  return true;
 }
 // Live meter: one AudioContext + analyser drives BOTH the dotted level meter and
 // (hands-free only) the silence detector.
@@ -121,16 +123,18 @@ function currentLevel(): number | null {
   return levelOf(rmsOf(buf));
 }
 
-// Speech-mode steering, prepended to the model prompt when "brief" is on. It
-// shapes BOTH the spoken reply and what's rendered, since it steers the turn
-// itself (not just playback). Cached so the synchronous send() can read it.
+// BRIEF REPLIES IN VOICE MODE (his order, 2026-10-07: the flag is back, as the
+// switch in Settings › Voice, on by default): the steer rides a turn only
+// while voice mode is on — dictation and typed turns are untouched. It shapes
+// BOTH the spoken reply and what's rendered, since it steers the turn itself
+// (not just playback). Cached so the synchronous send() can read it.
 export const SPEECH_STEER =
   "[Speech mode is on: the user is talking to you by voice and hearing your reply read aloud. " +
   "Answer in at most one to three short, conversational sentences. Lead with the answer. " +
   "Do not use lists, tables, headings, or code blocks unless explicitly asked. Keep it tight.]";
-let cachedBrief = false;
-/** The steer to prepend to a turn's prompt, or "" when speech mode is off. */
-export function briefSteer(): string { return cachedBrief ? SPEECH_STEER : ""; }
+let cachedBrief = true;
+/** The steer to prepend to a turn's prompt, or "" outside voice mode / with Brief off. */
+export function briefSteer(): string { return voiceModeOn && cachedBrief ? SPEECH_STEER : ""; }
 
 /** The super admin's speech models (GET /api/voice/config: stt, tts, voice),
  *  read once a minute. The feature is always on and available (his order,
@@ -159,7 +163,7 @@ async function voicePref(): Promise<VoicePref> {
       const o = res as Record<string, unknown>;
       // web contract wraps the result ({ok,data}); desktop IPC returns it raw.
       pref = ((o.data && typeof o.data === "object" ? o.data : o) as VoicePref) ?? {};
-      cachedBrief = !!pref.brief;   // keep the sync steer cache warm
+      cachedBrief = pref.brief !== false;   // keep the sync steer cache warm; absent = on
     }
   } catch { /* no voice settings */ }
   // The super admin's models fill what the member left unset; a member's own
@@ -238,6 +242,10 @@ export async function refreshMicChip(): Promise<void> {
 // that was there when the take began; the final transcript replaces the last
 // partial. One partial in flight at a time; the final waits for it.
 let dictBase = "";
+/** Every take has a number; a paint from a take that is no longer current is
+ *  dropped (his report, 2026-10-07: the submitted text came back into the
+ *  box — a late paint landed after the send had cleared it). */
+let takeId = 0;
 let partialTimer: ReturnType<typeof setInterval> | null = null;
 let partialInflight: Promise<void> | null = null;
 let partialAt = 0;
@@ -260,8 +268,9 @@ function startPartials(model: string): void {
     if (!partialDue(Date.now(), startedAt, partialAt, !!partialInflight)) return;
     partialAt = Date.now();
     const blob = takeBlob();
+    const mine = takeId;
     partialInflight = transcribeBlob(blob, model)
-      .then((text) => { if (recorder && recorder.state === "recording" && !discard && text) paintTranscript(text); })
+      .then((text) => { if (mine === takeId && recorder && recorder.state === "recording" && !discard && text) paintTranscript(text); })
       .catch((e) => console.warn("[voice] partial transcript:", e))
       .finally(() => { partialInflight = null; });
   }, 500);
@@ -346,7 +355,8 @@ function startVadLoop(): void {
   const buf = new Uint8Array(analyser.fftSize);
   let spoke = false, silenceAt = 0;
   const openedAt = Date.now();
-  const SPEAK = 0.025, SILENCE_MS = 1300, MAX_MS = 30000;
+  // A SECOND of quiet ends the utterance (was 1.3s; his report, 2026-10-07: "a lag").
+  const SPEAK = 0.025, SILENCE_MS = 1000, MAX_MS = 30000;
   vadTimer = setInterval(() => {
     if (muted) { spoke = false; silenceAt = 0; return; }
     if (!analyser) return;
@@ -412,7 +422,10 @@ async function startRecording(): Promise<boolean> {
   catch (e) { micError("Recording isn't supported here."); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
   chunks = [];
   startedAt = Date.now();
-  dictBase = el<HTMLTextAreaElement>("code-input")?.value ?? "";
+  takeId += 1;
+  // DICTATION appends to the draft in the box; VOICE MODE owns the box — the
+  // take is the whole text, never stacked on what a send just cleared.
+  dictBase = handsFree ? "" : (el<HTMLTextAreaElement>("code-input")?.value ?? "");
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => { stopMeter(); stopPartials(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
   recorder.start(1000);               // one-second slices: the live transcript reads them as they land
@@ -486,11 +499,16 @@ async function transcribe(model: string): Promise<void> {
   if (!handsFree) { if (!failed) paintTranscript(text); el<HTMLTextAreaElement>("code-input")?.focus(); return; }
   // Voice mode: a real utterance submits the turn; silence just re-listens.
   if (text.trim()) {
+    const myTake = takeId;
     paintTranscript(text);
     awaitingReply = true;
     resetEarlySpeech();
     cue("submit");
-    submitComposer();                  // the Enter path; reply → onTurnComplete
+    const fired = submitComposer();    // the Enter path; reply → onTurnComplete
+    // The send clears the box; a take still showing after it fired is a
+    // leftover, not a draft (his report, 2026-10-07).
+    const ta = el<HTMLTextAreaElement>("code-input");
+    if (fired && myTake === takeId && ta && ta.value.trim() === text.trim()) { ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); }
     if (endAfterUtterance) {           // the member ended the session — submit, don't re-listen
       endAfterUtterance = false;
       handsFree = false;

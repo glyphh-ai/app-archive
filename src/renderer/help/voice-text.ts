@@ -25,9 +25,9 @@ export function transcribeErrorText(err: unknown): string {
 }
 
 /** How often a growing take is sent for a partial transcript, in ms. */
-export const PARTIAL_EVERY_MS = 2_500;
+export const PARTIAL_EVERY_MS = 1_500;   // was 2.5s; the words should land while he is still talking (his report, 2026-10-07)
 /** A take shorter than this is not worth a partial (the final transcript covers it). */
-export const PARTIAL_MIN_MS = 1_500;
+export const PARTIAL_MIN_MS = 1_000;
 
 /** Is it time for another partial: enough audio, the interval passed, none in flight. */
 export function partialDue(now: number, startedAt: number, lastAt: number, inflight: boolean): boolean {

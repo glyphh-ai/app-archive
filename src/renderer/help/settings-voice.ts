@@ -1,16 +1,18 @@
 /**
- * settings-voice — THE VOICE ROW of Settings → General (his order, 2026-10-07:
+ * settings-voice — THE VOICE ROWS of Settings → General (his order, 2026-10-07:
  * "all this is on by default, the only setting that should be there is the
- * dropdown"). The mic, dictation, voice mode and spoken replies are always
+ * dropdown", then "bring back the flag that shortens the agent's reply in
+ * voice mode"). The mic, dictation, voice mode and spoken replies are always
  * on; the member picks the VOICE they hear, from the speech model the super
  * admin flagged — its curated list, else the provider's own voices
- * (`window.glyphh.voiceConfig()`); nothing listed says so in one line.
+ * (`window.glyphh.voiceConfig()`); nothing listed says so in one line. The
+ * one switch is BRIEF: short spoken replies in voice mode, on by default.
  */
 
 import { keepIfHost } from "./web-surface.js";
 
 export interface VoiceConfigView { tts: string | null; voice: string | null; voices: string[] }
-export interface VoicePrefView { voiceId?: string | null }
+export interface VoicePrefView { voiceId?: string | null; /** Short replies in voice mode; absent = on. */ brief?: boolean | null }
 
 /** What the row paints — the pure answer the DOM and the test both read. */
 export interface VoiceSectionModel {
@@ -20,6 +22,8 @@ export interface VoiceSectionModel {
   voicesLine: string | null;
   /** The dropdown's current value ("" = the admin's default). */
   voiceValue: string;
+  /** The Brief switch: short spoken replies in voice mode (on unless turned off). */
+  brief: boolean;
 }
 
 export const NO_SPEECH_MODEL_LINE = "No speech model is set up for your organization yet.";
@@ -45,25 +49,28 @@ export function readVoiceConfig(raw: unknown): VoiceConfigView {
 
 /** The member's own pick. */
 export function readVoicePref(raw: unknown): VoicePrefView {
-  return { voiceId: str(unwrap(raw).voiceId) };
+  const o = unwrap(raw);
+  return { voiceId: str(o.voiceId), brief: o.brief !== false };
 }
 
 export function voiceSectionModel(cfg: VoiceConfigView, pref: VoicePrefView): VoiceSectionModel {
-  if (!cfg.tts) return { voiceOptions: null, voicesLine: NO_SPEECH_MODEL_LINE, voiceValue: "" };
+  const brief = pref.brief !== false;
+  if (!cfg.tts) return { voiceOptions: null, voicesLine: NO_SPEECH_MODEL_LINE, voiceValue: "", brief };
   const voices = cfg.voices;
-  if (!voices.length) return { voiceOptions: null, voicesLine: NO_VOICES_LINE, voiceValue: "" };
+  if (!voices.length) return { voiceOptions: null, voicesLine: NO_VOICES_LINE, voiceValue: "", brief };
   const voiceOptions = [
     { value: "", label: cfg.voice && voices.includes(cfg.voice) ? `${cfg.voice} (default)` : "Default" },
     ...voices.filter((v) => v !== cfg.voice).map((v) => ({ value: v, label: v })),
   ];
   // A saved voice that is no longer listed falls back to the default row.
   const voiceValue = pref.voiceId && voices.includes(pref.voiceId) && pref.voiceId !== cfg.voice ? pref.voiceId : "";
-  return { voiceOptions, voicesLine: null, voiceValue };
+  return { voiceOptions, voicesLine: null, voiceValue, brief };
 }
 
 /** The patch the dropdown writes. */
 export const voicePatch = {
   voice: (value: string): Partial<VoicePrefView> => ({ voiceId: value || null }),
+  brief: (on: boolean): Partial<VoicePrefView> => ({ brief: on }),
 };
 
 // ── the DOM ──────────────────────────────────────────────────────────────────
@@ -89,6 +96,8 @@ function paint(m: VoiceSectionModel): void {
   }
   const line = $("voice-voices-line");
   if (line) { line.textContent = m.voicesLine ?? ""; line.classList.toggle("hidden", !m.voicesLine); }
+  const brief = $<HTMLInputElement>("voice-brief");
+  if (brief) brief.checked = m.brief;
 }
 
 function setErr(msg: string): void {
@@ -107,6 +116,7 @@ function wire(section: HTMLElement): void {
   if (wired.has(section)) return;
   wired.add(section);
   $<HTMLSelectElement>("voice-voice")?.addEventListener("change", (e) => void save(voicePatch.voice((e.target as HTMLSelectElement).value)));
+  $<HTMLInputElement>("voice-brief")?.addEventListener("change", (e) => void save(voicePatch.brief((e.target as HTMLInputElement).checked)));
 }
 
 /** Populate the Voice row of Settings → General. The section hides on a host

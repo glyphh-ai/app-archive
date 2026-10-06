@@ -12,7 +12,7 @@ import {
 
 type Listener = (e: { target: FakeEl }) => void;
 class FakeEl {
-  value = ""; innerHTML = ""; textContent = "";
+  value = ""; innerHTML = ""; textContent = ""; checked = false;
   private classes = new Set<string>();
   private listeners: Record<string, Listener[]> = {};
   classList = {
@@ -28,7 +28,7 @@ class FakeEl {
     return [...this.innerHTML.matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map((m) => ({ value: m[1], label: m[2] }));
   }
 }
-const IDS = ["voice-section", "voice-settings-error", "voice-voice", "voice-voices-line"];
+const IDS = ["voice-section", "voice-settings-error", "voice-voice", "voice-voices-line", "voice-brief"];
 let els: Record<string, FakeEl>;
 let set: ReturnType<typeof vi.fn>;
 const CFG = { stt: "openai::gpt-4o-mini-transcribe", tts: "elevenlabs::eleven_flash_v2_5", voice: "Rachel", voices: ["Rachel", "Adam", "Bella"] };
@@ -46,8 +46,9 @@ describe("reading the doors", () => {
     expect(readVoiceConfig(CFG)).toEqual({ tts: CFG.tts, voice: "Rachel", voices: ["Rachel", "Adam", "Bella"] });
     expect(readVoiceConfig({ ok: true, data: { tts: "t", voices: ["a", "", 3] } })).toEqual({ tts: "t", voice: null, voices: ["a"] });
     expect(readVoiceConfig(null)).toEqual({ tts: null, voice: null, voices: [] });
-    expect(readVoicePref({ ok: true, data: { voiceId: "Adam", mode: "off" } })).toEqual({ voiceId: "Adam" });
-    expect(readVoicePref({})).toEqual({ voiceId: null });
+    expect(readVoicePref({ ok: true, data: { voiceId: "Adam", mode: "off" } })).toEqual({ voiceId: "Adam", brief: true });
+    expect(readVoicePref({})).toEqual({ voiceId: null, brief: true });
+    expect(readVoicePref({ brief: false })).toEqual({ voiceId: null, brief: false });
   });
 });
 
@@ -62,13 +63,18 @@ describe("the model — the dropdown and nothing else", () => {
     expect(voiceSectionModel({ ...CFG, voice: null }, {}).voiceOptions![0]).toEqual({ value: "", label: "Default" });
   });
   it("no voices listed → the line, no dropdown; no speech model → its own line", () => {
-    expect(voiceSectionModel({ ...CFG, voices: [] }, {})).toEqual({ voiceOptions: null, voicesLine: NO_VOICES_LINE, voiceValue: "" });
-    expect(voiceSectionModel({ tts: null, voice: null, voices: [] }, {})).toEqual({ voiceOptions: null, voicesLine: NO_SPEECH_MODEL_LINE, voiceValue: "" });
+    expect(voiceSectionModel({ ...CFG, voices: [] }, {})).toEqual({ voiceOptions: null, voicesLine: NO_VOICES_LINE, voiceValue: "", brief: true });
+    expect(voiceSectionModel({ tts: null, voice: null, voices: [] }, {})).toEqual({ voiceOptions: null, voicesLine: NO_SPEECH_MODEL_LINE, voiceValue: "", brief: true });
   });
   it("the dropdown writes one patch; the default row writes null", () => {
     expect(voicePatch.voice("Adam")).toEqual({ voiceId: "Adam" });
     expect(voicePatch.voice("")).toEqual({ voiceId: null });
-    expect(Object.keys(voicePatch)).toEqual(["voice"]);
+  });
+  it("BRIEF is the one switch (his order, 2026-10-07): on unless turned off, and it writes its own patch", () => {
+    expect(voiceSectionModel(CFG, {}).brief).toBe(true);
+    expect(voiceSectionModel(CFG, { brief: false }).brief).toBe(false);
+    expect(voicePatch.brief(false)).toEqual({ brief: false });
+    expect(Object.keys(voicePatch)).toEqual(["voice", "brief"]);
   });
 });
 
@@ -85,6 +91,12 @@ describe("the row in the DOM", () => {
       expect(els["voice-voice"].value).toBe("Bella");
       expect(els["voice-voice"].hidden()).toBe(false);
       expect(els["voice-voices-line"].hidden()).toBe(true);
+    });
+    it("the Brief switch paints on and writes its patch when flipped", async () => {
+      expect(els["voice-brief"].checked).toBe(true);
+      const sw = els["voice-brief"];
+      sw.checked = false; sw.fire("change"); await tick();
+      expect(set).toHaveBeenLastCalledWith({ brief: false });
     });
     it("a pick writes voiceId; the default row writes null", async () => {
       const sel = els["voice-voice"];
