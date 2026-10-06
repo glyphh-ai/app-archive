@@ -31,7 +31,7 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, refreshSpeakToggle, toggleSpeakReplies, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
 import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
@@ -1067,8 +1067,6 @@ function initComposerControls(): void {
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
-  el("code-speak-toggle")?.addEventListener("click", (e) => { e.stopPropagation(); void toggleSpeakReplies(); });
-  void refreshSpeakToggle();
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSpeaking()) { e.stopPropagation(); stopReply(); } }, true);
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
@@ -7679,8 +7677,8 @@ export function initCode(): void {
   // + at the input's left and the voice pair (mic + caret, speak toggle) at
   // its right; everything else sits in the row — Output left, model ·
   // effort · mode (+ Stop while speaking) right. Code seats the + and the
-  // mic under the box too: + · mic · mode · Output left, model · effort ·
-  // speak right. One rule for every host (docked cell, the centre pill,
+  // voice controls under the box too: + · mic · mode · Output left, model ·
+  // effort right. One rule for every host (docked cell, the centre pill,
   // the web's flow card): no chip lands in the box but Work's + and voice
   // pair. appendChild moves keep listeners; a node already in its seat is
   // left alone (moving it would blur a focused chip). The workbench calls
@@ -7695,7 +7693,6 @@ export function initCode(): void {
     const right = agent.querySelector(".code-bar-right");
     const wave = el("code-rec-wave");
     if (!wrap || !left || !right || !wave) return;
-    const speak = el("code-speak-toggle-wrap");
     const mode = el("code-mode-wrap");
     const output = el("code-output-wrap");
     const level = el("code-level-wrap");
@@ -7720,13 +7717,12 @@ export function initCode(): void {
     };
     if (work) {
       order(wrap, [plus]);
-      seatBefore(speak, wrap, wave);
-      seatBefore(mic, wrap, speak ?? wave);
+      seatBefore(mic, wrap, wave);
       order(left, [output]);
       order(right, [model, level, mode, stop]);
     } else {
       order(left, [plus, mic, mode, output]);
-      order(right, [model, level, speak, stop]);
+      order(right, [model, level, stop]);
     }
   };
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic = seatMic;

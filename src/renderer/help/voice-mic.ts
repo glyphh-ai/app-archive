@@ -13,6 +13,7 @@
 
 import { cue, playReplyTTS, stopReply } from "./voice-out.js";
 import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./composer-state.js";
+import { dictationText, partialDue } from "./voice-text.js";
 
 interface VoicePref {
   mode?: "off" | "push-to-talk" | "continuous";
@@ -102,6 +103,8 @@ export function stopHandsFree(): void {
   handsFree = false;
   awaitingReply = false;
   endAfterUtterance = false;
+  voiceModeOn = false;
+  paintVoiceMode();
   stopRecording();
 }
 /** The live input level (0..1) off the recorder's analyser, or null when
@@ -172,45 +175,78 @@ async function setPref(patch: Partial<VoicePref>): Promise<void> {
   try { await g().voiceSettingsSet?.(patch); } catch { /* offline — keep going */ }
 }
 
-/** The "speak replies" chip beside the mic (his order, 2026-10-06: the voice
- *  features are always on and available): reads and flips `autoplay`, and
- *  paints the chip's pressed state. */
-export async function refreshSpeakToggle(): Promise<void> {
-  const btn = el<HTMLButtonElement>("code-speak-toggle");
+// ── VOICE MODE (his order, 2026-10-07, Claude's composer): the bigger button
+// right of the mic. On = a spoken conversation for this session — listen,
+// submit what was said, read the reply aloud, listen again — until the member
+// turns it off (the button, or the ▮▮▮ Stop pill). The mic itself is DICTATE.
+let voiceModeOn = false;
+export function voiceMode(): boolean { return voiceModeOn; }
+function paintVoiceMode(): void {
+  const btn = el<HTMLButtonElement>("code-voice-mode");
   if (!btn) return;
-  const p = await voicePref();
-  const on = !!p.autoplay;
-  btn.setAttribute("aria-pressed", on ? "true" : "false");
-  btn.classList.toggle("on", on);
-  btn.title = on ? "Replies are read aloud — click to stop speaking them" : "Speak replies aloud";
+  btn.classList.toggle("on", voiceModeOn);
+  btn.setAttribute("aria-pressed", voiceModeOn ? "true" : "false");
+  btn.title = voiceModeOn ? "Voice mode is on — click to end" : "Voice mode";
 }
-export async function toggleSpeakReplies(): Promise<void> {
-  const p = await voicePref();
-  await setPref({ autoplay: !p.autoplay });
-  await refreshSpeakToggle();
+export async function toggleVoiceMode(): Promise<void> {
+  if (voiceModeOn) { stopHandsFree(); return; }
+  if (osDenied) { void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.(); return; }
+  if (recorder) return;
+  voiceModeOn = true;
+  handsFree = true;
+  paintVoiceMode();
+  if (!(await startRecording())) { voiceModeOn = false; handsFree = false; paintVoiceMode(); }
 }
 
-/** Show the mic chip only when a transcription model + non-off mode are set,
- *  and keep its tooltip honest about the current mode. */
+/** Show the voice controls only when a transcription model is set and the
+ *  member has not turned the mic off in Settings › Voice. */
 export async function refreshMicChip(): Promise<void> {
   const wrap = el("code-mic-wrap");
   if (!wrap) return;
   const p = await voicePref();
-  const on = !!p.inputModel && p.mode !== undefined && p.mode !== "off";
+  const on = !!p.inputModel && p.mode !== "off";
   wrap.classList.toggle("hidden", !on);
   const chip = el("code-mic-chip");
-  if (chip) chip.title = p.mode === "continuous"
-    ? "Hands-free — click to start talking, click to stop"
-    : "Click to record, click again to stop — the text drops into the composer";
+  if (chip && !chip.classList.contains("mic-error")) chip.title = "Dictate";
+  paintVoiceMode();
 }
 
-function insertTranscript(text: string): void {
+// ── THE LIVE TRANSCRIPT (his order, 2026-10-07): the box fills as the member
+// speaks. The take is recorded in one-second slices; every PARTIAL_EVERY_MS
+// the slices so far go for a transcript and the box shows it after the text
+// that was there when the take began; the final transcript replaces the last
+// partial. One partial in flight at a time; the final waits for it.
+let dictBase = "";
+let partialTimer: ReturnType<typeof setInterval> | null = null;
+let partialInflight: Promise<void> | null = null;
+let partialAt = 0;
+function paintTranscript(text: string): void {
   const ta = el<HTMLTextAreaElement>("code-input");
-  if (!ta || !text) return;
-  const sep = ta.value && !/\s$/.test(ta.value) ? " " : "";
-  ta.value = ta.value + sep + text;
+  if (!ta) return;
+  ta.value = dictationText(dictBase, text);
   ta.dispatchEvent(new Event("input", { bubbles: true }));
-  ta.focus();
+}
+function takeBlob(): Blob { return new Blob(chunks, { type: recorder?.mimeType || "audio/webm" }); }
+async function transcribeBlob(blob: Blob, model: string): Promise<string> {
+  if (!blob.size) return "";
+  return readText(await g().voiceTranscribe?.(await blob.arrayBuffer(), blob.type, model, Date.now() - startedAt));
+}
+function startPartials(model: string): void {
+  stopPartials();
+  partialAt = 0;
+  partialTimer = setInterval(() => {
+    if (!recorder || recorder.state !== "recording" || discard) return;
+    if (!partialDue(Date.now(), startedAt, partialAt, !!partialInflight)) return;
+    partialAt = Date.now();
+    const blob = takeBlob();
+    partialInflight = transcribeBlob(blob, model)
+      .then((text) => { if (recorder && recorder.state === "recording" && !discard && text) paintTranscript(text); })
+      .catch((e) => console.warn("[voice] partial transcript:", e))
+      .finally(() => { partialInflight = null; });
+  }, 500);
+}
+function stopPartials(): void {
+  if (partialTimer) { clearInterval(partialTimer); partialTimer = null; }
 }
 
 /** The transcribe bridge returns {text} on desktop or an envelope on web. */
@@ -354,10 +390,12 @@ async function startRecording(): Promise<boolean> {
   catch (e) { micError("Recording isn't supported here."); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
   chunks = [];
   startedAt = Date.now();
+  dictBase = el<HTMLTextAreaElement>("code-input")?.value ?? "";
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-  recorder.onstop = () => { stopMeter(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
-  recorder.start();
+  recorder.onstop = () => { stopMeter(); stopPartials(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
+  recorder.start(1000);               // one-second slices: the live transcript reads them as they land
   discard = false;
+  startPartials(p.inputModel);
   el("code-mic-chip")?.classList.add("recording");
   setVoiceState(handsFree ? "free" : "ptt");   // the slot repaints: ✕ ✓ + meter, or mic + Stop
   try { cue("start"); } catch { /* no audio out — the recorder runs regardless */ }
@@ -399,6 +437,7 @@ async function transcribe(model: string): Promise<void> {
     discard = false;
     recorder = null;
     chunks = [];
+    paintTranscript("");               // the partials leave with the take
     setVoiceState("off");
     return;
   }
@@ -406,30 +445,33 @@ async function transcribe(model: string): Promise<void> {
   setVoiceState("transcribing");
   let text = "";
   try {
-    const blob = new Blob(chunks, { type: recorder?.mimeType || "audio/webm" });
-    const ms = Date.now() - startedAt;
-    if (blob.size > 0) text = readText(await g().voiceTranscribe?.(await blob.arrayBuffer(), blob.type, model, ms));
+    if (partialInflight) await partialInflight;
+    text = await transcribeBlob(takeBlob(), model);
   } catch (e) { console.error("[voice] transcribe failed", e); }
   chip?.classList.remove("transcribing");
   recorder = null;
   chunks = [];
   setVoiceState("off");
-  if (!handsFree) { insertTranscript(text); return; }
-  // Hands-free: a real utterance submits the turn; silence just re-listens.
+  if (!handsFree) { paintTranscript(text); el<HTMLTextAreaElement>("code-input")?.focus(); return; }
+  // Voice mode: a real utterance submits the turn; silence just re-listens.
   if (text.trim()) {
-    insertTranscript(text);
+    paintTranscript(text);
     awaitingReply = true;
     resetEarlySpeech();
     cue("submit");
     submitComposer();                  // the Enter path; reply → onTurnComplete
-    if (endAfterUtterance) {           // chip-click ended the session — submit, don't re-listen
+    if (endAfterUtterance) {           // the member ended the session — submit, don't re-listen
       endAfterUtterance = false;
       handsFree = false;
+      voiceModeOn = false;
       awaitingReply = false;
+      paintVoiceMode();
     }
   } else if (endAfterUtterance) {
     endAfterUtterance = false;         // ended with nothing said — just stop
     handsFree = false;
+    voiceModeOn = false;
+    paintVoiceMode();
   } else {
     void startRecording();             // heard nothing — keep listening
   }
@@ -468,7 +510,8 @@ export async function onTurnComplete(text: string): Promise<void> {
     if (t.startsWith(earlyLine)) say = t.slice(earlyLine.length).trimStart();
   }
   resetEarlySpeech();
-  if (say) await playReplyTTS(say, p);
+  // Voice mode reads every reply aloud; otherwise the member's Settings › Voice choice stands.
+  if (say) await playReplyTTS(say, voiceModeOn ? { ...p, autoplay: true } : p);
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
 }
 
@@ -498,13 +541,9 @@ async function chipClick(): Promise<void> {
     return;
   }
   if (recorder) return;                          // mid-transcribe — ignore stray clicks
-  const p = await voicePref();
-  handsFree = p.mode === "continuous";           // continuous = auto-submit + re-listen
+  handsFree = false;                             // DICTATE: the text lands in the box, the member sends
   void startRecording();
 }
-
-// (The composer's device/mode drop-up is GONE — Settings › Voice owns the
-// config. The chip is just the mic.)
 
 // ── The device / mode drop-up (populated on open by code.ts) ───────────────────
 async function micDevices(): Promise<MediaDeviceInfo[]> {
@@ -629,36 +668,17 @@ export async function renderMicMenu(menu: HTMLElement): Promise<void> {
     menu.appendChild(item);
   }
 
-  // "Hold to record" toggle — ON = push-to-talk (hold), OFF = hands-free.
-  const sep = document.createElement("div");
-  sep.className = "code-drop-sep";
-  menu.appendChild(sep);
-  const toggleRow = document.createElement("button");
-  toggleRow.className = "code-drop-item code-drop-toggle";
-  toggleRow.type = "button";
-  const tlabel = document.createElement("span");
-  tlabel.textContent = "Hold to record";
-  const sw = document.createElement("span");
-  const holdOn = p.mode !== "continuous";
-  sw.className = "code-drop-switch" + (holdOn ? " on" : "");
-  toggleRow.append(tlabel, sw);
-  toggleRow.addEventListener("click", () => {
-    const nowHold = !sw.classList.contains("on");
-    sw.classList.toggle("on", nowHold);
-    void setPref({ mode: nowHold ? "push-to-talk" : "continuous" }).then(refreshMicChip);
-  });
-  menu.appendChild(toggleRow);
-
   // Populate the OS device labels asynchronously if they arrive after first paint.
   void refreshMicChip();
 }
 
-/** Wire the mic chip once. Down/up drive hold-to-talk; click drives hands-free. */
+/** Wire the voice controls once: the mic dictates, Voice mode converses. */
 export function initVoiceMic(): void {
   const chip = el("code-mic-chip");
   if (!chip || chip.dataset.wired) return;
   chip.dataset.wired = "1";
   chip.addEventListener("click", () => void chipClick());
+  el("code-voice-mode")?.addEventListener("click", (e) => { e.stopPropagation(); void toggleVoiceMode(); });
   // Esc cancels a dictation take (his order, 2026-10-07) — captured ahead of
   // every other Escape door so an open drop-up never swallows it.
   document.addEventListener("keydown", (e) => {
