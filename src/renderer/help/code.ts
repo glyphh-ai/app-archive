@@ -7971,8 +7971,25 @@ export function initCode(): void {
         thumbsup: "👍", peace: "✌️", cat: "🐱", snow: "❄️",
         matrix: "🟩", aurora: "🌌", nebula: "💜", plasma: "🔮", fireflies: "🪲", starfield: "🌠",
       };
-      const closeDripPop = (): void => dripPop.classList.add("hidden");
-      const openDripPop = async (): Promise<void> => {
+      // THE POPOVER FOLLOWS THE BUTTON THAT ASKED (his report, 2026-10-07: the
+      // drip panel on a CLI card showed nothing — it unhid inside the agent
+      // head's anchor, which that card does not show). Opened from another
+      // button it portals to the body, fixed under that button; close puts
+      // it back in its anchor.
+      const dripHome = dripPop.parentElement as HTMLElement;
+      const closeDripPop = (): void => {
+        dripPop.classList.add("hidden");
+        if (dripPop.parentElement !== dripHome) { dripPop.removeAttribute("style"); dripHome.appendChild(dripPop); }
+      };
+      const placeDripPop = (anchor: HTMLElement | null): void => {
+        if (!anchor || dripHome.contains(anchor)) { if (dripPop.parentElement !== dripHome) { dripPop.removeAttribute("style"); dripHome.appendChild(dripPop); } return; }
+        if (dripPop.parentElement !== document.body) document.body.appendChild(dripPop);
+        const r = anchor.getBoundingClientRect();
+        const w = 3 * 96 + 2 * 6 + 20;   // the grid's three columns, gaps and padding
+        const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w));
+        dripPop.style.cssText = `position:fixed;top:${Math.round(r.bottom + 6)}px;left:${Math.round(left)}px;right:auto;bottom:auto;z-index:1000;`;
+      };
+      const openDripPop = async (anchor: HTMLElement | null = null): Promise<void> => {
         type BuiltinFx = { name: string; kind: "one-shot" | "loop" };
         const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<Array<BuiltinFx | string>>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
         const [builtinsRaw, customsRaw] = await Promise.all([
@@ -8001,6 +8018,7 @@ export function initCode(): void {
           empty.textContent = "No drips yet";
           dripPop.appendChild(empty);
         }
+        placeDripPop(anchor);
         dripPop.classList.remove("hidden");
       };
       dripBtn.addEventListener("click", (ev) => {
@@ -8010,10 +8028,14 @@ export function initCode(): void {
       });
       // THE global drips opener — the typed `.dip` watcher (help/dip-watch.ts)
       // lands here from anywhere in the app.
-      (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips = () => { void openDripPop(); };
+      (window as unknown as { __glyphhOpenDrips?: (anchor?: HTMLElement) => void }).__glyphhOpenDrips = (anchor) => { void openDripPop(anchor ?? null); };
       document.addEventListener("click", (ev) => {
-        if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
-      });
+        if (dripPop.classList.contains("hidden") || dripPop.contains(ev.target as Node)) return;
+        // The button that opened it toggles it shut; its own handler sees a closed popover and opens nothing twice.
+        const onOpener = !!(ev.target as HTMLElement | null)?.closest?.('#code-drips-btn, .ws-terminal-tabs [title="Drips"]');
+        closeDripPop();
+        if (onOpener) { ev.stopPropagation(); ev.preventDefault(); }
+      }, true);
       document.addEventListener("keydown", (ev) => {
         if (ev.key === "Escape" && !dripPop.classList.contains("hidden")) closeDripPop();
       });
