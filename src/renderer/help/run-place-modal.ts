@@ -11,7 +11,7 @@
 import { drillItem } from "./code-source-chip.js";
 import { guardWebviewsForModal } from "./shared.js";
 import { LOCUS_SVG } from "./session-locus.js";
-import { runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
+import { CHECK, runPlaceRows, type RunPlace, type RunPlaceInput } from "./run-place.js";
 
 export type { RunPlace, RunPlaceInput } from "./run-place.js";
 

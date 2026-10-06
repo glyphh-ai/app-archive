@@ -18,7 +18,7 @@ export interface RunPlaceInput {
 
 export interface RunPlaceRow { section: "desktop" | "cloud"; place: RunPlace | null; label: string; sub: string; selected: boolean }
 
-const CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+export const CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 /** The rows, pure: the desktops first (a note when none is attached on the
  *  web), then Default and the member's environments. */
