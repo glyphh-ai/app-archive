@@ -164,8 +164,11 @@ const row = (icon: string, label: string, cls = ""): HTMLButtonElement => {
   const b = document.createElement("button");
   b.type = "button";
   b.className = `code-view-menu-item${cls ? ` ${cls}` : ""}`;
-  b.innerHTML = `${icon}<span></span>`;
-  (b.querySelector("span") as HTMLElement).textContent = label;
+  // The label is the NAMED span: a house mark is a span too (appIcon), and
+  // the first span in the row used to take the name — six apps read as
+  // "udi", "esig", "riv" inside their 16px icon boxes (his report, 2026-10-05).
+  b.innerHTML = `${icon}<span class="wam-text"></span>`;
+  (b.querySelector(".wam-text") as HTMLElement).textContent = label;
   return b;
 };
 const head = (label: string): HTMLDivElement => {
