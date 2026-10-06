@@ -137,6 +137,34 @@ describe('skills on web — files through the presigned URLs, the record re-put'
   });
 });
 
+describe("workspaces on web — this surface's list (his order, 2026-10-06: a workspace carries where it was made)", () => {
+  const grid = (name, extra = {}) => ({ name, version: 2, cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [], ...extra });
+  it('layoutsList lists only the web-made rows: a desktop-stamped one and one from before the stamp (a desktop\'s) stay in the library, off this list', async () => {
+    const lib = buildMemberLibrary({ memberLibrary: fakeLibrary({ workspace: [
+      { id: 'research', updatedAt: 1_000, data: grid('Research', { surface: 'web' }) },
+      { id: 'desk', updatedAt: 1_000, data: grid('Desk', { surface: 'desktop' }) },
+      { id: 'old', updatedAt: 1_000, data: grid('Old') },
+      { id: 'junk', updatedAt: 1_000, data: { nope: true } },
+    ] }) });
+    const rows = await lib.layoutsList();
+    expect(rows.map((l) => l.name)).toEqual(['Research']);
+    expect(rows[0]).toMatchObject({ cols: 1, splits: [], updatedAt: 1_000 });
+  });
+  it('layoutsSaveGrid stamps the workspace as made on the web; the save then lists here', async () => {
+    const fake = fakeLibrary();
+    const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 5_000 });
+    expect(await lib.layoutsSaveGrid(grid('Research'))).toBe(true);
+    const [kind, id, input] = fake.put.mock.calls[0];
+    expect([kind, id]).toEqual(['workspace', 'research']);
+    expect(input.data).toMatchObject({ name: 'Research', version: 2, surface: 'web', updatedAt: 5_000 });
+    expect((await lib.layoutsList()).map((l) => l.name)).toEqual(['Research']);
+    // a grid that already names its surface keeps it (an edit never re-homes a workspace)
+    expect(await lib.layoutsSaveGrid(grid('Desk', { surface: 'desktop' }))).toBe(true);
+    expect(fake.put.mock.calls[1][2].data.surface).toBe('desktop');
+    expect((await lib.layoutsList()).map((l) => l.name)).toEqual(['Research']);
+  });
+});
+
 describe('agents on web — the member library record', () => {
   it('create builds the desktop\'s row shape and puts it; update keeps what the patch does not name; delete tombstones', async () => {
     const api = seededLibrary();

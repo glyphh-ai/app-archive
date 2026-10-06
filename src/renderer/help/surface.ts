@@ -58,10 +58,15 @@ export function surfaceHostsView(view: string, caps: Readonly<SurfaceCaps>): boo
 /** A wall / dock tile as the workbench carries it (EchoTile's capability-
  *  bearing fields). `archetype` is the app row's appArchetype: "native" is a
  *  desktop binary; "web" a URL tab; "glyphh-app" a Glyphh app; "glyphh-nav"
- *  a section. */
+ *  a section. `cloud` marks a cloud app INSTANCE (the row's launchConfig
+ *  names an instanceKey); `houseDefault` a house built-in row (no appId). */
 export type SurfaceTileIn = {
   kind: "app" | "layout" | "tool" | "agent" | "folder";
   toolView?: string; navKey?: string; archetype?: string | null;
+  /** a cloud app instance — installed in the cloud, a panel on every surface */
+  cloud?: boolean;
+  /** a house built-in row (the glyphh launcher set; carries no appId) */
+  houseDefault?: boolean;
   /** a CLI agent's tile (kind "tool" on the wall) */
   cliAgent?: unknown;
   /** a dock nav slot's app (a section tile traded onto the pages) */
@@ -69,12 +74,17 @@ export type SurfaceTileIn = {
 };
 
 /** THE ONE RULE FOR THE WALL AND THE DOCK: a surface hosts every layout,
- *  every app (a URL tab opens in a browser tab on the web — code-workbench's
- *  activateTile), every section, the Glyphh agent, every CLI agent, every
- *  dock control (New tab opens a browser tab on the web) and every tool view
- *  it can host — the Browser needs a streamed panel. It drops ONLY a native
- *  app where there is no native window. The desktop keeps everything. The
- *  filter paints; it never rewrites the member's saved dock order or folders. */
+ *  every section, the Glyphh agent, every CLI agent, every dock control (New
+ *  tab opens a browser tab on the web) and every tool view it can host — the
+ *  Browser needs a streamed panel. An APP tile: the desktop (native windows)
+ *  hosts every one. A surface WITHOUT native windows hosts ONLY what it can
+ *  render itself — a cloud app instance, a house built-in, a nav row; every
+ *  saved TAB row (a URL tab, a native app, a bundle with an execPath or a
+ *  url) is the desktop's alone (his report, 2026-10-06: "the web based echo
+ *  panel is broken again it is showing all the tabs… the echo for web just
+ *  needs to filter out the tabs as they can't render on web"). Both surfaces
+ *  read the SAME library rows; the filter paints — it never rewrites the
+ *  member's saved dock order or folders. */
 export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>): boolean {
   switch (t.kind) {
     case "layout": return true;
@@ -84,8 +94,9 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
       if (t.cliAgent || t.navKey) return true;
       return !!t.toolView && surfaceHostsView(t.toolView, caps);
     case "app": {
-      const native = t.archetype === "native" || t.navApp?.archetype === "native" || !!t.navApp?.execPath;
-      return !native || caps.nativeWindows;
+      if (caps.nativeWindows) return true;
+      const navRow = t.archetype === "glyphh-nav" || t.navApp?.archetype === "glyphh-nav" || !!t.navKey;
+      return !!t.cloud || !!t.houseDefault || navRow;
     }
     default: return false;
   }

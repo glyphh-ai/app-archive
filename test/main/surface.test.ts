@@ -41,42 +41,53 @@ describe("THE CAPABILITY MODEL (his order, 2026-10-06: one list, capability chec
 });
 
 describe("THE WALL AND THE DOCK ARE ONE (surfaceHostsTile)", () => {
+  // The tiles as code-workbench's appTileOf / navTileFor build them: a URL
+  // tab (archetype "web"), a native app, a Glyphh bundle with an execPath, a
+  // cloud instance (`cloud`), a house built-in (`houseDefault`), a nav row.
   const tiles = {
     layout: { kind: "layout" as const },
     folder: { kind: "folder" as const },
     agent: { kind: "agent" as const },
     cli: { kind: "tool" as const, toolView: "terminal", cliAgent: { id: "claude" } },
-    glyphhApp: { kind: "app" as const, archetype: "glyphh-app" },
-    cloudApp: { kind: "app" as const, archetype: "glyphh-app" },
     urlTab: { kind: "app" as const, archetype: "web" },
-    section: { kind: "app" as const, archetype: "glyphh-nav" },
     native: { kind: "app" as const, archetype: "native" },
     nativeNav: { kind: "app" as const, navApp: { archetype: "native", execPath: "/Applications/Notes.app" } },
+    bundle: { kind: "app" as const, archetype: "glyphh-app" },
+    cloudInstance: { kind: "app" as const, archetype: "glyphh-app", cloud: true },
+    houseBuiltIn: { kind: "app" as const, houseDefault: true },
+    houseTool: { kind: "tool" as const, toolView: "gdesign" },
+    navRow: { kind: "app" as const, archetype: "glyphh-nav" },
+    navSlot: { kind: "app" as const, navApp: { archetype: "glyphh-nav" } },
     browser: { kind: "tool" as const, toolView: "preview" },
     files: { kind: "tool" as const, toolView: "files" },
-    house: { kind: "tool" as const, toolView: "gdesign" },
   };
+  const navKeys = ["glyphh", "newtab", "settings", "cc", "closeall", "agent:claude"];
   it("the desktop keeps everything", () => {
     for (const t of Object.values(tiles)) expect(surfaceHostsTile(t, DESKTOP_CAPS)).toBe(true);
-    for (const k of ["glyphh", "newtab", "settings", "cc", "closeall", "agent:claude"]) expect(surfaceHostsTile({ kind: "tool", navKey: k }, DESKTOP_CAPS)).toBe(true);
+    for (const k of navKeys) expect(surfaceHostsTile({ kind: "tool", navKey: k }, DESKTOP_CAPS)).toBe(true);
   });
-  it("a browser keeps every layout, every app (a URL tab opens in a browser tab), every section, the agent, every CLI, every dock control and every hosted view", () => {
-    for (const t of [tiles.layout, tiles.folder, tiles.agent, tiles.cli, tiles.glyphhApp, tiles.cloudApp, tiles.urlTab, tiles.section, tiles.files, tiles.house]) {
+  it("a browser keeps every layout, the agent, every CLI, every dock control, every hosted view — and of the APP tiles only a cloud instance, a house built-in and a nav row", () => {
+    for (const t of [tiles.layout, tiles.folder, tiles.agent, tiles.cli, tiles.cloudInstance, tiles.houseBuiltIn, tiles.houseTool, tiles.navRow, tiles.navSlot, tiles.files]) {
       expect(surfaceHostsTile(t, BROWSER_CAPS)).toBe(true);
     }
-    for (const k of ["glyphh", "newtab", "settings", "cc", "closeall", "agent:claude"]) expect(surfaceHostsTile({ kind: "tool", navKey: k }, BROWSER_CAPS)).toBe(true);
+    for (const k of navKeys) expect(surfaceHostsTile({ kind: "tool", navKey: k }, BROWSER_CAPS)).toBe(true);
+    expect(surfaceHostsTile({ kind: "app", navKey: "settings" }, BROWSER_CAPS)).toBe(true);
   });
-  it("a browser drops ONLY a native app and the streamed Browser", () => {
+  it("a browser drops every saved TAB row (his report, 2026-10-06): a URL tab, a native app, a bundle — and the streamed Browser", () => {
+    expect(surfaceHostsTile(tiles.urlTab, BROWSER_CAPS)).toBe(false);
+    expect(surfaceHostsTile({ kind: "app", archetype: "web", isBrowser: true, url: "https://mail.google.com" } as never, BROWSER_CAPS)).toBe(false);
     expect(surfaceHostsTile(tiles.native, BROWSER_CAPS)).toBe(false);
     expect(surfaceHostsTile(tiles.nativeNav, BROWSER_CAPS)).toBe(false);
+    expect(surfaceHostsTile(tiles.bundle, BROWSER_CAPS)).toBe(false);
+    expect(surfaceHostsTile({ kind: "app" }, BROWSER_CAPS)).toBe(false);
     expect(surfaceHostsTile(tiles.browser, BROWSER_CAPS)).toBe(false);
     // a tool tile with no view and no slot names nothing to host
     expect(surfaceHostsTile({ kind: "tool" }, BROWSER_CAPS)).toBe(false);
     expect(surfaceHostsTile({ kind: "tool" }, DESKTOP_CAPS)).toBe(false);
   });
-  it("one function, both surfaces: the only tiles the two answers differ on are the native app and the Browser", () => {
+  it("one function, both surfaces: the two answers differ only on the tab rows (URL tab, native, bundle) and the Browser", () => {
     const differ = Object.entries(tiles).filter(([, t]) => surfaceHostsTile(t, DESKTOP_CAPS) !== surfaceHostsTile(t, BROWSER_CAPS)).map(([k]) => k);
-    expect(differ.sort()).toEqual(["browser", "native", "nativeNav"]);
+    expect(differ.sort()).toEqual(["browser", "bundle", "native", "nativeNav", "urlTab"]);
   });
 });
 

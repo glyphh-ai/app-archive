@@ -16,7 +16,7 @@
 import fs from "fs";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
-import { layoutRowOf, workspaceId as sharedWorkspaceId, type LayoutRowLike } from "../shared/member-library.js";
+import { layoutRowOf, workspaceId as sharedWorkspaceId, workspaceSurfaceOf, type LayoutRowLike, type WorkspaceSurface } from "../shared/member-library.js";
 import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 // The flattened spec shape the palette / app resolver / agent tools read.
@@ -94,6 +94,20 @@ export interface GridLayout {
    *  epoch ms, this client's `Date.now()` at the save. A file written before
    *  stamps existed has none and loses to any server copy. */
   updatedAt?: number;
+  /** THE SURFACE IT WAS MADE ON (his order, 2026-10-06): "desktop" or "web",
+   *  stamped at the save; absent = made on a desktop before the stamp. */
+  surface?: WorkspaceSurface;
+}
+
+/** THE DESKTOP'S LIST (his order, 2026-10-06: "the workspaces should carry
+ *  a desktop vs web key for where they are created"): a desktop lists only
+ *  the workspaces made on a desktop — a workspace made on the web is the
+ *  web's. The folder (and the library row) keeps EVERY workspace: the sync
+ *  caches all of them here; only the list the wall and the Workspaces page
+ *  read is filtered. The same rule, mirrored, is member-library-web.js
+ *  layoutsList. */
+export function desktopLayouts<T extends Pick<GridLayout, "surface">>(grids: readonly T[]): T[] {
+  return grids.filter((g) => workspaceSurfaceOf(g) === "desktop");
 }
 
 /** The row the Workspaces page, the wall and the attach socket read — the
@@ -156,9 +170,10 @@ export class LayoutManager {
   // ── Layout CRUD ───────────────────────────────────────────
 
   /** Save a workspace — its folder is created on first save. The save is
-   *  stamped with this client's clock and announced, so the sync pushes it. */
+   *  stamped with this client's clock and the surface it was made on (a grid
+   *  without one is this desktop's), then announced, so the sync pushes it. */
   saveLayout(grid: GridLayout): Promise<void> {
-    const stamped: GridLayout = { ...grid, updatedAt: Date.now() };
+    const stamped: GridLayout = { ...grid, surface: grid.surface ?? "desktop", updatedAt: Date.now() };
     this.layouts.set(stamped.name, stamped);
     this.persistOne(stamped);
     noteLibrarySave("workspace", workspaceId(stamped.name));

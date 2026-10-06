@@ -32,7 +32,7 @@
 import {
   buildScheduleData, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, buildAgentRow, buildTabRow, dripId, dripRecordOf,
   hubPayloadFiles, isAgentRow, isCronShape, isDripData, isGridLayout, isScheduleData, isTabRow,
-  layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId,
+  layoutRowOf, mergeServerFirst, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId, workspaceSurfaceOf,
 } from '../../src/shared/member-library';
 import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
 import { HOUSE_VIEW_OF_APP } from '../../src/renderer/help/house-relay.ts';
@@ -107,9 +107,15 @@ export function buildMemberLibrary(client, deps = {}) {
   // every surface. The desktop's workspaces folder is a cache of these rows
   // (library-adapters.ts workspaceAdapter syncs both ways); a desktop's own
   // `layouts.list` over the relay never joins — it is the same rows.
+  // THIS SURFACE'S LIST (his order, 2026-10-06: "the workspaces should carry
+  // a desktop vs web key for where they are created"): a workspace carries
+  // the surface it was made on; the web lists only the web-made ones (a row
+  // without the stamp predates it and is a desktop's — shared/member-library
+  // workspaceSurfaceOf). The row keeps every workspace; the desktop lists
+  // its own the same way (layout-manager.ts desktopLayouts).
   const layoutsList = async () => {
     const srv = await listRows('workspace');
-    return srv.filter((r) => isGridLayout(r.data)).map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
+    return srv.filter((r) => isGridLayout(r.data) && workspaceSurfaceOf(r.data) === 'web').map((r) => layoutRowOf({ ...r.data, updatedAt: r.updatedAt }));
   };
   const layoutsSaveGrid = async (grid) => {
     try {
@@ -119,6 +125,8 @@ export function buildMemberLibrary(client, deps = {}) {
       const at = now();
       const data = {
         ...rest, name, version: 2,
+        // Made HERE (his order, 2026-10-06): a grid without a surface is the web's.
+        surface: grid.surface ?? 'web',
         folderMode: grid.folderMode ?? 'single',
         target: grid.target ?? 'glyphh',
         ...(loop ? { loop } : {}),

@@ -54,7 +54,7 @@ import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
 import { deleteStoredChat, getStoredChat, listStoredChats, upsertStoredChat, type RelayChat } from "./agent-ipc.js";
 import { listCliSessions } from "./cli-agents.js";
-import { getLayoutManager, toLayoutRow } from "./layout-manager.js";
+import { desktopLayouts, getLayoutManager, toLayoutRow } from "./layout-manager.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
@@ -133,9 +133,10 @@ export function installAttachHandlers(): void {
   });
 
   // The Customize libraries, read-only — the same rows the desktop's own
-  // layouts-list / panel-apps-list IPC hand the renderer.
+  // layouts-list / panel-apps-list IPC hand the renderer: this machine's
+  // workspaces are the ones made on a desktop (his order, 2026-10-06).
   registerRelayHandler("layouts.list", async () => ({
-    layouts: (await getLayoutManager().refreshAndList()).map(toLayoutRow),
+    layouts: desktopLayouts(await getLayoutManager().refreshAndList()).map(toLayoutRow),
   }));
 
   registerRelayHandler("layouts.get", async (params) => {
