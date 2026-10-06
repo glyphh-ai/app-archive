@@ -21879,28 +21879,13 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .ws-locus-drop .ws-locus-search { flex: 0 0 auto; margin: 0 0 6px; width: 100%; box-sizing: border-box; }
 .ws-locus-drop .ws-locus-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
-/* ── THE WEB CUT (his order, 2026-10-05): app.glyphh.ai boots the Glyphh agent
-   and nothing for building. The command center never paints — no wall (the
-   tiles, the "Welcome back" page, the search pill, the page arrows), no dock
-   (its layer, its hot strip), no layout bar, no veil — and the agent's card
-   drops its chrome so the panel's edge is the page's edge, exactly as the
-   solo panel does. The rail keeps sessions, search, filter and the user chip;
-   its doors into Echo / Build / Customize are hidden by web-surface.ts. The
-   `glyphh-web` class is on <html> before the first paint (web/src/bridge.js),
-   so nothing here flashes. help/web-cut.ts is the rule these rules draw.
-   THE ONE EXCEPTION: the rail's Echo icon lifts the wall (body.web-echo,
-   body.echo-wall-lifted) — then its pages, search and dock show (his order,
-   2026-10-05: "echo should be the mirror of the app … a different filter";
-   the dock itself is off until Appearance → Show the dock). ── */
-html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-pages,
-html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-dots,
-html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-search-wrap,
-html.glyphh-web .ws-echo-body:not(.web-echo) .echo-stage .echo-page-arrow,
-html.glyphh-web .echo-page-arrow-never { display: none !important; }
-/* THE DOCK ON THE WEB IS THE DESKTOP'S DOCK (his order, 2026-10-05: "the
-   mirror of the app"): no web gate — Appearance → Show the dock turns it on
-   (off by default), Hide the dock tucks it, the top edge reveals it. The
-   layout bar and the veil follow the desktop's rules alike. */
+/* ── THE WEB IS THE DESKTOP (his order, 2026-10-05/06: "restore the layout
+   manager on the web, just filter the tabs off"): the command center, its
+   wall, search, pages, dock, layout bar and veil run on the web under the
+   DESKTOP'S OWN rules — nothing here hides them. What the web does not host
+   is filtered out of the tiles (help/web-cut.ts webWallKeeps); the wall and
+   the dock still do not BOOT (the web lands on Work → New) and the rail's
+   Echo icon lifts them. Only the agent card's chrome differs below. ── */
 html.glyphh-web .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; transition: none; }
 /* THE AGENT MOVES ON THE WEB TOO (his review, 2026-10-05: "the glyphh agent
    panel should be draggable too… not fixed in place"). Its head stays — it is

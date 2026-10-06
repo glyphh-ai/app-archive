@@ -45,7 +45,7 @@ describe("the dock's doors on the web", () => {
     expect(webWallKeeps({ kind: "app", archetype: "native" })).toBe(false);            // a native app
     expect(webWallKeeps({ kind: "app", archetype: "glyphh-nav" })).toBe(false);        // a section: the rail's
     expect(webWallKeeps({ kind: "agent" })).toBe(false);                               // a CLI
-    expect(webWallKeeps({ kind: "tool", cliAgent: { id: "claude" } })).toBe(false);    // a CLI agent's wall/dock tile
+    expect(webWallKeeps({ kind: "tool", cliAgent: { id: "claude" } })).toBe(true);     // a CLI agent's tile: the CLIs bridge
     for (const v of [...WEB_TOOL_VIEWS, ...WEB_HOUSE_VIEWS]) expect(webWallKeeps({ kind: "tool", toolView: v })).toBe(true);
     expect(webWallKeeps({ kind: "tool", toolView: "preview" })).toBe(false);
     for (const k of WEB_DOCK_NAV) expect(webWallKeeps({ kind: "tool", navKey: k })).toBe(true);

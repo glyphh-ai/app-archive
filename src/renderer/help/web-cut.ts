@@ -160,8 +160,10 @@ export function webEchoSurface(): Readonly<WebEchoSurface> {
  *  half of two worlds: a cloud app instance, a panel the web hosts itself
  *  (WEB_TOOL_VIEWS, and the house panels it fills over the relay), a cloud
  *  workspace (the web's list is already cloud-only), the dock's own
- *  controls. Gone: URL tabs and native apps, desktop-only Glyphh apps, CLI
- *  agents, the section tiles (the rail has those pages), New tab. */
+ *  controls, and the CLI agents (the CLIs bridge the two worlds, his rule).
+ *  Gone: URL tabs and native apps, desktop-only Glyphh apps, the section
+ *  tiles (the rail has those pages), New tab. The filter paints; it never
+ *  rewrites the member's saved dock order or folders. */
 export type WebWallTileIn = {
   kind: "app" | "layout" | "tool" | "agent" | "folder";
   toolView?: string; navKey?: string; cloud?: boolean; archetype?: string | null;
@@ -176,7 +178,7 @@ export function webWallKeeps(t: WebWallTileIn): boolean {
     case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
     case "agent": return false;
     case "tool":
-      if (t.cliAgent) return false;
+      if (t.cliAgent) return true;   // the CLIs BRIDGE (his rule, 2026-10-05): a CLI tile stays on the web's wall and dock
       if (t.navKey) return WEB_DOCK_NAV.includes(t.navKey);
       return !!t.toolView && (WEB_TOOL_VIEWS.includes(t.toolView) || WEB_HOUSE_VIEWS.includes(t.toolView));
     case "app":

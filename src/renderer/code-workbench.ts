@@ -2773,6 +2773,9 @@ async function init(): Promise<void> {
       const out: TileEntry[] = [];
       for (const k of dockKeys) {
         if (dockItemFor(k)) {
+          // THE WEB'S FILTER AT PAINT (help/web-cut.ts webWallKeeps): a slot the
+          // web cannot serve stays in the saved order, unpainted here.
+          if (IS_WEB_TARGET && !webWallKeeps({ kind: "tool", navKey: k })) continue;
           let e = dockNavEntries.get(k);
           if (!e) { const t = navTileFor(k); if (!t) continue; e = { tile: t, img: null }; dockNavEntries.set(k, e); }
           out.push(e);
@@ -3084,6 +3087,9 @@ async function init(): Promise<void> {
       for (const [k, el] of have) if (!dockKeys.includes(k)) el.remove();
       let prev: HTMLElement | null = null;
       for (const k of dockKeys) {
+        // THE WEB'S FILTER AT PAINT (help/web-cut.ts webWallKeeps): a nav slot
+        // the web cannot serve (New tab) stays in the saved order, unpainted.
+        if (IS_WEB_TARGET && dockItemFor(k) && !webWallKeeps({ kind: "tool", navKey: k })) { have.get(k)?.remove(); continue; }
         let el = have.get(k) ?? null;
         if (!el) {
           const item = DOCK_ITEMS.find((d) => d.key === k);
@@ -3799,12 +3805,11 @@ async function init(): Promise<void> {
       folders = (Array.isArray(folderPref) ? folderPref : [])
         .filter((f): f is WallFolder => !!f && typeof f === "object" && typeof (f as WallFolder).id === "string")
         .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(legacyKey) : [] }));
-      if (IS_WEB_TARGET) {
-        // …and the dock and the folders follow the same filter: a dock slot
-        // the web cannot serve leaves, a folder keeps only its kept members.
-        dockKeys = dockKeys.filter((k) => (dockItemFor(k) ? webWallKeeps({ kind: "tool", navKey: k }) : byK.has(k)));
-        folders = folders.map((f) => ({ ...f, keys: f.keys.filter((k) => byK.has(k)) })).filter((f) => f.keys.length > 0);
-      }
+      // (The dock's order and the folders are the member's SERVER prefs, shared
+      // with the desktop — the web never rewrites them with its filter; it
+      // filters at paint: dockEntries below, and the folder tiles' members
+      // read the filtered catalog. His report, 2026-10-05: the desktop "lost
+      // the default browser icon / tab" after the web saved a filtered dock.)
       wallCatalog = new Map(byK);
       const filed = folderedKeys();
       for (const f of folders) byK.set(`folder:${f.id}`, folderTileOf(f));
@@ -3830,8 +3835,10 @@ async function init(): Promise<void> {
         // …but the wall is BUILT, filtered to the cloud's tiles (webEchoSurface,
         // webWallKeeps): the rail's Echo icon lifts it, dock and all.
         void webEchoSurface;
-        buildWall([[...pageTiles, ...rest]]);
-        syncWebEchoEmpty(pageTiles.length + rest.length);
+        // a folder emptied by the filter stays in the pref, unpainted
+        const shown = [...pageTiles, ...rest].filter((t) => t.kind !== "folder" || (t.cells?.length ?? 0) > 0);
+        buildWall([shown]);
+        syncWebEchoEmpty(shown.length);
         restoreWallOnce(layouts || [], savedWall as WallState | null);
         return;
       }
