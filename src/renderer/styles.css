@@ -22259,6 +22259,8 @@ body[data-session-space="code"] .code-source-slot .code-source-mascot { display:
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
    the standard modal, asked before a CLI tile from the Echo opens. */
 .run-place-box { width: min(360px, 92vw); }
+.run-place-head { display: flex; align-items: center; gap: 8px; }
+.run-place-back.hidden { display: none; }
 .run-place-list { padding: 4px 6px 10px; max-height: min(60vh, 420px); overflow-y: auto; }
 .run-place-list .ws-sec-label { padding: 10px 10px 4px; }
 .run-place-list .code-drop-item { padding: 8px 10px; border-radius: 8px; color: var(--text); }
