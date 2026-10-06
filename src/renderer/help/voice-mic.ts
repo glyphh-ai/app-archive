@@ -12,6 +12,7 @@
  */
 
 import { cue, playReplyTTS, stopReply } from "./voice-out.js";
+import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./composer-state.js";
 
 interface VoicePref {
   mode?: "off" | "push-to-talk" | "continuous";
@@ -56,12 +57,61 @@ function submitComposer(): void {
   if (submitFn) submitFn();
   else el("code-send")?.click();
 }
-// Live meter: one AudioContext + analyser drives BOTH the waveform overlay and
+// Live meter: one AudioContext + analyser drives BOTH the dotted level meter and
 // (hands-free only) the silence detector.
 let audioCtx: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
 let waveRaf = 0;
 let vadTimer: ReturnType<typeof setInterval> | null = null;
+
+// ── Where the recorder stands — the composer's slot paints from this (his
+// order, 2026-10-07): "ptt" = dictation listening (✕ / ✓ + the meter),
+// "free" = hands-free listening (mic + the ▮▮▮ Stop pill), "transcribing"
+// = stopped, text on its way, "off" = idle. help/code.ts subscribes.
+let vstate: VoiceState = "off";
+const stateSubs = new Set<(s: VoiceState) => void>();
+function setVoiceState(s: VoiceState): void {
+  if (vstate === s) return;
+  vstate = s;
+  for (const cb of stateSubs) { try { cb(s); } catch { /* subscriber threw */ } }
+}
+/** The recorder's state right now. */
+export function voiceState(): VoiceState { return vstate; }
+/** Subscribe to state changes. Returns an unsubscribe fn. */
+export function onVoiceState(cb: (s: VoiceState) => void): () => void { stateSubs.add(cb); return () => stateSubs.delete(cb); }
+// ✕ pressed: the take is thrown away when the recorder stops.
+let discard = false;
+
+/** ✓ — stop recording and transcribe through the usual path (the text lands
+ *  in the composer; in hands-free it submits). */
+export function acceptRecording(): void { stopRecording(); }
+/** ✕ / Esc — stop recording and discard the take; back to idle. In a
+ *  hands-free session this ends the session too. */
+export function cancelRecording(): void {
+  if (!recorder || recorder.state !== "recording") return;
+  discard = true;
+  handsFree = false;
+  awaitingReply = false;
+  endAfterUtterance = false;
+  stopRecording();
+}
+/** The ▮▮▮ Stop pill — end the hands-free session, keeping what was said
+ *  in the composer WITHOUT submitting it (his order, 2026-10-07: "Stop ends
+ *  listening and leaves the text in the composer"). */
+export function stopHandsFree(): void {
+  handsFree = false;
+  awaitingReply = false;
+  endAfterUtterance = false;
+  stopRecording();
+}
+/** The live input level (0..1) off the recorder's analyser, or null when
+ *  nothing is recording. */
+function currentLevel(): number | null {
+  if (!analyser) return null;
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  return levelOf(rmsOf(buf));
+}
 
 // Speech-mode steering, prepended to the model prompt when "brief" is on. It
 // shapes BOTH the spoken reply and what's rendered, since it steers the turn
@@ -183,7 +233,7 @@ function startMeter(src: MediaStream): void {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
     node.connect(analyser);
-    drawWave();                 // the transparent recording indicator over the input
+    drawDots();                 // the dotted level meter in the composer's slot
     if (handsFree) startVadLoop();
   } catch { /* metering unsupported — recording itself still works */ }
 }
@@ -191,25 +241,20 @@ function startMeter(src: MediaStream): void {
 function stopMeter(): void {
   if (waveRaf) { cancelAnimationFrame(waveRaf); waveRaf = 0; }
   if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
-  const canvas = el("code-rec-wave");
-  canvas?.classList.add("hidden");
-  canvas?.parentElement?.classList.remove("code-recording");
   analyser = null;
   if (audioCtx) { try { void audioCtx.close(); } catch { /* already closed */ } audioCtx = null; }
 }
 
-/** Paint the mic's live frequency bars onto the transparent overlay canvas. */
-function drawWave(): void {
+/** Paint the dotted level meter (#code-rec-wave): a row of dots whose height
+ *  and opacity follow the live input level (composer-state meterDots). The
+ *  slot shows the canvas only while dictation listens (data-slot="ptt"); a
+ *  hidden canvas measures 0×0 and the frame just waits. */
+function drawDots(): void {
   const canvas = el<HTMLCanvasElement>("code-rec-wave");
   if (!canvas || !analyser) return;
-  canvas.classList.remove("hidden");
-  canvas.parentElement?.classList.add("code-recording");   // hides the placeholder
   const ctx2d = canvas.getContext("2d");
   if (!ctx2d) return;
   const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#af5fff";
-  const BARS = 32;
-  const freq = new Uint8Array(analyser.frequencyBinCount);
-  const step = Math.max(1, Math.floor(freq.length / BARS));
   const tick = (): void => {
     if (!analyser || !ctx2d) return;
     const dpr = window.devicePixelRatio || 1;
@@ -219,19 +264,20 @@ function drawWave(): void {
       canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     }
     ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
-    analyser.getByteFrequencyData(freq);
     ctx2d.clearRect(0, 0, w, h);
-    const gap = 3;
-    const barW = Math.max(2, (w - (BARS - 1) * gap) / BARS);
-    for (let i = 0; i < BARS; i++) {
-      let sum = 0;
-      for (let j = 0; j < step; j++) sum += freq[i * step + j];
-      const v = sum / step / 255;                 // 0..1 loudness for this band
-      const bh = Math.max(2, v * h);
-      const x = i * (barW + gap);
-      ctx2d.fillStyle = accent;
-      ctx2d.globalAlpha = 0.25 + v * 0.6;
-      ctx2d.fillRect(x, (h - bh) / 2, barW, bh);
+    const dots = meterDots(currentLevel() ?? 0);
+    const n = dots.length;
+    const pitch = w / n;                          // one cell per dot
+    const r = Math.min(2.5, pitch / 2 - 1);       // the dot's radius (its floor height)
+    ctx2d.fillStyle = accent;
+    for (let i = 0; i < n; i++) {
+      const { h: hf, a } = dots[i];
+      const bh = Math.max(r * 2, hf * h);         // a dot grows into a rounded bar
+      const x = i * pitch + pitch / 2;
+      ctx2d.globalAlpha = a;
+      ctx2d.beginPath();
+      ctx2d.roundRect(x - r, (h - bh) / 2, r * 2, bh, r);
+      ctx2d.fill();
     }
     waveRaf = requestAnimationFrame(tick);
   };
@@ -311,9 +357,11 @@ async function startRecording(): Promise<boolean> {
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = () => { stopMeter(); stream?.getTracks().forEach((t) => t.stop()); stream = null; void transcribe(p.inputModel!); };
   recorder.start();
+  discard = false;
   el("code-mic-chip")?.classList.add("recording");
-  cue("start");
-  startMeter(stream);                 // waveform overlay (+ hands-free silence detect)
+  setVoiceState(handsFree ? "free" : "ptt");   // the slot repaints: ✕ ✓ + meter, or mic + Stop
+  try { cue("start"); } catch { /* no audio out — the recorder runs regardless */ }
+  startMeter(stream);                 // the dotted level meter (+ hands-free silence detect)
   return true;
 }
 
@@ -346,7 +394,16 @@ function stopRecording(): void {
 async function transcribe(model: string): Promise<void> {
   const chip = el("code-mic-chip");
   chip?.classList.remove("recording");
+  // ✕ / Esc: the take is dropped on the floor — no transcription, back to idle.
+  if (discard) {
+    discard = false;
+    recorder = null;
+    chunks = [];
+    setVoiceState("off");
+    return;
+  }
   chip?.classList.add("transcribing");
+  setVoiceState("transcribing");
   let text = "";
   try {
     const blob = new Blob(chunks, { type: recorder?.mimeType || "audio/webm" });
@@ -356,6 +413,7 @@ async function transcribe(model: string): Promise<void> {
   chip?.classList.remove("transcribing");
   recorder = null;
   chunks = [];
+  setVoiceState("off");
   if (!handsFree) { insertTranscript(text); return; }
   // Hands-free: a real utterance submits the turn; silence just re-listens.
   if (text.trim()) {
@@ -469,9 +527,68 @@ function checkSvg(): string {
   return `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 }
 
-/** Build the mic drop-up: a device list (checkmark on the chosen one) + a
- *  "Hold to record" toggle that flips push-to-talk ⇄ hands-free. Rebuilt each open. */
+// ── The menu's level meter ────────────────────────────────────────────────────
+let menuMeter: { stop: () => void } | null = null;
+function stopMenuMeter(): void { menuMeter?.stop(); menuMeter = null; }
+/** Drive `fill`'s width from the input level while `menu` stays open. The
+ *  recorder's analyser is read when it is live; otherwise a stream opens on
+ *  `deviceId` (null = system default) and closes when the menu hides, the
+ *  menu re-renders (a device switch), or the stream cannot open. */
+function startMenuMeter(menu: HTMLElement, fill: HTMLElement | null, deviceId: string | null): void {
+  stopMenuMeter();
+  if (!fill) return;
+  let ownCtx: AudioContext | null = null;
+  let ownAnalyser: AnalyserNode | null = null;
+  let ownStream: MediaStream | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let stopped = false;
+  const stop = (): void => {
+    stopped = true;
+    if (timer) { clearInterval(timer); timer = null; }
+    ownStream?.getTracks().forEach((t) => t.stop());
+    ownStream = null;
+    ownAnalyser = null;
+    if (ownCtx) { try { void ownCtx.close(); } catch { /* already closed */ } ownCtx = null; }
+  };
+  const me = { stop };
+  menuMeter = me;
+  const open = (): boolean => menu.isConnected && !menu.classList.contains("hidden");
+  const paint = (): void => {
+    if (!open()) { if (menuMeter === me) stopMenuMeter(); else stop(); return; }
+    let level = currentLevel();        // the recorder's own stream when it is live
+    if (level === null && ownAnalyser) {
+      const buf = new Uint8Array(ownAnalyser.fftSize);
+      ownAnalyser.getByteTimeDomainData(buf);
+      level = levelOf(rmsOf(buf));
+    }
+    fill.style.width = `${levelBarWidth(level ?? 0)}%`;
+  };
+  timer = setInterval(paint, 60);
+  paint();
+  if (analyser || !navigator.mediaDevices?.getUserMedia) return;   // the recorder feeds it, or nothing can
+  void (async () => {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+      if (stopped || !open()) { st.getTracks().forEach((t) => t.stop()); return; }
+      ownStream = st;
+      const Ctor = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
+        ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      ownCtx = new Ctor();
+      ownAnalyser = ownCtx.createAnalyser();
+      ownAnalyser.fftSize = 1024;
+      ownCtx.createMediaStreamSource(st).connect(ownAnalyser);
+    } catch (e) {
+      console.warn("[voice] menu level meter:", (e as { name?: string })?.name || e);
+    }
+  })();
+}
+
+/** Build the mic drop-up: a live input level, a device list (checkmark on the
+ *  chosen one) + a "Hold to record" toggle that flips push-to-talk ⇄ hands-free.
+ *  Rebuilt each open; a device pick re-renders (and restarts the meter on it). */
 export async function renderMicMenu(menu: HTMLElement): Promise<void> {
+  stopMenuMeter();
   const p = await voicePref();
   menu.textContent = "";
   const head = document.createElement("div");
@@ -481,11 +598,24 @@ export async function renderMicMenu(menu: HTMLElement): Promise<void> {
   head.appendChild(label);
   menu.appendChild(head);
 
+  // THE LIVE INPUT LEVEL (his order, 2026-10-07, Claude's mic menu): a mic
+  // glyph and a horizontal bar whose fill follows the chosen device's level
+  // while the menu is open, so the member knows the mic works before they
+  // speak. Runs on the recorder's own analyser when one is live; otherwise
+  // opens its own stream on the chosen device (and closes it with the menu).
+  const lvl = document.createElement("div");
+  lvl.className = "code-mic-level";
+  lvl.setAttribute("role", "img");
+  lvl.setAttribute("aria-label", "Input level");
+  lvl.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg><span class="code-mic-level-track"><span class="code-mic-level-fill"></span></span>`;
+  menu.appendChild(lvl);
+
   const devices = await micDevices();
   const rows: Array<{ id: string; name: string }> = [{ id: "", name: "System default" }, ...devices.map((d, i) => ({ id: d.deviceId, name: d.label || `Microphone ${i + 1}` }))];
   // The chosen device is only valid if it's still present; otherwise fall back to
   // System default so exactly ONE row is ever checked.
   const chosen = devices.some((d) => d.deviceId === p.deviceId) ? p.deviceId : "";
+  startMenuMeter(menu, lvl.querySelector<HTMLElement>(".code-mic-level-fill"), chosen || null);
   let marked = false;
   for (const r of rows) {
     const item = document.createElement("button");
@@ -529,5 +659,10 @@ export function initVoiceMic(): void {
   if (!chip || chip.dataset.wired) return;
   chip.dataset.wired = "1";
   chip.addEventListener("click", () => void chipClick());
+  // Esc cancels a dictation take (his order, 2026-10-07) — captured ahead of
+  // every other Escape door so an open drop-up never swallows it.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && vstate === "ptt") { e.stopPropagation(); e.preventDefault(); cancelRecording(); }
+  }, true);
   void refreshMicChip();
 }

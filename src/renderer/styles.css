@@ -14055,23 +14055,20 @@ select:focus {
   animation: code-mic-pulse 1.4s ease-in-out infinite;
 }
 .code-chip.code-speak-stop:hover { filter: brightness(1.08); }
-/* Live mic waveform — a transparent canvas laid over the composer input while
-   recording voice. Pointer-transparent so the field stays usable; the bars are
-   drawn in the accent colour from the real mic level (voice-mic.ts). */
+/* The dotted level meter — a canvas in the slot while dictation listens
+   (data-slot="ptt"), 10 dots whose height/opacity follow the mic level in the
+   accent colour (voice-mic.ts drawDots ← composer-state.ts meterDots). */
 .code-rec-wave {
-  position: absolute;
-  left: 14px;
-  right: 44px;
-  top: 50%;
-  transform: translateY(-50%);
+  display: none;
+  flex: none;
+  align-self: flex-end;
+  width: 90px;
   height: 24px;
+  margin: 0 4px 5px 0;
   pointer-events: none;
-  z-index: 3;
-  opacity: 0.9;
+  opacity: 0.95;
 }
-.code-rec-wave.hidden { display: none; }
-/* While recording, clear the placeholder so the waveform has a clean field. */
-.code-input-wrap.code-recording .code-input::placeholder { color: transparent; }
+.code-input-wrap[data-slot="ptt"] .code-rec-wave { display: block; }
 /* Mic capture error (permission denied / unsupported) — a brief red flash on the
    chip so a blocked mic never reads as "the button does nothing". */
 .code-chip.code-mic-chip.mic-error {
@@ -14126,8 +14123,8 @@ select:focus {
   min-height: 40px;
   max-height: 220px;
   /* Text insets: normal on the left (the attach icon that once lived there
-     is gone), 44px on the right to clear the in-input send button. */
-  padding: 10px 44px 10px 14px;
+     is gone); the send button rides the row in flow now, so no right inset. */
+  padding: 10px 8px 10px 14px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
   background: var(--surface);
@@ -14161,27 +14158,82 @@ select:focus {
   line-height: 1.6;
 }
 
-/* In-input send — return icon normally, stop icon while thinking. */
+/* THE ONE PRIMARY BUTTON (his order, 2026-10-07, Claude's composer as the
+   reference): an accent-filled round ↑ once text is typed; a "▪ Stop" pill
+   while the turn runs; nothing at all on an empty, idle box (the voice pair
+   sits there instead). It rides the input row in flow, bottom-right — the
+   wrap's data-slot (help/code.ts paintComposerSlot) shows and hides it. */
 .code-send {
-  position: absolute;
-  right: 7px;
-  bottom: 7px;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
+  display: none;
+  flex: none;
+  align-self: flex-end;
   align-items: center;
   justify-content: center;
+  gap: 5px;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 4px;
   border: none;
-  border-radius: 7px;
-  background: none;
-  color: var(--text-3);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
   cursor: pointer;
   padding: 0;
+  transition: background 0.15s ease, filter 0.15s ease;
 }
-.code-send:hover { color: var(--accent); background: var(--hover); }
-.code-send .icon-stop { display: none; }
-.code-send.thinking .icon-return { display: none; }
-.code-send.thinking .icon-stop { display: block; }
+.code-send:hover { background: var(--accent-hover, var(--accent)); }
+.code-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.code-send[disabled] { opacity: 0.4; cursor: default; }
+.code-send .icon-stop { display: none; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; line-height: 1; }
+.code-send.thinking {
+  width: auto;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  color: var(--accent-text, var(--accent));
+}
+.code-send.thinking:hover { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)); }
+.code-send.thinking .icon-send { display: none; }
+.code-send.thinking .icon-stop { display: inline-flex; }
+.code-input-wrap[data-slot="send"] .code-send,
+.code-input-wrap[data-slot="stop"] .code-send { display: inline-flex; }
+/* Typed or running: the voice pair leaves the slot (only the pair IN the
+   box — Code's mic under the box is a different seat and stays). */
+.code-input-wrap[data-slot="send"] #code-mic-wrap,
+.code-input-wrap[data-slot="send"] #code-speak-toggle-wrap,
+.code-input-wrap[data-slot="stop"] #code-mic-wrap,
+.code-input-wrap[data-slot="stop"] #code-speak-toggle-wrap,
+.code-input-wrap[data-slot="ptt"] #code-mic-wrap,
+.code-input-wrap[data-slot="ptt"] #code-speak-toggle-wrap,
+.code-input-wrap[data-slot="free"] #code-speak-toggle-wrap { display: none !important; }
+/* Dictation listening: the dotted meter, then ✕ and ✓ (two squares). */
+.code-voice-ptt { display: none; flex: none; align-self: flex-end; align-items: center; gap: 4px; margin-bottom: 4px; }
+.code-input-wrap[data-slot="ptt"] .code-voice-ptt { display: inline-flex; }
+.code-voice-sq {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border-2); border-radius: 7px;
+  background: var(--surface-2); color: var(--text-2); cursor: pointer;
+}
+.code-voice-sq:hover { color: var(--text); border-color: var(--border-3); background: var(--hover); }
+.code-voice-sq.accept { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
+.code-voice-sq.accept:hover { background: var(--accent-hover, var(--accent)); }
+.code-voice-sq:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Hands-free listening: the mic (+ caret) stays; the ▮▮▮ Stop pill joins. */
+.code-voice-free { display: none; flex: none; align-self: flex-end; margin-bottom: 3px; }
+.code-input-wrap[data-slot="free"] .code-voice-free { display: inline-flex; }
+.code-chip.code-voice-free-stop {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 10px 0 8px;
+  border: none; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  color: var(--accent-text, var(--accent)); font-size: 12px; font-weight: 600;
+}
+.code-chip.code-voice-free-stop:hover { background: color-mix(in srgb, var(--accent) 28%, var(--surface-2)); color: var(--accent-text, var(--accent)); }
+/* The placeholder while listening (both modes): italic, muted. */
+.code-input-wrap[data-slot="ptt"] .code-input::placeholder,
+.code-input-wrap[data-slot="free"] .code-input::placeholder { font-style: italic; color: var(--text-3); }
 
 
 /* Workdir controls (old workbench header, adapted) */
@@ -18161,7 +18213,7 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-root[data-anchor="center"] .code-input {
   border: none;
   background: none;
-  padding: 12px 44px 6px 6px;
+  padding: 12px 6px 6px 6px;
   min-height: 48px;
   font-size: 14px;
 }
@@ -18367,11 +18419,10 @@ body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent .code-compose
 .code-root[data-anchor="center"] > .code-agent .code-input-wrap {
   align-items: center;
   gap: 2px;
-  padding-right: 38px;   /* clears the absolute send button */
 }
-/* Docked (layout-hosted) agent: the mic rides BESIDE the ⏎ on the bottom
-   line, never stacked over/under it. */
-.ws-agent-holder .code-input-wrap { align-items: flex-end; padding-right: 38px; }
+/* Docked (layout-hosted) agent: the mic rides BESIDE the send button on the
+   bottom line, never stacked over/under it. */
+.ws-agent-holder .code-input-wrap { align-items: flex-end; }
 .ws-agent-holder .code-input-wrap #code-mic-wrap,
 .ws-agent-holder .code-input-wrap #code-speak-toggle-wrap { align-self: flex-end; margin-bottom: 3px; }
 /* The voice pair in the row — the mic, its caret and the speak toggle — are
@@ -18395,17 +18446,12 @@ body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent .code-compose
    the icons stopped a band-width short of the right edge. The band's buttons
    sit pinned at the BOTTOM in this state; the top strip is free air. */
 .code-root[data-anchor="center"] > .code-agent .code-input-card.options-open .code-source-slot { margin-right: -49px; }
-/* …and the ⏎/stop rides out with the cluster so the column stays aligned. */
-.code-root[data-anchor="center"] > .code-agent .code-input-card.options-open .code-input-wrap .code-send { right: -42px; }
-
-/* The ⏎ sits a tad lower in the pill. */
-.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-send { bottom: 4px; }
-/* The mic (+ its caret) rides the BOTTOM line with the ⏎/stop button no
+/* The mic (+ its caret) rides the BOTTOM line with the send/stop button no
    matter how tall the input grows — never centered up the expanded card. */
 .code-root[data-anchor="center"] > .code-agent .code-input-wrap #code-mic-wrap,
 .code-root[data-anchor="center"] > .code-agent .code-input-wrap #code-speak-toggle-wrap {
   align-self: flex-end;
-  margin-bottom: 3px;   /* optically level with the absolute ⏎ (bottom 4px) */
+  margin-bottom: 3px;   /* optically level with the send button (bottom 4px) */
 }
 .code-root[data-anchor="center"] > .code-agent .code-input {
   border: none;
@@ -22168,3 +22214,39 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-lef
 .artp-share-link { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
 .artp-share-url { flex: 1; min-width: 0; font-size: 11.5px; }
 .artp-share-copy { flex: none; height: 28px; padding: 0 10px; }
+
+/* ── THE USAGE RING (his order, 2026-10-07, Code only): bottom-right of the
+   chip row, a ring whose arc fills with the budget nearest its line; the
+   popover above it lists the plan, that budget and the context window. ── */
+body[data-session-space="work"] #code-usage-wrap { display: none; }
+#code-usage-wrap { flex: 0 0 auto; margin-left: auto; }
+.code-composer-bar .code-chip.code-usage-chip { display: inline-flex; align-items: center; padding: 2px 3px; }
+.code-usage-ring { width: 16px; height: 16px; transform: rotate(-90deg); display: block; }
+.code-usage-ring .ring-track { fill: none; stroke: var(--border-2); stroke-width: 3; }
+.code-usage-ring .ring-fill {
+  fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 100; stroke-dashoffset: 100;
+  transition: stroke-dashoffset 0.3s ease;
+}
+.code-usage-chip.hot .ring-fill { stroke: var(--warning); }
+.code-drop-up.code-usage-pop { left: auto; right: 0; min-width: 240px; max-width: 300px; padding: 12px 14px 13px; }
+.usage-plan { font-size: 12px; font-weight: 600; color: var(--text); }
+.usage-empty { margin-top: 8px; font-size: 11px; color: var(--text-3); }
+.usage-row { margin-top: 10px; }
+.usage-row-head { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-2); }
+.usage-row-head span:last-child { color: var(--text-3); white-space: nowrap; }
+.usage-bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 5px; overflow: hidden; }
+.usage-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+.usage-fill.hot { background: var(--warning); }
+.usage-billing { margin-top: 12px; width: 100%; }
+
+/* NO OUTPUT IN CODE (his order, 2026-10-07): the Output pick is Work's. */
+body[data-session-space="code"] #code-output-wrap { display: none; }
+
+/* THE CODE LAYOUT (his order, 2026-10-07): the environment / directory / git /
+   new-folder chips ride their own row ABOVE the box, always — the Glyphh
+   mascot at that row's far right. */
+.code-source-mascot { display: none; flex: 0 0 auto; margin-left: 6px; width: 18px; height: 18px; opacity: 0.85; }
+.code-source-mascot img { width: 18px; height: 18px; display: block; }
+body[data-session-space="code"] .code-input-card .code-source-mascot { display: inline-flex; }
+body[data-session-space="code"] .code-root[data-anchor="center"] > .code-agent .code-input-card:not(.options-open) .code-source-slot { display: flex; }
