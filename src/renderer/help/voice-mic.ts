@@ -221,8 +221,8 @@ export async function refreshMicChip(): Promise<void> {
   const wrap = el("code-mic-wrap");
   if (!wrap) return;
   const p = await voicePref();
-  const on = !!p.inputModel && p.mode !== "off";
-  wrap.classList.toggle("hidden", !on);
+  // ALWAYS ON (his order, 2026-10-07): the controls show whenever a transcription model exists.
+  wrap.classList.toggle("hidden", !p.inputModel);
   const chip = el("code-mic-chip");
   if (chip && !chip.classList.contains("mic-error")) chip.title = "Dictate";
   paintVoiceMode();
