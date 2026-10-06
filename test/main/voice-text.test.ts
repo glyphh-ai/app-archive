@@ -27,7 +27,7 @@ describe("the live transcript in the box (his order, 2026-10-07)", () => {
   });
   it("a partial is due every interval once the take is long enough and none is in flight", () => {
     const t0 = 10_000;
-    expect(partialDue(t0 + 1_000, t0, 0, false)).toBe(false);
+    expect(partialDue(t0 + PARTIAL_MIN_MS - 1, t0, 0, false)).toBe(false);
     expect(partialDue(t0 + PARTIAL_MIN_MS, t0, 0, false)).toBe(true);
     expect(partialDue(t0 + PARTIAL_MIN_MS, t0, 0, true)).toBe(false);
     const last = t0 + 3_000;
