@@ -1101,7 +1101,12 @@ export function buildContract(client, deps) {
       } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
     },
     // The HOUSE DEFAULTS — the glyphh launcher set (command center only).
-    appsDefaults: () => client.apps.defaults().catch(() => []),
+    // The desktop answers [] here since the local app host went (apps-ipc.ts
+    // "apps-defaults"); the house apps are built-in rows of panelAppsList. This
+    // was `client.apps.defaults()`, a resource the SDK no longer has — it threw
+    // synchronously inside the Echo init and the web died on load (his report,
+    // 2026-10-06: "Cannot access 'openList' before initialization").
+    appsDefaults: async () => [],
     voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),
     voiceSynthesize: lib((text, model, voiceId) => client.voice.synthesize(text, model, voiceId)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy

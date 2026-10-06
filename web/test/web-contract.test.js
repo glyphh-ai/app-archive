@@ -101,6 +101,14 @@ describe('buildContract — AUTHED shapes', () => {
     expect(Array.isArray(l.splits)).toBe(true);
     expect(l.splits[0]).toMatchObject({ panelId: 'p' });
   });
+  it("appsDefaults answers [] like the desktop and never throws — the SDK has no client.apps (the web died on load, 2026-10-06)", async () => {
+    const client = authedClient();
+    delete client.apps;
+    const c = buildContract(client, deps);
+    const p = c.appsDefaults();
+    expect(typeof p.then).toBe('function');
+    expect(await p).toEqual([]);
+  });
   it('panelAppsList → SavedPanelApp rows', async () => {
     expect((await c.panelAppsList()).find((r) => r.slug === 'crm')).toMatchObject({ id: 'crm', slug: 'crm', isBrowser: true, mcp: null });
   });
