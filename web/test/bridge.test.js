@@ -194,6 +194,13 @@ describe('bridge KNOWN wiring', () => {
     expect(out).toMatchObject({ email: 'a@b.co', orgName: 'Acme', tier: 'pro', billingStatus: 'active' });
   });
 
+  it('spendState → GET /api/me/spend-state in the desktop\'s shape; a failed read is ok:false with no budget (his report, 2026-10-07)', async () => {
+    fake.http = { get: vi.fn(async (p) => (p === '/api/me/spend-state' ? { data: { hasPlan: true, plan: 'Solo', canManage: true, tightest: { scope: 'org', label: 'Your budget', limitUsd: 20, spentUsd: 5, pct: 25 } } } : undefined)) };
+    expect(await glyphh.spendState()).toEqual({ ok: true, hasPlan: true, plan: 'Solo', canManage: true, tightest: { scope: 'org', label: 'Your budget', limitUsd: 20, spentUsd: 5, pct: 25 } });
+    fake.http = { get: vi.fn(async () => { throw new Error('offline'); }) };
+    expect(await glyphh.spendState()).toEqual({ ok: false, hasPlan: true, plan: '', canManage: false, tightest: null });
+  });
+
   it('submitSupportTicket → support.ticket, {ok:true}', async () => {
     const out = await glyphh.submitSupportTicket({ subject: 's', description: 'd' });
     expect(fake.support.ticket).toHaveBeenCalledWith({ subject: 's', description: 'd' });
