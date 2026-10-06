@@ -902,6 +902,26 @@ body {
   cursor: pointer;
 }
 .m-tool-mic svg { width: 22px; height: 22px; }
+/* VOICE MODE — the bigger button right of the mic (his order, 2026-10-07, the
+   desktop's composer): a spoken conversation under its own bar. */
+.m-tool-voice { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 22px; background: var(--surface-3); color: var(--text); }
+.m-tool-voice svg { width: 24px; height: 24px; }
+.m-voice-bar { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.m-voice-mute, .m-voice-end {
+  flex: 0 0 40px; width: 40px; height: 40px; border: 0; border-radius: 20px; display: grid; place-items: center;
+  background: var(--surface-3); color: var(--text); cursor: pointer;
+}
+.m-voice-mute svg, .m-voice-end svg { width: 20px; height: 20px; }
+.m-voice-mute.on { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.m-voice-dots { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; height: 28px; }
+.m-voice-dots i { display: block; width: 5px; height: 26px; border-radius: 3px; background: var(--accent); transform-origin: center; transition: transform 0.08s linear; }
+.m-voice-state { flex: 0 0 auto; color: var(--text-3); font: 500 13px/1 var(--font-sans); min-width: 72px; text-align: right; }
+/* DICTATION LIGHTS THE BOX: a faint ring and halo in the theme's primary. */
+.m-composer-box.dictating {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 16%, transparent);
+  transition: box-shadow .25s ease, border-color .25s ease;
+}
 /* The mic's caret (voice options) — slimmer, points up, sits flush to the mic. */
 .m-tool-mic-caret { flex: 0 0 20px; width: 20px; margin-left: -6px; }
 .m-tool-mic-caret svg { width: 14px; height: 14px; transform: rotate(-90deg); }
@@ -2551,3 +2571,15 @@ h1, h2, h3, h4,
 .m-env-note a { color: inherit; text-decoration: underline; }
 .m-env-submit { margin: 0; }
 .m-env-delete { margin-top: 20px; }
+
+/* ── The display face (his pick, 2026-10-02; the phone matched 2026-10-07):
+   every title in JetBrains Mono 700, as on the desktop (src/renderer/styles.css,
+   the same rule) and the site. Body text stays Geist. ─────────────────────── */
+:is(h1, h2, h3, h4),
+.m-chats-title, .m-desktop-name, .m-code-name, .m-sv-name, .m-prompt-title, .m-sel-title,
+.m-profile-name, .m-info-ver, .m-confirm-title, .m-login-title, .m-bill-tier,
+.m-conn-detail-name, .m-help-thread-subject, .m-recents-label, .m-set-email, .m-md-h {
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}

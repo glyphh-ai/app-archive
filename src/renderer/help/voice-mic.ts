@@ -13,7 +13,8 @@
 
 import { cue, playReplyTTS, stopReply } from "./voice-out.js";
 import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./composer-state.js";
-import { dictationText, partialDue, transcribeErrorText } from "./voice-text.js";
+import { dictationText, partialDue, transcribeErrorText, SPEECH_STEER } from "./voice-text.js";
+export { SPEECH_STEER };
 import { micChecked, micRows } from "./mic-devices.js";
 
 interface VoicePref {
@@ -128,10 +129,6 @@ function currentLevel(): number | null {
 // while voice mode is on — dictation and typed turns are untouched. It shapes
 // BOTH the spoken reply and what's rendered, since it steers the turn itself
 // (not just playback). Cached so the synchronous send() can read it.
-export const SPEECH_STEER =
-  "[Speech mode is on: the user is talking to you by voice and hearing your reply read aloud. " +
-  "Answer in at most one to three short, conversational sentences. Lead with the answer. " +
-  "Do not use lists, tables, headings, or code blocks unless explicitly asked. Keep it tight.]";
 let cachedBrief = true;
 /** The steer to prepend to a turn's prompt, or "" outside voice mode / with Brief off. */
 export function briefSteer(): string { return voiceModeOn && cachedBrief ? SPEECH_STEER : ""; }
