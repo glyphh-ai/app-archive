@@ -6,6 +6,10 @@
  * every surface.
  *
  *   install   POST /api/app-instances → PUT the zip to R2 → POST …/ready
+ *   deploy    the thread's folder (the sandbox) as a .tgz → POST …/{key}/builds
+ *             → PUT the source → POST …/{key}/builds/{n}/run: the platform
+ *             builds release n (app-platform.md §4, §6, §12 — `app_deploy`)
+ *   releases  GET …/{key}/releases; pin = POST …/{key}/pin {n} (rollback = n-1)
  *   from hub  POST /api/app-instances/from-hub {itemId} — a hub app as the
  *             caller's personal instance, server-side
  *   list      GET  /api/app-instances (the ones this member may open)
@@ -21,6 +25,9 @@
  * are tested under test/main.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { create as tarCreate } from "tar";
 import * as appsStore from "./apps-store.js";
 import { getActiveUserId } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
@@ -35,6 +42,13 @@ export type { AppInstanceSummary, InstanceCard, InstanceKind } from "../shared/a
 export { isInstanceCardId, instanceKeyOfCardId, instanceKeyOfRow, panelUrlOf } from "../shared/app-instances.js";
 
 const CACHE_KEY = "app-instances";
+
+/** One release of an instance (the SDK's AppRelease, sdk/src/contract/app-instances.ts). */
+export interface ReleaseRow { n: number; sha256: string; sizeBytes: number; note: string; at: string; by: string | null; pinned: boolean }
+
+/** The SDK's app-instances resource (sdk/src/resources/app-instances.ts):
+ *  list · create · ready · releases · pin · builds · runBuild · invoke · … */
+const appInstances = () => getClient().appInstances;
 
 /** The instances this member may open — org (everyone / on the list) and
  *  their own personal ones. Short-TTL cached (the wall, the loop's catalog
@@ -89,6 +103,130 @@ export async function installBundleAsInstance(bytes: Buffer, manifest: BundleMan
   const live = await client.http.post<AppInstanceSummary>(`/api/app-instances/${encodeURIComponent(made.instance.key)}/ready`, {});
   invalidateInstances();
   return live;
+}
+
+// ── Deploy: the thread's folder → a versioned release ───────────────────────
+
+/** What never rides to the builder: installs and outputs (the pod runs
+ *  `npm ci` + `next build` itself) and the repository's own history. */
+export const DEPLOY_EXCLUDES: ReadonlySet<string> = new Set(["node_modules", ".next", "out", ".git"]);
+
+/** The deploy answer's log is a tail: the server already caps the build log
+ *  at 64 KB; an MCP answer carries the end of it, where the failure is. */
+export const DEPLOY_LOG_TAIL_CHARS = 8000;
+
+export interface DeployProject { folder: string; manifest: BundleManifestLike & Record<string, unknown> }
+
+/** The folder `app_deploy` tars — THE THREAD'S FOLDER IS ITS SANDBOX (his
+ *  constraint, 2026-09-29): a Code session deploys the folder it works in and
+ *  nothing else. Refused without a folder, without `manifest.json` +
+ *  `package.json` at its root (the Next.js project shape, app-platform.md
+ *  §8), or when the manifest's slug is not the one the call named. */
+export function checkDeployFolder(folder: string | null | undefined, slug: string, fsImpl: Pick<typeof fs, "existsSync" | "statSync" | "readFileSync"> = fs): DeployProject {
+  const dir = String(folder || "").trim();
+  if (!dir) throw new Error("no folder is set for this session — a Code session deploys the folder it works in; pick one first");
+  let isDir = false;
+  try { isDir = fsImpl.statSync(dir).isDirectory(); } catch { isDir = false; }
+  if (!isDir) throw new Error(`the session's folder is not a directory: ${dir}`);
+  const manifestPath = path.join(dir, "manifest.json");
+  if (!fsImpl.existsSync(manifestPath)) throw new Error(`${dir} has no manifest.json at its root — a Glyphh app is a Next.js project with manifest.json + package.json (the build-glyphh-app skill)`);
+  if (!fsImpl.existsSync(path.join(dir, "package.json"))) throw new Error(`${dir} has no package.json at its root — a Glyphh app is a Next.js project with manifest.json + package.json (the build-glyphh-app skill)`);
+  let manifest: unknown;
+  try { manifest = JSON.parse(fsImpl.readFileSync(manifestPath, "utf8")); }
+  catch (err) { throw new Error(`manifest.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`); }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("manifest.json must be a JSON object");
+  const m = manifest as BundleManifestLike & Record<string, unknown>;
+  const want = String(slug || "").toLowerCase().trim();
+  const have = String(m.slug || "").toLowerCase().trim();
+  if (!want) throw new Error("app_deploy needs the app's slug");
+  if (!have) throw new Error("manifest.json names no slug");
+  if (have !== want) throw new Error(`manifest.json is the app "${have}" but app_deploy was asked to deploy "${want}" — deploy from that app's folder, or pass its slug`);
+  return { folder: dir, manifest: { ...m, slug: have } };
+}
+
+/** The project as a gzipped tar (what `POST …/builds` takes): the folder's
+ *  entries minus DEPLOY_EXCLUDES at any depth, portable, rooted at `.`. */
+export async function packProjectFolder(folder: string): Promise<Buffer> {
+  const entries = fs.readdirSync(folder).filter((name) => !DEPLOY_EXCLUDES.has(name));
+  if (!entries.length) throw new Error(`${folder} is empty`);
+  const stream = tarCreate({ gzip: true, cwd: folder, portable: true, filter: (p) => !p.split(/[\\/]/).some((seg) => DEPLOY_EXCLUDES.has(seg)) }, entries);
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks);
+}
+
+export interface DeployAnswer { key: string; release: ReleaseRow; log: string; tools: string[] }
+
+/** DEPLOY = the folder's source → a release. The instance is the one of that
+ *  slug this member may reach (its org instance, or their personal one;
+ *  `kind` names which); with none yet, one is CREATED first — the create
+ *  route wants a bundle's identity up front, so the SOURCE tgz's sha + size
+ *  stand in until `/builds/{n}/run` records the built release (the gap:
+ *  app-platform.md §4 has no create-without-bundle). Then `builds` → PUT the
+ *  tgz → `runBuild`, which waits for the platform's build and pins it. */
+export async function deployFolderAsInstance(folder: string | null | undefined, opts: { slug: string; kind?: InstanceKind; note?: string; fetchImpl?: typeof fetch; pack?: (folder: string) => Promise<Buffer> }): Promise<DeployAnswer> {
+  const project = checkDeployFolder(folder, opts.slug);
+  const slug = String(project.manifest.slug);
+  if (opts.kind !== undefined && opts.kind !== "org" && opts.kind !== "personal") throw new Error('kind is "org" or "personal"');
+  const tgz = await (opts.pack ?? packProjectFolder)(project.folder);
+  const { createHash } = await import("node:crypto");
+  const sha256 = createHash("sha256").update(tgz).digest("hex");
+
+  const userId = getActiveUserId() || "";
+  const mine = await listInstances();
+  const ofKind = (kind: InstanceKind) => mine.find((i) => i.slug === slug && i.kind === kind && (kind === "org" || i.key === `${slug}~${userId}`));
+  let inst = opts.kind ? ofKind(opts.kind) : (ofKind("org") ?? ofKind("personal"));
+  if (!inst) {
+    const api = appInstances();
+    const create = async (kind: InstanceKind) => api.create(instanceRequestOf(project.manifest, { sha256, sizeBytes: tgz.length }, kind));
+    let made: { instance: AppInstanceSummary };
+    if (opts.kind) made = await create(opts.kind) as unknown as { instance: AppInstanceSummary };
+    else {
+      try { made = await create("org") as unknown as { instance: AppInstanceSummary }; }
+      catch (err) { if (!isForbidden(err)) throw err; made = await create("personal") as unknown as { instance: AppInstanceSummary }; }
+    }
+    inst = made.instance;
+    invalidateInstances();
+  }
+
+  const api = appInstances();
+  const build = await api.builds(inst.key);
+  const put = await (opts.fetchImpl ?? fetch)(build.upload.url, { method: "PUT", body: new Uint8Array(tgz), headers: { "content-type": "application/gzip" } });
+  if (!put.ok) throw new Error(`the source upload was refused (HTTP ${put.status})`);
+  const ran = await api.runBuild(inst.key, build.build.n, opts.note ? { note: opts.note } : {});
+  invalidateInstances();
+  const live = (await listInstances()).find((i) => i.key === inst!.key);
+  const tools = instanceToolRows(live ? [live] : []).flatMap((r) => r.tools.map((t) => t.name));
+  const declared = (Array.isArray(project.manifest.tools) ? project.manifest.tools : []).map((t) => String(t?.name ?? "")).filter(Boolean);
+  const log = String(ran.log ?? "");
+  return { key: inst.key, release: ran.release as ReleaseRow, log: log.length > DEPLOY_LOG_TAIL_CHARS ? log.slice(-DEPLOY_LOG_TAIL_CHARS) : log, tools: tools.length ? tools : declared };
+}
+
+/** `app_releases`: every release of the instance a ref names, oldest first; `pinned` marks the live one. */
+export async function listInstanceReleases(ref: string): Promise<ReleaseRow[]> {
+  const inst = await findInstance(ref);
+  if (!inst) throw new Error(`no app instance ${ref} — not installed in the cloud (app_list_tools names what is)`);
+  const rows = await appInstances().releases(inst.key);
+  return Array.isArray(rows) ? rows as ReleaseRow[] : [];
+}
+
+/** `app_pin` / Rollback: pin an existing release of the instance a ref names. */
+export async function pinInstanceRelease(ref: string, n: number): Promise<AppInstanceSummary> {
+  const inst = await findInstance(ref);
+  if (!inst) throw new Error(`no app instance ${ref} — not installed in the cloud (app_list_tools names what is)`);
+  if (!Number.isInteger(n) || n < 1) throw new Error("n must be a release number (a positive integer) — app_releases lists them");
+  const live = await appInstances().pin(inst.key, n) as unknown as AppInstanceSummary;
+  invalidateInstances();
+  return live;
+}
+
+/** The `app-instance-pin` IPC's body (the same name on the web, member-
+ *  library-web.js): a card id or an instance key, the release to pin. */
+export async function appInstancePinHandler(id: string, n: number): Promise<{ ok: boolean; data?: AppInstanceSummary; error?: string }> {
+  try {
+    const ref = isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id);
+    return { ok: true, data: await pinInstanceRelease(ref, Number(n)) };
+  } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
 }
 
 /** A HUB APP AS THIS MEMBER'S PERSONAL INSTANCE, made server-side: the hub
@@ -171,7 +309,8 @@ export async function callInstanceBridge(key: string, method: string, args: unkn
   }
 }
 
-/** The URL a panel loads for an instance: the server's proxy, the bundle's entry. */
+/** The URL a panel loads for an instance: `${SERVER_URL}/app-host/<key>/ui/`
+ *  (trailing slash — the app server resolves the release's index.html). */
 export const instancePanelUrl = (key: string): string => panelUrlOf(SERVER_URL, key);
 
 /** The session bearer, for the cookie a panel's webview needs to load `ui/*`. */

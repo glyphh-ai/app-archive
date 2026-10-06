@@ -4,11 +4,12 @@
  * build apps, host them in the org, the org allows others to access them,
  * not re-install them 1000 times").
  *
- * An installed Glyphh app is an ORG INSTANCE on the server
- * (server glyphh/docs/app-instances.md: `glyphh_app_instances`, one Fly
- * machine per instance, the bundle on R2, the UI proxied at
- * `/app-host/<key>/ui/*` with the `window.glyphh.call` shim injected). This
- * module is what the desktop's main process and the web bridge share:
+ * An installed Glyphh app is an INSTANCE on the server (yo/app-platform.md:
+ * `glyphh_app_instances`, one always-on app server serving versioned
+ * RELEASES from R2, the UI proxied at `/app-host/<key>/ui/` with the
+ * `window.glyphh.call` shim injected; `release` is the pinned n, `pin` rolls
+ * back). This module is what the desktop's main process and the web bridge
+ * share:
  *
  *   · the create request a bundle makes       (instanceRequestOf)
  *   · the `tab` library row an instance gets   (instanceTabRow) — it rides the
@@ -39,9 +40,22 @@ export interface AppInstanceSummary {
   orgConnectionId: string | null;
   bundle: { sha256: string; bytes?: number };
   manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string };
+  /** The pinned release number; null (or absent) = nothing deployed yet. */
+  release?: number | null;
   /** `/app-host/<key>/` — the proxy prefix the server answers for it. */
   url: string;
 }
+
+/** The pinned release of an instance as a number, or null when nothing is deployed. */
+export const releaseOf = (inst: Pick<AppInstanceSummary, "release"> | null | undefined): number | null =>
+  Number.isInteger(inst?.release) && (inst!.release as number) > 0 ? (inst!.release as number) : null;
+
+/** Rollback = pin n-1: the release a Rollback button pins, or null when there
+ *  is nothing before the live one. */
+export const rollbackTargetOf = (inst: Pick<AppInstanceSummary, "release"> | null | undefined): number | null => {
+  const n = releaseOf(inst);
+  return n !== null && n > 1 ? n - 1 : null;
+};
 
 /** The manifest fields the install sends up (the desktop's GlyphhAppManifest,
  *  structurally — the server stores what it is handed and answers
@@ -95,8 +109,10 @@ export const instanceKeyOf = (slug: string, kind: InstanceKind, userId: string):
 /** The slug an instance key names (`slug~user` → slug). */
 export const slugOfKey = (key: string): string => key.split("~", 1)[0];
 
-/** Where an instance's UI loads: the server's proxy, the bundle's entry. */
-export const panelPathOf = (key: string): string => `/app-host/${encodeURIComponent(key)}/ui/index.html`;
+/** Where an instance's UI loads: the server's proxy, the release's `ui/`
+ *  tree — a TRAILING SLASH (app-platform.md §10): the app server resolves
+ *  `index.html` and the Next.js export's `./_next/…` assets resolve under it. */
+export const panelPathOf = (key: string): string => `/app-host/${encodeURIComponent(key)}/ui/`;
 export const panelUrlOf = (apiBase: string, key: string): string => `${apiBase.replace(/\/+$/, "")}${panelPathOf(key)}`;
 /** Where the page's `glyphh.call` lands for that instance. */
 export const callPathOf = (key: string): string => `/app-host/${encodeURIComponent(key)}/call`;
@@ -215,8 +231,8 @@ export interface InstanceCard {
   updatedAt: string;
   icon: null;
   tool: null;
-  /** Not a folder: the instance it stands for. */
-  instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[] };
+  /** Not a folder: the instance it stands for; `release` = the pinned n. */
+  instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[]; release: number | null };
 }
 
 export const instanceCardId = (key: string): string => `${INSTANCE_CARD_PREFIX}${key}`;
@@ -240,7 +256,7 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     updatedAt: nowIso,
     icon: null,
     tool: null,
-    instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools },
+    instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools, release: releaseOf(inst) },
   };
 }
 
@@ -249,19 +265,20 @@ export function instanceDetailOf(inst: AppInstanceSummary, nowIso?: string): Ins
   const card = instanceCardOf(inst, nowIso);
   const tools = (Array.isArray(inst.manifest?.tools) ? inst.manifest.tools : []) as Array<{ name?: string; description?: string }>;
   const where = inst.kind === "org" ? (inst.access === "restricted" ? "members on its list" : "every member of your organization") : "you";
+  const release = releaseOf(inst);
   const lines = [
     `# ${card.name}`,
     "",
     card.description,
     "",
-    `Installed in the cloud as ${inst.kind === "org" ? "an organization" : "a personal"} app (instance \`${inst.key}\`, status ${inst.status}). Open to ${where}${inst.public ? ", and public on its own hostname" : ""}.`,
+    `Installed in the cloud as ${inst.kind === "org" ? "an organization" : "a personal"} app (instance \`${inst.key}\`, status ${inst.status}, ${release === null ? "nothing deployed yet" : `release ${release}`}). Open to ${where}${inst.public ? ", and public on its own hostname" : ""}.`,
     "",
     ...(tools.length ? ["## Tools", "", ...tools.map((t) => `- \`${t.name}\`${t.description ? ` — ${t.description}` : ""}`)] : []),
     ...(inst.manifest?.connectors?.length ? ["", "## Connections", "", ...inst.manifest.connectors.map((c) => `- ${c}`)] : []),
   ];
   return {
     ...card,
-    frontmatter: { name: card.name, description: card.description, type: "app", instance: inst.key, kind: inst.kind, status: inst.status, access: inst.access, author: card.author },
+    frontmatter: { name: card.name, description: card.description, type: "app", instance: inst.key, kind: inst.kind, status: inst.status, access: inst.access, author: card.author, ...(release === null ? {} : { release: String(release) }) },
     body: lines.join("\n"),
     files: [],
   };

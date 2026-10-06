@@ -23,8 +23,11 @@ const MINE = { ...ORG, key: 'notes~u1', slug: 'notes', kind: 'personal', manifes
 function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLibrary({ tab: [{ id: 'crm', updatedAt: 1_000, data: CRM }] }), attached = null, fromHub = null } = {}) {
   const dels = [];
   const posts = [];
+  const pins = [];
   return {
-    dels, posts,
+    dels, posts, pins,
+    // The SDK's app-instances resource (sdk/src/resources/app-instances.ts): what Rollback calls.
+    appInstances: { pin: vi.fn(async (key, n) => { pins.push([key, n]); const inst = instances.find((i) => i.key === key); return { ...inst, release: n }; }) },
     memberLibrary: library,
     me: vi.fn(async () => ({ userId: 'u1' })),
     token: vi.fn(async () => { if (!token) throw new Error('signed out'); return token; }),
@@ -45,13 +48,13 @@ describe('the panel open (glyphhAppPreviewOpen on the web)', () => {
     const doc = fakeDoc();
     const w = buildAppInstancesWeb(fakeClient(), { document: doc, secure: true });
     const rows = [{ slug: 'expense-desk', name: 'Expense Desk', launchConfig: { instance: 'expense-desk' } }];
-    expect(await w.previewOpen('expense-desk', rows)).toEqual({ ok: true, fileUrl: '/app-host/expense-desk/ui/index.html', hosted: true });
+    expect(await w.previewOpen('expense-desk', rows)).toEqual({ ok: true, fileUrl: '/app-host/expense-desk/ui/', hosted: true });
     expect(doc.cookie).toBe(`${PANEL_COOKIE}=tok-1; path=/app-host; SameSite=Strict; Secure`);
   });
   it('resolves a bare slug against the instances (org first, then the member\'s own)', async () => {
     const w = buildAppInstancesWeb(fakeClient(), { document: fakeDoc(), secure: false });
-    expect((await w.previewOpen('notes', [])).fileUrl).toBe('/app-host/notes~u1/ui/index.html');
-    expect((await w.previewOpen('expense-desk', [])).fileUrl).toBe('/app-host/expense-desk/ui/index.html');
+    expect((await w.previewOpen('notes', [])).fileUrl).toBe('/app-host/notes~u1/ui/');
+    expect((await w.previewOpen('expense-desk', [])).fileUrl).toBe('/app-host/expense-desk/ui/');
   });
   it('an app that is not in the cloud, or a signed-out member, gets an honest refusal', async () => {
     const w = buildAppInstancesWeb(fakeClient(), { document: fakeDoc() });
@@ -102,7 +105,7 @@ describe('the member library folds instances in', () => {
     const client = fakeClient();
     const doc = fakeDoc();
     const lib = buildMemberLibrary(client, { document: doc, secure: true });
-    expect(await lib.glyphhAppPreviewOpen('expense-desk')).toEqual({ ok: true, fileUrl: '/app-host/expense-desk/ui/index.html', hosted: true });
+    expect(await lib.glyphhAppPreviewOpen('expense-desk')).toEqual({ ok: true, fileUrl: '/app-host/expense-desk/ui/', hosted: true });
     expect(doc.cookie).toContain('glyphh_session=tok-1');
     const list = await lib.skillsList('app');
     expect(list.ok).toBe(true);
@@ -144,6 +147,28 @@ describe('a hub app as this member\'s instance, and a tab\'s panel on the web', 
     expect(answer.ok).toBe(false);
     expect(answer.error).toMatch(/not installed in the cloud/);
     expect(answer).not.toHaveProperty('localApp');
-    expect(await on.previewOpen('notes', rows)).toEqual({ ok: true, fileUrl: '/app-host/notes~u1/ui/index.html', hosted: true });
+    expect(await on.previewOpen('notes', rows)).toEqual({ ok: true, fileUrl: '/app-host/notes~u1/ui/', hosted: true });
+  });
+});
+
+describe('Rollback on the web (appInstancePin — the same IPC name as the desktop)', () => {
+  it('pins release n of the instance a card id or a key names through the SDK resource and answers the instance', async () => {
+    const client = fakeClient({ instances: [{ ...ORG, release: 3 }, MINE] });
+    const w = buildAppInstancesWeb(client, { document: fakeDoc() });
+    expect(await w.pin('app-instance:expense-desk', 2)).toMatchObject({ key: 'expense-desk', release: 2 });
+    expect(await w.pin('notes~u1', 1)).toMatchObject({ key: 'notes~u1', release: 1 });
+    expect(client.pins).toEqual([['expense-desk', 2], ['notes~u1', 1]]);
+    await expect(w.pin('app-instance:missing', 1)).rejects.toThrow(/no cloud app missing/);
+    await expect(w.pin('expense-desk', 0)).rejects.toThrow(/release number/);
+    await expect(w.pin('expense-desk', 'x')).rejects.toThrow(/release number/);
+  });
+  it('the card carries `release n`; the library answers the envelope', async () => {
+    const client = fakeClient({ instances: [{ ...ORG, release: 3 }] });
+    const lib = buildMemberLibrary(client, { document: fakeDoc(), secure: true });
+    const list = await lib.skillsList('app');
+    const card = list.data.find((c) => c.id === 'app-instance:expense-desk');
+    expect(card.instance.release).toBe(3);
+    expect(await lib.appInstancePin('app-instance:expense-desk', 2)).toMatchObject({ ok: true, data: { release: 2 } });
+    expect(await lib.appInstancePin('app-instance:nothing', 2)).toMatchObject({ ok: false, error: expect.stringMatching(/no cloud app/) });
   });
 });

@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId } from "./app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -912,6 +912,9 @@ export function registerSkillsIpc(): void {
     }
     return env(() => { deleteSkill(String(id)); return true; });
   });
+  // Settings → Apps → Rollback: pin a release of a cloud instance (the card
+  // id or the key). The web answers the same name (member-library-web.js).
+  ipcMain.handle("app-instance-pin", (_e: unknown, id: string, n: number) => appInstancePinHandler(String(id), Number(n)));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
   ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
   ipcMain.handle("skill-replace", async (e, id: string) => {

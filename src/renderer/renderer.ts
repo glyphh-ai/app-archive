@@ -457,6 +457,7 @@ declare global {
       skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) => Promise<LibEnvelope>;
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
       skillDelete: (id: string) => Promise<LibEnvelope>;
+      appInstancePin: (id: string, n: number) => Promise<LibEnvelope>;
       skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
       skillReveal: (id: string) => Promise<LibEnvelope>;
       skillAdopt: (id: string) => Promise<LibEnvelope>;

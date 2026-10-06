@@ -308,7 +308,7 @@ export function buildContract(client, deps) {
         client.billing.credits().catch(() => null),   // org pool — admins only (403 → null)
         client.usage.allocation().catch(() => null),   // the caller's own allocation
         client.usage.summary().catch(() => null),      // month-to-date spend
-        client.apps.deployed().catch(() => null),      // deployed-app count
+        client.appInstances.list().catch(() => null), // the cloud apps this member may open
         client.billing.plans().catch(() => []),        // the plan catalog — name + allowance
         client.billing.status().catch(() => null),     // which tier the org is on
       ]);
@@ -676,6 +676,7 @@ export function buildContract(client, deps) {
     skillFileWrite: library.skillFileWrite,
     skillCreate: library.skillCreate,
     skillDelete: library.skillDelete,
+    appInstancePin: library.appInstancePin,
     skillSetEnabled: library.skillSetEnabled,
     skillAgents: library.skillAgents,
     skillAgentSet: library.skillAgentSet,
@@ -788,9 +789,8 @@ export function buildContract(client, deps) {
     },
 
     // The LAUNCHER list: the attached desktops' app tabs (the member's real
-    // rows), then every app the org owns or installed server-side — NOT
-    // apps.deployed(), which is only hosted deploys and is empty for a fresh
-    // org (that read backs the dashboard count). See panelAppsList above.
+    // rows), then every app the org owns or installed server-side. See
+    // panelAppsList above.
     panelAppsList,
     // A tab made, changed or deleted here WRITES THE SERVER record (its
     // config vars never ride — they stay on the machine that set them); the

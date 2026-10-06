@@ -539,7 +539,7 @@ describe('emptyDashboardData / toDashboardData (Chat-tab landing shape)', () => 
       null,
       { uncapped: false, capCredits: 100, spentCredits: 30, remainingCredits: 70, windowEnd: '2026-09-01', workspaceName: 'Growth' },
       { credits: 30, events: 12 },
-      [{ system: true, url: 'x' }, { system: false, url: 'https://a' }, { system: false, url: null }],
+      [{ key: 'expense-desk', status: 'ready' }, { key: 'notes~u1', status: 'pending' }],
     );
     expect(out.name).toBe('Ada');           // first token of the display name
     expect(out.plan).toBe('pro');
@@ -550,7 +550,7 @@ describe('emptyDashboardData / toDashboardData (Chat-tab landing shape)', () => 
     });
     expect(out.spendCredits).toBe(30);
     expect(out.requests).toBe(12);
-    expect(out.appsCount).toBe(1);           // only the non-system app WITH a url
+    expect(out.appsCount).toBe(2);           // every cloud instance this member may open
   });
   // Admin with an org pool: credits/allowance are micro-credits → whole credits.
   it('admin with org pool → orgCredits true, micro→whole credit math', () => {

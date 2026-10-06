@@ -16,7 +16,7 @@
  * (hub-ipc.ts installHubItem → POST /api/app-instances/from-hub).
  *
  * RUN: the panel's <webview> loads the server's proxy
- * (`/app-host/<key>/ui/index.html`, the session cookie set on its partition)
+ * (`/app-host/<key>/ui/`, the session cookie set on its partition)
  * and the preload's `glyphh.call(method, args)` rides main → the instance's
  * /call as the member — the pod enforces the manifest's capabilities. The
  * loop's and the local MCP's app tools ride the same instance
@@ -40,7 +40,7 @@ import {
 
 // ── manifest ────────────────────────────────────────────────
 
-/** An MCP tool an app exposes (see GLYPHH-APP-SPEC §3). Backed by exactly one
+/** An MCP tool an app exposes (the SDK's GLYPHH_APP_SPEC, manifest.json tools). Backed by exactly one
  *  of: a `capability` (1:1 passthrough on the instance) or a worker `handler`
  *  (the app's own logic, headless on the instance). */
 export interface GlyphhAppTool {
