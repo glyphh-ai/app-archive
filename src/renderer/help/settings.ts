@@ -8,6 +8,7 @@ import {
   clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
+import { loadVoiceSection } from "./settings-voice.js";
 import { hostHas, keepIfHost, copyText } from "./web-surface.js";
 import { DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT, DOCK_ENABLED_CHANGED_EVENT, dockEnabledFrom } from "./dock-band.js";
 import {
@@ -204,6 +205,8 @@ function initSettings() {
   // Agent defaults — the model a new session opens with, from the org's own
   // allowed list (help/settings-agent.ts).
   void loadAgentDefaults();
+  // Voice — mic mode, spoken replies, the voice (help/settings-voice.ts).
+  void loadVoiceSection();
   // Embeddings upgrade — ONNX default, Together AI BYOK (desktop-only).
   // Embeddings + memory live on Settings → Memory now (his order, 2026-09-19).
 
