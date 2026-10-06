@@ -54,7 +54,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, webPanelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines } from "./help/surface.js";
+import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines } from "./help/surface.js";
 import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
@@ -1951,9 +1951,9 @@ async function init(): Promise<void> {
     // PAGES open as Echo cards — Echo is the only surface.
     void loadSection;   // the card path runs the loader itself
     openEchoSurface();
-    // THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05): Build and
-    // Customize fill the page in place of everything showing.
-    if (IS_WEB_TARGET && webPanelOpensFullScreen(section)) { echoCtl?.openWebFullPanel(section); return; }
+    // THE FULL-SCREEN PAGES (his orders, 2026-10-05 web, 2026-10-07 desktop):
+    // Build and Customize fill the page in place of everything showing.
+    if (panelOpensFullScreen(section, IS_WEB_TARGET)) { echoCtl?.openWebFullPanel(section); return; }
     echoCtl?.openSection(section);
   }
 
@@ -7437,7 +7437,7 @@ async function init(): Promise<void> {
       scheduleAgentSync();
     };
     const openWebFullPanel = (key: string): void => {
-      if (!IS_WEB_TARGET || !webPanelOpensFullScreen(key)) return;
+      if (!panelOpensFullScreen(key, IS_WEB_TARGET)) return;
       if (webFullKey === key) return;
       if (webFullHost) closeWebFullPanel();
       const host = document.createElement("div");
@@ -7523,6 +7523,9 @@ async function init(): Promise<void> {
       },
       openLayout: (layout) => openLayoutInEcho(layout),
       openSection: (section) => {
+        // A GROUP PAGE (Build, Customize) is full screen on both surfaces
+        // (his order, 2026-10-07) — a restored wall card included.
+        if (panelOpensFullScreen(section, IS_WEB_TARGET)) { openWebFullPanel(section); return; }
         // Section pages (Apps, Workspaces, Agents, …) follow the ONE open
         // rule everything else does now (his order, 2026-08-30): the card
         // joins whatever is showing — a live layout adopts it into the next
@@ -11221,7 +11224,7 @@ async function init(): Promise<void> {
     if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[surface] the Browser needs a streamed panel — not reachable here:", v); return; }
     // THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05): Artifacts opens
     // full screen in place of everything showing (help/surface.ts).
-    if (IS_WEB_TARGET && webPanelOpensFullScreen(v)) { openEchoSurface(); echoCtl?.openWebFullPanel(v); return; }
+    if (panelOpensFullScreen(v, IS_WEB_TARGET)) { openEchoSurface(); echoCtl?.openWebFullPanel(v); return; }
     // INSIDE AN AGENT PANEL a tool belongs to the shell's grid, in the next
     // slot beside the panel (his report, 2026-09-26: Files opened inside the
     // agent). The request goes up through main; only the agent's own views

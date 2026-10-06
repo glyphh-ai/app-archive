@@ -167,10 +167,28 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  panel (kept mounted, state preserved) and paints the panel edge to edge
  *  under a header where the agent header is — "‹ <title>" on the left (back
  *  = close), an X on the right. Closing restores exactly what was showing.
- *  The desktop never takes this path: there they are ordinary work panels. */
+ *  Build and Customize take this path on the desktop too (GROUP_PAGES);
+ *  Artifacts stays an ordinary work panel there. */
 export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "build", "customize"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
+}
+/** THE GROUP PAGES ARE PAGES ON BOTH SURFACES (his order, 2026-10-07: "the
+ *  desktop app should handle the Build and customize pages the same as they
+ *  are handled in the web: they render as pages and remove the like pages
+ *  from settings to make it more manageable"). Build and Customize open full
+ *  screen on the desktop as on the web; Artifacts is the web's alone (a work
+ *  panel on the desktop). */
+export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["build", "customize"]);
+export function panelOpensFullScreen(key: string, web: boolean): boolean {
+  return web ? webPanelOpensFullScreen(key) : GROUP_PAGES.includes(key);
+}
+/** The group page a settings row is a tab of, or null for a plain settings
+ *  page. Every such row opens its page, never the modal, on both surfaces. */
+export function groupOfSub(sub: string): "build" | "customize" | null {
+  if (WEB_BUILD_SUBS.includes(sub) || sub === "connections-cfg") return "build";
+  if (WEB_CUSTOMIZE_SUBS.includes(sub)) return "customize";
+  return null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
 export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", build: "Build", customize: "Customize" });

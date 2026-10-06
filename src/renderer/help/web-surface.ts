@@ -80,6 +80,15 @@ export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remot
  *  into the command center and those pages, and the settings rows that
  *  govern surfaces the web no longer has (the dock, streamed panels). */
 export function hideDesktopOnlySubs(): void {
+  // THE GROUP PAGES ARE PAGES ON BOTH SURFACES (his order, 2026-10-07): the
+  // Build and Customize rows leave the Settings nav on the desktop as on the
+  // web — cut (WEB_CUT_ROW_CLASS), never `.hidden`, so the group pages still
+  // list them — and their group headers go with them. The rest of this
+  // function is the web's capability cut.
+  for (const sub of WEB_GROUP_ROWS) {
+    document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`).forEach((n) => n.classList.add(WEB_CUT_ROW_CLASS));
+  }
+  for (const id of WEB_HIDDEN_NAV_GROUPS) document.getElementById(id)?.classList.add("hidden");
   if (!onWeb()) return;
   for (const sub of DESKTOP_ONLY_SUBS) {
     // THE WEB'S FULL-SCREEN BUILD / CUSTOMIZE (his order, 2026-10-05): a
@@ -91,10 +100,6 @@ export function hideDesktopOnlySubs(): void {
     if (webGroupPanelKept(sub)) continue;
     document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"], .settings-panel[data-sub="${sub}"]`).forEach((n) => n.classList.add("hidden"));
   }
-  for (const sub of WEB_GROUP_ROWS) {
-    document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`).forEach((n) => n.classList.add(WEB_CUT_ROW_CLASS));
-  }
-  for (const id of WEB_HIDDEN_NAV_GROUPS) document.getElementById(id)?.classList.add("hidden");
   for (const sel of [...WEB_HIDDEN_RAIL, ...WEB_HIDDEN_SETTINGS_ROWS]) {
     document.querySelectorAll<HTMLElement>(sel).forEach((n) => n.classList.add("hidden"));
   }

@@ -1604,9 +1604,9 @@ body.account-locked #dl-btn-wrap {
    like the Dashboard. */
 .glyphh-web .settings-nav > .settings-nav-item[data-sub="account"] { display: none !important; }
 /* THE GROUP ROWS (help/surface.ts WEB_CUT_ROW_CLASS): Build + Customize rows leave the
-   Settings nav on the web but are never `.hidden`, so the full-screen group pages list them
-   exactly as the desktop does. */
-html.glyphh-web .settings-nav-item.web-cut-row { display: none !important; }
+   Settings nav on BOTH surfaces (his order, 2026-10-07) but are never `.hidden`, so the
+   full-screen group pages list them. */
+.settings-nav-item.web-cut-row { display: none !important; }
 body.platform-shell .settings-panel[data-sub="account"] { max-width: 880px; margin: 0 auto; }
 body.platform-shell .settings-panel[data-sub="oauth"] { max-width: 880px; margin: 0 auto; }
 /* Voice + Appearance are desktop-app surfaces too (his rule, 2026-08-25):
@@ -22054,23 +22054,24 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .ws-repo-list .ws-sec-label { padding-top: 8px; }
 .ws-repo-foot { flex: 0 0 auto; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
 
-/* ══ THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05) ════════════════════
-   Artifacts / Build / Customize fill the page over the agent and every open
-   card — nothing closes: the agent layer and the cards go visibility:hidden
-   under body.web-full-open and return as they were when the host goes.
-   The header sits where the agent header is: "‹ <title>" left, X right. */
-html.glyphh-web .web-full-panel {
+/* ══ THE FULL-SCREEN PANELS (his orders, 2026-10-05 web; 2026-10-07 desktop) ═
+   Artifacts (web) / Build / Customize fill the page over the agent and every
+   open card — nothing closes: the agent layer and the cards go
+   visibility:hidden under body.web-full-open and return as they were when
+   the host goes. The header sits where the agent header is: "‹ <title>"
+   left, X right. */
+.web-full-panel {
   position: absolute; inset: 0; z-index: 120; display: flex; flex-direction: column;
   background: var(--bg); color: var(--text); pointer-events: auto;
 }
-html.glyphh-web body.web-full-open #code-agent-layer,
-html.glyphh-web body.web-full-open .echo-cards,
-html.glyphh-web body.web-full-open .echo-layout-bar { visibility: hidden; }
+body.web-full-open #code-agent-layer,
+body.web-full-open .echo-cards,
+body.web-full-open .echo-layout-bar { visibility: hidden; }
 .web-full-head {
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   height: 40px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--border-2); background: var(--surface);
 }
-html.glyphh-web body.rail-collapsed:not(.rail-peek) .web-full-head { padding-left: var(--rail-strip-w); }
+body.rail-collapsed:not(.rail-peek) .web-full-head { padding-left: var(--rail-strip-w); }
 .web-full-back {
   display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 4px; border: 0; border-radius: 6px;
   background: none; color: var(--text-2); font: 600 13px var(--font-display, inherit); cursor: pointer;
