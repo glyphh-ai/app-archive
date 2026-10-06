@@ -234,6 +234,7 @@ const layoutSearchInput = document.getElementById("layout-search") as HTMLInputE
 const layoutNameInput = document.getElementById("layout-new-name") as HTMLInputElement;
 const layoutFormError = document.getElementById("layout-form-error")!;
 const layoutDeleteBtn = document.getElementById("layout-delete-btn") as HTMLButtonElement;
+const layoutResetBtn = document.getElementById("layout-reset-btn") as HTMLButtonElement;
 let editingLayoutName: string | null = null;
 const layoutGridBuilder = document.getElementById("layout-grid-builder")!;
 const gridPreview = document.getElementById("grid-preview")!;
@@ -1182,6 +1183,7 @@ async function editLayout(name: string) {
   void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
+  layoutResetBtn.style.display = "";
   document.getElementById("layout-open-btn")?.classList.remove("hidden");
   layoutFormError.classList.add("hidden");
 
@@ -1209,6 +1211,7 @@ async function newLayout() {
   void renderLoopModels();
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
+  layoutResetBtn.style.display = "none";
   document.getElementById("layout-open-btn")?.classList.add("hidden");
   layoutFormError.classList.add("hidden");
   layoutGridBuilder.classList.remove("hidden");
@@ -1365,7 +1368,28 @@ async function deleteLayout() {
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
 }
 
-
+/** RESET (his ask, 2026-10-07: "workspaces need a way to be reset if
+ *  something goes wrong… they are saved state"). A workspace is its saved
+ *  DESIGN (the grid, on the server) plus what the workbench remembered about
+ *  it since: the live geometry, the Echo cell memory and the conversation it
+ *  resumes. Those three are the state that gets jacked up, and until now the
+ *  only way to shed them was to re-save the design. Reset drops the three and
+ *  keeps the design, so the next open is the workspace exactly as designed. */
+async function resetLayout() {
+  if (!editingLayoutName) return;
+  const confirmed = await confirmAction({
+    title: `Reset “${editingLayoutName}”?`,
+    body: "The remembered arrangement, panel memory and conversation binding are forgotten; the saved design stays. The next open starts from the design.",
+    confirmLabel: "Reset workspace",
+  });
+  if (!confirmed) return;
+  await loadUiState();
+  const n = editingLayoutName.trim().toLowerCase();
+  uiStateRemovePrefix(`workbench:namedlayout:${n}`);
+  uiStateRemovePrefix(`workbench:layoutsession:${n}`);
+  uiStateRemovePrefix(`echo:layout:${n}`);
+  cancelLayout();
+}
 
 export { loadLayouts };
 
@@ -1406,6 +1430,7 @@ export function initLayoutsEvents() {
     });
   });
   document.getElementById("layout-delete-btn")!.addEventListener("click", deleteLayout);
+  document.getElementById("layout-reset-btn")!.addEventListener("click", resetLayout);
   // Open the layout being edited — real OS windows tiled across the display.
   document.getElementById("layout-open-btn")!.addEventListener("click", () => {
     if (!editingLayoutName) return;
