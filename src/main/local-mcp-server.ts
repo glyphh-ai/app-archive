@@ -185,7 +185,7 @@ function buildMcpServer(): McpServer {
   /** Find a bundle by slug across every home, whatever its type. */
   function findBundle(slug: string): { id: string; type: BundleType } | null {
     const want = String(slug).trim().toLowerCase();
-    for (const sk of listSkills(["skill", "app", "task", "plugin"])) {
+    for (const sk of listSkills(["skill", "task", "plugin"])) {
       if (sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase() === want) return { id: sk.id, type: sk.type };
     }
     return null;

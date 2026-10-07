@@ -29,7 +29,7 @@
 import fs from "fs";
 import path from "path";
 import { getActiveUserId, GLYPHH_DIR, userScopedPath } from "./app-paths.js";
-import { APPS_DIR, readRow, type LocalAppRow } from "./apps-store.js";
+import { readRow, type LocalAppRow } from "./apps-store.js";
 import { instanceKeyOfRow } from "../shared/app-instances.js";
 
 /** A new name: a machine swept under the narrower rule of 2026-10-05 is swept again. */
@@ -138,10 +138,25 @@ export function sweepLocalAppFolders(deps: SweepDeps): SweepResult {
 
 /** The desktop's run: the signed-in user's apps home and payload roots, the
  *  user's marker. The app list and the wall are refreshed when anything went. */
+/** THE MIRRORS GO (his order, 2026-10-07): the tab, workspace and agent
+ *  folders the sync kept on this machine. The server holds every record;
+ *  nothing is lost. */
+export function sweepLibraryMirrors(dirs: string[] = [userScopedPath("apps"), userScopedPath("workspaces"), userScopedPath("agents")]): string[] {
+  const gone: string[] = [];
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    try { fs.rmSync(dir, { recursive: true, force: true }); gone.push(dir); }
+    catch (err) { console.warn("[legacy-apps] mirror not removed:", dir, err instanceof Error ? err.message : err); }
+  }
+  return gone;
+}
+
 export async function runLocalAppSweep(): Promise<void> {
   if (!getActiveUserId()) return;
+  const mirrors = sweepLibraryMirrors();
+  if (mirrors.length) console.info("[legacy-apps] removed library mirrors:", mirrors.join(", "));
   const result = sweepLocalAppFolders({
-    appsDir: APPS_DIR(),
+    appsDir: userScopedPath("apps"),
     payloadRoots: [path.join(GLYPHH_DIR, "apps"), userScopedPath("custom-apps")],
     marker: userScopedPath(LOCAL_SWEEP_MARKER),
     readRow,

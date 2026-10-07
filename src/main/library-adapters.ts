@@ -4,9 +4,8 @@
  * the sync loop (library-sync-core.ts), and how a server row lands back in
  * them.
  *
- *   workspace  ~/.glyphh/<user>/workspaces/<id>/workspace.json   layout-manager.ts
- *   tab        ~/.glyphh/<user>/apps/<slug>/tab.json              apps-store.ts
- *   agent      ~/.glyphh/<user>/agents/<slug>.json                local-agents.ts
+ *   (tabs, workspaces and agents left the disk on 2026-10-07 — the desktop
+ *   reads them straight from the server: library-remote.ts)
  *   skill      ~/.glyphh/<user>/skills/<name>/                    skills-fs.ts (+ skills-disabled/glyphh/)
  *   task       ~/.glyphh/<user>/tasks/<slug>/                     skills-fs.ts (+ skills-disabled/task/)
  *   drip       user-state.sqlite  drips                           drip-manager.ts
@@ -25,17 +24,10 @@ import path from "path";
 import { createHash } from "crypto";
 import type { MemberLibraryFile, MemberLibraryItem } from "@glyphh/sdk";
 import { userScopedPath } from "./app-paths.js";
-import { getLayoutManager, WORKSPACES_DIR, type GridLayout } from "./layout-manager.js";
-import * as appsStore from "./apps-store.js";
-import { invalidateOrgApps } from "./org-apps.js";
-import { listAgents, applyRemoteAgent, removeAgentLocal, type AgentRow } from "./local-agents.js";
 import { applyRemoteBundle, listSyncableBundles, removeBundleLocal, walk } from "./skills-fs.js";
 import { applyRemoteDrip, listDripRecords, removeDripLocal } from "./drip-manager.js";
 import { applyRemoteSchedule, listScheduleRecords, removeScheduleLocal } from "./schedule-store.js";
-import {
-  agentClock, bundleDataOf, filesClock, filesSignature, isAgentRow, isGridLayout, isTabRow, mergeTabLocal,
-  tabClock, tabRecordOf, workspaceClock, workspaceId, type BundleDataLike, type MemberLibraryKind,
-} from "../shared/member-library.js";
+import { bundleDataOf, filesClock, filesSignature, type BundleDataLike, type MemberLibraryKind } from "../shared/member-library.js";
 import { MAX_SYNC_FILE_BYTES, type KindAdapter, type LocalFile, type LocalItem, type PulledFile } from "./library-sync-core.js";
 
 // ── The state sidecar ────────────────────────────────────────────────────────
@@ -68,68 +60,6 @@ export function updateSyncState(fn: (state: SyncState) => void): void {
   const state = readSyncState();
   fn(state);
   writeSyncState(state);
-}
-
-// ── Workspaces ───────────────────────────────────────────────────────────────
-
-export function workspaceAdapter(): KindAdapter {
-  const lm = () => getLayoutManager();
-  return {
-    kind: "workspace",
-    hasFiles: false,
-    list(): LocalItem[] {
-      return lm().listLayouts().map((grid) => {
-        const id = workspaceId(grid.name);
-        // A file written before stamps existed: its mtime is the honest clock.
-        let clock = workspaceClock(grid);
-        if (!clock) { try { clock = Math.floor(fs.statSync(path.join(WORKSPACES_DIR(), id, "workspace.json")).mtimeMs); } catch { clock = 0; } }
-        return { id, updatedAt: clock, data: { ...grid, updatedAt: clock } };
-      });
-    },
-    apply(item: MemberLibraryItem): void {
-      if (!isGridLayout(item.data)) throw new Error(`workspace ${item.id}: not a grid`);
-      // ONE LIST (his order, 2026-10-06): every workspace row is adopted —
-      // this machine's workspaces folder is a cache of the server's rows.
-      lm().applyRemoteLayout({ ...(item.data as GridLayout), updatedAt: item.updatedAt });
-    },
-    remove(id: string): void { lm().removeLayoutLocal(id); },
-  };
-}
-
-// ── App tabs ─────────────────────────────────────────────────────────────────
-
-export function tabAdapter(): KindAdapter {
-  return {
-    kind: "tab",
-    hasFiles: false,
-    list(): LocalItem[] {
-      return appsStore.mineSync().map((row) => ({ id: row.slug, updatedAt: tabClock(row), data: tabRecordOf(row) }));
-    },
-    apply(item: MemberLibraryItem): void {
-      if (!isTabRow(item.data)) throw new Error(`tab ${item.id}: not a tab row`);
-      const remote = { ...item.data, slug: item.id, id: item.data.id || item.id, updatedAt: new Date(item.updatedAt).toISOString() };
-      appsStore.applyRemoteTab(mergeTabLocal(remote, appsStore.readRow(item.id)) as appsStore.LocalAppRow);
-      invalidateOrgApps();
-    },
-    remove(id: string): void { appsStore.removeEntryLocal(id); invalidateOrgApps(); },
-  };
-}
-
-// ── Agents ───────────────────────────────────────────────────────────────────
-
-export function agentAdapter(): KindAdapter {
-  return {
-    kind: "agent",
-    hasFiles: false,
-    list(): LocalItem[] {
-      return listAgents().map((row) => ({ id: row.slug, updatedAt: agentClock(row), data: row }));
-    },
-    apply(item: MemberLibraryItem): void {
-      if (!isAgentRow(item.data)) throw new Error(`agent ${item.id}: not an agent row`);
-      applyRemoteAgent({ ...(item.data as AgentRow), slug: item.id, id: item.id, updatedAt: new Date(item.updatedAt).toISOString() });
-    },
-    remove(id: string): void { removeAgentLocal(id); },
-  };
 }
 
 // ── Skills and tasks (folders) ───────────────────────────────────────────────
@@ -235,5 +165,5 @@ export function scheduleAdapter(): KindAdapter {
 
 /** Every adapter, by kind. */
 export function allAdapters(): KindAdapter[] {
-  return [workspaceAdapter(), tabAdapter(), agentAdapter(), bundleAdapter("skill"), bundleAdapter("task"), dripAdapter(), scheduleAdapter()];
+  return [bundleAdapter("skill"), bundleAdapter("task"), dripAdapter(), scheduleAdapter()];
 }

@@ -108,6 +108,9 @@ function attachStart(): void {
   // (his rule, 2026-10-04: database-as-truth) — late-bound like the attach
   // socket so auth stays importable by the stores.
   void import("./library-sync.js").then((m) => m.startLibrarySync()).catch((e) => console.warn("[library-sync] start failed", String(e)));
+  // TABS, WORKSPACES AND AGENTS come straight from the server (his order,
+  // 2026-10-07): the running copies load now and refresh every minute.
+  void import("./library-remote.js").then((m) => m.startRemoteRefresh()).catch((e) => console.warn("[library-remote] start failed", String(e)));
   void import("./thread-publish.js").then((m) => m.publishThreadsNow()).catch((e) => console.warn("[threads] publish failed", String(e)));
   // PRE-CLOUD APP FOLDERS ARE DELETED, NO MIGRATION (his word, 2026-10-05):
   // once per user, the first sign-in after the cut sweeps them.
@@ -120,6 +123,7 @@ function attachStart(): void {
 function attachStop(): void {
   void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined);
   void import("./library-sync.js").then((m) => m.stopLibrarySync()).catch(() => undefined);
+  void import("./library-remote.js").then((m) => m.stopRemoteRefresh()).catch(() => undefined);
 }
 
 setSignedOutHandler(() => {

@@ -222,7 +222,7 @@ async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "o
 export interface BundleStanding { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
 async function standings(): Promise<Record<string, BundleStanding>> {
   const out: Record<string, BundleStanding> = {};
-  const mine = listSkills(["skill", "app", "task", "plugin"]);
+  const mine = listSkills(["skill", "task", "plugin"]);
   if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const catalog = await catalogRows(kinds);
@@ -253,7 +253,7 @@ async function standings(): Promise<Record<string, BundleStanding>> {
 export interface ShareState { head: number | null; pending: number | null; rejected: number | null }
 async function shareStates(): Promise<Record<string, ShareState>> {
   const out: Record<string, ShareState> = {};
-  const mine = listSkills(["skill", "app", "task", "plugin"]);
+  const mine = listSkills(["skill", "task", "plugin"]);
   if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const client = getClient();

@@ -19,6 +19,14 @@ import { FAVICON_HOST as WEB_FAVICON_HOST, faviconUrlForPage, isAllowedIconUrl }
 const root = mkdtempSync(join(tmpdir(), "glyphh-app-icons-"));
 vi.mock("../../src/main/app-paths.js", () => ({ userScopedPath: (...seg: string[]) => join(root, ...seg) }));
 vi.mock("../../src/main/glyphh-client.js", () => ({ appCache: { cached: (_k: string, fn: () => unknown) => fn(), invalidate: () => undefined } }));
+// THE TAB ROWS COME FROM THE SERVER (2026-10-07): the test seeds the server's
+// answer; nothing is written to a tab folder on disk any more.
+const TABS: Array<Record<string, unknown>> = [];
+vi.mock("../../src/main/library-remote.js", () => ({
+  remoteList: async (kind: string) => (kind === "tab" ? TABS.map((r) => ({ id: String(r.slug), updatedAt: 1, data: r })) : []),
+  remotePut: async () => true,
+  remoteRemove: async () => undefined,
+}));
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>';
 const dataUrl = (mime: string, body: string | Buffer) => `data:${mime};base64,${Buffer.from(body).toString("base64")}`;
@@ -128,19 +136,19 @@ describe("faviconUrlFor — the favicon URL the desktop fetches, by the proxy's 
 
 describe("the row projection (org-apps.ts) — what panelApps.list and the desktop IPC carry", () => {
   it("adds iconDataUrl for an app with a local icon within the cap and faviconUrl for a URL tab, and nothing else changes", async () => {
-    const apps = join(root, "apps");
+    TABS.length = 0;
     const tab = (slug: string, row: Record<string, unknown>) => {
-      mkdirSync(join(apps, slug), { recursive: true });
-      writeFileSync(join(apps, slug, "tab.json"), JSON.stringify({
+      TABS.push({
         id: slug, slug, name: slug, prodUrl: null, nativeRef: null, config: null, description: "", access: "members", owned: true,
         latestVersion: null, version: "", secretNames: [], requiredConnections: [], listing: null,
         createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z", ...row,
-      }));
+      });
     };
-    // A Glyphh app whose bundle sits in its tab folder: app.json names icon.svg.
-    tab("shoes", { kind: "glyphh", nativeRef: join(apps, "shoes", "ui", "index.html"), config: { capabilities: [] } });
-    writeFileSync(join(apps, "shoes", "app.json"), JSON.stringify({ name: "Happy Shoes", icon: "icon.svg" }));
-    writeFileSync(join(apps, "shoes", "icon.svg"), SVG);
+    // A Glyphh app whose bundle folder is registered (config.bundleDir): app.json names icon.svg.
+    const shoesDir = fresh("shoes");
+    tab("shoes", { kind: "glyphh", nativeRef: join(shoesDir, "ui", "index.html"), config: { capabilities: [], bundleDir: shoesDir } });
+    writeFileSync(join(shoesDir, "app.json"), JSON.stringify({ name: "Happy Shoes", icon: "icon.svg" }));
+    writeFileSync(join(shoesDir, "icon.svg"), SVG);
     // A registered bundle elsewhere (config.bundleDir), icon.png at its root.
     const bundle = fresh("bundle");
     writeFileSync(join(bundle, "icon.png"), Buffer.from([9, 8, 7]));
@@ -150,8 +158,9 @@ describe("the row projection (org-apps.ts) — what panelApps.list and the deskt
     writeFileSync(join(zipDir, "icon.svg"), SVG);
     tab("installed", { kind: "glyphh", nativeRef: join(zipDir, "index.html"), config: {} });
     // A Glyphh app whose icon is over the cap: no iconDataUrl.
-    tab("big", { kind: "glyphh", nativeRef: join(apps, "big", "ui", "index.html"), config: {} });
-    writeFileSync(join(apps, "big", "icon.png"), Buffer.alloc(ICON_DATA_MAX_BYTES + 1, 1));
+    const bigDir = fresh("big");
+    tab("big", { kind: "glyphh", nativeRef: join(bigDir, "ui", "index.html"), config: { bundleDir: bigDir } });
+    writeFileSync(join(bigDir, "icon.png"), Buffer.alloc(ICON_DATA_MAX_BYTES + 1, 1));
     // A URL tab, a native app, an internal URL.
     tab("reddit", { kind: "web", prodUrl: "https://www.reddit.com/" });
     tab("finder", { kind: "native", nativeRef: "/System/Library/CoreServices/Finder.app" });
