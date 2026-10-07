@@ -197,7 +197,10 @@ export function buildMemberLibrary(client, deps = {}) {
       if (!existing) return { ok: false, error: `app "${id}" not found` };
       const kind = patch?.isBrowser !== undefined ? tabKindOf(patch) : undefined;
       const at = now();
-      const row = buildTabRow({ ...tabInputOf(patch ?? {}), ...(kind === 'web' || kind === 'native' ? { kind } : {}) }, existing, new Date(at).toISOString());
+      const input = tabInputOf(patch ?? {});
+      // A General save carries the tab's RPA mapping forward (desktop maps it; 2026-10-07).
+      if (input.config && !('rpa' in input.config) && existing.config?.rpa) input.config = { ...input.config, rpa: existing.config.rpa };
+      const row = buildTabRow({ ...input, ...(kind === 'web' || kind === 'native' ? { kind } : {}) }, existing, new Date(at).toISOString());
       const res = await lib().put('tab', existing.slug, { data: tabRecordOf(row), updatedAt: at });
       return res.applied ? { ok: true, app: tabRowOf(row) } : { ok: false, error: STALE };
     } catch (err) { return fail(err); }

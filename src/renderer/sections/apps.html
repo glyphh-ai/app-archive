@@ -153,6 +153,9 @@
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
+              <!-- RPA ON A TAB (2026-10-07): desktop only — the commands and
+                   sequences mapped on this tab's panel, which the agents drive. -->
+              <button class="app-detail-tab tab-rpa hidden" data-tab="rpa">RPA</button>
             </div>
 
             <div class="app-builder-split">
@@ -270,6 +273,9 @@
                     <button id="app-mcp-save" class="action-btn primary" type="button">Save</button>
                   </div>
                 </div>
+
+                <!-- RPA left: painted by help/apps.ts (renderRpaTab). -->
+                <div class="app-tab-left" data-tab="rpa" id="app-rpa-pane"></div>
 
                 <!-- Guardrails left: hard limits every MCP-exposing app must set. -->
                 <div class="app-tab-left" data-tab="guardrails">

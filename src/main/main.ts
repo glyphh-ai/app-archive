@@ -69,6 +69,7 @@ import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
+import { installRpaMapHandlers } from "./rpa-map";
 import { installAttachHandlers } from "./attach-handlers";
 import { registerRemoteControlIpc } from "./remote-control";
 import { registerNotifyIpc } from "./notify";
@@ -405,6 +406,7 @@ async function boot() {
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();
+  installRpaMapHandlers();
   // fs picker, native apps and the headless scrape, for loopback MCP and the attach socket.
   installAttachHandlers();
   // agent.run/frames/answer/stop/permission: a turn from the web or a phone runs here.

@@ -9,6 +9,7 @@ import { pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-buil
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
+import { dispatchRelayMethod } from "./relay-client";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { BUILTIN_WORKPANELS, WORKPANEL_REFUSAL } from "./saved-tabs";
 import { scanChromeProfiles, importFromChrome } from "./chrome-import";
@@ -284,13 +285,29 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       if (BUILTIN_WORKPANELS.has(slug) || BUILTIN_WORKPANELS.has(String(patch.slug ?? ""))) {
         return { ok: false, error: WORKPANEL_REFUSAL };
       }
+      // RPA ON A TAB (2026-10-07): the General form rebuilds launchConfig from
+      // its own fields, so a save there carries the mapping forward unless the
+      // caller sets `rpa` itself.
+      const fields = entryFields(patch);
+      if (fields.config && !("rpa" in fields.config)) {
+        const rpa = appsStore.readRow(slug)?.config?.rpa;
+        if (rpa) fields.config = { ...fields.config, rpa };
+      }
       const app = await appsStore.updateEntry(slug, {
-        ...entryFields(patch),
+        ...fields,
         ...(kind === "web" || kind === "native" ? { kind } : {}),
       });
       invalidateOrgApps();
       return { ok: true, app };
     }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  // RPA ON A TAB (2026-10-07): the Tabs page's RPA tab, through the registry
+  // doors the agent's rpa_* tools use. One door, the method named.
+  const RPA_TAB_METHODS = new Set(["commands", "pick", "map", "unmap", "run", "sequenceSave", "sequenceRemove", "sequenceRun"]);
+  ipcMain.handle("rpa-tab", async (_e, method: string, params: Record<string, unknown>) => {
+    if (!RPA_TAB_METHODS.has(String(method))) return { ok: false, error: `no such RPA door: ${String(method)}` };
+    try { return { ok: true, result: await dispatchRelayMethod(`rpa.${method}`, params ?? {}) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
