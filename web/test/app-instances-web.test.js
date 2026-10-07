@@ -33,7 +33,16 @@ function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLi
     token: vi.fn(async () => { if (!token) throw new Error('signed out'); return token; }),
     http: {
       get: vi.fn(async (path) => { if (path === '/api/app-instances') return instances; throw new Error(`unexpected GET ${path}`); }),
-      post: vi.fn(async (path, body) => { posts.push({ path, body }); if (path === '/api/app-instances/from-hub') return fromHub; throw new Error(`unexpected POST ${path}`); }),
+      post: vi.fn(async (path, body) => {
+        posts.push({ path, body });
+        if (path === '/api/app-instances/from-hub') return fromHub;
+        // APPS CARRY A VERSION (2026-10-07): the update, update-all and defaults routes.
+        const up = path.match(/^\/api\/app-instances\/([^/]+)\/update$/);
+        if (up) { const inst = instances.find((i) => i.key === decodeURIComponent(up[1])); return { ...inst, release: (inst.release ?? 0) + 1, version: inst.update?.headVersion ?? null, update: null }; }
+        if (path === '/api/app-instances/update-all') return { updated: instances.filter((i) => i.update?.available), failed: [] };
+        if (path === '/api/app-instances/defaults/install') return { installed: instances.filter((i) => i.kind === 'personal'), failed: [{ slug: 'broken', error: 'no release' }] };
+        throw new Error(`unexpected POST ${path}`);
+      }),
       del: vi.fn(async (path) => { dels.push(path); }),
     },
     ...(attached === null ? {} : { attach: { status: vi.fn(async () => ({ attached, machines: attached ? [{ id: 'm1', name: 'Mac' }] : [] })) } }),
@@ -187,5 +196,30 @@ describe('Rollback on the web (appInstancePin — the same IPC name as the deskt
     expect(card.instance.release).toBe(3);
     expect(await lib.appInstancePin('app-instance:expense-desk', 2)).toMatchObject({ ok: true, data: { release: 2 } });
     expect(await lib.appInstancePin('app-instance:nothing', 2)).toMatchObject({ ok: false, error: expect.stringMatching(/no cloud app/) });
+  });
+});
+
+describe('APPS CARRY A VERSION (2026-10-07): Update, Update All and the defaults on the web, by the desktop\'s IPC names', () => {
+  const STALE = { ...MINE, release: 2, version: '1.0.0', update: { available: true, headVersion: '1.1.0', headRelease: 3, itemRef: 'glyphh:notes' } };
+  it('the card carries version + update, and update() moves one instance to the head and drops the cache', async () => {
+    const client = fakeClient({ instances: [ORG, STALE] });
+    const lib = buildMemberLibrary(client, { document: fakeDoc(), secure: true });
+    const list = await lib.skillsList('app');
+    const card = list.data.find((c) => c.id === 'app-instance:notes~u1');
+    expect(card.instance.version).toBe('1.0.0');
+    expect(card.instance.update).toEqual({ available: true, headVersion: '1.1.0', headRelease: 3 });
+    expect(await lib.appInstanceUpdate('app-instance:notes~u1')).toMatchObject({ ok: true, data: { key: 'notes~u1', release: 3, version: '1.1.0' } });
+    expect(client.posts.map((p) => p.path)).toContain('/api/app-instances/notes~u1/update');
+    expect(await lib.appInstanceUpdate('app-instance:missing')).toMatchObject({ ok: false, error: expect.stringMatching(/no cloud app/) });
+  });
+  it('updateAll answers what moved; installDefaults counts what landed and what failed', async () => {
+    const client = fakeClient({ instances: [ORG, STALE] });
+    const lib = buildMemberLibrary(client, { document: fakeDoc(), secure: true });
+    const all = await lib.appInstancesUpdateAll();
+    expect(all.ok).toBe(true);
+    expect(all.data.updated.map((i) => i.key)).toEqual(['notes~u1']);
+    expect(all.data.failed).toEqual([]);
+    expect(await lib.appInstancesInstallDefaults()).toEqual({ ok: true, data: { installed: 1, failed: 1 } });
+    expect(client.posts.map((p) => p.path)).toEqual(['/api/app-instances/update-all', '/api/app-instances/defaults/install']);
   });
 });

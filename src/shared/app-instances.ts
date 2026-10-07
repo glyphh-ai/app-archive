@@ -43,9 +43,22 @@ export interface AppInstanceSummary {
   manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string };
   /** The pinned release number; null (or absent) = nothing deployed yet. */
   release?: number | null;
+  /** The pinned release's manifest `version` (the developer's number), or null. */
+  version?: string | null;
+  /** APPS CARRY A VERSION (his order, 2026-10-07): whether the catalog's head
+   *  rolled past the release this instance took, and what it would move to. */
+  update?: { available: boolean; headVersion: string | null; headRelease: number | null; itemRef: string | null } | null;
   /** `/app-host/<key>/` — the proxy prefix the server answers for it. */
   url: string;
 }
+
+/** The update an instance can take, or null: the card's and the Updates tab's one read. */
+export interface InstanceUpdate { available: boolean; headVersion: string | null; headRelease: number | null }
+export const updateOf = (inst: Pick<AppInstanceSummary, "update"> | null | undefined): InstanceUpdate | null => {
+  const u = inst?.update;
+  if (!u || typeof u !== "object") return null;
+  return { available: !!u.available, headVersion: u.headVersion ?? null, headRelease: Number.isInteger(u.headRelease) ? (u.headRelease as number) : null };
+};
 
 /** The pinned release of an instance as a number, or null when nothing is deployed. */
 export const releaseOf = (inst: Pick<AppInstanceSummary, "release"> | null | undefined): number | null =>
@@ -258,8 +271,9 @@ export interface InstanceCard {
   icon: null;
   /** A house app's panel (gimage, gdrive, …): the card's mark. */
   tool: string | null;
-  /** Not a folder: the instance it stands for; `release` = the pinned n. */
-  instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[]; release: number | null };
+  /** Not a folder: the instance it stands for; `release` = the pinned n,
+   *  `version` the developer's, `update` what the catalog would move it to. */
+  instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[]; release: number | null; version: string | null; update: InstanceUpdate | null };
 }
 
 export const instanceCardId = (key: string): string => `${INSTANCE_CARD_PREFIX}${key}`;
@@ -286,7 +300,7 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     icon: null,
     // A house app's card wears its panel's mark, as every other door does.
     tool: houseViewOfApp(inst.slug),
-    instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools, release: releaseOf(inst) },
+    instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools, release: releaseOf(inst), version: inst.version ?? null, update: updateOf(inst) },
   };
 }
 

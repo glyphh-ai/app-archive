@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
+import { paintBuildBadge } from "./app-updates.js";
 import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
@@ -32,7 +33,7 @@ type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
 interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
 /** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
-interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null }
+interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
 interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
@@ -78,7 +79,7 @@ const NEW_PROMPT: Record<BundleType, string> = {
 
 export function createLibraryPage(cfg: PageCfg) {
 let wired = false;
-let tab: "mine" | "discover" = "mine";
+let tab: "mine" | "discover" | "updates" = "mine";
 let query = "";
 /** List controls: filter by origin and author; sort order. */
 let filterSource: Source | "" = "";
@@ -390,6 +391,60 @@ async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
   if (wasOpen) await openDetail(id);
 }
 
+// ── APPS CARRY A VERSION (his order, 2026-10-07) ─────────────────────────────
+/** The cloud apps whose catalog head has moved past the release they took. */
+const instanceUpdates = (): SkillRow[] => skills.filter((s) => !!s.instance?.update?.available);
+
+/** The red count on the Updates tab, Update All beside it, and the rail's
+ *  Build item (the Apps page is the one that knows; code.ts asks the same
+ *  question at boot through app-updates.ts). */
+function paintUpdatesBadge(): void {
+  const n = instanceUpdates().length;
+  const badge = el("skills-updates-badge");
+  if (badge) { badge.textContent = n ? String(n) : ""; badge.classList.toggle("hidden", !n); }
+  el("skills-update-all")?.classList.toggle("hidden", !n || tab !== "updates");
+  if (cfg.kind === "app") paintBuildBadge(n);
+}
+
+/** Move one cloud app to the catalog's head: same key, data and secrets kept. */
+async function updateInstanceNow(s: SkillRow, btn?: HTMLButtonElement): Promise<void> {
+  const head = s.instance?.update?.headVersion;
+  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
+  const r = await api().appInstanceUpdate(s.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<{ version?: string | null }>;
+  if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = "Update"; } fail(r.error || "Couldn't update."); return; }
+  notice(`${s.name} updated${r.data?.version ? ` to v${r.data.version}` : head ? ` to v${head}` : ""}`);
+  const wasOpen = current?.id === s.id;
+  await loadSkillsSettings();
+  if (wasOpen) await openDetail(s.id);
+  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+}
+
+/** Update All: every instance with an update waiting, moved at once. */
+async function updateAllInstances(btn?: HTMLButtonElement): Promise<void> {
+  if (!instanceUpdates().length) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
+  const r = await api().appInstancesUpdateAll().catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<{ updated: unknown[]; failed: Array<{ key: string; error: string }> }>;
+  if (btn) { btn.disabled = false; btn.textContent = "Update All"; }
+  if (!r.ok) { fail(r.error || "Couldn't update."); return; }
+  const n = r.data?.updated?.length ?? 0, failed = r.data?.failed ?? [];
+  if (failed.length) fail(`${n} updated; ${failed.length} failed: ${failed.map((f) => f.key).join(", ")}`);
+  else notice(`${n} ${n === 1 ? "app" : "apps"} updated`);
+  await loadSkillsSettings();
+  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+}
+
+/** "Update" on a cloud app's row: the catalog's head, with its version in the title. */
+function instanceUpdateButton(s: SkillRow): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "action-btn skill-update-btn";
+  b.textContent = "Update";
+  const head = s.instance?.update?.headVersion;
+  b.title = head ? `Version ${head} is in the catalog` : "A newer release is in the catalog";
+  b.addEventListener("click", (e) => { e.stopPropagation(); void updateInstanceNow(s, b); });
+  return b;
+}
+
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
   // SKILLS, TASKS AND PLUGINS ARE THE MEMBER LIBRARY'S (his rule, 2026-10-04;
@@ -535,6 +590,27 @@ function renderList(): void {
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const q = query.trim().toLowerCase();
   const hit = (s: string) => !q || s.toLowerCase().includes(q);
+  paintUpdatesBadge();
+
+  if (tab === "updates") {
+    const shown = instanceUpdates().filter((s) => hit(`${s.name} ${s.description} ${s.author}`)).sort((a, b) => a.name.localeCompare(b.name));
+    const count = el("skills-count"); if (count) count.textContent = shown.length ? `${shown.length} ${shown.length === 1 ? "update" : "updates"}` : "";
+    paintControls();
+    if (!shown.length) {
+      host.innerHTML = `<div class="crud-empty">${q ? `No updates matching "${escapeHtml(q)}"` : `Every app is on its latest release.`}</div>`;
+      return;
+    }
+    const g = group(host, "Updates available", shown.length);
+    for (const s of shown) {
+      g.appendChild(row({
+        name: s.name, by: s.author ? `by ${s.author}` : "by you",
+        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, tool: s.tool, type: s.type,
+        onOpen: () => void openDetail(s.id),
+        action: instanceUpdateButton(s),
+      }));
+    }
+    return;
+  }
 
   if (tab === "mine") {
     const shown = skills
@@ -565,7 +641,7 @@ function renderList(): void {
           desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           share: shares[s.id],
           onOpen: () => void openDetail(s.id),
-          action: up ? updateButton(s.id, up.latest) : undefined,
+          action: up ? updateButton(s.id, up.latest) : s.instance?.update?.available ? instanceUpdateButton(s) : undefined,
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
             ...(back !== null ? [{ label: `Rollback to release ${back}`, onClick: () => void rollback(s) }] : []),
@@ -827,7 +903,10 @@ async function remove(id: string, name: string): Promise<void> {
 
 /** What a cloud app's card says on the right: `release n`, or that nothing is deployed yet. */
 function releaseLabel(inst: InstanceOfRow): string {
-  return inst.release ? `release ${inst.release}` : "no release";
+  const have = inst.version ? `v${inst.version}` : inst.release ? `release ${inst.release}` : "no release";
+  const up = inst.update;
+  if (!up?.available) return have;
+  return `${have} → ${up.headVersion ? `v${up.headVersion}` : up.headRelease ? `release ${up.headRelease}` : "latest"}`;
 }
 
 /** Rollback = pin n-1 (app-platform.md §10): the release a Rollback pins, or null with nothing before the live one. */
@@ -1830,8 +1909,9 @@ function wire(): void {
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
   const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
+  el<HTMLButtonElement>("skills-update-all")?.addEventListener("click", (e) => void updateAllInstances(e.currentTarget as HTMLButtonElement));
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.addEventListener("click", async () => {
-    tab = b.dataset.tab as "mine" | "discover";
+    tab = b.dataset.tab as "mine" | "discover" | "updates";
     discoverView = { kind: "home" };
     if (tab === "discover") await loadDiscover();
     renderList();
