@@ -73,7 +73,7 @@ const TYPE_ICON: Record<BundleType, string> = { skill: SKILL_ICON, app: APP_ICON
 
 const NEW_PROMPT: Record<BundleType, string> = {
   skill: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
-  app: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
+  app: "Build a new Glyphh app in this folder. Start with glyphh_app_scaffold (name, slug, the connections it works through, the tools it exposes), edit the starter it writes, then Build and run with app_install { dir }. The app should ",
   plugin: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
   task: "Create a new Glyphh task in this folder: a new subfolder named after the task with a SKILL.md (frontmatter name + description, then what the task does and when to run it), a task.json (name, program: run.js, slots the program calls agents through, dependencies on connections, an optional five-field cron schedule) and run.js exporting async function run(ctx, input) that returns the result. The program is the process: it drives the logic itself and uses ctx.agents.<slot>.run(prompt, {schema}) only where an agent is needed, ctx.connections.<app>.call(tool, args) for connections, ctx.data(repo).exec(sql, params) for app data, and ctx.checkpoint(key, fn) around anything worth not redoing after a restart. The task should ",
 };
@@ -978,13 +978,13 @@ async function download(): Promise<void> {
 
 /** A new session in the workbench: in `loop` (or the current one), rooted at
  *  `cwd` when given, with `prompt` waiting in the composer. */
-function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string }): void {
+function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }): void {
   closeSettingsModal();
   // On the web this page is a full-screen panel, not the modal: it must step
   // aside or the session opens behind it (his report, 2026-10-05: the plugin
   // menu's items "do nothing").
   if (onWeb()) (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel?.();
-  const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void };
+  const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }) => void };
   if (!w.__glyphhOpenSessionWith) { fail("The agent isn't ready yet."); return; }
   w.__glyphhOpenSessionWith(opts);
 }
@@ -2348,6 +2348,8 @@ async function createNew(kind: BundleType): Promise<void> {
   openSessionWith({
     cwd: r.data,
     prompt: NEW_PROMPT[kind],
+    // THE NEW APP DOOR (2026-10-07): the turn carries the app contract, scaffold first.
+    ...(kind === "app" ? { appBuild: true } : {}),
   });
 }
 
