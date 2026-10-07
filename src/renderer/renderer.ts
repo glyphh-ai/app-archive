@@ -408,7 +408,7 @@ declare global {
       scheduleRuns: (id: string) => Promise<LibEnvelope>;
       scheduleRecentRuns: () => Promise<LibEnvelope>;
       skillInstall: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
-      skillPublish: (id: string, notes?: string) => Promise<LibEnvelope>;
+      skillPublish: (id: string, notes?: string, media?: { icon?: string | null; screenshots?: Array<{ name: string; caption?: string; dataUrl: string }> }) => Promise<LibEnvelope>;
       skillVersions: (id: string) => Promise<LibEnvelope>;
       skillVersionFiles: (itemId: string, version: number, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       platformPanelUrl: (next?: string) => Promise<LibEnvelope>;

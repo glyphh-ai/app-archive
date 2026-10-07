@@ -97,6 +97,19 @@ export function installAttachHandlers(): void {
     return { installed: r.name, instance: r.instance, updated: !!r.updated, requiredConnections: r.connectors ?? [], tools: r.tools ?? [] };
   });
 
+  // INSTALL A FOLDER ON THIS MACHINE as the member's cloud app (the gateway's
+  // device_app_install; his order, 2026-10-07): a folder door like fs.write —
+  // the server checks it against the grants and the turn's own folder, this
+  // machine packs and uploads it itself. A build answers its job at once.
+  registerRelayHandler("fs.installApp", async (params) => {
+    const p = params as { dir?: string; note?: string } | null;
+    const dir = String(p?.dir || "").replace(/^~(?=$|\/)/, homedir());
+    // Loaded here, not at the top: the instances module pulls the signed-in client in; this registry must load without it.
+    const { installFolderAsInstance } = await import("./app-instances.js");
+    const out = await installFolderAsInstance(dir, { ...(p?.note ? { note: String(p.note) } : {}), wait: false });
+    return { installed: out.key.split("~")[0], instance: out.key, mode: out.mode, release: out.release, job: out.job ? { id: out.job.id, status: out.job.status } : null, url: out.url, tools: out.tools, next: out.release ? "its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" } on the desktop, or wait and list again` };
+  });
+
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();
     let path = str(params, "path") || home;

@@ -1144,6 +1144,17 @@ let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
 /** What the org's hub holds for the open bundle: the live version, and the one
  *  still on the review desk. Null until loadVersions answers. */
 let shareState: { head: number | null; pending: number | null; declined: { version: number; summary: string } | null; changes?: { version: number; note: string } | null; lifecycle?: string; lifecycleNote?: string; visibility?: string; own?: boolean } = { head: null, pending: null, declined: null };
+/** THE ICON AND SCREENSHOTS ATTACHED ON THE PUBLISH TAB (his ask, 2026-10-07),
+ *  by item id, until the next share carries them. */
+type PubShot = { name: string; caption: string; dataUrl: string };
+const pubMedia = new Map<string, { icon: string | null; screenshots: PubShot[] }>();
+const mediaFor = (id: string) => { let m = pubMedia.get(id); if (!m) { m = { icon: null, screenshots: [] }; pubMedia.set(id, m); } return m; };
+const PUB_SHOT_MAX = 8;
+const PUB_SHOTS_BYTES = 600_000;
+const PUB_ICON_BYTES = 64_000;
+/** A picked file as a data URL. */
+const readAsDataUrl = (f: File): Promise<string> => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+const safeShotName = (name: string): string => name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "").slice(0, 80) || "shot.png";
 /** The hub versions behind the open item, as loadVersions last read them (the Publish tab's history). */
 let hubVersions: Array<{ version: number; notes: string; createdAt: string; status?: string; reviewSummary?: string; decisionNote?: string }> = [];
 /** The shared item behind the open bundle: what it is on the org's hub, and
@@ -1910,7 +1921,8 @@ async function share(): Promise<void> {
   if (!sure) return;
   const btn = el<HTMLButtonElement>("skill-share");
   if (btn) btn.disabled = true;
-  const r = await api().skillPublish(current.id, notes) as Env<{ version: number; status: string }>;
+  const media = mediaFor(current.id);
+  const r = await api().skillPublish(current.id, notes, { icon: media.icon, screenshots: media.screenshots }) as Env<{ version: number; status: string }>;
   if (btn) btn.disabled = false;
   if (!r.ok) { fail(r.error || "Couldn't share."); return; }
   const v = r.data?.version;
@@ -1925,8 +1937,75 @@ async function share(): Promise<void> {
     ? `"${current.name}" is live on your organization's hub as v${v}. Members install it from Discover.`
     : `"${current.name}" v${v} went to your organization's review desk. An org admin decides; sharing again replaces it.`);
   const ta = el<HTMLTextAreaElement>("pub-notes"); if (ta) ta.value = "";
+  // The attached media went with this version; the next share starts clean.
+  pubMedia.delete(current.id);
   void loadVersions();
   void refreshShares();
+}
+
+/** THE ICON AND SCREENSHOTS on the Publish tab: pick, caption, order, remove. */
+function paintPubMedia(host: HTMLElement, id: string): void {
+  const m = mediaFor(id);
+  host.innerHTML = `<div class="pub-media">
+    <div class="pub-field"><div class="skill-overview-label">Icon</div>
+      <div class="pub-icon-row"><span class="pub-icon-preview"></span><button type="button" class="action-btn pub-icon-pick">Choose .svg…</button><button type="button" class="action-btn pub-icon-clear hidden">Remove</button><span class="mdl-hint">An SVG, under 64 KB. Shown on Discover and in Your apps.</span></div></div>
+    <div class="pub-field"><div class="skill-overview-label">Screenshots</div>
+      <div class="pub-shots"></div>
+      <div class="pub-actions"><button type="button" class="action-btn pub-shot-pick">Add screenshots…</button><span class="mdl-hint">Up to ${PUB_SHOT_MAX} images (png, jpeg, gif, webp, svg), 600 KB together. They ride the next share, in this order.</span></div></div>
+  </div>`;
+  const preview = host.querySelector(".pub-icon-preview") as HTMLElement;
+  const clear = host.querySelector(".pub-icon-clear") as HTMLButtonElement;
+  const paintIcon = (): void => {
+    preview.innerHTML = m.icon ? `<img alt="" src="${m.icon.startsWith("data:") ? m.icon : `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(m.icon)))}`}" />` : "";
+    clear.classList.toggle("hidden", !m.icon);
+  };
+  const pickFiles = (accept: string, multiple: boolean, onFiles: (files: File[]) => void): void => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = accept; input.multiple = multiple;
+    input.addEventListener("change", () => onFiles(Array.from(input.files ?? [])));
+    input.click();
+  };
+  (host.querySelector(".pub-icon-pick") as HTMLButtonElement).addEventListener("click", () => pickFiles("image/svg+xml,.svg", false, async (files) => {
+    const f = files[0]; if (!f) return;
+    if (f.size > PUB_ICON_BYTES) { fail("The icon is over 64 KB."); return; }
+    try { m.icon = await readAsDataUrl(f); paintIcon(); } catch { fail("Couldn't read that file."); }
+  }));
+  clear.addEventListener("click", () => { m.icon = null; paintIcon(); });
+  paintIcon();
+  const shots = host.querySelector(".pub-shots") as HTMLElement;
+  const paintShots = (): void => {
+    shots.textContent = "";
+    if (!m.screenshots.length) { shots.innerHTML = `<div class="mdl-hint">None attached yet.</div>`; return; }
+    m.screenshots.forEach((s, i) => {
+      const row = document.createElement("div");
+      row.className = "pub-shot";
+      row.innerHTML = `<img alt="" /><input type="text" class="crud-input pub-shot-caption" placeholder="Caption" /><div class="pub-shot-actions"><button type="button" class="action-btn" data-up title="Move up">↑</button><button type="button" class="action-btn" data-down title="Move down">↓</button><button type="button" class="action-btn danger" data-remove>Remove</button></div>`;
+      (row.querySelector("img") as HTMLImageElement).src = s.dataUrl;
+      const cap = row.querySelector(".pub-shot-caption") as HTMLInputElement;
+      cap.value = s.caption;
+      cap.addEventListener("input", () => { s.caption = cap.value.slice(0, 200); });
+      (row.querySelector("[data-up]") as HTMLButtonElement).disabled = i === 0;
+      (row.querySelector("[data-down]") as HTMLButtonElement).disabled = i === m.screenshots.length - 1;
+      row.querySelector("[data-up]")!.addEventListener("click", () => { if (i > 0) { [m.screenshots[i - 1], m.screenshots[i]] = [m.screenshots[i]!, m.screenshots[i - 1]!]; paintShots(); } });
+      row.querySelector("[data-down]")!.addEventListener("click", () => { if (i < m.screenshots.length - 1) { [m.screenshots[i + 1], m.screenshots[i]] = [m.screenshots[i]!, m.screenshots[i + 1]!]; paintShots(); } });
+      row.querySelector("[data-remove]")!.addEventListener("click", () => { m.screenshots.splice(i, 1); paintShots(); });
+      shots.appendChild(row);
+    });
+  };
+  (host.querySelector(".pub-shot-pick") as HTMLButtonElement).addEventListener("click", () => pickFiles("image/png,image/jpeg,image/gif,image/webp,image/svg+xml", true, async (files) => {
+    for (const f of files) {
+      if (m.screenshots.length >= PUB_SHOT_MAX) { fail(`At most ${PUB_SHOT_MAX} screenshots.`); break; }
+      let dataUrl: string;
+      try { dataUrl = await readAsDataUrl(f); } catch { continue; }
+      const total = m.screenshots.reduce((n, s) => n + s.dataUrl.length, 0) + dataUrl.length;
+      if (total > PUB_SHOTS_BYTES) { fail("The screenshots together are over 600 KB — smaller images, or fewer."); break; }
+      let name = safeShotName(f.name);
+      while (m.screenshots.some((s) => s.name.toLowerCase() === name.toLowerCase())) name = `${Date.now().toString(36)}-${name}`;
+      m.screenshots.push({ name, caption: "", dataUrl });
+    }
+    paintShots();
+  }));
+  paintShots();
 }
 
 // ── THE RELEASES TAB (an app instance's; his ask, 2026-10-07) ────────────────
@@ -1991,6 +2070,7 @@ function paintPublish(): void {
       <textarea id="${cfg.id("pub-notes")}" class="crud-input pub-notes" rows="3" placeholder="${needNotes ? "What changed in this version" : "What this does, in a line or two (optional on a first share)"}"></textarea>
       <div class="pub-actions"><button type="button" class="action-btn primary pub-share"></button><button type="button" class="action-btn pub-withdraw hidden">Withdraw from review</button><button type="button" class="action-btn pub-shelves">Shelves…</button></div>
       <div class="mdl-hint pub-blocked"></div></div>
+    <div class="pub-media-host"></div>
     <div class="pub-field"><div class="skill-overview-label">Versions on the hub</div><div class="pub-rows pub-history"></div></div>
     <div class="pub-field pub-lifecycle"><div class="skill-overview-label">On Discover</div><div class="pub-lifecycle-body"></div></div>
   </div>`;
@@ -2018,6 +2098,7 @@ function paintPublish(): void {
     });
     vis.appendChild(b);
   }
+  paintPubMedia(host.querySelector(".pub-media-host") as HTMLElement, s.id);
   const shareBtn = host.querySelector(".pub-share") as HTMLButtonElement;
   shareBtn.textContent = face.label;
   shareBtn.disabled = !!face.blocked || !live;

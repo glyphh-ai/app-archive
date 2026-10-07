@@ -43,6 +43,8 @@ import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 export type HarnessWireFrame = (
   | { type: "prompt"; text: string }
   | { type: "open-app"; ref?: string; url?: string }
+  /** A build log as it grows (the worker's app_install), or a task program's ctx.log (2026-10-07). */
+  | { type: "log"; message: string; detail?: unknown }
   | { type: "delta"; delta: string }
   | { type: "thinking"; text: string }
   | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string }
@@ -467,6 +469,9 @@ export interface RemoteRunCallbacks {
    *  natively (web/desktop → workbench panel, mobile → tray). Only fired on
    *  frames from CLOUD runs here; desktop-executed runs open machine-side. */
   onOpenApp?: (t: { ref?: string; url?: string }) => void;
+  /** A LOG frame — a build's log as it grows (the worker's app_install),
+   *  or a task program's ctx.log. The thread draws a build's on its app card. */
+  onLog?: (l: { message: string; detail?: unknown }) => void;
   onDone?: (fullText: string) => void;
   onStopped?: () => void;
   onError?: (detail: string) => void;
@@ -513,6 +518,9 @@ export function dispatchFrame(
   if (child || frame.type === "agent") cb.onAgentFrame?.(frame as SubAgentWireFrame);
   if (frame.type === "agent" || (child && frame.type !== "approval")) return;
   switch (frame.type) {
+    case "log":
+      cb.onLog?.({ message: String((frame as { message?: unknown }).message ?? ""), detail: (frame as { detail?: unknown }).detail });
+      return;
     case "open-app":
       cb.onOpenApp?.({ ...(frame.ref ? { ref: frame.ref } : {}), ...(frame.url ? { url: frame.url } : {}) });
       break;

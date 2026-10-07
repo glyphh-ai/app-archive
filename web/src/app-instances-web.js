@@ -95,7 +95,8 @@ export function buildAppInstancesWeb(client, deps = {}) {
     return (await listInstances()).filter((i) => !haveFolders.has(i.slug)).map((i) => instanceCardOf(i, at));
   };
   const find = async (id) => {
-    const key = instanceKeyOfCardId(String(id));
+    // A card id or a bare key, like the desktop's findInstance (2026-10-07).
+    const key = isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id);
     const inst = (await listInstances()).find((i) => i.key === key);
     if (!inst) throw new Error(`no cloud app ${key}`);
     return inst;
@@ -162,9 +163,13 @@ export function buildAppInstancesWeb(client, deps = {}) {
     const rows = await client.http.get(`/api/app-instances/${encodeURIComponent(inst.key)}/releases`);
     return Array.isArray(rows) ? rows : [];
   };
-  const share = async (id, notes = '') => {
+  const share = async (id, notes = '', media) => {
     const inst = await find(id);
-    return client.http.post(`/api/app-instances/${encodeURIComponent(inst.key)}/share`, { notes: String(notes ?? '') });
+    // THE PUBLISH TAB'S ICON AND SCREENSHOTS ride the share (2026-10-07).
+    const body = { notes: String(notes ?? '') };
+    if (media?.icon) body.icon = media.icon;
+    if (Array.isArray(media?.screenshots) && media.screenshots.length) body.screenshots = media.screenshots.map((s) => ({ name: s.name, caption: s.caption ?? '', dataUrl: s.dataUrl }));
+    return client.http.post(`/api/app-instances/${encodeURIComponent(inst.key)}/share`, body);
   };
 
   return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, update, updateAll, installDefaults, releases, share, find, isInstanceCardId };

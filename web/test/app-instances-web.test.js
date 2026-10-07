@@ -199,6 +199,19 @@ describe('Rollback on the web (appInstancePin — the same IPC name as the deskt
   });
 });
 
+describe('SHARE TO PUBLISH with the Publish tab\'s media (2026-10-07)', () => {
+  it('share posts the notes, the icon and the screenshots to the instance\'s share route', async () => {
+    const client = fakeClient({ instances: [ORG, MINE] });
+    client.http.post = vi.fn(async (path, body) => { client.posts.push({ path, body }); return { id: 'i', version: 2, status: 'pending' }; });
+    const w = buildAppInstancesWeb(client, { document: fakeDoc() });
+    const shot = { name: 'one.png', caption: 'The list', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' };
+    expect(await w.share('app-instance:notes~u1', 'v2', { icon: '<svg/>', screenshots: [shot] })).toMatchObject({ version: 2 });
+    expect(client.posts[0]).toEqual({ path: '/api/app-instances/notes~u1/share', body: { notes: 'v2', icon: '<svg/>', screenshots: [shot] } });
+    await w.share('notes~u1', '');
+    expect(client.posts[1].body).toEqual({ notes: '' });
+  });
+});
+
 describe('APPS CARRY A VERSION (2026-10-07): Update, Update All and the defaults on the web, by the desktop\'s IPC names', () => {
   const STALE = { ...MINE, release: 2, version: '1.0.0', update: { available: true, headVersion: '1.1.0', headRelease: 3, itemRef: 'glyphh:notes' } };
   it('the card carries version + update, and update() moves one instance to the head and drops the cache', async () => {
