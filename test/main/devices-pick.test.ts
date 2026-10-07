@@ -15,6 +15,10 @@ describe("the desktop is its own device (his report, 2026-10-07)", () => {
     expect(foldersForRun({ surface: "desktop", folder: "dev", selfId: "m-1", devices: ["m-1"] })).toEqual({});
     expect(foldersForRun({ surface: "desktop", folder: "/Users/me/dev", selfId: null, devices: ["m-1"] })).toEqual({});
   });
+  it("the steer says the device is off for this session when the member has not checked it", () => {
+    expect(folderSteerLine("/w", "Mac", true, false)).toMatch(/not turned on for this session.*\+ → Devices/);
+    expect(folderSteerLine("/w", "Mac", true, true)).toMatch(/reachable now/);
+  });
   it("the steer names the folder and the device tools, or says remote control is off; never a Terminal", () => {
     const on = folderSteerLine("/Users/me/dev/happy-shoes", "mac.local", true);
     expect(on).toContain("/Users/me/dev/happy-shoes");
@@ -28,19 +32,19 @@ describe("the desktop is its own device (his report, 2026-10-07)", () => {
 });
 
 describe("which devices a session reaches (his order, 2026-10-07)", () => {
-  it("an attached device is checked by default; the session's own list wins once it exists", () => {
-    expect(deviceChecked(undefined, "m1")).toBe(true);
+  it("no device is on by itself (his report, 2026-10-07); the session's own list is the truth", () => {
+    expect(deviceChecked(undefined, "m1")).toBe(false);
     expect(deviceChecked([], "m1")).toBe(false);
     expect(deviceChecked(["m2"], "m1")).toBe(false);
     expect(deviceChecked(["m1"], "m1")).toBe(true);
   });
-  it("the first toggle materialises the default from the attached set, then flips the one id", () => {
-    expect(toggleDeviceIn(undefined, "m1", ["m1", "m2"])).toEqual(["m2"]);
+  it("the first check starts the list with that one device; the next flips it", () => {
+    expect(toggleDeviceIn(undefined, "m1", ["m1", "m2"])).toEqual(["m1"]);
     expect(toggleDeviceIn(["m2"], "m1", ["m1", "m2"])).toEqual(["m2", "m1"]);
     expect(toggleDeviceIn(["m2", "m1"], "m1", ["m1", "m2"])).toEqual(["m2"]);
   });
-  it("the run names the session's list, else every attached device; a device gone from the relay is dropped", () => {
-    expect(devicesForRun(undefined, ["m1", "m2"])).toEqual(["m1", "m2"]);
+  it("the run names the session's list, none by default; a device gone from the relay is dropped", () => {
+    expect(devicesForRun(undefined, ["m1", "m2"])).toEqual([]);
     expect(devicesForRun(["m2"], ["m1", "m2"])).toEqual(["m2"]);
     expect(devicesForRun(["m9"], ["m1"])).toEqual([]);
     expect(devicesForRun(undefined, [])).toEqual([]);

@@ -48,7 +48,7 @@ import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-pr
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
-import { mountComposerPlus, manageTargetOf, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
+import { mountComposerPlus, manageTargetOf, PLUS_CHECK, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { CLI_MARK_URLS } from "./cli-marks.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
@@ -59,7 +59,8 @@ import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
 import { folderChipLabel, folderChipRows } from "./run-place.js";
-import { deviceChecked, toggleDeviceIn, folderSteerLine } from "./devices-pick.js";
+import { deviceChecked, toggleDeviceIn, folderSteerLine, selfMachineId } from "./devices-pick.js";
+import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
 import { groupByDate } from "./recents-groups.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
@@ -168,13 +169,18 @@ const TYPE_TAB_PREF = "railTypeTab";
  *  whenever remote control changes; empty on the web. */
 let selfHostname = "";
 let selfAttached = false;
+/** This desktop's machine id among the attached devices (null until read, or
+ *  when it is not attached) — whether the session has it ON decides the steer. */
+let selfDeviceId: string | null = null;
 async function readSelfDevice(): Promise<void> {
   if (onWebTarget()) return;
-  const g = window.glyphh as unknown as { remoteControlGet?: () => Promise<{ device?: string; attached?: boolean }> };
+  const g = window.glyphh as unknown as { remoteControlGet?: () => Promise<{ device?: string; attached?: boolean }>; attachDevicesList?: () => Promise<DevicesAnswer> };
   try {
     const v = await g.remoteControlGet?.();
     selfHostname = String(v?.device || "");
     selfAttached = !!v?.attached;
+    const list = selfAttached && selfHostname ? await g.attachDevicesList?.().catch(() => null) : null;
+    selfDeviceId = list ? selfMachineId(deviceRowsOf(list).devices, selfHostname) : null;
   } catch { /* the steer then names no host */ }
 }
 let typeTab: SessionType = "code";
@@ -500,6 +506,14 @@ function setOutputFormat(id: StoredOutputFormat): void {
   }
   paintOutputChip();
 }
+/** The picked output wears a check, like a Devices row (his report,
+ *  2026-10-07: the pick showed nothing selected). */
+function outputCheckSlot(on: boolean): HTMLElement {
+  const slot = document.createElement("span");
+  slot.className = "drop-check-slot";
+  if (on) slot.innerHTML = PLUS_CHECK;
+  return slot;
+}
 function renderOutputMenu(): void {
   const menu = el("code-output-menu");
   if (!menu) return;
@@ -524,7 +538,7 @@ function renderOutputMenu(): void {
     const hint = document.createElement("span");
     hint.className = "drop-hint";
     hint.textContent = f.hint;
-    item.append(icon, label, hint);
+    item.append(icon, label, hint, outputCheckSlot(f.id === picked));
     item.addEventListener("click", (e) => {
       e.stopPropagation();
       // Only the live ids are stored (output-format.ts); the menu lists no other.
@@ -562,7 +576,7 @@ function renderOutputMenu(): void {
     const hint = document.createElement("span");
     hint.className = "drop-hint";
     hint.textContent = a.tools.length ? `${a.tools.length} ${a.tools.length === 1 ? "tool" : "tools"}` : "Put the result into it";
-    item.append(icon, label, hint);
+    item.append(icon, label, hint, outputCheckSlot(id === picked));
     item.addEventListener("click", (e) => { e.stopPropagation(); setOutputFormat(id); menu.classList.add("hidden"); el("code-output-chip")?.focus(); });
     return item;
   };
@@ -5224,7 +5238,7 @@ function send(): void {
   // remote control is off here — never a Terminal to work around it.
   const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
   // THE APP CONTRACT RIDES THE TURN (2026-10-07): an app prompt, or the New app door.
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat, outputAppOf(c.outputFormat)), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat, outputAppOf(c.outputFormat)), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached, !selfDeviceId || deviceChecked(c.devices, selfDeviceId)) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
