@@ -367,8 +367,8 @@ jobs:
           cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
           cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
-      - name: Package Linux (AppImage)
-        run: npx electron-builder --linux --publish never
+      - name: Package Linux (x64 AppImage)
+        run: npx electron-builder --linux --x64 --publish never
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -378,9 +378,74 @@ jobs:
             release/*.AppImage
             release/latest-linux.yml
 
+  # LINUX ARM64 (his order, 2026-10-07). This organization has no arm64
+  # hosted runner, so the arm64 AppImage is built on the x64 runner INSIDE an
+  # arm64 container under QEMU: every native module (kuzu picks its binary by
+  # the host's arch, better-sqlite3 and node-pty fetch prebuilds) then installs
+  # as the real arm64 one, and electron-builder packages natively. Slower than
+  # the x64 job (emulated npm ci), correct by construction. The file is
+  # Glyphh-arm64.AppImage; the updater feed latest-linux-arm64.yml.
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: glyphh-ai/sdk
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .sdk-src
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: glyphh-ai/cli
+          token: ${{ secrets.CLI_REPO_TOKEN || secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .cli-src
+
+      - name: Register arm64 emulation
+        run: docker run --rm --privileged tonistiigi/binfmt:qemu-v9.2.2 --install arm64
+
+      - name: Build and package inside an arm64 container
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The sibling folders the app's file:../sdk and ../cli expect, laid out
+          # beside the checkout so the container sees the same shape as the x64 job.
+          mkdir -p ../lin-arm64 && rm -rf ../lin-arm64/*
+          mv .sdk-src ../lin-arm64/sdk-src
+          mv .cli-src ../lin-arm64/cli
+          APP_DIR="$(basename "$PWD")"
+          docker run --rm --platform linux/arm64 \
+            -v "$(dirname "$PWD")":/w -w "/w/$APP_DIR" \
+            -e CI=1 -e npm_config_loglevel=warn -e APP_DIR="$APP_DIR" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            node:20-bookworm bash -lc '
+              set -euo pipefail
+              npm i -g npm@11
+              cd /w/lin-arm64/sdk-src && npm ci && npm run build
+              rm -rf /w/sdk && mkdir -p /w/sdk && cp package.json /w/sdk/package.json && cp -R dist /w/sdk/dist
+              rm -rf /w/cli && mv /w/lin-arm64/cli /w/cli && cd /w/cli && npm ci
+              cd "/w/$APP_DIR"
+              npm ci
+              npm run build
+              node scripts/bundle-cli.mjs ../cli
+              rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk
+              cp ../sdk/package.json node_modules/@glyphh/sdk/package.json && cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
+              npx electron-builder --linux --arm64 --publish never
+              chown -R "$HOST_UID:$HOST_GID" release
+            '
+          ls -la release
+
+      - name: Upload Linux arm64 artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: yo-linux-arm64
+          path: |
+            release/*.AppImage
+            release/latest-linux-arm64.yml
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-mac, build-win, build-linux]
+    needs: [build-mac, build-win, build-linux, build-linux-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -398,13 +463,14 @@ jobs:
             artifacts/yo-mac/*
             artifacts/yo-win/*
             artifacts/yo-linux/*
+            artifacts/yo-linux-arm64/*
 
   mirror-release:
     if: startsWith(github.ref, 'refs/tags/v')
     # Depend only on the builds — NOT the `release` job. A flaky failure
     # creating the (cosmetic) yo-client draft release must not block
     # publishing to the actual update feed.
-    needs: [build-mac, build-win, build-linux]
+    needs: [build-mac, build-win, build-linux, build-linux-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -430,7 +496,9 @@ jobs:
                 artifacts/yo-win/*.exe \
                 artifacts/yo-win/latest.yml \
                 artifacts/yo-linux/*.AppImage \
-                artifacts/yo-linux/latest-linux.yml; then
+                artifacts/yo-linux/latest-linux.yml \
+                artifacts/yo-linux-arm64/*.AppImage \
+                artifacts/yo-linux-arm64/latest-linux-arm64.yml; then
               echo "Published $TAG to glyphh-releases (attempt $attempt)"
               exit 0
             fi
@@ -440,6 +508,7 @@ jobs:
                 artifacts/yo-mac/*.dmg artifacts/yo-mac/*.zip artifacts/yo-mac/latest-mac.yml \
                 artifacts/yo-win/*.exe artifacts/yo-win/latest.yml \
                 artifacts/yo-linux/*.AppImage artifacts/yo-linux/latest-linux.yml \
+                artifacts/yo-linux-arm64/*.AppImage artifacts/yo-linux-arm64/latest-linux-arm64.yml \
                 && { echo "Uploaded assets to existing $TAG"; exit 0; }
             fi
             echo "Publish attempt $attempt failed; retrying in $((attempt * 15))s..."
