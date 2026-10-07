@@ -52,16 +52,17 @@ linux:
   # The 512x512 PNG is what electron-builder wants here; it derives the rest.
   icon: assets/icon.png
   synopsis: The agent workbench
-  # x64 and arm64 (his order, 2026-10-07): each CI job builds ONE arch natively
-  # (--x64 / --arm64) — kuzu's install picks its binary by the HOST's arch, so
-  # a cross-build would ship the wrong one. electron-builder names them
-  # Glyphh-x86_64.AppImage and Glyphh-arm64.AppImage, with latest-linux.yml and
-  # latest-linux-arm64.yml as the updater's feeds.
+  # x64 here; arm64 is built by its own CI job (his order, 2026-10-07), which
+  # overrides this target on the command line (--arm64 -c.linux.target=AppImage)
+  # so ONE arch builds per job — listing both here made the arm64 job build
+  # x64 as well, and node-pty's x64 rebuild cannot run inside an arm64
+  # container. kuzu picks its binary by the HOST's arch, so each arch builds
+  # natively. The files are Glyphh-x86_64.AppImage and Glyphh-arm64.AppImage,
+  # with latest-linux.yml and latest-linux-arm64.yml as the updater's feeds.
   target:
     - target: AppImage
       arch:
         - x64
-        - arm64
   artifactName: "Glyphh-${arch}.${ext}"
 
 nsis:
