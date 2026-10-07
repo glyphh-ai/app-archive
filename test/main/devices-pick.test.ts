@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { deviceChecked, devicesForRun, toggleDeviceIn } from "../../src/renderer/help/devices-pick.js";
+import { deviceChecked, devicesForRun, toggleDeviceIn, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
+
+describe("the desktop is its own device (his report, 2026-10-07)", () => {
+  const rows = [{ machineId: "m-1", device: "Christophers-Mac-Studio.local" }, { machineId: "m-2", device: "laptop.local" }];
+  it("finds this machine's row by its host name, case-blind; none when not attached", () => {
+    expect(selfMachineId(rows, "christophers-mac-studio.local")).toBe("m-1");
+    expect(selfMachineId(rows, "other.local")).toBeNull();
+    expect(selfMachineId(rows, "")).toBeNull();
+  });
+  it("the turn's own folder rides for this machine only on the desktop, only when the turn names it, absolute, trimmed", () => {
+    expect(foldersForRun({ surface: "desktop", folder: "/Users/me/dev/happy-shoes/", selfId: "m-1", devices: ["m-1", "m-2"] })).toEqual({ "m-1": ["/Users/me/dev/happy-shoes"] });
+    expect(foldersForRun({ surface: "desktop", folder: "/Users/me/dev", selfId: "m-1", devices: ["m-2"] })).toEqual({});
+    expect(foldersForRun({ surface: "web", folder: "/Users/me/dev", selfId: "m-1", devices: ["m-1"] })).toEqual({});
+    expect(foldersForRun({ surface: "desktop", folder: "dev", selfId: "m-1", devices: ["m-1"] })).toEqual({});
+    expect(foldersForRun({ surface: "desktop", folder: "/Users/me/dev", selfId: null, devices: ["m-1"] })).toEqual({});
+  });
+  it("the steer names the folder and the device tools, or says remote control is off; never a Terminal", () => {
+    const on = folderSteerLine("/Users/me/dev/happy-shoes", "mac.local", true);
+    expect(on).toContain("/Users/me/dev/happy-shoes");
+    expect(on).toContain("device_read_file");
+    expect(on).toContain("Terminal panel is not a tool");
+    const off = folderSteerLine("/Users/me/dev/happy-shoes", "mac.local", false);
+    expect(off).toContain("remote control is off");
+    expect(off).toContain("Settings → Remote control");
+    expect(folderSteerLine("", "mac.local", true)).toBe("");
+  });
+});
 
 describe("which devices a session reaches (his order, 2026-10-07)", () => {
   it("an attached device is checked by default; the session's own list wins once it exists", () => {

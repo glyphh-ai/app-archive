@@ -32,7 +32,8 @@
  */
 
 import type { Source } from "./code-source-chip.js";
-import { devicesForRun } from "./devices-pick.js";
+import { devicesForRun, foldersForRun, selfMachineId } from "./devices-pick.js";
+import { hostHas } from "./web-surface.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 // ── SDK handle mirrors (window.glyphhSdk = the raw @glyphh/sdk client) ─────────
@@ -630,6 +631,19 @@ async function attachedDeviceIds(): Promise<string[]> {
 async function devicesForTurn(chat: RemoteChat): Promise<string[]> {
   return devicesForRun(chat.devices, await attachedDeviceIds());
 }
+/** THE TURN'S OWN FOLDER on the desktop it was born on (his report,
+ *  2026-10-07): a desktop-born cloud turn whose thread folder is a local path
+ *  names this machine's folder beside the grants, so the device tools reach
+ *  it with no device step. Nothing on the web, nothing without the folder,
+ *  nothing when this desktop is not among the turn's devices. */
+async function foldersForTurn(folder: string, devices: readonly string[]): Promise<Record<string, string[]>> {
+  // hostHas: the web's Proxy answers every name, so a typeof check is no gate.
+  if (surfaceHere() !== "desktop" || !folder || !hostHas("remoteControlGet") || !hostHas("attachDevicesList")) return {};
+  const g = window.glyphh as unknown as { remoteControlGet: () => Promise<{ device?: string }>; attachDevicesList: () => Promise<DevicesAnswer> };
+  const [status, list] = await Promise.all([g.remoteControlGet().catch(() => null), g.attachDevicesList().catch(() => null)]);
+  const selfId = list && status?.device ? selfMachineId(deviceRowsOf(list).devices, status.device) : null;
+  return foldersForRun({ surface: "desktop", folder, selfId, devices });
+}
 
 export function runThreadId(chat: RemoteChat): string {
   return chat.source?.kind === "cloud-space"
@@ -709,6 +723,9 @@ export async function runRemoteTurn(
   // list, else every attached desktop; a cloud turn names them and the
   // gateway's device tools open those machines inside their granted folders.
   const devices = isLocal ? [] : await devicesForTurn(chat);
+  // The thread's folder, when a cloud turn names a local one (the Folder chip
+  // on the desktop): it rides for THIS machine beside the grants.
+  const folders = isLocal ? {} : await foldersForTurn(boundDir || localPath || "", devices);
 
   let run: HarnessRunHandle;
   try {
@@ -729,6 +746,7 @@ export async function runRemoteTurn(
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(devices.length ? { devices } : {}),
+      ...(Object.keys(folders).length ? { folders } : {}),
     }, opts.signal) : sdkRun!({
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
       // The machine the session is bound to (remote control, 2026-09-30) — absent, the newest.
@@ -753,6 +771,7 @@ export async function runRemoteTurn(
       // and Settings itself; nothing relays to a desktop.
       ...(!isLocal ? { surface: surfaceHere() } : {}),
       ...(devices.length ? { devices } : {}),
+      ...(Object.keys(folders).length ? { folders } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
