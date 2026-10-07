@@ -562,14 +562,15 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     const attachedIds = rows.filter((d) => d.state === "attached").map((d) => d.machineId);
     for (const d of rows) {
       const attached = d.state === "attached";
-      const on = attached && (doors.deviceOn?.(d.machineId) ?? true);
+      // Nothing is on by itself (his report, 2026-10-07): the session's own check decides.
+      const on = attached && (doors.deviceOn?.(d.machineId) ?? false);
       const b = rowEl({ label: d.name, icon: PLUS_ICONS.devices, kind: "check", checked: on, sub: attached ? (on ? "Attached — this session can reach its granted folders" : "Attached — off for this session") : "Disconnected", muted: !attached, hint: attached ? "Click to turn this device on or off for this session" : "Manage devices to disconnect or allow" });
       b.dataset.machineId = d.machineId;
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!attached || !doors.toggleDevice) { close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); return; }
         doors.toggleDevice(d.machineId, attachedIds);
-        const now = doors.deviceOn?.(d.machineId) ?? true;
+        const now = doors.deviceOn?.(d.machineId) ?? false;
         b.classList.toggle("selected", now);
         b.setAttribute("aria-checked", now ? "true" : "false");
         const sub = b.querySelector<HTMLElement>(".drop-sub");
