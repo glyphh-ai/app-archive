@@ -57,7 +57,7 @@ import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
 import { folderChipLabel, folderChipRows } from "./run-place.js";
-import { deviceChecked, toggleDeviceIn } from "./devices-pick.js";
+import { deviceChecked, toggleDeviceIn, folderSteerLine } from "./devices-pick.js";
 import { groupByDate } from "./recents-groups.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
@@ -160,6 +160,20 @@ function modeOf(c: CodeChat): SessionType {
  *  creates, and — through modeOf on the new thread — how big a toolbelt its
  *  turns carry. Persisted per device. */
 const TYPE_TAB_PREF = "railTypeTab";
+/** This desktop's host name and whether it is attached (remote control on) —
+ *  what a cloud turn's folder steer says (folderSteerLine). Read at boot and
+ *  whenever remote control changes; empty on the web. */
+let selfHostname = "";
+let selfAttached = false;
+async function readSelfDevice(): Promise<void> {
+  if (onWebTarget()) return;
+  const g = window.glyphh as unknown as { remoteControlGet?: () => Promise<{ device?: string; attached?: boolean }> };
+  try {
+    const v = await g.remoteControlGet?.();
+    selfHostname = String(v?.device || "");
+    selfAttached = !!v?.attached;
+  } catch { /* the steer then names no host */ }
+}
 let typeTab: SessionType = "code";
 const TYPE_GLYPH: Record<SessionType, string> = {
   work: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M2.5 12h19"/></svg>`,
@@ -4976,7 +4990,11 @@ function send(): void {
   // standing line beside the brief — the same hidden preamble both run paths
   // carry (main's glyphhRun `steer`, the remote prompt's prefix), never the
   // message shown in the thread. Auto adds nothing.
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat), artifactStandingLine(c.artifactRef)].filter(Boolean).join("\n\n");
+  // A DESKTOP-BORN CLOUD TURN WITH A LOCAL FOLDER (his report, 2026-10-07):
+  // the steer names the folder and the device tools that reach it, or says
+  // remote control is off here — never a Terminal to work around it.
+  const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : ""].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -7435,6 +7453,8 @@ export function initCode(): void {
   // EVERY LAUNCH LANDS ON WORK → NEW (his order, 2026-10-07; surface.ts
   // defaultTypeTab): the saved tab is read for the record but never decides
   // the landing. A switch made while running still writes it.
+  void readSelfDevice();
+  window.addEventListener("focus", () => { void readSelfDevice(); });
   void window.glyphh.getPreference?.(TYPE_TAB_PREF, "").then((v) => {
     typeTab = defaultTypeTab(onWebTarget(), v);
     applyTypeTab();

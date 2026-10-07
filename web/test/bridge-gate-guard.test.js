@@ -42,6 +42,10 @@ const ALLOWED = {
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
   },
+  'src/renderer/help/remote-run.ts': {
+    remoteControlGet: 'foldersForTurn returns before the read unless surfaceHere() is "desktop" AND hostHas("remoteControlGet") (the turn\'s own folder, 2026-10-07)',
+    attachDevicesList: 'the same gate: surfaceHere() === "desktop" AND hostHas("attachDevicesList") before the read',
+  },
   'src/renderer/onboarding.ts': {
     startDeviceLogin: "the desktop's device-login overlay; the web signs in through web/src/web-login.js",
   },
