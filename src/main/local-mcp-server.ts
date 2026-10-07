@@ -33,6 +33,7 @@ import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, scheduleF
 import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
+import { scaffoldAppFolder } from "./app-scaffold.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -701,6 +702,30 @@ function buildMcpServer(): McpServer {
         return { ...out, where: WHERE.app, next: out.release ? "open it: panels_open { app: <slug> }; its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" }` };
       });
     },
+  );
+  // THE STARTER (his order, 2026-10-07; punch list 12): the first call of an
+  // app build writes a working app into the folder, with the member's real
+  // connected-account tool names, and answers the whole spec.
+  mcp.tool(
+    "glyphh_app_scaffold",
+    "START a Glyphh app here — call this FIRST when asked to build one. Writes a working starter into a folder on this machine (manifest.json, worker.js with one handler per tool, app/ pages, next.config.mjs, package.json, SKILL.md, and CONNECTIONS.md with the member's REAL connected-account tool names) and answers the full app spec plus the next steps. Then edit it and Build and run with app_install { dir }.",
+    {
+      name: z.string().describe("The app's name"),
+      slug: z.string().optional().describe("The folder and instance slug (lowercase [a-z0-9_-]); default: from the name"),
+      dir: z.string().optional().describe("Where to write it: under this session's folder by default (<folder>/<slug>), or an absolute path"),
+      description: z.string().optional().describe("One or two lines of what it does"),
+      connections: z.array(z.string()).optional().describe("Connection slugs the app works through (gmail, slack, google_calendar …)"),
+      tools: z.array(z.object({ name: z.string(), description: z.string().optional(), inputSchema: z.record(z.string(), z.unknown()).optional() })).optional().describe("The tools the app exposes to the agent; each gets a worker handler"),
+    },
+    async ({ name, slug, dir, description, connections, tools }) => cloud(async () => {
+      const catalog = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog().catch(() => getConnectorCatalog());
+      return scaffoldAppFolder({
+        name, ...(slug ? { slug } : {}), ...(dir ? { dir } : {}), ...(description ? { description } : {}),
+        connections: connections ?? [], tools: tools ?? [],
+        base: getExplicitWorkingDirectory() || "",
+        connectorTools: (app) => catalog.filter((t) => t.slug.toLowerCase() === app).map((t) => ({ name: t.name, ...(t.description ? { description: t.description } : {}), ...(t.inputSchema ? { inputSchema: t.inputSchema as Record<string, unknown> } : {}) })),
+      });
+    }),
   );
   mcp.tool(
     "app_build_status",

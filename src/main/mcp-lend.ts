@@ -24,7 +24,7 @@ export const WINDOW_TOOLS: ReadonlySet<string> = new Set([
  *  hand them), so the local server answers it like a window tool; the build
  *  job it starts is read here too. The gateway's `app_deploy` (sourceBase64)
  *  is hidden from the loop: nothing big rides through the model. */
-export const MACHINE_TOOLS: ReadonlySet<string> = new Set(["app_install", "app_build_status"]);
+export const MACHINE_TOOLS: ReadonlySet<string> = new Set(["app_install", "app_build_status", "glyphh_app_scaffold"]);
 
 /** The member's cloud reach: the gateway answers, from the library, the
  *  clock and the app instances, wherever the loop runs. */

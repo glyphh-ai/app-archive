@@ -35,6 +35,7 @@ describe("lendSplit", () => {
     expect(s.local("app_install")).toBe(true);
     expect(s.gateway("app_install")).toBe(false);
     expect(s.local("app_build_status")).toBe(true);
+    expect(s.local("glyphh_app_scaffold")).toBe(true);
     expect(MACHINE_TOOLS.has("app_install")).toBe(true);
     expect(s.local("app_deploy")).toBe(false);
     // One name, one server: nothing the loop may see is lent twice or by nobody.

@@ -60,6 +60,7 @@ import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPen
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
 import { folderChipLabel, folderChipRows } from "./run-place.js";
 import { deviceChecked, toggleDeviceIn, folderSteerLine } from "./devices-pick.js";
+import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
 import { groupByDate } from "./recents-groups.js";
 import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
 import {
@@ -5103,7 +5104,8 @@ function send(): void {
   // the steer names the folder and the device tools that reach it, or says
   // remote control is off here — never a Terminal to work around it.
   const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : ""].filter(Boolean).join("\n\n");
+  // THE APP CONTRACT RIDES THE TURN (2026-10-07): an app prompt, or the New app door.
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : "", appBuildSteerFor(text, threadFolder(c) || null)].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -7855,8 +7857,10 @@ export function initCode(): void {
   // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
   // "Edit with <loop>"): loop + folder are held for the session the first send
   // creates; the prompt waits in the composer for the user to send.
-  (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void }).__glyphhOpenSessionWith = (o) => {
+  (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }) => void }).__glyphhOpenSessionWith = (o) => {
     newSessionInPlace();
+    // The New app door (Build › Apps › Add): the next turn carries the app contract.
+    if (o.appBuild) armAppBuildDoor();
     if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
     const put = (tries = 0): void => {
       const ta = input();
