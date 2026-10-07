@@ -213,13 +213,14 @@ export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
 
-/** A NET-NEW USER ON THE WEB STARTS ON WORK → NEW (his order, 2026-10-05).
- *  The rail's type tab is a saved preference; with none saved the web lands
- *  on Work (the desktop keeps Code, its builder's default). A saved pick
- *  always wins on both hosts. */
-export function defaultTypeTab(web: boolean, saved: unknown): "work" | "code" {
-  if (saved === "work" || saved === "code") return saved;
-  return web ? "work" : "code";
+/** EVERY LAUNCH LANDS ON WORK → NEW, desktop and web alike (his order,
+ *  2026-10-07: "when the app first starts it is not loading work → new on the
+ *  desktop and the web the same thing. I must must do that"). The saved tab
+ *  still follows a switch made while running (the rail, a panel's dropdown),
+ *  but it never decides the landing: a fresh start is Work, a new session.
+ *  (Until 10-07 a saved pick won and the desktop started on Code.) */
+export function defaultTypeTab(_web: boolean, _saved: unknown): "work" | "code" {
+  return "work";
 }
 
 /** + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05: "no matter

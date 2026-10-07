@@ -49,6 +49,10 @@ export function cue(kind: "start" | "stop" | "submit"): void {
 
 // ── Reply text-to-speech ──────────────────────────────────────────────────────
 let playing: HTMLAudioElement | null = null;
+/** ONE SPEAKER (his report, 2026-10-07: "two voices talk over each other"):
+ *  every playReplyTTS takes a number; a synthesis still in flight when a newer
+ *  request lands is dropped on return instead of playing over it. */
+let speakSeq = 0;
 
 // Speaking-state subscribers — the composer shows a "Stop" chip while true.
 const speakingSubs = new Set<(speaking: boolean) => void>();
@@ -99,9 +103,11 @@ export async function playReplyTTS(text: string, pref: OutPref): Promise<void> {
   if (!pref.autoplay || !pref.outputModel) return;
   const say = speakable(text || "");
   if (!say) return;
+  const mine = ++speakSeq;
   stopReply();
   try {
     const bytes = asBytes(await g().voiceSynthesize?.(say, pref.outputModel, pref.voiceId ?? null));
+    if (mine !== speakSeq) return;   // a newer reply superseded this one while it synthesized
     if (!bytes || bytes.byteLength === 0) return;
     const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
     await new Promise<void>((resolve) => {

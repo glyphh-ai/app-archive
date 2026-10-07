@@ -10,6 +10,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
 import { planGates } from "./plan-gate.js";
+import { HOUSE_VIEW_OF_APP, HOUSE_TOOL_VIEWS } from "./house-relay.js";
 
 /** Rewrite a workspace's launcher/dock tile key across the persisted order
  *  prefs (the command center owns these: ccIconOrder = page order,
@@ -963,12 +964,26 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
   // The seeded Glyphh row (glyphh-self — the agent itself) is excluded: the
   // agent is the "Glyphh" workbench tool above, not an app cell.
   let apps: Array<{ id: string; name: string }>;
+  // THE HOUSE PANELS ARE APPS (his order, 2026-10-07: "this should only have
+  // apps that are installed and the base workpanel apps"): Slides, Drive,
+  // Design, Image, Video, Sounds appear in the picker only when this member
+  // holds the app that IS that panel (an installed instance, or a tab row
+  // whose launch names the tool). The base tools always show.
+  const heldViews = new Set<string>();
   try {
-    apps = (await window.glyphh.panelAppsList()).filter((a: any) =>
+    const all = await window.glyphh.panelAppsList();
+    for (const a of all as Array<{ slug?: string; launchConfig?: { tool?: unknown } | null }>) {
+      const view = HOUSE_VIEW_OF_APP[(a.slug || "").toLowerCase()];
+      if (view) heldViews.add(view);
+      const tool = a.launchConfig && typeof a.launchConfig.tool === "string" ? a.launchConfig.tool : "";
+      if (tool) heldViews.add(tool);
+    }
+    apps = all.filter((a: any) =>
       (a.url || a.isBrowser === false || a.appArchetype === "glyphh-app") && a.appArchetype !== "glyphh-self" && a.slug !== "glyphh");
   } catch {
     apps = [];
   }
+  const toolRows = TOOL_PANELS.filter((t) => { const view = t.id.slice(5); return !HOUSE_TOOL_VIEWS.includes(view) || heldViews.has(view); });
   apps.sort((a, b) => a.name.localeCompare(b.name));
   // Top up the id→name map from this fresh fetch so a picked app (and any
   // other cell whose id was missing from the stale map) renders by name
@@ -997,7 +1012,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-options">`,
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
-    ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
+    ...toolRows.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
     `<div class="cell-panel-group-label">CLI agents</div>`,
     ...CLI_AGENTS.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Tabs</div>` : "",

@@ -25,7 +25,28 @@ export function boundMessages<M>(messages: M[]): M[] {
  *  empty; adopting that emptied whole threads (his report, 2026-10-04: "the
  *  history is vanishing"). Metadata is adopted either way by the caller. */
 export function adoptServerMessages<M>(local: M[], server: M[]): M[] {
-  const bounded = boundMessages(server);
+  const bounded = dropFlattenedTail(boundMessages(server));
   return bounded.length >= local.length ? bounded : local;
+}
+
+/** THE FLATTENED DUPLICATE (his report, 2026-10-07: a web thread ended in a
+ *  "Thinking" row and one paragraph that was every status line of the turn
+ *  glued together). A turn is a run of assistant parts — text, tool rows,
+ *  text — and a copy of the thread from elsewhere can carry, after them, one
+ *  more assistant message whose text is all those parts joined with nothing
+ *  between. That tail says nothing the parts did not; it goes. */
+const words = (s: unknown): string => String(s ?? "").replace(/\s+/g, "");
+export function dropFlattenedTail<M>(messages: M[]): M[] {
+  const rows = messages as Array<Record<string, unknown>>;
+  const last = rows[rows.length - 1];
+  if (!last || last.role !== "assistant" || last.kind || !words(last.text)) return messages;
+  let i = rows.length - 2;
+  const parts: string[] = [];
+  for (; i >= 0 && rows[i].role !== "user"; i--) {
+    const r = rows[i];
+    if (r.role === "assistant" && !r.kind && typeof r.text === "string") parts.unshift(r.text);
+  }
+  if (!parts.length) return messages;
+  return words(parts.join("")) === words(last.text) ? (messages.slice(0, -1) as M[]) : messages;
 }
 
