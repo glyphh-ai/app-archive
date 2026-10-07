@@ -42,6 +42,10 @@ const ALLOWED = {
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
   },
+  'src/renderer/help/code.ts': {
+    appInstallFolder: 'buildAndRunApp sends the agent a turn instead unless hostHas("appInstallFolder") — the folder is on the worker on the web (the app card, 2026-10-07)',
+    appBuildStatus: 'followAppJob returns before the read unless hostHas("appBuildStatus") (the app card, 2026-10-07)',
+  },
   'src/renderer/help/remote-run.ts': {
     remoteControlGet: 'foldersForTurn returns before the read unless surfaceHere() is "desktop" AND hostHas("remoteControlGet") (the turn\'s own folder, 2026-10-07)',
   },

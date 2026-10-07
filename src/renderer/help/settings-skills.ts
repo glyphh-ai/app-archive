@@ -1906,6 +1906,22 @@ function wire(): void {
     if (info.kind !== "skill" && info.kind !== "task" && info.kind !== "plugin") return;
     if (el("skill-detail-view")?.classList.contains("hidden") !== false) void loadSkillsSettings();
   });
+  // THE APP CARD's "Share to publish" (2026-10-07): open this app's detail on
+  // the tab it names — the Apps page only (the slug is an instance's).
+  if (cfg.kind === "app") {
+    document.addEventListener("glyphh:open-app-detail", (ev) => {
+      const d = (ev as CustomEvent<{ slug?: string; tab?: string }>).detail || {};
+      const slug = String(d.slug || "").split("~")[0]!.toLowerCase();
+      if (!slug) return;
+      void (async () => {
+        if (!skills.length) await loadSkillsSettings();
+        const row = skills.find((s) => s.instance && (s.instance.key === d.slug || s.instance.key.split("~")[0] === slug));
+        if (!row) return;
+        await openDetail(row.id);
+        if (d.tab) selectDetailTab(d.tab as DetailTab);
+      })();
+    });
+  }
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
   const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });

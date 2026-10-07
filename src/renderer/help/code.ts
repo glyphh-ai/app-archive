@@ -31,6 +31,7 @@ import { memberLine, turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
+import { appCardFace, buildAndRunPrompt, cardFromInstallAnswer, cardFromManifestWrite, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
@@ -78,7 +79,7 @@ import { defaultTypeTab } from "./surface.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact"; attachments?: AttachRef[]; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app"; attachments?: AttachRef[]; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -1381,6 +1382,108 @@ function noteArtifact(chat: CodeChat, art: ArtifactRef): void {
     }
   }
   chat.messages.push({ role: "assistant", kind: "artifact", text: "", artifact: art, at: Date.now() });
+}
+
+/** ONE APP CARD PER FOLDER in the thread (his decisions, 2026-10-07): a later
+ *  event for the same app folds into its card (mergeAppCard); the card moves
+ *  to the end of the thread so the next step is the last thing in view. */
+function noteAppCard(chat: CodeChat, next: AppCard): CodeMsg {
+  const i = chat.messages.findIndex((m) => m.kind === "app" && m.app?.folder === next.folder);
+  if (i >= 0) {
+    const [m] = chat.messages.splice(i, 1);
+    m!.app = mergeAppCard(m!.app!, next);
+    m!.at = Date.now();
+    chat.messages.push(m!);
+    return m!;
+  }
+  const msg: CodeMsg = { role: "assistant", kind: "app", text: "", app: next, at: Date.now() };
+  chat.messages.push(msg);
+  return msg;
+}
+
+/** The build jobs the cards follow, by job id — one poller each. */
+const appJobPolls = new Map<string, number>();
+const APP_JOB_POLL_MS = 3000;
+function followAppJob(chat: CodeChat, msg: CodeMsg): void {
+  const job = msg.app?.job;
+  if (!job || appJobPolls.has(job) || !hostHas("appBuildStatus")) return;
+  const tick = async (): Promise<void> => {
+    const r = await window.glyphh.appBuildStatus(job).catch(() => null) as { ok: boolean; data?: { status?: string; release?: { n?: number } | null; error?: string | null; log?: string } ; error?: string } | null;
+    const j = r?.ok ? r.data : null;
+    if (!msg.app || msg.app.job !== job) { appJobPolls.delete(job); return; }
+    if (!j || j.status === "queued" || j.status === "building") { appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS)); return; }
+    appJobPolls.delete(job);
+    if (j.status === "ready") {
+      noteAppCard(chat, cardFromInstallAnswer(msg.app.folder, { key: msg.app.key ?? undefined, url: msg.app.url ?? undefined, release: j.release ?? null, tools: msg.app.tools }, false));
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+    } else {
+      const tail = String(j.log ?? "").trim().split("\n").slice(-3).join(" · ");
+      noteAppCard(chat, { folder: msg.app.folder, state: "failed", error: [j.error, tail].filter(Boolean).join(" — ") });
+    }
+    void saveStore();
+    if (currentId === chat.id) scheduleRenderThread();
+  };
+  appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS));
+}
+
+/** BUILD AND RUN from the card: on the desktop the folder is here, so main
+ *  installs it (app_install { dir }'s own body; a source build is a job the
+ *  card follows); on the web the folder lives on the worker, so the agent is
+ *  asked to call app_install { dir } — one turn, the path, never base64. */
+async function buildAndRunApp(chat: CodeChat, msg: CodeMsg): Promise<void> {
+  const card = msg.app;
+  if (!card) return;
+  if (!hostHas("appInstallFolder")) {
+    const ta = input();
+    if (!ta) return;
+    ta.value = buildAndRunPrompt(card.folder);
+    send();
+    return;
+  }
+  noteAppCard(chat, { folder: card.folder, state: "installing" });
+  if (currentId === chat.id) scheduleRenderThread();
+  const r = await window.glyphh.appInstallFolder(card.folder, {}).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) })) as { ok: boolean; data?: unknown; error?: string };
+  const next = r.ok
+    ? cardFromInstallAnswer(card.folder, (r.data ?? null) as Parameters<typeof cardFromInstallAnswer>[1], false)
+    : cardFromInstallAnswer(card.folder, null, true, r.error || "the install didn't answer");
+  const m = noteAppCard(chat, next);
+  if (next.state === "installed") document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+  if (next.state === "building") followAppJob(chat, m);
+  void saveStore();
+  if (currentId === chat.id) scheduleRenderThread();
+}
+
+/** The card: the connect card's grammar (icon · name · one line · actions). */
+function appCardEl(chat: CodeChat, msg: CodeMsg): HTMLElement {
+  const card = msg.app!;
+  const face = appCardFace(card);
+  const wrap = document.createElement("div");
+  wrap.className = "code-connect-card code-app-card";
+  wrap.dataset.state = card.state;
+  wrap.innerHTML = `<span class="ccx-initial"></span>
+    <div class="ccx-info"><div class="ccx-name"></div><div class="ccx-sub"></div></div>
+    <div class="cax-actions"><button type="button" class="ccx-btn cax-run"></button><button type="button" class="action-btn cax-open hidden">Open</button><button type="button" class="action-btn cax-share hidden">Share to publish</button></div>`;
+  (wrap.querySelector(".ccx-initial") as HTMLElement).textContent = (face.title || "?").charAt(0).toUpperCase();
+  (wrap.querySelector(".ccx-name") as HTMLElement).textContent = face.title;
+  (wrap.querySelector(".ccx-sub") as HTMLElement).textContent = face.sub;
+  const run = wrap.querySelector(".cax-run") as HTMLButtonElement;
+  run.textContent = face.primary;
+  run.disabled = !face.primaryOn;
+  run.addEventListener("click", () => void buildAndRunApp(chat, msg));
+  const open = wrap.querySelector(".cax-open") as HTMLButtonElement;
+  open.classList.toggle("hidden", !face.canOpen);
+  open.addEventListener("click", () => {
+    const w = window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void };
+    w.__wbOpenApp?.({ slug: card.slug || card.key || face.title, name: card.name || face.title, url: card.url || "", glyphh: true, cloud: true });
+  });
+  const share = wrap.querySelector(".cax-share") as HTMLButtonElement;
+  share.classList.toggle("hidden", !face.canShare);
+  share.addEventListener("click", () => {
+    openGroupTab("build", "apps");
+    document.dispatchEvent(new CustomEvent("glyphh:open-app-detail", { detail: { slug: card.slug || card.key || "", tab: "publish" } }));
+  });
+  if (card.state === "building") followAppJob(chat, msg);
+  return wrap;
 }
 
 /** A frame a SUB-AGENT sent: it carries the child's ref (see subagent-ledger.ts). */
@@ -2904,6 +3007,11 @@ function renderThread(): void {
         // WHAT THE TURN MADE (his order, 2026-09-29): a card with a look at it.
         el.className = "code-artifact-wrap";
         el.appendChild(artifactCardEl(b.msg.artifact, openImageLightbox));
+      } else if (b.msg.kind === "app" && b.msg.app) {
+        // THE APP THE TURN BUILT (his decisions, 2026-10-07): Build and run,
+        // Open, Share to publish — the next step, in the thread.
+        el.className = "code-connect-wrap";
+        el.appendChild(appCardEl(c, b.msg));
       } else if (b.msg.role === "assistant" && turnError(b.msg.text)) {
         // A REFUSAL IS A CARD, NOT A SENTENCE (his reports, 2026-09-29: "still
         // no fucking card i asked for"): no plan, out of budget, no model, a
@@ -5112,6 +5220,17 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
           if (r.steps.length) r.steps[r.steps.length - 1] = label;
           else r.steps.push(label);
           settleToolRow(chat, t.name, label);
+          // THE APP CARD on the worker's lane (2026-10-07): the frame carries no
+          // output, so the card says what it knows — built, or installed.
+          const wd = threadFolder(chat);
+          const built = cardFromManifestWrite(t.name, t.title, wd || undefined, bad);
+          if (built) noteAppCard(chat, built);
+          if (t.name === "app_install" || t.name === "app_deploy") {
+            const have = chat.messages.find((m) => m.kind === "app")?.app;
+            const dir = have?.folder || wd || "";
+            if (dir) noteAppCard(chat, bad ? { folder: dir, state: "failed", ...(t.error ? { error: t.error } : {}) } : { folder: dir, state: "installed", key: have?.key ?? null, url: have?.url ?? null, release: have?.release ?? null });
+            if (!bad) document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+          }
         }
         void saveStore();
         if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
@@ -5778,6 +5897,16 @@ function initGlyphhAgentEvents(): void {
       const folder = chat.workdir || (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() || undefined;
       const art = artifactFromTool(name, d.title, folder, bad);
       if (art) noteArtifact(chat, art);
+      // THE APP CARD (2026-10-07): a manifest.json written → Build and run;
+      // app_install answered → installed (or a build job the card follows).
+      const built = cardFromManifestWrite(name, d.title, folder, bad);
+      if (built) noteAppCard(chat, built);
+      if (name === "app_install" || name === "app_deploy") {
+        const dir = (extra.input && /"dir"\s*:\s*"([^"]+)"/.exec(extra.input)?.[1]) || chat.workdir || folder || "";
+        const m = noteAppCard(chat, cardFromInstallAnswer(dir, bad ? null : parseInstallAnswer(extra.output), bad, bad ? reason : undefined));
+        if (m.app?.state === "building") followAppJob(chat, m);
+        if (m.app?.state === "installed") document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+      }
     }
     void saveStore();
     if (currentId === runChatId) scheduleRenderThread();

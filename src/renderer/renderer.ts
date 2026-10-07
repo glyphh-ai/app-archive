@@ -370,6 +370,8 @@ declare global {
       appInstanceUpdate: (id: string) => Promise<LibEnvelope>;
       appInstancesUpdateAll: () => Promise<LibEnvelope>;
       appInstancesInstallDefaults: () => Promise<LibEnvelope>;
+      appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => Promise<LibEnvelope>;
+      appBuildStatus: (job: string) => Promise<LibEnvelope>;
       orgAppDefaultsGet: () => Promise<LibEnvelope>;
       orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => Promise<LibEnvelope>;
       skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
