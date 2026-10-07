@@ -139,26 +139,25 @@
              Layouts (each opens the modal at that section; the pages live in
              the modal). Everything else stays modal-only. -->
         <nav class="app-rail-nav" data-rail-section="menu">
-          <!-- THE RAIL'S MENU (his order, 2026-10-05): Artifacts, Build,
-               Customize on both surfaces — help/surface.ts WEB_RAIL_LINKS.
-               Connections and Devices left the web rail the same day
-               ("remove connections and devices from the left rail on web");
-               they live in Settings. Artifacts opens the work panel (full
-               screen on the web); Build and Customize open their pages. -->
+          <!-- THE RAIL'S MENU (his order, 2026-10-05): Artifacts, Customize
+               on both surfaces — help/surface.ts WEB_RAIL_LINKS. Connections
+               and Devices left the web rail the same day ("remove connections
+               and devices from the left rail on web"); they live in Settings.
+               Artifacts opens the work panel (full screen on the web);
+               Customize opens its page. -->
           <button class="app-rail-nav-item" data-settings-sub="artifacts">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
             <span>Artifacts</span>
           </button>
-          <!-- Build and Customize (his order, 2026-09-20): each opens as a
-               work-panel page in the workbench that carries its Settings
-               group's pages as tabs — the same pages, bigger. -->
-          <button class="app-rail-nav-item" data-settings-sub="build">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-            <span>Build</span><span id="rail-build-badge" class="rail-count hidden"></span>
-          </button>
+          <!-- Customize (his order, 2026-09-20): opens as a work-panel page
+               in the workbench that carries its Settings group's pages as
+               tabs — the same pages, bigger. ONE page since his report,
+               2026-10-07 ("The Build and Customize tabs are confusing. It
+               should just be one tab"): Build's tabs live here, and its
+               update count (#rail-build-badge, app-updates.ts) rides this row. -->
           <button class="app-rail-nav-item" data-settings-sub="customize">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v6"/></svg>
-            <span>Customize</span>
+            <span>Customize</span><span id="rail-build-badge" class="rail-count hidden"></span>
           </button>
           <!-- More: the fly-out for the second-tier destinations (the
                Browser) — opens IN THE WORKBENCH (navigation.ts). -->
@@ -273,18 +272,22 @@
         <!-- Settings -->
         <!--#include sections/settings.html -->
 
-        <!-- BUILD and CUSTOMIZE — work-panel pages that host a Settings group
-             as tabs (navigation.ts loadSettingsGroup). The tab strip is the
-             skills-tabs grammar; the host wears .settings-modal-body so the
-             adopted .settings-panel nodes read exactly as they do in Settings.
-             The panels are MOVED here from .settings-panels and moved back the
-             moment the Settings modal opens. -->
-        <section class="help-section settings-group" data-section="build">
-          <div class="skills-tabs settings-group-tabs" role="tablist"></div>
-          <div class="settings-modal-body settings-group-host"><div class="settings-panels"></div></div>
-        </section>
+        <!-- CUSTOMIZE — the ONE work-panel page that hosts the Settings group
+             as tabs (navigation.ts loadSettingsGroup; one page since his
+             report, 2026-10-07). The tab strip is the skills-tabs grammar;
+             beside it the page's ONE Yours | Discover switch, which spans every
+             tab and stays (the per-panel pair is CSS-hidden in here). The host
+             wears .settings-modal-body so the adopted .settings-panel nodes read
+             exactly as they do in Settings. The panels are MOVED here from
+             .settings-panels and moved back the moment the Settings modal opens. -->
         <section class="help-section settings-group" data-section="customize">
-          <div class="skills-tabs settings-group-tabs" role="tablist"></div>
+          <div class="settings-group-head">
+            <div class="skills-tabs settings-group-tabs" role="tablist"></div>
+            <div class="skills-tabs settings-group-scope" role="tablist">
+              <button class="skills-tab active" data-scope="mine" type="button" role="tab">Yours</button>
+              <button class="skills-tab" data-scope="discover" type="button" role="tab">Discover</button>
+            </div>
+          </div>
           <div class="settings-modal-body settings-group-host"><div class="settings-panels"></div></div>
         </section>
 

@@ -53,14 +53,14 @@ describe("the rows, per surface", () => {
 
 describe("where Manage goes", () => {
   it("desktop: Skills + Connectors are the Build page's tabs too (his order, 2026-10-07); Devices + Memory stay settings pages", () => {
-    expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "group", group: "build", sub: "skills" });
-    expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "group", group: "build", sub: "connections-cfg" });
+    expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
+    expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
     expect(manageTargetOf("desktop", "devices")).toEqual({ kind: "settings", sub: "devices" });
     expect(manageTargetOf("desktop", "memory")).toEqual({ kind: "settings", sub: "memory" });
   });
   it("web: Skills + Connectors are the Build page's tabs; Devices + Memory stay settings pages", () => {
-    expect(manageTargetOf("web", "skills")).toEqual({ kind: "group", group: "build", sub: "skills" });
-    expect(manageTargetOf("web", "connectors")).toEqual({ kind: "group", group: "build", sub: "connections-cfg" });
+    expect(manageTargetOf("web", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
+    expect(manageTargetOf("web", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
     expect(manageTargetOf("web", "devices")).toEqual({ kind: "settings", sub: "devices" });
     expect(manageTargetOf("web", "memory")).toEqual({ kind: "settings", sub: "memory" });
   });

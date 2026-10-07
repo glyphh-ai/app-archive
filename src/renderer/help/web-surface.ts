@@ -64,11 +64,12 @@ export async function copyText(text: string): Promise<boolean> {
  *  BACK on 2026-10-05 with the web cut below: the pages still work from the
  *  server, but building is the desktop's job and the web no longer shows
  *  them. The library doors in web-contract.js stay for the agent's tools. */
-/** The Settings MODAL on the web lists neither the Build group (Skills,
- *  Agents, Apps, Tasks, plugins) nor the Customize group (Tabs, Workspaces,
- *  Drips, Schedules) — the rail's full-screen Build / Customize pages carry
- *  those tabs, the same rows as the desktop's (surface.ts WEB_GROUP_ROWS,
- *  panels kept mounted). The rest of this set are CAPABILITY pages the
+/** The Settings MODAL on the web does not list the Customize group (Skills,
+ *  Agents, Apps, Tasks, plugins, Connections, Tabs, Workspaces, Drips,
+ *  Schedules — one group since his report, 2026-10-07) — the rail's
+ *  full-screen Customize page carries those tabs, the same rows as the
+ *  desktop's (surface.ts WEB_GROUP_ROWS, panels kept mounted). The rest of
+ *  this set are CAPABILITY pages the
  *  browser lacks: the local MCP server, remote control, the plugins' folder.
  *  A deep link to any of them lands on General (navigation.ts
  *  settingsSubAlias). */
@@ -80,19 +81,19 @@ export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remot
  *  into the command center and those pages, and the settings rows that
  *  govern surfaces the web no longer has (the dock, streamed panels). */
 export function hideDesktopOnlySubs(): void {
-  // THE GROUP PAGES ARE PAGES ON BOTH SURFACES (his order, 2026-10-07): the
-  // Build and Customize rows leave the Settings nav on the desktop as on the
-  // web — cut (WEB_CUT_ROW_CLASS), never `.hidden`, so the group pages still
-  // list them — and their group headers go with them. The rest of this
-  // function is the web's capability cut.
+  // THE GROUP PAGE IS A PAGE ON BOTH SURFACES (his order, 2026-10-07): the
+  // Customize rows leave the Settings nav on the desktop as on the web — cut
+  // (WEB_CUT_ROW_CLASS), never `.hidden`, so the page still lists them — and
+  // the group header goes with them. The rest of this function is the web's
+  // capability cut.
   for (const sub of WEB_GROUP_ROWS) {
     document.querySelectorAll<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`).forEach((n) => n.classList.add(WEB_CUT_ROW_CLASS));
   }
   for (const id of WEB_HIDDEN_NAV_GROUPS) document.getElementById(id)?.classList.add("hidden");
   if (!onWeb()) return;
   for (const sub of DESKTOP_ONLY_SUBS) {
-    // THE WEB'S FULL-SCREEN BUILD / CUSTOMIZE (his order, 2026-10-05): a
-    // group page's PANEL stays mounted (the full-screen page adopts it as a
+    // THE WEB'S FULL-SCREEN CUSTOMIZE (his order, 2026-10-05): the group
+    // page's PANEL stays mounted (the full-screen page adopts it as a
     // tab) and its nav row wears WEB_CUT_ROW_CLASS, never `.hidden` — the
     // group page reads the same non-hidden rows the desktop does, so the
     // web's tabs ARE the desktop's. Every other desktop-only panel hides

@@ -54,7 +54,7 @@ import {
   dockBand, searchTopFor, cardBandTop,
 } from "./help/dock-band.js";
 import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines } from "./help/surface.js";
+import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines, GROUP_PAGE_ALIASES } from "./help/surface.js";
 import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
@@ -431,8 +431,12 @@ let wallRestored = false;
  *  "Agents is still showing all the same things that Loops is showing").
  *  A key that means two different things at two different times cannot be
  *  resolved at read time — the surviving surface keeps the key, and the new
- *  one (Loops) gets backfilled into the dock like any other new tile. */
-const KEY_ALIASES: Record<string, string> = {};
+ *  one (Loops) gets backfilled into the dock like any other new tile.
+ *
+ *  `build` is dead (his report, 2026-10-07: "The Build and Customize tabs are
+ *  confusing. It should just be one tab"): a saved slot, card or section
+ *  naming it opens Customize (help/surface.ts GROUP_PAGE_ALIASES). */
+const KEY_ALIASES: Record<string, string> = { ...GROUP_PAGE_ALIASES };
 const legacyKey = (k: unknown): string => {
   const s = String(k);
   if (s.startsWith("section:")) {
@@ -1921,7 +1925,9 @@ async function init(): Promise<void> {
    * surface: section panels close, the workspace stays, and a coding panel
    * is ensured so the agent is always reachable.
    */
-  function openSectionInWorkbench(section: string): void {
+  function openSectionInWorkbench(rawSection: string): void {
+    // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
+    const section = legacyKey(rawSection);
     // A panel the user just asked for must be VISIBLE: the boot veil's
     // wall-settle loop never lifts when the wall boots covered (the landing
     // composer), and a veiled workbench renders an open section invisible.
@@ -3778,11 +3784,13 @@ async function init(): Promise<void> {
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)]
         .filter((t) => surfaceHostsTile(t, surfaceCaps(IS_WEB_TARGET)));
       // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
-      // right to left as Close all, Command center, Settings, with the two
-      // openers ahead of them — but it is only the DEFAULT. Once the dock has
-      // been arranged, that arrangement is law: nothing here re-sorts it, and
-      // the only thing that moves is a slot the user has never seen (in).
-      const DEFAULT_DOCK = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "settings", "cc", "closeall"];
+      // right to left as Close all, Command center, Settings, Customize (his
+      // report, 2026-10-07: "The dock needs an icon to get to the new unified
+      // Customize page"), with the two openers ahead of them — but it is only
+      // the DEFAULT. Once the dock has been arranged, that arrangement is law:
+      // nothing here re-sorts it, and the only thing that moves is a slot the
+      // user has never seen (in).
+      const DEFAULT_DOCK = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "customize", "settings", "cc", "closeall"];
       const liveAgent = new Set(agentTiles.map((t) => t.orderKey!));
       const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
       // A key from an older dock (logout, Tabs, Workspaces, Drips) names a
@@ -7511,7 +7519,9 @@ async function init(): Promise<void> {
       syncWallVisibility();
       scheduleAgentSync();
     };
-    const openWebFullPanel = (key: string): void => {
+    const openWebFullPanel = (rawKey: string): void => {
+      // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
+      const key = legacyKey(rawKey);
       if (!panelOpensFullScreen(key, IS_WEB_TARGET)) return;
       if (webFullKey === key) return;
       if (webFullHost) closeWebFullPanel();
@@ -7536,12 +7546,12 @@ async function init(): Promise<void> {
         webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel });
         return;
       }
-      const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${legacyKey(key)}"]`);
+      const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${key}"]`);
       if (!sec) return;
       panelBody.classList.add("ws-section-body");
       sec.classList.add("active", "wb-hosted");
       panelBody.appendChild(sec);
-      (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(legacyKey(key));
+      (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(key);
     };
     const ctl: EchoCtlType = {
       openWebFullPanel,

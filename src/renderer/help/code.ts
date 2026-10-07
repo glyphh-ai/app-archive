@@ -25,7 +25,7 @@ import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./sha
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
-import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab } from "./navigation.js";
+import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
 import { memberLine, turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -1613,7 +1613,7 @@ function appCardEl(chat: CodeChat, msg: CodeMsg): HTMLElement {
   const share = wrap.querySelector(".cax-share") as HTMLButtonElement;
   share.classList.toggle("hidden", !face.canShare);
   share.addEventListener("click", () => {
-    openGroupTab("build", "apps");
+    openGroupTab("customize", "apps");   // one page (his report, 2026-10-07)
     document.dispatchEvent(new CustomEvent("glyphh:open-app-detail", { detail: { slug: card.slug || card.key || "", tab: "publish" } }));
   });
   if (card.state === "building") followAppJob(chat, msg);
@@ -4640,7 +4640,9 @@ function wireComposerAttachments(): void {
       pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
       openTarget: toTarget,
       openConnector: (slug) => { openConnectionOnLoad(slug); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
-      addConnector: () => { toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      // ADD CONNECTOR LANDS ON DISCOVER (his report, 2026-10-07): the page's
+      // one Yours | Discover switch flips to Discover before the tab opens.
+      addConnector: () => { setGroupScope("discover"); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
       deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),

@@ -1501,7 +1501,9 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
       void paintTaskRuns(s);
     },
     onOpenAgent: (prompt) => { closeSettingsModal(); openSessionWith({ cwd: s.dir, prompt }); },
-    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
+    // The Connections TAB of the Customize page (his report, 2026-10-07:
+    // "connections" named the older page and the pending app went stale).
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections-cfg"); },
   });
 }
 
@@ -2443,8 +2445,19 @@ async function importFromFile(): Promise<void> {
   await openDetail(r.data.id);
 }
 
+/** THE PAGE'S ONE SCOPE (his report, 2026-10-07: "instead of each tab
+ *  having a different Yours / Discover it should span all the tabs and
+ *  switching it should stay"): the Customize page hands its Yours | Discover
+ *  to every tab before the tab loads (navigation.ts showGroupTab). Yours
+ *  keeps a secondary tab already up (Updates, Review); Discover is Discover. */
+function setScope(scope: "mine" | "discover", force = false): void {
+  if (scope === "discover") { tab = "discover"; discoverView = { kind: "home" }; return; }
+  // `force` is the switch's own Yours click: it leaves Updates / Review for
+  // the list; a tab switch merely applying the scope keeps them.
+  if (force || tab === "discover") tab = "mine";
+}
 
-  return { load: loadSkillsSettings };
+  return { load: loadSkillsSettings, setScope };
 }
 
 const SKILLS_PAGE = createLibraryPage({
@@ -2463,3 +2476,12 @@ export const loadSkillsSettings = SKILLS_PAGE.load;
 export const loadTasksSettings = TASKS_PAGE.load;
 export const loadAppsSettings = APPS_PAGE.load;
 export const loadPluginsSettings = PLUGINS_PAGE.load;
+/** The Customize page's scope reaching a library tab by its settings sub;
+ *  false for a sub that is not a library page (his report, 2026-10-07). */
+const LIBRARY_PAGES_BY_SUB: Readonly<Record<string, { setScope: (s: "mine" | "discover", force?: boolean) => void }>> = { skills: SKILLS_PAGE, apps: APPS_PAGE, plugins: PLUGINS_PAGE, tasks: TASKS_PAGE };
+export function setLibraryScope(sub: string, scope: "mine" | "discover", force = false): boolean {
+  const page = LIBRARY_PAGES_BY_SUB[sub];
+  if (!page) return false;
+  page.setScope(scope, force);
+  return true;
+}
