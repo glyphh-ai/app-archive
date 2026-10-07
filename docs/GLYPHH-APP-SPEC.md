@@ -49,8 +49,8 @@ machine. **The app stores and finds; the agent thinks** (no `llm.*`).
 |---|---|---|
 | `app_list_tools` | `{}` | `[{ app (the instance key), name, kind, status, tools: [{ name, description, inputSchema }] }]` |
 | `app_call_tool` | `{ app, tool, args }` | the tool's result, run on the app server as the member (`POST …/{key}/invoke`) |
-| `app_install` | `{ bundleBase64, intent: "app" }` | a BUILT bundle as an instance: create → PUT the zip → ready |
-| `app_deploy` | `{ slug, kind?, note? }` | the **Code session's folder** (the thread's folder, its sandbox; `manifest.json` + `package.json` at its root; `node_modules`, `.next`, `out`, `.git` never ride) as a `.tgz` → `POST …/{key}/builds` → PUT the source → `POST …/{key}/builds/{n}/run`; answers `{ key, release, log (tail), tools }`. On the gateway the same tool takes `sourceBase64` for a cloud session. The desktop's local MCP answers it (the gateway's copy is not lent beside it: `src/main/mcp-lend.ts`). |
+| `app_install` | `{ dir?, slug?, kind?, note?, wait?, waitSeconds?, bundleBase64? }` | ONE DOOR, BY PATH (2026-10-07): `dir` is a folder on the machine (default: the session's folder). SOURCE (package.json with a build script; `node_modules`, `.next`, `out`, `.git` never ride) goes up as a `.tgz` → `POST …/{key}/builds` → PUT → `POST …/{key}/builds/{n}/run` → a JOB (202) the call follows (`wait`, default on) — answers `{ key, mode: "source", release (null while building), job, log (tail), tools, url }`. A BUNDLE folder (manifest.json + its entry) is zipped as it is: create → PUT the zip → ready, `mode: "bundle"`. `bundleBase64` is only for a small bundle (< 64 KB) handed over from outside; more is refused with the path door named. The desktop's local MCP answers it; the gateway's base64 copies (`app_install {bundleBase64}`, `app_deploy {sourceBase64}`) are not lent beside it (`src/main/mcp-lend.ts`). |
+| `app_build_status` | `{ job, waitSeconds? }` | a build job: `{ id, key, status: queued \| building \| ready \| failed, log (tail), release, error }` |
 | `app_releases` | `{ app }` | `[{ n, sha256, sizeBytes, note, at, by, pinned }]`, oldest first |
 | `app_pin` | `{ app, n }` | pins release `n` (rollback = `n-1`); the app server reloads at once |
 
@@ -64,9 +64,9 @@ registered in `src/main/local-mcp-server.ts`.
 1. Scaffold in the session's folder from the SDK template; follow the
    `build-glyphh-app` skill.
 2. `npm install && npm run build` until it is clean.
-3. `app_deploy { slug }` — the first deploy creates the instance (an org
+3. `app_install { dir }` — the first install creates the instance (an org
    admin's as an org instance, anyone else's as personal; `kind` forces one),
-   every deploy records and pins the next release.
+   every install records and pins the next release (a build job for source).
 4. `app_list_tools` / `app_call_tool` to use it; `app_releases` / `app_pin`
    to roll back.
 

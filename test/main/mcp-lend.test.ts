@@ -25,15 +25,18 @@ describe("lendSplit", () => {
       expect(s.local(t), t).toBe(true);
       expect(s.gateway(t), t).toBe(false);
     }
-    for (const t of ["skills_list", "skill_save", "tasks_list", "task_run", "schedules_list", "schedule_save", "agents_list", "app_install", "app_releases", "app_pin"]) {
+    for (const t of ["skills_list", "skill_save", "tasks_list", "task_run", "schedules_list", "schedule_save", "agents_list", "app_releases", "app_pin"]) {
       expect(s.local(t), t).toBe(false);
       expect(s.gateway(t), t).toBe(true);
     }
-    // app_deploy tars THIS machine's folder: the local server answers it; the
-    // gateway's copy (sourceBase64, for cloud sessions) is not lent beside it.
-    expect(s.local("app_deploy")).toBe(true);
-    expect(s.gateway("app_deploy")).toBe(false);
-    expect(MACHINE_TOOLS.has("app_deploy")).toBe(true);
+    // app_install { dir } zips or tars THIS machine's folder: the local server
+    // answers it (and the job it starts); the gateway's base64 copies are not
+    // lent beside it — app_deploy is hidden from the loop outright (2026-10-07).
+    expect(s.local("app_install")).toBe(true);
+    expect(s.gateway("app_install")).toBe(false);
+    expect(s.local("app_build_status")).toBe(true);
+    expect(MACHINE_TOOLS.has("app_install")).toBe(true);
+    expect(s.local("app_deploy")).toBe(false);
     // One name, one server: nothing the loop may see is lent twice or by nobody.
     for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS].filter((n) => !LOOP_HIDDEN.has(n))) expect([s.local(t), s.gateway(t)], t).toContain(true);
     for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS]) expect(s.local(t) && s.gateway(t), t).toBe(false);
@@ -48,7 +51,7 @@ describe("lendSplit", () => {
   it("lets the gateway answer everything when the local server is down", () => {
     const s = lendSplit({ localUp: false, gatewayUp: true, connections: true, belt: BELT });
     expect(s.gateway("panels_open")).toBe(true);
-    expect(s.gateway("app_deploy")).toBe(true);
+    expect(s.gateway("app_install")).toBe(true);
     expect(s.gateway("skill_get")).toBe(true);
     expect(s.gateway("skills_list")).toBe(true);
   });

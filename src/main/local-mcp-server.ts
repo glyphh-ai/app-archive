@@ -24,7 +24,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
-import { callInstanceTool, listInstanceTools, deployFolderAsInstance, listInstanceReleases, pinInstanceRelease } from "./app-instances.js";
+import { callInstanceTool, listInstanceTools, installFolderAsInstance, listInstanceReleases, pinInstanceRelease, refuseBase64Flood, readBuildJob, waitBuildJob, logTail } from "./app-instances.js";
 import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
@@ -665,36 +665,54 @@ function buildMcpServer(): McpServer {
     },
     async ({ app, tool, args }) => cloud(() => callInstanceTool(app, tool, args || {})),
   );
+  // ONE DOOR, BY PATH (his order, 2026-10-07; punch list 17 + 19): `dir` is a
+  // folder on this machine and the runtime zips or builds it itself — a
+  // bundle folder (manifest.json + its entry) goes up as a release at once; a
+  // project (package.json with a build script) goes up as source and the
+  // platform builds it as a JOB answered at once. `bundleBase64` is only for
+  // a small bundle handed over from outside; past 64 KB it is refused with the
+  // path door named (the base64 flood of 2026-10-07 never rides again).
   mcp.tool(
     "app_install",
-    "IMPORT an existing .glyphh bundle (a zip you were handed or built) as an APP IN THE CLOUD — an instance in the user's organization (an org admin installs it for every member, anyone else a personal one), so its tools become available on every surface. This is not the way to author something new: use skill_save with the type the user asked for. `intent` must be the literal \"app\", which is your statement that the user asked for a work panel with a face — if they asked for a skill or a task, stop and use skill_save. Re-installing the same slug updates the instance in place. To show it, call panels_open with its slug; NEVER open its index.html as a file:// URL, because the glyphh bridge only exists when the app opens through its slug.",
+    "INSTALL (= Build and run) a Glyphh app as the user's cloud instance from a FOLDER ON THIS MACHINE: `dir` — the app's folder (default: this session's folder). A folder that holds manifest.json + its entry page is zipped and released as it is; a project (package.json with a build script, the Next.js static-export shape) goes up as source and the platform builds it — the answer carries `job` and `release` is null until it is ready (wait: true, the default, follows the build up to `waitSeconds`; app_build_status { job } reads it any time). Re-installing the same slug is the next release of the same instance (data, secrets and schedules kept). Returns { key, mode, release, job, log, tools, url }. NEVER read a bundle into a tool call: `bundleBase64` is only for a small bundle (< 64 KB) handed over from outside. This is not the way to author something new: skill_save makes a skill or a task.",
     {
-      bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string"),
-      intent: z.literal("app").describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),
-    },
-    async ({ bundleBase64, intent }) => {
-      void intent;
-      try {
-        // The install answers with the app's own name; say where it landed too,
-        // so no agent can report success and point at an empty page.
-        const installed = await dispatchRelayMethod("apps.install", { bundleBase64 });
-        return text({ installed, where: WHERE.app, convert: 'wrong shape? skill_retype { slug, to: "task" | "skill" }' });
-      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  // DEPLOY FROM SOURCE (app-platform.md §12): the Code session's folder — the
-  // thread's folder, its sandbox — goes up as a .tgz and the platform builds
-  // release n. On the gateway's /mcp the same tool takes `sourceBase64` for a
-  // cloud session; here the folder is this machine's, so this door tars it.
-  mcp.tool(
-    "app_deploy",
-    "DEPLOY the current Code session's folder as a Glyphh app release. The folder (the session's working folder, its sandbox) must be a Glyphh app project: manifest.json + package.json at its root (a Next.js static-export project, see the build-glyphh-app skill); node_modules, .next, out and .git never ride. The platform runs npm ci + next build + the worker bundler and pins the new release; the instance is created on the first deploy (an org admin's as an org instance, anyone else's as personal — `kind` forces one). Waits for the build (up to 10 minutes). Returns { key, release: { n, sha256, sizeBytes, note, at, by, pinned }, log (the build log's tail), tools (the app's tool names, now in app_list_tools) }. Roll back with app_pin.",
-    {
-      slug: z.string().describe("The app's slug — must match manifest.json's slug in the folder"),
+      dir: z.string().optional().describe("The app's folder on this machine (absolute). Default: this session's working folder"),
+      slug: z.string().optional().describe("The app's slug — must match manifest.json's when given"),
       kind: z.enum(["org", "personal"]).optional().describe("Which instance: the organization's (admins) or your personal one. Default: the one that exists, else org then personal"),
       note: z.string().optional().describe("A release note, kept on the release"),
+      wait: z.boolean().optional().describe("Follow a source build to its end (default true); false answers at once with the job"),
+      waitSeconds: z.number().int().positive().max(600).optional().describe("How long to follow a build before answering with it still running (default 600)"),
+      bundleBase64: z.string().optional().describe("A SMALL .glyphh bundle (a zip) as base64, handed over from outside — under 64 KB; otherwise pass `dir`"),
+      intent: z.literal("app").optional().describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),
     },
-    async ({ slug, kind, note }) => cloud(() => deployFolderAsInstance(getExplicitWorkingDirectory(), { slug, ...(kind ? { kind } : {}), ...(note ? { note } : {}) })),
+    async ({ dir, slug, kind, note, wait, waitSeconds, bundleBase64 }) => {
+      if (bundleBase64) {
+        try {
+          refuseBase64Flood(bundleBase64);
+          const installed = await dispatchRelayMethod("apps.install", { bundleBase64 });
+          return text({ installed, where: WHERE.app, convert: 'wrong shape? skill_retype { slug, to: "task" | "skill" }' });
+        } catch (err) { return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }; }
+      }
+      return cloud(async () => {
+        const out = await installFolderAsInstance(dir || getExplicitWorkingDirectory(), {
+          ...(slug ? { slug } : {}), ...(kind ? { kind } : {}), ...(note ? { note } : {}),
+          wait: wait !== false, ...(waitSeconds ? { waitMs: waitSeconds * 1000 } : {}),
+        });
+        return { ...out, where: WHERE.app, next: out.release ? "open it: panels_open { app: <slug> }; its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" }` };
+      });
+    },
+  );
+  mcp.tool(
+    "app_build_status",
+    "Read a Glyphh app BUILD JOB (app_install on a source folder answers one): { id, key, status: queued | building | ready | failed, log (the tail), release (once ready), error (when failed) }. `waitSeconds` follows it that long before answering.",
+    {
+      job: z.string().describe("The job id (job_…) from app_install"),
+      waitSeconds: z.number().int().positive().max(600).optional().describe("Follow the job up to this long (default: answer at once)"),
+    },
+    async ({ job, waitSeconds }) => cloud(async () => {
+      const j = waitSeconds ? await waitBuildJob(job, { timeoutMs: waitSeconds * 1000 }) : await readBuildJob(job);
+      return { ...j, log: logTail(j.log || "") };
+    }),
   );
   mcp.tool(
     "app_releases",

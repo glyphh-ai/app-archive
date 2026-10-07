@@ -19,10 +19,12 @@ export const WINDOW_TOOLS: ReadonlySet<string> = new Set([
   "relay_ping", "panels_open", "panels_list", "panels_switch", "panels_close", "layouts_open", "settings_open",
 ]);
 
-/** The desktop's folder: `app_deploy` tars the session's folder ON THIS
- *  MACHINE (the gateway's copy wants a `sourceBase64` only a cloud session's
- *  pod can hand it), so the local server answers it like a window tool. */
-export const MACHINE_TOOLS: ReadonlySet<string> = new Set(["app_deploy"]);
+/** The desktop's folder: `app_install { dir }` zips or tars a folder ON THIS
+ *  MACHINE (the gateway's copies want base64 only a cloud session's pod can
+ *  hand them), so the local server answers it like a window tool; the build
+ *  job it starts is read here too. The gateway's `app_deploy` (sourceBase64)
+ *  is hidden from the loop: nothing big rides through the model. */
+export const MACHINE_TOOLS: ReadonlySet<string> = new Set(["app_install", "app_build_status"]);
 
 /** The member's cloud reach: the gateway answers, from the library, the
  *  clock and the app instances, wherever the loop runs. */
@@ -30,7 +32,7 @@ export const CLOUD_TOOLS: ReadonlySet<string> = new Set([
   "skills_list", "skill_get", "skill_save", "skill_run", "skill_enable", "skill_delete", "skill_retype",
   "tasks_list", "task_get", "task_run", "task_runs",
   "schedules_list", "schedule_save", "schedule_run", "schedule_delete", "agents_list",
-  "app_list_tools", "app_call_tool", "app_install", "app_releases", "app_pin",
+  "app_list_tools", "app_call_tool", "app_releases", "app_pin",
 ]);
 
 /** The gateway's connections lane: the lookup pair the loop drives connected
@@ -52,7 +54,7 @@ export const LOCAL_CONNECTION_TOOLS: ReadonlySet<string> = new Set([
  *  entry; connected accounts go through the gateway's search). External MCP
  *  clients still get them — this is the loop's view only. */
 export const LOOP_HIDDEN: ReadonlySet<string> = new Set([
-  "relay_ping", "app_list_tools", "app_call_tool",
+  "relay_ping", "app_list_tools", "app_call_tool", "app_deploy",
   "connector_tools", "connector_call", "connections_list_tools", "connections_call_tool",
 ]);
 
