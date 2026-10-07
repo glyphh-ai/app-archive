@@ -113,9 +113,10 @@ export function buildAppInstancesWeb(client, deps = {}) {
     // A house app's Open names its built-in panel (the same rule as the desktop's instanceTab).
     return instanceTabOpen(row);
   };
-  const remove = async (id) => {
+  const remove = async (id, opts = {}) => {
     const inst = await find(id);
-    await client.http.del(`/api/app-instances/${encodeURIComponent(inst.key)}`);
+    // UNINSTALL KEEPS DATA, PURGE DROPS IT (2026-10-07) — the desktop's deleteInstance.
+    await client.http.del(`/api/app-instances/${encodeURIComponent(inst.key)}${opts.purge ? '?purge=1' : ''}`);
     cached = null;
     try { await client.memberLibrary.remove('tab', inst.slug, { updatedAt: now() }); } catch { /* no tab, or already gone */ }
     return true;
@@ -155,5 +156,16 @@ export function buildAppInstancesWeb(client, deps = {}) {
     return { installed, failed: r?.failed?.length ?? 0 };
   };
 
-  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, update, updateAll, installDefaults, isInstanceCardId };
+  /** THE RELEASES TAB + SHARE TO PUBLISH (2026-10-07): the desktop's listInstanceReleases / publishInstance. */
+  const releases = async (id) => {
+    const inst = await find(id);
+    const rows = await client.http.get(`/api/app-instances/${encodeURIComponent(inst.key)}/releases`);
+    return Array.isArray(rows) ? rows : [];
+  };
+  const share = async (id, notes = '') => {
+    const inst = await find(id);
+    return client.http.post(`/api/app-instances/${encodeURIComponent(inst.key)}/share`, { notes: String(notes ?? '') });
+  };
+
+  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, update, updateAll, installDefaults, releases, share, find, isInstanceCardId };
 }

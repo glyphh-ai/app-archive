@@ -365,7 +365,16 @@ declare global {
       skillAgents: (id: string) => Promise<LibEnvelope>;
       skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) => Promise<LibEnvelope>;
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
-      skillDelete: (id: string) => Promise<LibEnvelope>;
+      skillDelete: (id: string, opts?: { purge?: boolean }) => Promise<LibEnvelope>;
+      appInstanceReleases: (id: string) => Promise<LibEnvelope>;
+      skillComments: (ref: { versionId?: string; kind?: string; itemId?: string; version?: number }) => Promise<LibEnvelope>;
+      skillCommentAdd: (versionId: string, body: string) => Promise<LibEnvelope>;
+      skillLifecycle: (itemId: string, kind: string, state: "live" | "retired" | "removed", note?: string) => Promise<LibEnvelope>;
+      skillSubmitPublic: (itemId: string, kind: string, notes?: string) => Promise<LibEnvelope>;
+      skillWithdrawPublic: (itemId: string, kind: string) => Promise<LibEnvelope>;
+      libraryQueue: () => Promise<LibEnvelope>;
+      libraryDecide: (versionId: string, verdict: "approve" | "changes" | "reject", note?: string) => Promise<LibEnvelope>;
+      libraryVersionFiles: (versionId: string) => Promise<LibEnvelope>;
       appInstancePin: (id: string, n: number) => Promise<LibEnvelope>;
       appInstanceUpdate: (id: string) => Promise<LibEnvelope>;
       appInstancesUpdateAll: () => Promise<LibEnvelope>;

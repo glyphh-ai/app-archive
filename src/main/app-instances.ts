@@ -531,8 +531,11 @@ export async function sessionBearer(): Promise<string | null> {
   try { return (await getClient().token()) || null; } catch { return null; }
 }
 
-export async function deleteInstance(key: string): Promise<void> {
-  await getClient().http.del(`/api/app-instances/${encodeURIComponent(key)}`);
+export async function deleteInstance(key: string, opts: { purge?: boolean } = {}): Promise<void> {
+  // UNINSTALL KEEPS DATA, PURGE DROPS IT (his decision, 2026-10-07): a plain
+  // remove tombstones the instance and a reinstall revives its data; purge
+  // drops the releases, the row and its data too.
+  await getClient().http.del(`/api/app-instances/${encodeURIComponent(key)}${opts.purge ? "?purge=1" : ""}`);
   invalidateInstances();
   // The tab that named it goes with it.
   const slug = key.split("~", 1)[0];
