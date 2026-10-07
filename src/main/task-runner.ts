@@ -10,7 +10,8 @@
  *
  * Each run is one utility process (task-host.ts). Main answers its ctx calls
  * here: agent turns through the slotted agent's headless CLI, connection
- * tools, app data, checkpoints, logs. Every answer is journaled in loop_runs
+ * tools, app data, Jev decisions (ctx.decide / ctx.route, task-decide.ts),
+ * checkpoints, logs. Every answer is journaled in loop_runs
  * as it lands, so the run has a story and a cursor: a run cut off mid-way
  * resumes on the next boot from the last checkpoint the program chose.
  *
@@ -34,6 +35,8 @@ import { effectiveToolMode } from "./conn-tool-modes.js";
 import { onUserChange } from "./user-scope.js";
 import { noteLibrarySave } from "./library-events.js";
 import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
+import { mcpCreds } from "./gateway-token.js";
+import { answerDecision } from "./task-decide.js";
 
 export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
 export interface TaskManifest {
@@ -52,7 +55,7 @@ export interface TaskSpec {
   slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
   connections: string[]; schedule: string | null; enabled: boolean; dir: string;
 }
-export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "checkpoint" | "log" | "resume"; [k: string]: unknown }
+export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "decide" | "checkpoint" | "log" | "resume"; [k: string]: unknown }
 export interface RunJournal { checkpoints: Record<string, unknown>; events: RunEvent[] }
 export interface TaskRun {
   id: string; taskSlug: string; scheduleId: string | null; trigger: string; startedAt: string; durationMs: number | null;
@@ -182,7 +185,7 @@ function pinCommonJs(dir: string): void {
 
 /** A program that hands one prompt to one slot: the shape every pre-bundle task had. */
 function promptProgram(prompt: string, slot: string): string {
-  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
+  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
 }
 
 /** Slot → agent, written into task.json (the install-time fill). */
@@ -350,6 +353,10 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
         return Promise.reject(err);
       }
     }
+    case "decide":
+    case "route":
+      // Jev through GlyphhRouter on the member's credential (task-decide.ts).
+      return answerDecision(kind, args, { creds: mcpCreds, push: (ev) => push(ev) });
     case "checkpoint-get": {
       const [key] = args as [string];
       const hit = Object.prototype.hasOwnProperty.call(l.journal.checkpoints, key);

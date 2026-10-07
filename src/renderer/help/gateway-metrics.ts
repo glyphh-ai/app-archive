@@ -1,7 +1,7 @@
 /**
  * gateway-metrics.ts — Gateway › Metrics (platform, org_admin).
  *
- * The org's slice of the LiteLLM router telemetry: per-day tokens/spend bars,
+ * The org's slice of GlyphhRouter's telemetry: per-day tokens/spend bars,
  * a performance (response-time) line chart, and a by-model breakdown — all
  * keyed on the SAME two filters (role + window) in the top card, mirroring
  * the Platform › Usage grammar (settings-admin.ts). The gateway records
@@ -243,7 +243,7 @@ function renderModelTable(rows: GatewayBreakdownRow[], byProvider: GatewayBreakd
     host.innerHTML = `<div class="crud-empty">No gateway traffic in this window.</div>`;
     return;
   }
-  // Provider for a model row: LiteLLM's `vendor/` prefix when present.
+  // Provider for a model row: GlyphhRouter's `vendor/` prefix when present.
   const providerOf = (model: string): string => {
     const slash = model.indexOf("/");
     return slash > 0 ? model.slice(0, slash) : (byProvider[0]?.key ?? "—");

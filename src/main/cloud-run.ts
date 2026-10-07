@@ -316,7 +316,7 @@ export function createCloudLane(deps: CloudLaneDeps) {
    * the approvals). Otherwise the SDK's run-stream watch: asked ONCE for the
    * thread's active run — a 200 (a run, or `null` while idle) means the
    * server brokers runs and the watch stays on; a refusal means this server
-   * has no broker (the LiteLLM fork serves none, 2026-10-04) and nothing is
+   * has no broker (GlyphhRouter serves none, 2026-10-04) and nothing is
    * polled.
    */
   async function attach(sender: CloudSender, p: { threadId: string; token: string; from?: string }): Promise<{ ok: boolean; running?: boolean; error?: string }> {

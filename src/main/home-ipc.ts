@@ -30,7 +30,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
   // ── Home dashboard ──────────────────────────────────────────────────────
   // The budget, month spend, apps deployed, and a per-day usage
-  // series (dollars + calls). Money is dollars end to end — LiteLLM's spend
+  // series (dollars + calls). Money is dollars end to end — GlyphhRouter's spend
   // log is the ledger. Each call degrades to null so one failure doesn't
   // blank the whole card set.
   // The SHELL (boot gate / tutorial) steering the home panel's section —

@@ -5,7 +5,7 @@
  * 2026-09-17): a task's script exports one function, run(ctx, input), and
  * returns the result. This host loads it, hands it the input and a ctx whose
  * every verb round-trips to main over the parent port (agents, connections,
- * app data, checkpoints, logs), and reports done or failed. Main never blocks
+ * app data, Jev decisions, checkpoints, logs), and reports done or failed. Main never blocks
  * on a step, and killing this process is cancel.
  *
  * Durability is checkpoints, not steps: ctx.checkpoint(key, fn) asks main for
@@ -60,6 +60,8 @@ function makeCtx(start: StartMsg): Record<string, unknown> {
     agents,
     connections,
     data,
+    decide: (state: unknown, questions: unknown, opts?: { model?: string }) => call("decide", state, questions, opts ?? {}),
+    route: (state: unknown, branches: unknown, opts?: { instructions?: unknown; minConfidence?: number; fallback?: string; model?: string }) => call("route", state, branches, opts ?? {}),
     log: (message: unknown, detail?: unknown) => { void call("log", typeof message === "string" ? message : JSON.stringify(message), detail ?? null); },
     checkpoint: async (key: string, fn: () => unknown | Promise<unknown>): Promise<unknown> => {
       const have = (await call("checkpoint-get", key)) as { hit: boolean; value?: unknown };

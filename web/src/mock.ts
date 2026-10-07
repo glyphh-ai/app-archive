@@ -32,7 +32,7 @@ export interface SettingGroup {
   label: string;
   rows: SettingRow[];
 }
-// Reconciled to what the SERVER (the LiteLLM fork) backs today (2026-09-30).
+// Reconciled to what the SERVER (GlyphhRouter) backs today (2026-09-30).
 // HIDDEN, their trays kept for when the server side returns: API keys (BYOK is
 // dead), Runtime (no cloud workers yet), Voice (no /api/voice), Artifacts (no
 // /api/files), Apps-as-settings (no /api/apps/mine), Models (provider keys —

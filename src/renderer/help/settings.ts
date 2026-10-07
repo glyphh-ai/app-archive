@@ -936,7 +936,7 @@ export async function loadUsageAppView(): Promise<void> {
     // THE GLYPHH BUDGET (his order, 2026-09-20): one number, the member's
     // budget for connector and model calls through Glyphh (their team's share
     // when the org admin handed one out, else the org's pool), spent and
-    // remaining against it. The org's own money is LiteLLM's to show.
+    // remaining against it. The org's own money is GlyphhRouter's to show.
     const pool = Math.max(0, data?.poolUsd ?? 0);
     const funds = Math.max(0, data?.fundsUsd ?? 0);
     const spent = Math.max(0, data?.poolSpentUsd ?? 0);

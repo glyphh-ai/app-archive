@@ -752,7 +752,8 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
       fs.writeFileSync(path.join(dest, "run.js"),
         "// The desktop runs this program itself. Port the logic here: reach the\n" +
         "// world only through ctx (ctx.agents.<slot>.run, ctx.connections.<app>.call,\n" +
-        "// ctx.data(repo).exec, ctx.checkpoint, ctx.log) and return the result.\n" +
+        "// ctx.data(repo).exec, ctx.decide, ctx.route, ctx.checkpoint, ctx.log) and\n" +
+        "// return the result.\n" +
         "module.exports = async function run(ctx, input) {\n  void input;\n  ctx.log(\"this task has no program yet\");\n  return { ok: false, error: \"write run.js\" };\n};\n",
         "utf-8");
     }
@@ -808,7 +809,7 @@ export function createSkill(rawName: string, kind: HomeKind = "skill"): SkillSum
   }
   if (kind === "task") {
     const tj = JSON.stringify({ name, program: "run.js", slots: { main: { label: "Main", description: "The agent this task runs through.", agent: null } }, schedule: null, dependencies: { connections: [] } }, null, 2) + "\n";
-    const js = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
+    const js = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
     return installSkill(name, { "SKILL.md": md, "task.json": tj, "run.js": js }, "task");
   }
   const manifest = JSON.stringify({ name, ui: "ui/index.html", tools: "tools/manifest.json", data: "data/schema.sql", dependencies: { connections: [] }, screenshots: [] }, null, 2) + "\n";
