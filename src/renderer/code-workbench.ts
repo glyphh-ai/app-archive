@@ -4718,8 +4718,45 @@ async function init(): Promise<void> {
       card.classList.remove("expanded");
       cardsLayer.classList.remove("has-expanded");
       card.style.zIndex = "";
+      delete card.dataset.guestFs;
       const b = card.querySelector<HTMLElement>(".echo-card-expand");
       if (b) { b.innerHTML = EXPAND_SVG; b.title = "Expand"; }
+    };
+    const expandCard = (card: HTMLElement): void => {
+      card.classList.add("expanded");
+      // The stage belongs to this card alone now: siblings hide entirely
+      // (webviews composite over any z-index — bleed-through otherwise).
+      cardsLayer.classList.add("has-expanded");
+      card.style.zIndex = "2";
+      const b = card.querySelector<HTMLElement>(".echo-card-expand");
+      if (b) { b.innerHTML = COLLAPSE_SVG; b.title = "Collapse"; }
+    };
+    // A GUEST'S OWN FULL SCREEN (his report, 2026-10-07: "in a workspace a
+    // work panel goes full screen; collapse from full screen and the panel
+    // does not return to its slot, it pops out entirely"). A site inside a
+    // card asks for HTML fullscreen (a video, Slides' Present mode); the rail
+    // slots already follow the guest — maximize on enter, restore on leave —
+    // but a CARD's webview had no such handling, so the guest left its
+    // fullscreen with the card wedged out of its cell. Same contract here: the
+    // card expands when its guest enters, and collapses back into its grid
+    // cell when the guest leaves — only when WE expanded it for the guest.
+    const guestFullscreen = (card: HTMLElement, on: boolean): void => {
+      if (on) {
+        if (card.classList.contains("expanded")) return;
+        expandCard(card);
+        card.dataset.guestFs = "1";
+        layoutCards();
+        return;
+      }
+      if (card.dataset.guestFs !== "1") return;
+      collapseCard(card);
+      layoutCards();
+    };
+    (window as unknown as { __wbCardGuestFullscreen?: (card: HTMLElement, on: boolean) => void }).__wbCardGuestFullscreen = guestFullscreen;
+    /** A card-hosted webview follows its guest's fullscreen (above). */
+    const wireGuestFullscreen = (card: HTMLElement, wv: HTMLElement): void => {
+      wv.addEventListener("enter-html-full-screen", () => guestFullscreen(card, true));
+      wv.addEventListener("leave-html-full-screen", () => guestFullscreen(card, false));
     };
     /** Reorder ACCUMULATED (flow) panels by dragging their header — up/down
      *  within a column, horizontally across columns. Hovering past another
@@ -5613,13 +5650,7 @@ async function init(): Promise<void> {
       const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
       expandBtn.addEventListener("click", () => {
         if (card.classList.contains("expanded")) { collapseCard(card); layoutCards(); return; }
-        card.classList.add("expanded");
-        // The stage belongs to this card alone now: siblings hide entirely
-        // (webviews composite over any z-index — bleed-through otherwise).
-        cardsLayer.classList.add("has-expanded");
-        card.style.zIndex = "2";
-        expandBtn.innerHTML = COLLAPSE_SVG;
-        expandBtn.title = "Collapse";
+        expandCard(card);
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
@@ -6506,6 +6537,7 @@ async function init(): Promise<void> {
         const wv = document.createElement("webview");
         wv.setAttribute("partition", "persist:yo");
         wv.setAttribute("allowpopups", "true");
+        wireGuestFullscreen(card, wv);
         guardChromeErrorPage(wv as never, () => t.url || "");
         wv.addEventListener("did-fail-load", (ev) => {
           const err = ev as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
@@ -9767,6 +9799,15 @@ async function init(): Promise<void> {
       }
       const wv = document.createElement("webview") as WebviewEl & HTMLElement;
       wv.className = "ws-preview-frame";
+      // Inside a workspace card the frame follows its guest's fullscreen the
+      // way the card's own app webview does (the card is found at event time:
+      // a Browser slot mounts into a card or a rail).
+      const cardGuestFs = (on: boolean): void => {
+        const card = wv.closest<HTMLElement>(".echo-card");
+        if (card) (window as unknown as { __wbCardGuestFullscreen?: (c: HTMLElement, on: boolean) => void }).__wbCardGuestFullscreen?.(card, on);
+      };
+      wv.addEventListener("enter-html-full-screen", () => cardGuestFs(true));
+      wv.addEventListener("leave-html-full-screen", () => cardGuestFs(false));
       // DEFAULT session on purpose: glyphh-preview:// (local file/PDF/office
       // previews) is registered there only. "plugins" = native PDF viewer.
       wv.setAttribute("allowpopups", "");
