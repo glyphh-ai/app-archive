@@ -10,8 +10,43 @@
  */
 
 export type OutputFormatId = "auto" | "artifact" | "docs" | "slides" | "design";
-/** What a chat record may carry — only the live picks are ever stored. */
-export type StoredOutputFormat = "auto" | "artifact";
+/** What a chat record may carry — only the live picks are ever stored, and an
+ *  installed app marked as an output target (`app:<instance key>`). */
+export type StoredOutputFormat = "auto" | "artifact" | `app:${string}`;
+
+// ── APPS AS OUTPUT TARGETS (his order, 2026-10-07; punch list 5) ──────────────
+// An installed app whose manifest says `output: true` is a place the result
+// can go. The drop-up shows the first few by this member's recent use, and a
+// searchable page for the rest; the pick is the session's, like Artifact.
+export const APP_OUTPUT_PREFIX = "app:";
+export interface OutputApp { key: string; slug: string; name: string; tools: string[]; icon?: string | null }
+export const isAppOutput = (v: unknown): v is `app:${string}` => typeof v === "string" && v.startsWith(APP_OUTPUT_PREFIX) && v.length > APP_OUTPUT_PREFIX.length;
+export const appOutputKey = (v: unknown): string => (isAppOutput(v) ? v.slice(APP_OUTPUT_PREFIX.length) : "");
+export const appOutputId = (key: string): `app:${string}` => `${APP_OUTPUT_PREFIX}${key}`;
+/** How many apps the drop-up shows before "More outputs ›". */
+export const OUTPUT_APPS_TOP = 5;
+export const OUTPUT_RECENT_CAP = 20;
+
+/** The member's most recently picked first (in that order), then the rest by name. */
+export function orderedOutputApps(apps: readonly OutputApp[], recent: readonly string[], top = OUTPUT_APPS_TOP): { top: OutputApp[]; rest: OutputApp[] } {
+  const byKey = new Map(apps.map((a) => [a.key, a]));
+  const first: OutputApp[] = [];
+  for (const k of recent) { const a = byKey.get(k); if (a && !first.includes(a)) first.push(a); }
+  const rest = apps.filter((a) => !first.includes(a)).sort((a, b) => a.name.localeCompare(b.name));
+  const all = [...first, ...rest];
+  return { top: all.slice(0, top), rest: all.slice(top) };
+}
+
+/** A pick moves the app to the front of the member's recent list. */
+export function noteOutputAppUse(recent: readonly string[], key: string, cap = OUTPUT_RECENT_CAP): string[] {
+  return [key, ...recent.filter((k) => k !== key)].slice(0, cap);
+}
+
+/** The line an app pick adds to the turn: the target, its door and its tools front and center. */
+export function appStandingLine(app: OutputApp): string {
+  const tools = app.tools.length ? ` Its tools: ${app.tools.join(", ")}.` : "";
+  return `OUTPUT TARGET: the ${app.name} app (instance key "${app.key}"). Put the result INTO this app through its own tools — app_call_tool { app: "${app.key}", tool, args } (search its tools first: find_tools / mcp_tool_search; read its skill if one is listed).${tools} The thread gets a short note of what was put where, not the result itself.`;
+}
 
 export interface OutputFormat {
   id: OutputFormatId;
@@ -70,9 +105,9 @@ export function liveOutputFormats(): OutputFormat[] {
   return OUTPUT_FORMATS.filter((f) => f.available);
 }
 
-/** Only a live pick may be stored on a chat; anything else reads as Auto. */
+/** Only a live pick may be stored on a chat — or an app target; anything else reads as Auto. */
 export function isStoredOutputFormat(v: unknown): v is StoredOutputFormat {
-  return typeof v === "string" && OUTPUT_FORMATS.some((f) => f.available && f.id === v);
+  return isAppOutput(v) || (typeof v === "string" && OUTPUT_FORMATS.some((f) => f.available && f.id === v));
 }
 
 /** The chat's pick, folded: an unknown or absent stamp is Auto. */
@@ -80,9 +115,10 @@ export function outputFormatOf(v: unknown): StoredOutputFormat {
   return isStoredOutputFormat(v) ? v : "auto";
 }
 
-/** The chip's word: "Output" on Auto, the pick's label otherwise. */
-export function outputChipLabel(v: unknown): string {
+/** The chip's word: "Output" on Auto, the pick's label otherwise; an app pick wears the app's name. */
+export function outputChipLabel(v: unknown, apps: readonly OutputApp[] = []): string {
   const id = outputFormatOf(v);
+  if (isAppOutput(id)) return apps.find((a) => a.key === appOutputKey(id))?.name ?? "App";
   return id === "auto" ? "Output" : (OUTPUT_FORMATS.find((f) => f.id === id)?.label ?? "Output");
 }
 
@@ -90,7 +126,12 @@ export function outputChipLabel(v: unknown): string {
 export const ARTIFACT_STANDING_LINE =
   "Deliver the result as an artifact: build it and publish it with the artifact_publish tool, then report its link.";
 
-/** What the pick adds to the turn: nothing on Auto, the line on Artifact. */
-export function outputStandingLine(v: unknown): string {
-  return outputFormatOf(v) === "artifact" ? ARTIFACT_STANDING_LINE : "";
+/** What the pick adds to the turn: nothing on Auto, the line on Artifact, the app's line on an app. */
+export function outputStandingLine(v: unknown, app?: OutputApp | null): string {
+  const id = outputFormatOf(v);
+  if (isAppOutput(id)) {
+    const key = appOutputKey(id);
+    return appStandingLine(app && app.key === key ? app : { key, slug: key.split("~")[0]!, name: key.split("~")[0]!, tools: [] });
+  }
+  return id === "artifact" ? ARTIFACT_STANDING_LINE : "";
 }
