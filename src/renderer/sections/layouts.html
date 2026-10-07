@@ -72,6 +72,18 @@
                 <option value="work">Work</option>
                 <option value="code">Code</option>
               </select>
+
+              <!-- THE GATEWAY BYPASS (his order, 2026-10-07): the CLI agents in this
+                   workspace ride the Glyphh gateway on the org's models, or bypass it
+                   and run on the member's own login and subscription. A cell's own
+                   Gateway choice wins over this. -->
+              <label class="settings-label" style="margin-top:16px;">Gateway (overall)</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">For the CLI agents here (Claude, Codex, Gemini): the Glyphh gateway and the org's models, or your own login and subscription. Each agent cell can say otherwise. On the web the CLIs always sign in on their own.</div>
+              <select id="layout-gateway" class="settings-input">
+                <option value="">Default (Settings)</option>
+                <option value="on">Glyphh gateway</option>
+                <option value="off">Bypass — own login</option>
+              </select>
             </div>
 
             <label class="settings-label" style="margin-top:16px;">Working folder (overall)</label>

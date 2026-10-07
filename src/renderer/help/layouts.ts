@@ -291,6 +291,8 @@ layoutFolderClearBtn?.addEventListener("click", () => {
 const layoutAgentRows = document.getElementById("layout-agent-rows");
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 const layoutTypeSelect = document.getElementById("layout-type") as HTMLSelectElement | null;
+/** THE GATEWAY BYPASS, overall (his order, 2026-10-07): a CLI agent cell with no gateway choice of its own takes this. */
+const layoutGatewaySelect = document.getElementById("layout-gateway") as HTMLSelectElement | null;
 const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's model picks. */
 let builderModelSelections: Record<string, string> = {};
@@ -1205,6 +1207,10 @@ async function editLayout(name: string) {
     const t = (layout as { type?: string })?.type;
     layoutTypeSelect.value = t === "work" || t === "code" ? t : "";
   }
+  if (layoutGatewaySelect) {
+    const g = (layout as { gateway?: string })?.gateway;
+    layoutGatewaySelect.value = g === "on" || g === "off" ? g : "";
+  }
   void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
@@ -1234,6 +1240,7 @@ async function newLayout() {
   builderModelSelections = {};
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
   if (layoutTypeSelect) layoutTypeSelect.value = "";
+  if (layoutGatewaySelect) layoutGatewaySelect.value = "";
   void renderLoopModels();
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
@@ -1346,6 +1353,8 @@ async function saveLayout() {
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     // The type binds like the model slots: only with an agent seat to bind to.
     ...(hasAgentSeat && (layoutTypeSelect?.value === "work" || layoutTypeSelect?.value === "code") ? { type: layoutTypeSelect.value as "work" | "code" } : {}),
+    // The gateway bypass binds to the CLI agent cells; a workspace without one keeps no choice.
+    ...(assignedCells.some((c) => (c.panelId || "").trim().toLowerCase().startsWith("agent:")) && (layoutGatewaySelect?.value === "on" || layoutGatewaySelect?.value === "off") ? { gateway: layoutGatewaySelect.value as "on" | "off" } : {}),
     folder: layoutFolderInput?.value.trim() || null,
   });
   // A refused save says why on the form — the plan gate on the desktop, or

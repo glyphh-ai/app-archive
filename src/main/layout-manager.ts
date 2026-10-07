@@ -35,6 +35,7 @@ export interface ServerLayout {
   sessionMode?: "keep" | "new" | "last";
   /** Work or Code for the sessions it creates (2026-10-07); a cell's own wins. */
   type?: "work" | "code";
+  gateway?: "on" | "off";
   /** Folder the agent switches to on open. */
   folder?: string;
   /** The SPACE this layout belongs to (chat | cowork | code). */
@@ -84,6 +85,7 @@ export interface GridLayout {
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
   type?: "work" | "code";
+  gateway?: "on" | "off";
   folder?: string;
   space?: "chat" | "cowork" | "code";
   /** THE LWW CLOCK (his rule, 2026-10-04: database-as-truth, latest wins):
@@ -135,6 +137,7 @@ export async function fetchServerLayouts(): Promise<ServerLayout[]> {
         ...(grid.view === "glyphh" || grid.view === "cli" ? { view: grid.view } : {}),
         ...(grid.sessionMode === "new" || grid.sessionMode === "last" ? { sessionMode: grid.sessionMode } : {}),
         ...(grid.type === "work" || grid.type === "code" ? { type: grid.type } : {}),
+        ...(grid.gateway === "on" || grid.gateway === "off" ? { gateway: grid.gateway } : {}),
         ...(grid.folder ? { folder: grid.folder } : {}),
         ...(grid.space === "chat" || grid.space === "cowork" || grid.space === "code" ? { space: grid.space } : {}),
         ...(grid.modelSelections && typeof grid.modelSelections === "object" ? { modelSelections: grid.modelSelections } : {}),

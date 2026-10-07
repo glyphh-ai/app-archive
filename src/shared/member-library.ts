@@ -90,6 +90,11 @@ export interface GridLayoutLike {
    *  session this workspace creates carries, unless its own agent cell names
    *  one. Absent = follow the panels (a dev panel makes it Code). */
   type?: "work" | "code";
+  /** THE GATEWAY BYPASS (his order, 2026-10-07): what the workspace's CLI
+   *  agent cells ride when they say nothing themselves — the Glyphh gateway
+   *  on the org's models ("on"), or the member's own login and subscription
+   *  ("off"). Absent = the member's default in Settings. */
+  gateway?: "on" | "off";
   folder?: string;
   space?: "chat" | "cowork" | "code";
   /** Epoch ms — the writer's clock (added 2026-10-04; absent on older files). */
@@ -128,6 +133,7 @@ export interface LayoutRowLike {
   /** THE TYPE (his report, 2026-10-07: "the type overall is not persisting on
    *  save" — the save wrote it, this row never carried it back). */
   type: "work" | "code" | null;
+  gateway: "on" | "off" | null;
   folder: string | null;
   space: "chat" | "cowork" | "code" | null;
   splits: GridCellLike[];
@@ -152,6 +158,7 @@ export function layoutRowOf(l: GridLayoutLike): LayoutRowLike {
     modelSelections: l.modelSelections ?? {},
     sessionMode: l.sessionMode ?? "keep",
     type: l.type === "work" || l.type === "code" ? l.type : null,
+    gateway: l.gateway === "on" || l.gateway === "off" ? l.gateway : null,
     folder: l.folder ?? null,
     space: l.space ?? null,
     splits: cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),

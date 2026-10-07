@@ -6087,6 +6087,8 @@ async function init(): Promise<void> {
         // drops to the landing before the session contract below can act.
         // "new" starts fresh and "last" re-targets explicitly, right after.
         for (const x of [...openList]) closeCard(x, { parkTerms: true, keepSession: true });
+        // and the full-screen page a workspace was opened from (his report, 2026-10-07)
+        closeWebFullPanel();
         echoLayoutName = layout.name || null;
         scheduleWallSave();   // a layout is now the wall's state — persist its name
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
@@ -6166,7 +6168,9 @@ async function init(): Promise<void> {
                 ...(cellCfg.model ? { model: cellCfg.model } : {}),
                 ...(cwd ? { cwd } : {}),
                 ...(mode === "last" ? { resume: true } : {}),
-                ...(cellCfg.gateway === "on" ? { gateway: true } : cellCfg.gateway === "off" ? { gateway: false } : {}),
+                // The cell's own gateway choice, else the workspace's overall one (his order, 2026-10-07), else the member's default.
+                ...(cellCfg.gateway === "on" ? { gateway: true } : cellCfg.gateway === "off" ? { gateway: false }
+                  : (layout as { gateway?: string }).gateway === "on" ? { gateway: true } : (layout as { gateway?: string }).gateway === "off" ? { gateway: false } : {}),
               };
               void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
                 if (r?.missing) void askInstallCli(r.missing);
@@ -7719,6 +7723,11 @@ async function init(): Promise<void> {
     // call the same thing through echoCtl.reset.
     const resetEcho = (): void => {
       saveEchoLayoutMem();   // "last" layouts remember their panels through a reset
+      // CLOSE ALL MEANS ALL (his report, 2026-10-07): the full-screen page
+      // (Build / Customize / Artifacts) and the Settings modal go too, on
+      // both surfaces — not only the cards.
+      closeWebFullPanel();
+      (window as unknown as { __glyphhCloseSettings?: () => void }).__glyphhCloseSettings?.();
       for (const x of [...openList]) closeCard(x, { parkTerms: true });
       echoGrid = null;
       echoLayoutName = null;
