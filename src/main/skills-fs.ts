@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installDefaultApps } from "./app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installDefaultApps, adminAppDefaults, setAdminAppDefaults } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -925,6 +925,8 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("app-instance-update", (_e: unknown, id: string) => env(() => updateInstance(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
   ipcMain.handle("app-instances-update-all", () => env(() => updateAllInstances()));
   ipcMain.handle("app-instances-install-defaults", () => env(() => installDefaultApps()));
+  ipcMain.handle("org-app-defaults-get", () => env(() => adminAppDefaults()));
+  ipcMain.handle("org-app-defaults-set", (_e: unknown, overrides: Record<string, "on" | "off" | null>) => env(() => setAdminAppDefaults(overrides && typeof overrides === "object" ? overrides : {})));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
   ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
   ipcMain.handle("skill-replace", async (e, id: string) => {

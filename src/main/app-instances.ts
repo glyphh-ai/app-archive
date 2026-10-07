@@ -259,6 +259,15 @@ export async function installDefaultApps(): Promise<{ installed: number; failed:
   return { installed, failed };
 }
 
+/** THE ORG'S WORD ON DEFAULTS (his order, 2026-10-07): every catalog app with
+ *  its manifest flag, the org's override and what that makes it; PUT merges
+ *  `{itemRef: on|off|null}` (null clears the override). Org admin only. */
+export type DefaultOverride = "on" | "off";
+export interface AdminAppDefaults { items: Array<{ itemRef: string; source: "org" | "public"; slug: string; name: string; description: string; release: number; version: string | null; flagged: boolean; override: DefaultOverride | null; default: boolean }>; overrides: Record<string, DefaultOverride> }
+export const adminAppDefaults = (): Promise<AdminAppDefaults> => getClient().http.get<AdminAppDefaults>("/api/admin/app-defaults");
+export const setAdminAppDefaults = (overrides: Record<string, DefaultOverride | null>): Promise<AdminAppDefaults> =>
+  getClient().http.put<AdminAppDefaults>("/api/admin/app-defaults", { overrides });
+
 /** The `app-instance-pin` IPC's body (the same name on the web, member-
  *  library-web.js): a card id or an instance key, the release to pin. */
 export async function appInstancePinHandler(id: string, n: number): Promise<{ ok: boolean; data?: AppInstanceSummary; error?: string }> {

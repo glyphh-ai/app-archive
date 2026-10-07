@@ -145,7 +145,7 @@ export function loadOrgLibrary(): void {
       ]);
       roles = rolesR ?? [];
       authors = new Map((membersR ?? []).map((m) => [m.userId, m.name || m.email]));
-      await Promise.all([paintQueue(), reload()]);
+      await Promise.all([paintQueue(), reload(), paintDefaults()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -183,6 +183,49 @@ async function paintQueue(): Promise<void> {
     const vid = row.dataset.vid!;
     row.querySelector("[data-approve]")?.addEventListener("click", () => void decide(vid, true));
     row.querySelector("[data-reject]")?.addEventListener("click", () => void decide(vid, false));
+  });
+  applyGate();
+}
+
+// ── Default apps: the manifest's flag, the org's word ───────────────────────
+interface DefaultRow { itemRef: string; source: "org" | "public"; slug: string; name: string; description: string; version: string | null; flagged: boolean; override: "on" | "off" | null; default: boolean }
+type Defaults = { items: DefaultRow[]; overrides: Record<string, "on" | "off"> };
+const DEFAULT_MODES: Array<{ value: "" | "on" | "off"; label: string }> = [
+  { value: "", label: "As the manifest says" }, { value: "on", label: "On for this organization" }, { value: "off", label: "Off for this organization" },
+];
+
+/** Settings › Organization › Library › Default apps: every catalog app, what
+ *  its manifest says (installAsDefault), and the org's override — a select per
+ *  row that commits live (PUT /api/admin/app-defaults, a merge). */
+async function paintDefaults(): Promise<void> {
+  const host = $("orglib-defaults");
+  if (!host) return;
+  let d: Defaults | null = null;
+  try { d = await via<Defaults>(() => undefined, "orgAppDefaultsGet"); } catch { d = null; }
+  const items = d?.items ?? [];
+  if (!items.length) { host.innerHTML = ""; host.classList.add("hidden"); return; }
+  host.classList.remove("hidden");
+  host.innerHTML = `<h3 class="settings-subheading">Default apps</h3>
+    <p class="section-desc">An app whose manifest says <code>installAsDefault</code> is installed for every member when they open Glyphh. Your word here overrides the manifest for this organization.</p>` +
+    items.map((it) => `
+    <div class="crud-row" data-ref="${escapeHtml(it.itemRef)}">
+      <div class="crud-cell" style="flex:1;">
+        <b>${escapeHtml(it.name)}</b> <span class="orglib-pill">${it.source === "org" ? "Your org" : "Glyphh"}</span> ${it.version ? `<span class="mdl-hint">v${escapeHtml(it.version)}</span>` : ""}
+        <div class="mdl-hint">${it.flagged ? "The manifest asks to be a default" : "Not a default by its manifest"} · ${it.default ? "installed for members" : "not installed by default"}</div>
+      </div>
+      <select class="crud-input dash-usage-select" data-mode>${DEFAULT_MODES.map((m) => `<option value="${m.value}" ${(it.override ?? "") === m.value ? "selected" : ""}>${m.label}</option>`).join("")}</select>
+    </div>`).join("");
+  host.querySelectorAll<HTMLSelectElement>("select[data-mode]").forEach((sel) => {
+    const row = sel.closest<HTMLElement>(".crud-row")!;
+    const ref = row.dataset.ref!;
+    const was = sel.value;
+    sel.addEventListener("change", () => {
+      const mode = sel.value === "on" || sel.value === "off" ? sel.value : null;
+      sel.disabled = true;
+      void via<Defaults>(() => undefined, "orgAppDefaultsSet", { [ref]: mode })
+        .then(() => paintDefaults())
+        .catch((e) => { sel.value = was; sel.disabled = false; setError(e instanceof Error ? e.message : String(e)); });
+    });
   });
   applyGate();
 }

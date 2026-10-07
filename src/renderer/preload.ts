@@ -1106,6 +1106,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
   appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
   appInstancesInstallDefaults: () => ipcRenderer.invoke("app-instances-install-defaults") as Promise<LibEnvelope>,
+  /** Org admin: the catalog's default apps and the org's overrides (GET / PUT /api/admin/app-defaults). */
+  orgAppDefaultsGet: () => ipcRenderer.invoke("org-app-defaults-get") as Promise<LibEnvelope>,
+  orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => ipcRenderer.invoke("org-app-defaults-set", overrides) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
   skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,
