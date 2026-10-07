@@ -5034,8 +5034,17 @@ async function init(): Promise<void> {
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
       // ANY open panel retires the launcher pages — the ⌃⌥ / eye peek lifts.
       const cardsUp = openList.some((e) => e.card);
+      // A FULL-SCREEN PAGE (Build / Customize / Artifacts) covers the command
+      // center like a card does (his report, 2026-10-07: "no matter what
+      // setting the dock has the build and customize pages render over it
+      // until it is summoned" — the page sat over the wall's own dock, so a
+      // pinned dock vanished and an auto-hide one never tucked). Counted here,
+      // the dock parks in the body-level layer above the page: pinned = always
+      // on, and the page reserves its band (placeWebFullPanel); auto-hide =
+      // tucked, the top-edge hover peeks it.
+      const fullUp = document.body.classList.contains("web-full-open");
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
-      const hidden = (layoutUp || cardsUp) && !shadowOn;
+      const hidden = (layoutUp || cardsUp || fullUp) && !shadowOn;
       pagesEl.style.visibility = hidden ? "hidden" : "";
       dotsEl.style.visibility = hidden ? "hidden" : "";
       body.querySelectorAll<HTMLElement>(".echo-page-arrow").forEach((a) => { a.style.visibility = hidden ? "hidden" : ""; });
@@ -5089,6 +5098,7 @@ async function init(): Promise<void> {
       // Dashboard | Desktop surface tabs) must hide for layouts too.
       // The TUCK's CSS keys off echo-wall-hidden, not -covered.
       document.body.classList.toggle("echo-wall-hidden", hidden);
+      if (fullUp) placeWebFullPanel();
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
       // leaves focus inside the agent — :focus-within then pins it up until a
       // hover cycle releases it ("doesn't hide right away"). The moment the
@@ -7426,6 +7436,22 @@ async function init(): Promise<void> {
     let webFullHost: HTMLElement | null = null;
     let webFullKey: string | null = null;
     let webFullPanel: ArtifactsPanelHandle | null = null;
+    /** A PINNED dock (auto-hide off) parks across the top of the page; the
+     *  page starts under its band — the same measure the cards reserve
+     *  (measureDock + cardBandTop) — so nothing draws over it. A tucked or
+     *  off dock reserves nothing. Measured after the portal has parked the
+     *  bar (its MutationObserver runs after the class flip), so one frame later. */
+    let webFullPlaceTimer = 0;
+    const placeWebFullPanel = (): void => {
+      if (!webFullHost) return;
+      window.cancelAnimationFrame(webFullPlaceTimer);
+      webFullPlaceTimer = window.requestAnimationFrame(() => {
+        if (!webFullHost) return;
+        const stageTop = stage.getBoundingClientRect().top;
+        const dock = measureDock(stageTop);
+        webFullHost.style.top = dock.band > 0 ? `${cardBandTop(dock.band, dock.reach, 0)}px` : "";
+      });
+    };
     const closeWebFullPanel = (): void => {
       if (!webFullHost) return;
       const pen = document.getElementById("page-body");
@@ -7440,6 +7466,7 @@ async function init(): Promise<void> {
       webFullKey = null;
       document.body.classList.remove("web-full-open");
       layoutCards();
+      syncWallVisibility();
       scheduleAgentSync();
     };
     const openWebFullPanel = (key: string): void => {
@@ -7462,6 +7489,7 @@ async function init(): Promise<void> {
       webFullHost = host;
       webFullKey = key;
       document.body.classList.add("web-full-open");
+      syncWallVisibility();
       if (key === "artifacts") {
         webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel });
         return;

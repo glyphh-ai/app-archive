@@ -7317,7 +7317,16 @@ export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean 
   go();
 }
 
+/** THE THREE WEB SURFACES WEAR THEIR OWN NAMES (his order, 2026-10-07): the
+ *  site is "Glyphh — …" (web/app/lib/home-meta.js), the console is "Glyphh
+ *  Platform" (server ui layout.tsx), and this document — the app on
+ *  app.glyphh.ai — is "Glyphh App"; the desktop window is plain "Glyphh". */
+export function surfaceTitle(web: boolean): string {
+  return web ? "Glyphh App" : "Glyphh";
+}
+
 export function initCode(): void {
+  document.title = surfaceTitle(onWebTarget());
   syncSpaceAttrs();   // styled from the first frame, tab click or not
   if (inited) return;
   inited = true;
