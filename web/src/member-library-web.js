@@ -119,7 +119,7 @@ export function buildMemberLibrary(client, deps = {}) {
     try {
       const name = String(grid?.name ?? '').trim();
       if (!name) return { error: 'A name is required.' };
-      const { loop, modelSelections, sessionMode, folder, space, ...rest } = grid;
+      const { loop, modelSelections, sessionMode, type, folder, space, ...rest } = grid;
       const at = now();
       const data = {
         ...rest, name, version: 2,
@@ -130,6 +130,8 @@ export function buildMemberLibrary(client, deps = {}) {
         ...(loop ? { loop } : {}),
         ...(modelSelections && Object.keys(modelSelections).length ? { modelSelections } : {}),
         ...(sessionMode && sessionMode !== 'keep' ? { sessionMode } : {}),
+        // THE TYPE (2026-10-07): Work or Code, the same rule as the desktop's layouts-save-grid.
+        ...(type === 'work' || type === 'code' ? { type } : {}),
         ...(folder ? { folder } : {}),
         ...(space === 'chat' || space === 'cowork' || space === 'code' ? { space } : {}),
         updatedAt: at,

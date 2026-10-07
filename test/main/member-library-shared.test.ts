@@ -21,7 +21,7 @@ describe("workspaces", () => {
     expect(workspaceId(" Research Desk ")).toBe("research-desk");
     expect(workspaceId("")).toBe("workspace");
     const row = layoutRowOf(GRID);
-    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
+    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", type: null, folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
     expect(workspaceClock(GRID)).toBe(1_700_000);
     expect(workspaceClock({ ...GRID, updatedAt: undefined })).toBe(0);
     expect(isGridLayout(GRID)).toBe(true);
@@ -35,6 +35,11 @@ describe("workspaces", () => {
     expect(workspaceSurfaceOf(null)).toBe("desktop");
     // the stamp rides the row untouched — the list filters, the row keeps every workspace
     expect(layoutRowOf({ ...GRID, surface: "web" })).toEqual(layoutRowOf(GRID));
+  });
+  it("the TYPE rides the row (his report, 2026-10-07: saved, never read back); junk reads null", () => {
+    expect(layoutRowOf({ ...GRID, type: "code" }).type).toBe("code");
+    expect(layoutRowOf({ ...GRID, type: "work" }).type).toBe("work");
+    expect(layoutRowOf({ ...GRID, type: "" as never }).type).toBeNull();
   });
 });
 

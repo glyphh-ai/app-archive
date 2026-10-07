@@ -125,6 +125,9 @@ export interface LayoutRowLike {
   loop: string | null;
   modelSelections: Record<string, string>;
   sessionMode: "keep" | "new" | "last";
+  /** THE TYPE (his report, 2026-10-07: "the type overall is not persisting on
+   *  save" — the save wrote it, this row never carried it back). */
+  type: "work" | "code" | null;
   folder: string | null;
   space: "chat" | "cowork" | "code" | null;
   splits: GridCellLike[];
@@ -148,6 +151,7 @@ export function layoutRowOf(l: GridLayoutLike): LayoutRowLike {
     loop: l.loop ?? null,
     modelSelections: l.modelSelections ?? {},
     sessionMode: l.sessionMode ?? "keep",
+    type: l.type === "work" || l.type === "code" ? l.type : null,
     folder: l.folder ?? null,
     space: l.space ?? null,
     splits: cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
