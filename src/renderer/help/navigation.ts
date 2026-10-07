@@ -1263,6 +1263,8 @@ export function initHelp() {
   // module): open the SETTINGS MODAL — gotoSection("settings") is the modal
   // path. Account/Logout live inside it.
   (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings = (sub?: string) => gotoSection("settings", sub);
+  // The workbench's Close all shuts the Settings modal too (his report, 2026-10-07).
+  (window as unknown as { __glyphhCloseSettings?: () => void }).__glyphhCloseSettings = () => closeSettingsModal();
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
   // repaints it instead of showing the previous identity all run.

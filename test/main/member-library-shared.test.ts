@@ -21,7 +21,7 @@ describe("workspaces", () => {
     expect(workspaceId(" Research Desk ")).toBe("research-desk");
     expect(workspaceId("")).toBe("workspace");
     const row = layoutRowOf(GRID);
-    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", type: null, folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
+    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", type: null, gateway: null, folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
     expect(workspaceClock(GRID)).toBe(1_700_000);
     expect(workspaceClock({ ...GRID, updatedAt: undefined })).toBe(0);
     expect(isGridLayout(GRID)).toBe(true);
@@ -40,6 +40,11 @@ describe("workspaces", () => {
     expect(layoutRowOf({ ...GRID, type: "code" }).type).toBe("code");
     expect(layoutRowOf({ ...GRID, type: "work" }).type).toBe("work");
     expect(layoutRowOf({ ...GRID, type: "" as never }).type).toBeNull();
+  });
+  it("THE GATEWAY BYPASS rides the row (his order, 2026-10-07): on, off, or null", () => {
+    expect(layoutRowOf({ ...GRID, gateway: "off" }).gateway).toBe("off");
+    expect(layoutRowOf({ ...GRID, gateway: "on" }).gateway).toBe("on");
+    expect(layoutRowOf({ ...GRID, gateway: "maybe" as never }).gateway).toBeNull();
   });
 });
 

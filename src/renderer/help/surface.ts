@@ -406,5 +406,9 @@ export function workspaceOpenLines(name: string, plan: LayoutPlan): { error: str
  *  the page. */
 export type WorkspaceOpenHost = "web-full-panel" | "settings-modal" | "customize-panel";
 export function workspaceOpenClosesHosts(web: boolean): ReadonlyArray<WorkspaceOpenHost> {
-  return web ? Object.freeze(["web-full-panel"] as WorkspaceOpenHost[]) : Object.freeze(["settings-modal", "customize-panel"] as WorkspaceOpenHost[]);
+  // Build and Customize are full-screen pages on BOTH surfaces now (his
+  // order, 2026-10-07), so the full-screen host closes on both; the desktop
+  // still closes its Settings modal and the older Customize work panel too
+  // (his report, 2026-10-07: opening a workspace from Customize left panels up).
+  return web ? Object.freeze(["web-full-panel"] as WorkspaceOpenHost[]) : Object.freeze(["web-full-panel", "settings-modal", "customize-panel"] as WorkspaceOpenHost[]);
 }

@@ -177,13 +177,13 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
+  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
       if (!gate.allowed) return { error: gate.reason };
     }
-    const { loop, modelSelections, sessionMode, type, folder, space, ...rest } = grid;
+    const { loop, modelSelections, sessionMode, type, gateway, folder, space, ...rest } = grid;
     await layoutManager.saveLayout({
       ...rest,
       version: 2,
@@ -191,6 +191,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       target: grid.target ?? "glyphh",
       ...(loop ? { loop } : {}),
       ...(type === "work" || type === "code" ? { type } : {}),
+      ...(gateway === "on" || gateway === "off" ? { gateway } : {}),
       ...(modelSelections && Object.keys(modelSelections).length ? { modelSelections } : {}),
       ...(sessionMode && sessionMode !== "keep" ? { sessionMode } : {}),
       ...(folder ? { folder } : {}),

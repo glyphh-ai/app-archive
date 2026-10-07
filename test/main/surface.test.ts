@@ -285,7 +285,8 @@ describe("his explicit orders about the web's page — not world splits", () => 
   });
   it("Open workspace closes its host first: the web's full-screen Customize; the desktop's Settings modal or Customize panel", () => {
     expect([...workspaceOpenClosesHosts(true)]).toEqual(["web-full-panel"]);
-    expect([...workspaceOpenClosesHosts(false)]).toEqual(["settings-modal", "customize-panel"]);
+    // the desktop's Build / Customize are full-screen pages too (2026-10-07): that host closes on both
+    expect([...workspaceOpenClosesHosts(false)]).toEqual(["web-full-panel", "settings-modal", "customize-panel"]);
     expect(Object.isFrozen(workspaceOpenClosesHosts(true))).toBe(true);
   });
 });
