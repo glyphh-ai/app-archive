@@ -22300,3 +22300,36 @@ body[data-session-space="code"] .code-source-slot .code-source-mascot { display:
 .run-place-list .code-drop-item:hover:not(:disabled) { background: var(--hover); }
 .run-place-list .code-drop-item.selected { color: var(--text); }
 .run-place-list .code-drop-item .drop-hint { color: var(--text-3); }
+
+/* ══ THE DEVELOPER'S DESK + THE REVIEW DESK (his asks, 2026-10-07) ══════════
+   Releases (an app instance's) and Publish (the hub) tabs on a library item;
+   the Review tab org admins see on every library page. One row grammar. */
+.pub-pane .pub-main { display: flex; flex-direction: column; gap: 16px; }
+.pub-standing { font-size: 13px; color: var(--text-2); }
+.pub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pub-field { display: flex; flex-direction: column; gap: 6px; }
+.pub-version { font: 600 14px var(--font-display, inherit); color: var(--text); }
+.pub-visibility { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); }
+.pub-notes { width: 100%; resize: vertical; min-height: 64px; }
+.pub-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pub-rows { display: flex; flex-direction: column; gap: 6px; }
+.pub-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
+.pub-row.live { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.pub-row-main { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 3px; }
+.pub-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.pub-row-sub { font-size: 12px; color: var(--text-3); }
+.pub-row-note { font-size: 12px; color: var(--text-2); padding: 6px 8px; border-left: 2px solid var(--accent); background: var(--surface-3); border-radius: 0 6px 6px 0; }
+.pub-row-actions { display: flex; gap: 6px; flex: none; }
+.pub-row-actions .action-btn { height: 26px; padding: 0 10px; font-size: 12px; }
+.pub-v-pending .pub-row-title::after { content: " · in review"; color: var(--warning); font-weight: 500; }
+.pub-thread-pane, .pub-files-pane { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.pub-comment { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; background: var(--surface-3); }
+.pub-comment.ai { border-left: 2px solid var(--accent); }
+.pub-comment-by { font-size: 11px; color: var(--text-3); }
+.pub-comment-body { font-size: 12.5px; color: var(--text); white-space: pre-wrap; }
+.pub-reply { display: flex; gap: 8px; align-items: flex-start; }
+.pub-reply textarea { flex: 1; resize: vertical; }
+.pub-decide { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pub-decide textarea { width: 100%; resize: vertical; }
+.pub-file { max-height: 240px; overflow: auto; font-size: 11.5px; padding: 8px; background: var(--surface-3); border-radius: 6px; white-space: pre-wrap; }
+.pub-files-pane details > summary { cursor: pointer; font-size: 12px; color: var(--text-2); }

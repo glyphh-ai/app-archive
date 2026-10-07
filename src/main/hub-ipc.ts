@@ -15,10 +15,11 @@
 
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
+import { getActiveUserId } from "./app-paths.js";
 import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills, setInstallForgetter, removeSkillFiles } from "./skills-fs.js";
 import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
-import { ensureInstanceTab, installFromHub, listInstances } from "./app-instances.js";
-import { instanceCardId } from "../shared/app-instances.js";
+import { ensureInstanceTab, installFromHub, listInstances, findInstance } from "./app-instances.js";
+import { instanceCardId, isInstanceCardId, instanceKeyOfCardId } from "../shared/app-instances.js";
 import { houseViewOfApp } from "../shared/house-store.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
@@ -254,7 +255,6 @@ export interface ShareState { head: number | null; pending: number | null; rejec
 async function shareStates(): Promise<Record<string, ShareState>> {
   const out: Record<string, ShareState> = {};
   const mine = listSkills(["skill", "task", "plugin"]);
-  if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const client = getClient();
   const lists = await Promise.all(kinds.map(async (k) =>
@@ -269,6 +269,14 @@ async function shareStates(): Promise<Record<string, ShareState>> {
     const state: ShareState = { head: raw.headVersion ?? null, pending: raw.pendingVersion ?? null, rejected: raw.rejectedVersion ?? null };
     if (state.head || state.pending || state.rejected) out[sk.id] = state;
   }
+  // An app INSTANCE's share stands on its slug's org item (2026-10-07).
+  const apps = byKind.get("app") ?? (await client.http.get<OrgItem[]>("/api/library/app").catch(() => [] as OrgItem[]));
+  for (const inst of await listInstances()) {
+    const hit = (Array.isArray(apps) ? apps : []).find((it) => it.slug?.toLowerCase() === inst.slug.toLowerCase()) as (OrgItem & { pendingVersion?: number | null; rejectedVersion?: number | null }) | undefined;
+    if (!hit) continue;
+    const state: ShareState = { head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, rejected: hit.rejectedVersion ?? null };
+    if (state.head || state.pending || state.rejected) out[instanceCardId(inst.key)] = state;
+  }
   return out;
 }
 
@@ -278,9 +286,8 @@ async function shareStates(): Promise<Record<string, ShareState>> {
  * withdraw; an approved one is the org's and stays.
  */
 async function withdrawShare(skillId: string): Promise<{ withdrawn: number }> {
-  const kind = kindOfId(skillId);
-  const slug = skillId.slice(skillId.indexOf(":") + 1).toLowerCase();
-  const name = getSkill(skillId).name;
+  const { kind, slug: rawSlug, name } = await hubIdentity(skillId);
+  const slug = rawSlug.toLowerCase();
   const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
   const item = (Array.isArray(items) ? items : []).find((it) => it.slug?.toLowerCase() === slug || it.name === name);
   if (!item) throw new Error("this one isn't on your organization's hub");
@@ -347,7 +354,15 @@ export async function installDefaultHubItems(): Promise<void> {
   }
 }
 
+/** SHARE TO PUBLISH an app INSTANCE (his order, 2026-10-07): the server
+ *  promotes its pinned release by R2 key — nothing is read here. */
+async function publishInstance(cardId: string, notes: string): Promise<{ version: number; status: string }> {
+  const key = instanceKeyOfCardId(cardId);
+  return getClient().http.post<{ version: number; status: string }>(`/api/app-instances/${encodeURIComponent(key)}/share`, { notes });
+}
+
 async function publish(skillId: string, notes: string): Promise<{ version: number; status: string }> {
+  if (isInstanceCardId(skillId)) return publishInstance(skillId, notes);
   const skill = getSkill(skillId);
   const files: Record<string, string> = {};
   let bytes = 0;
@@ -368,20 +383,32 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
 
 /** The hub versions behind a local skill: the org item whose slug is the
  *  folder's name. "current" is the disk; these are the immutable shares. */
-interface VersionRow { version: number; notes: string; createdAt: string; status: string; reviewSummary: string }
+interface VersionRow { version: number; notes: string; createdAt: string; status: string; reviewSummary: string; decisionNote?: string }
 
-async function versionsFor(skillId: string): Promise<{ itemId: string | null; kind: Kind; versions: VersionRow[]; head: number | null; pending: number | null; declined: { version: number; summary: string } | null; categories: string[] }> {
+/** The slug + name a page id stands for on the hub: a folder's, or an instance's. */
+async function hubIdentity(skillId: string): Promise<{ slug: string; name: string; kind: Kind }> {
+  if (isInstanceCardId(skillId)) {
+    const inst = await findInstance(instanceKeyOfCardId(skillId));
+    if (!inst) throw new Error(`no app instance ${instanceKeyOfCardId(skillId)}`);
+    return { slug: inst.slug, name: String(inst.manifest?.name || inst.slug), kind: "app" };
+  }
   const skill = getSkill(skillId);
-  const slug = skill.id.slice(skill.id.indexOf(":") + 1);
-  const kind = kindOfId(skillId);
+  return { slug: skill.id.slice(skill.id.indexOf(":") + 1), name: skill.name, kind: kindOfId(skillId) };
+}
+
+/** A hub version as the Publish tab reads it: standing, notes, the reviewer's note, the manifest version it carried. */
+export interface HubVersionView { version: number; notes: string; createdAt: string; status: string; reviewSummary: string; decisionNote: string; manifestVersion: string | null }
+
+async function versionsFor(skillId: string): Promise<{ itemId: string | null; kind: Kind; versions: VersionRow[]; head: number | null; pending: number | null; declined: { version: number; summary: string } | null; changes: { version: number; note: string } | null; lifecycle: string; lifecycleNote: string; visibility: string; own: boolean; categories: string[] }> {
+  const { slug, name, kind } = await hubIdentity(skillId);
   const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
-  const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
-  if (!item) return { itemId: null, kind, versions: [], head: null, pending: null, declined: null, categories: [] };
-  type Raw = { version: number; notes: string; created_at: string; status?: string; review_summary?: string | null };
+  const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === name) as (OrgItem & { pendingVersion?: number | null; changesVersion?: number | null; decisionNote?: string; lifecycle?: string; lifecycleNote?: string; createdBy?: string | null }) | undefined;
+  if (!item) return { itemId: null, kind, versions: [], head: null, pending: null, declined: null, changes: null, lifecycle: "live", lifecycleNote: "", visibility: "org", own: false, categories: [] };
+  type Raw = { version: number; notes: string; created_at: string; status?: string; review_summary?: string | null; decision_note?: string | null };
   const rows = await getClient().http.get<Raw[]>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => [] as Raw[]);
   const list: VersionRow[] = (Array.isArray(rows) ? rows : []).map((r) => ({
     version: r.version, notes: r.notes || "", createdAt: r.created_at,
-    status: r.status || "approved", reviewSummary: r.review_summary || "",
+    status: r.status || "approved", reviewSummary: r.review_summary || "", decisionNote: r.decision_note || "",
   }));
   // A DECLINE IS NEWS (his order, 2026-09-17): the author could see a pending
   // share but never a rejected one, so a declined skill looked like one nobody
@@ -391,6 +418,8 @@ async function versionsFor(skillId: string): Promise<{ itemId: string | null; ki
   const declined = newest && newest.status === "rejected"
     ? { version: newest.version, summary: newest.reviewSummary }
     : null;
+  const changesRow = list.find((v) => v.status === "changes");
+  const me = getActiveUserId() || "";
   return {
     itemId: item.id,
     kind,
@@ -399,9 +428,61 @@ async function versionsFor(skillId: string): Promise<{ itemId: string | null; ki
     // What the SHARE actually did: the live version on the org's hub, and the
     // one still sitting on the review desk.
     head: item.headVersion ?? null,
-    pending: (item as { pendingVersion?: number | null }).pendingVersion ?? null,
+    pending: item.pendingVersion ?? null,
+    // CHANGES REQUESTED is a standing of its own (his order, 2026-10-07).
+    changes: item.changesVersion ? { version: item.changesVersion, note: changesRow?.decisionNote || item.decisionNote || "" } : null,
+    lifecycle: item.lifecycle || "live",
+    lifecycleNote: item.lifecycleNote || "",
+    visibility: item.visibility || "org",
+    own: !!me && item.createdBy === me,
     categories: Array.isArray((item as { categories?: unknown }).categories) ? ((item as { categories: string[] }).categories) : [],
   };
+}
+
+// ── THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07) ──
+
+/** The version id a hub item's version number stands for (the thread hangs on the id). */
+async function versionIdOf(kind: Kind, itemId: string, version: number): Promise<string> {
+  const rows = await getClient().http.get<Array<{ id?: string; version: number }>>(`/api/library/${kind}/${encodeURIComponent(itemId)}/versions`).catch(() => []);
+  const hit = (Array.isArray(rows) ? rows : []).find((r) => r.version === version && r.id);
+  if (hit?.id) return hit.id;
+  // The list carries no ids for the author: the head route names the one on the desk.
+  const head = await getClient().http.get<{ versionId: string | null }>(`/api/library/${kind}/${encodeURIComponent(itemId)}/head`).catch(() => ({ versionId: null }));
+  if (!head?.versionId) throw new Error(`no version ${version} to open a thread on`);
+  return head.versionId;
+}
+
+export interface CommentThread { versionId: string; itemId: string; kind: string; version: number; status: string; decisionNote: string; priorVersionId: string | null; comments: Array<{ id: string; by: string; author: string; body: string; createdAt: string | null; verdict?: string | null }> }
+async function commentsFor(ref: { versionId?: string; kind?: string; itemId?: string; version?: number }): Promise<CommentThread> {
+  const vid = ref.versionId || await versionIdOf(kindOf(ref.kind), String(ref.itemId || ""), Number(ref.version || 0));
+  return getClient().http.get<CommentThread>(`/api/library/versions/${encodeURIComponent(vid)}/comments`);
+}
+async function commentAdd(versionId: string, body: string): Promise<CommentThread["comments"][number]> {
+  return getClient().http.post<CommentThread["comments"][number]>(`/api/library/versions/${encodeURIComponent(versionId)}/comments`, { body });
+}
+async function setLifecycle(kind: Kind, itemId: string, state: "live" | "retired" | "removed", note: string): Promise<{ lifecycle: string; lifecycleNote: string }> {
+  return getClient().http.post<{ lifecycle: string; lifecycleNote: string }>(`/api/library/${kind}/${encodeURIComponent(itemId)}/lifecycle`, { state, ...(note ? { note } : {}) });
+}
+async function submitPublic(kind: Kind, itemId: string, notes: string): Promise<unknown> {
+  return getClient().http.post(`/api/library/${kind}/${encodeURIComponent(itemId)}/public`, { notes });
+}
+async function withdrawPublic(kind: Kind, itemId: string): Promise<unknown> {
+  return getClient().http.del(`/api/library/${kind}/${encodeURIComponent(itemId)}/public`);
+}
+/** The org admin's desk: every version waiting (pending or changes), raw rows as the server spells them. */
+export interface QueueRow { id: string; kind: string; entity_id: string; version: number; status: string; notes: string; decision_note: string; slug: string; name: string; submitted_by: string | null; submitted_by_name?: string | null; created_at: string; review_verdict?: string | null }
+async function reviewQueue(): Promise<QueueRow[]> {
+  const rows = await getClient().http.get<QueueRow[]>("/api/library/queue");
+  return Array.isArray(rows) ? rows : [];
+}
+async function decideVersion(versionId: string, verdict: "approve" | "changes" | "reject", note: string): Promise<{ id: string; status: string; version: number; note: string }> {
+  return getClient().http.post<{ id: string; status: string; version: number; note: string }>(`/api/library/versions/${encodeURIComponent(versionId)}/decide`, { verdict, note });
+}
+async function versionPayloadFiles(versionId: string): Promise<Record<string, string>> {
+  const v = await getClient().http.get<{ payload?: Record<string, unknown> }>(`/api/library/versions/${encodeURIComponent(versionId)}`);
+  const p = v?.payload && typeof v.payload === "object" ? v.payload : {};
+  const files = p.files && typeof p.files === "object" ? (p.files as Record<string, string>) : null;
+  return files ?? { "SKILL.md": typeof p.prompt === "string" ? p.prompt : "" };
 }
 
 /** One hub version's files, for read-only viewing beside the disk copy. */
@@ -448,4 +529,14 @@ export function registerHubIpc(): void {
   }));
   ipcMain.handle("skill-update", (_e, id: string) => env(() => update(String(id))));
   ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
+  // THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07;
+  // punch list 7, 16, 18). The web answers the same names (member-library-web.js).
+  ipcMain.handle("skill-comments", (_e, ref: { versionId?: string; kind?: string; itemId?: string; version?: number }) => env(() => commentsFor(ref && typeof ref === "object" ? ref : {})));
+  ipcMain.handle("skill-comment-add", (_e, versionId: string, body: string) => env(() => commentAdd(String(versionId), String(body ?? ""))));
+  ipcMain.handle("skill-lifecycle", (_e, itemId: string, kind: string, state: string, note?: string) => env(() => setLifecycle(kindOf(kind), String(itemId), state === "retired" || state === "removed" ? state : "live", String(note ?? ""))));
+  ipcMain.handle("skill-submit-public", (_e, itemId: string, kind: string, notes?: string) => env(() => submitPublic(kindOf(kind), String(itemId), String(notes ?? ""))));
+  ipcMain.handle("skill-withdraw-public", (_e, itemId: string, kind: string) => env(() => withdrawPublic(kindOf(kind), String(itemId))));
+  ipcMain.handle("library-queue", () => env(reviewQueue));
+  ipcMain.handle("library-decide", (_e, versionId: string, verdict: string, note?: string) => env(() => decideVersion(String(versionId), verdict === "approve" || verdict === "changes" || verdict === "reject" ? verdict : "changes", String(note ?? ""))));
+  ipcMain.handle("library-version-files", (_e, versionId: string) => env(() => versionPayloadFiles(String(versionId))));
 }

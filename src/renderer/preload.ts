@@ -1099,7 +1099,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) =>
     ipcRenderer.invoke("skill-agent-set", id, ref, patch) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
-  skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
+  skillDelete: (id: string, opts?: { purge?: boolean }) => ipcRenderer.invoke("skill-delete", id, opts ?? {}) as Promise<LibEnvelope>,
   /** A cloud app's Rollback: pin release `n` of the instance a card id (or key) names. */
   appInstancePin: (id: string, n: number) => ipcRenderer.invoke("app-instance-pin", id, n) as Promise<LibEnvelope>,
   /** APPS CARRY A VERSION (2026-10-07): move one instance (a card id or key) to the catalog's head; move every one; install the manifest-flagged defaults in the background. */
@@ -1109,6 +1109,16 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** THE APP CARD (2026-10-07): Build and run a folder on this machine (a source build answers its job); read a build job. */
   appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
   appBuildStatus: (job: string) => ipcRenderer.invoke("app-build-status", job) as Promise<LibEnvelope>,
+  appInstanceReleases: (id: string) => ipcRenderer.invoke("app-instance-releases", id) as Promise<LibEnvelope>,
+  /** THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07). */
+  skillComments: (ref: { versionId?: string; kind?: string; itemId?: string; version?: number }) => ipcRenderer.invoke("skill-comments", ref) as Promise<LibEnvelope>,
+  skillCommentAdd: (versionId: string, body: string) => ipcRenderer.invoke("skill-comment-add", versionId, body) as Promise<LibEnvelope>,
+  skillLifecycle: (itemId: string, kind: string, state: "live" | "retired" | "removed", note?: string) => ipcRenderer.invoke("skill-lifecycle", itemId, kind, state, note) as Promise<LibEnvelope>,
+  skillSubmitPublic: (itemId: string, kind: string, notes?: string) => ipcRenderer.invoke("skill-submit-public", itemId, kind, notes) as Promise<LibEnvelope>,
+  skillWithdrawPublic: (itemId: string, kind: string) => ipcRenderer.invoke("skill-withdraw-public", itemId, kind) as Promise<LibEnvelope>,
+  libraryQueue: () => ipcRenderer.invoke("library-queue") as Promise<LibEnvelope>,
+  libraryDecide: (versionId: string, verdict: "approve" | "changes" | "reject", note?: string) => ipcRenderer.invoke("library-decide", versionId, verdict, note) as Promise<LibEnvelope>,
+  libraryVersionFiles: (versionId: string) => ipcRenderer.invoke("library-version-files", versionId) as Promise<LibEnvelope>,
   /** Org admin: the catalog's default apps and the org's overrides (GET / PUT /api/admin/app-defaults). */
   orgAppDefaultsGet: () => ipcRenderer.invoke("org-app-defaults-get") as Promise<LibEnvelope>,
   orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => ipcRenderer.invoke("org-app-defaults-set", overrides) as Promise<LibEnvelope>,

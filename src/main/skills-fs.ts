@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installDefaultApps, adminAppDefaults, setAdminAppDefaults, installFolderAsInstance, readBuildJob } from "./app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installDefaultApps, adminAppDefaults, setAdminAppDefaults, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -910,9 +910,9 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string }) =>
     env(() => setBundleAgent(String(id), String(ref), patch ?? {})));
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
-  ipcMain.handle("skill-delete", async (_e, id: string) => {
+  ipcMain.handle("skill-delete", async (_e, id: string, opts?: { purge?: boolean }) => {
     if (isInstanceCardId(String(id))) {
-      try { await deleteInstance(instanceKeyOfCardId(String(id))); return { ok: true, data: true }; }
+      try { await deleteInstance(instanceKeyOfCardId(String(id)), { purge: !!opts?.purge }); return { ok: true, data: true }; }
       catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     }
     return env(() => { deleteSkill(String(id)); return true; });
@@ -930,6 +930,8 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("app-install-folder", (_e: unknown, dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) =>
     env(() => installFolderAsInstance(String(dir || ""), { ...(opts?.slug ? { slug: opts.slug } : {}), ...(opts?.kind ? { kind: opts.kind } : {}), ...(opts?.note ? { note: opts.note } : {}), wait: false })));
   ipcMain.handle("app-build-status", (_e: unknown, job: string) => env(() => readBuildJob(String(job || ""))));
+  // THE RELEASES TAB (2026-10-07): every release of the instance a card names.
+  ipcMain.handle("app-instance-releases", (_e: unknown, id: string) => env(() => listInstanceReleases(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
   ipcMain.handle("org-app-defaults-get", () => env(() => adminAppDefaults()));
   ipcMain.handle("org-app-defaults-set", (_e: unknown, overrides: Record<string, "on" | "off" | null>) => env(() => setAdminAppDefaults(overrides && typeof overrides === "object" ? overrides : {})));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));

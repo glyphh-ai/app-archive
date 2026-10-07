@@ -461,12 +461,14 @@ describe('standings, updates, shares, versions and publish on web', () => {
     expect((await lib.skillShares()).data).toEqual({ 'glyphh:notes': { head: 1, pending: 2, rejected: null } });
     expect(await lib.skillWithdraw('glyphh:notes')).toEqual({ ok: true, data: { withdrawn: 2 } });
     expect(await lib.skillWithdraw('glyphh:notes-pro')).toEqual({ ok: false, error: "this one isn't on your organization's hub" });
+    // THE DEVELOPER'S DESK (2026-10-07): each version carries the reviewer's note; the item its
+    // changes-requested standing, lifecycle, visibility and whether it is the caller's own.
     expect((await lib.skillVersions('glyphh:notes')).data).toEqual({
       itemId: 'org-1', kind: 'skill', head: 1, pending: 2, categories: ['memory'],
-      versions: [{ version: 2, notes: 'v2', createdAt: '2026-10-03', status: 'rejected', reviewSummary: 'too long' }, { version: 1, notes: 'first', createdAt: '2026-10-01', status: 'approved', reviewSummary: '' }],
-      declined: { version: 2, summary: 'too long' },
+      versions: [{ version: 2, notes: 'v2', createdAt: '2026-10-03', status: 'rejected', reviewSummary: 'too long', decisionNote: '' }, { version: 1, notes: 'first', createdAt: '2026-10-01', status: 'approved', reviewSummary: '', decisionNote: '' }],
+      declined: { version: 2, summary: 'too long' }, changes: null, lifecycle: 'live', lifecycleNote: '', visibility: 'org', own: false,
     });
-    expect((await lib.skillVersions('glyphh:notes-pro')).data).toEqual({ itemId: null, kind: 'skill', versions: [], head: null, pending: null, declined: null, categories: [] });
+    expect((await lib.skillVersions('glyphh:notes-pro')).data).toEqual({ itemId: null, kind: 'skill', versions: [], head: null, pending: null, declined: null, changes: null, lifecycle: 'live', lifecycleNote: '', visibility: 'org', own: false, categories: [] });
     expect(await lib.skillVersionFiles('org-1', 1, 'skill')).toEqual({ ok: true, data: { 'SKILL.md': 'v1 text' } });
     expect(await lib.skillCategoriesSet('org-1', 'skill', ['memory', '', 'apps'])).toEqual({ ok: true, data: ['memory', 'apps'] });
     expect(http.calls.at(-1)).toEqual({ method: 'POST', path: '/api/library/skill/org-1/categories', body: { categories: ['memory', 'apps'] } });
@@ -565,3 +567,41 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
   });
 });
 
+
+describe("THE DEVELOPER'S DESK + THE REVIEW DESK on the web (2026-10-07) — the desktop's hub-ipc names", () => {
+  const routes = () => ({
+    ...hubRoutes(),
+    'GET /api/library/skill/org-1/head': { versionId: 'v-2' },
+    'GET /api/library/versions/v-2/comments': { versionId: 'v-2', itemId: 'org-1', kind: 'skill', version: 2, status: 'changes', decisionNote: 'shorter', priorVersionId: 'v-1', comments: [{ id: 'ai:v-2', by: 'ai', author: 'Review agent', body: 'Too long.', verdict: 'changes', createdAt: null }] },
+    'POST /api/library/versions/v-2/comments': { id: 'c-1', by: 'u1', author: 'Ada', body: 'Trimmed it.', createdAt: '2026-10-07' },
+    'POST /api/library/skill/org-1/lifecycle': { lifecycle: 'retired', lifecycleNote: 'use notes-pro' },
+    'POST /api/library/skill/org-1/public': { id: 'pub-9', status: 'pending' },
+    'DELETE /api/library/skill/org-1/public': { ok: true },
+    'GET /api/library/queue': [{ id: 'v-2', kind: 'skill', entity_id: 'org-1', version: 2, status: 'pending', notes: 'v2', slug: 'notes', name: 'notes', submitted_by: 'u2', created_at: '2026-10-03' }],
+    'POST /api/library/versions/v-2/decide': { id: 'v-2', status: 'changes', kind: 'skill', version: 2, note: 'shorter' },
+    'GET /api/library/versions/v-2': { id: 'v-2', payload: { files: { 'SKILL.md': '# v2' } } },
+  });
+  it('the thread hangs on a version id, or on an item + version through the versions list and the head', async () => {
+    const { lib, http } = hubLib(fakeLibrary(), routes());
+    const t = await lib.skillComments({ versionId: 'v-2' });
+    expect(t.ok).toBe(true);
+    expect(t.data.comments[0]).toMatchObject({ by: 'ai', verdict: 'changes' });
+    // the list carries no ids for the author: the head names the one on the desk
+    expect((await lib.skillComments({ kind: 'skill', itemId: 'org-1', version: 2 })).data.versionId).toBe('v-2');
+    expect(http.calls.map((c) => `${c.method} ${c.path}`)).toContain('GET /api/library/skill/org-1/head');
+    expect(await lib.skillCommentAdd('v-2', 'Trimmed it.')).toEqual({ ok: true, data: { id: 'c-1', by: 'u1', author: 'Ada', body: 'Trimmed it.', createdAt: '2026-10-07' } });
+  });
+  it('lifecycle, the public lane, the queue, a decision and a version\'s files answer the server\'s routes', async () => {
+    const { lib, http } = hubLib(fakeLibrary(), routes());
+    expect(await lib.skillLifecycle('org-1', 'skill', 'retired', 'use notes-pro')).toEqual({ ok: true, data: { lifecycle: 'retired', lifecycleNote: 'use notes-pro' } });
+    expect(await lib.skillSubmitPublic('org-1', 'skill', 'to Glyphh')).toMatchObject({ ok: true, data: { status: 'pending' } });
+    expect(await lib.skillWithdrawPublic('org-1', 'skill')).toMatchObject({ ok: true });
+    expect((await lib.libraryQueue()).data.map((r) => r.id)).toEqual(['v-2']);
+    expect(await lib.libraryDecide('v-2', 'changes', 'shorter')).toMatchObject({ ok: true, data: { status: 'changes' } });
+    expect(await lib.libraryVersionFiles('v-2')).toEqual({ ok: true, data: { 'SKILL.md': '# v2' } });
+    expect(http.calls.map((c) => `${c.method} ${c.path}`)).toEqual(expect.arrayContaining([
+      'POST /api/library/skill/org-1/lifecycle', 'POST /api/library/skill/org-1/public', 'DELETE /api/library/skill/org-1/public',
+      'GET /api/library/queue', 'POST /api/library/versions/v-2/decide', 'GET /api/library/versions/v-2',
+    ]));
+  });
+});

@@ -697,6 +697,15 @@ export function buildContract(client, deps) {
     skillPublish: library.skillPublish,
     skillWithdraw: library.skillWithdraw,
     skillVersionFiles: library.skillVersionFiles,
+    appInstanceReleases: library.appInstanceReleases,
+    skillComments: library.skillComments,
+    skillCommentAdd: library.skillCommentAdd,
+    skillLifecycle: library.skillLifecycle,
+    skillSubmitPublic: library.skillSubmitPublic,
+    skillWithdrawPublic: library.skillWithdrawPublic,
+    libraryQueue: library.libraryQueue,
+    libraryDecide: library.libraryDecide,
+    libraryVersionFiles: library.libraryVersionFiles,
     // Schedules are records of the member library (2026-10-04); the runs and
     // "run now" are the desktop's clock until the cloud clock exists.
     schedulesList: library.schedulesList,

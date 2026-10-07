@@ -9,7 +9,8 @@
  * and Contents (the folder's files with a Monaco viewer — preview or code).
  */
 
-import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
+import { escapeHtml, confirmAction, confirmChoice, loadingHtml } from "./shared.js";
+import { commentAuthor, decisionNeedsNote, mayRetire, notesRequired, queueForKinds, releaseLine, shareFace, standingLine, versionLabel, VERDICT_LABEL, type CommentLike, type QueueRowLike, type ReleaseRowLike, type Verdict } from "./publish-desk.js";
 import { paintBuildBadge } from "./app-updates.js";
 import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
@@ -79,7 +80,10 @@ const NEW_PROMPT: Record<BundleType, string> = {
 
 export function createLibraryPage(cfg: PageCfg) {
 let wired = false;
-let tab: "mine" | "discover" | "updates" = "mine";
+let tab: "mine" | "discover" | "updates" | "review" = "mine";
+/** THE REVIEW DESK (his ask, 2026-10-07): org admins see a Review tab on every library page. */
+let isAdmin = false;
+let queueRows: QueueRowLike[] = [];
 let query = "";
 /** List controls: filter by origin and author; sort order. */
 let filterSource: Source | "" = "";
@@ -592,6 +596,8 @@ function renderList(): void {
   const hit = (s: string) => !q || s.toLowerCase().includes(q);
   paintUpdatesBadge();
 
+  if (tab === "review") { renderReview(host); return; }
+
   if (tab === "updates") {
     const shown = instanceUpdates().filter((s) => hit(`${s.name} ${s.description} ${s.author}`)).sort((a, b) => a.name.localeCompare(b.name));
     const count = el("skills-count"); if (count) count.textContent = shown.length ? `${shown.length} ${shown.length === 1 ? "update" : "updates"}` : "";
@@ -893,6 +899,23 @@ async function toggle(id: string, on: boolean): Promise<void> {
 }
 
 async function remove(id: string, name: string): Promise<void> {
+  const instance = skills.find((s) => s.id === id)?.instance || (current?.id === id ? current.instance : undefined);
+  if (instance) {
+    // UNINSTALL ≠ DELETE (his decision, 2026-10-07): a remove keeps the app's
+    // data for a reinstall; "delete everything" purges it. Discover is untouched.
+    const choice = await confirmChoice({
+      title: `Remove "${name}"?`,
+      body: "Your running copy stops and leaves Your apps. Keep my data: a reinstall gets it back. Delete everything: its releases and data go too. Discover and any shared version are untouched.",
+      confirmLabel: "Delete everything", altLabel: "Remove, keep my data", danger: true,
+    });
+    if (choice === "no") return;
+    const r = await api().skillDelete(id, { purge: choice === "yes" }) as Env<boolean>;
+    if (!r.ok) { fail(r.error || "Remove failed."); return; }
+    notice(choice === "yes" ? `${name} removed, with its data` : `${name} removed — its data is kept for a reinstall`);
+    document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+    await loadSkillsSettings();
+    return;
+  }
   const sure = await confirmAction({ title: `Remove "${name}"?`, body: "The folder is removed from this machine and from every loop that used it. A shared copy on your organization's hub stays.", confirmLabel: "Remove", danger: true });
   if (!sure) return;
   const r = await api().skillDelete(id) as Env<boolean>;
@@ -1120,7 +1143,9 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
 let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
 /** What the org's hub holds for the open bundle: the live version, and the one
  *  still on the review desk. Null until loadVersions answers. */
-let shareState: { head: number | null; pending: number | null; declined: { version: number; summary: string } | null } = { head: null, pending: null, declined: null };
+let shareState: { head: number | null; pending: number | null; declined: { version: number; summary: string } | null; changes?: { version: number; note: string } | null; lifecycle?: string; lifecycleNote?: string; visibility?: string; own?: boolean } = { head: null, pending: null, declined: null };
+/** The hub versions behind the open item, as loadVersions last read them (the Publish tab's history). */
+let hubVersions: Array<{ version: number; notes: string; createdAt: string; status?: string; reviewSummary?: string; decisionNote?: string }> = [];
 /** The shared item behind the open bundle: what it is on the org's hub, and
  *  the shelves it sits on. Promote guesses the shelves from the payload, so
  *  this is where a person corrects the guess (his report, 2026-09-17). */
@@ -1582,14 +1607,21 @@ let versionItemId: string | null = null;
 async function loadVersions(): Promise<void> {
   if (!current) return;
   const id = current.id;
-  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string; status?: string }>; head?: number | null; pending?: number | null; declined?: { version: number; summary: string } | null; categories?: string[] }>;
+  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string; status?: string; reviewSummary?: string; decisionNote?: string }>; head?: number | null; pending?: number | null; declined?: { version: number; summary: string } | null; changes?: { version: number; note: string } | null; lifecycle?: string; lifecycleNote?: string; visibility?: string; own?: boolean; categories?: string[] }>;
   if (!current || current.id !== id) return;
   versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
+  hubVersions = r.ok ? (r.data?.versions ?? []) : [];
   shareState = {
     head: r.ok ? r.data?.head ?? null : null,
     pending: r.ok ? r.data?.pending ?? null : null,
     declined: r.ok ? r.data?.declined ?? null : null,
+    changes: r.ok ? r.data?.changes ?? null : null,
+    lifecycle: r.ok ? r.data?.lifecycle ?? "live" : "live",
+    lifecycleNote: r.ok ? r.data?.lifecycleNote ?? "" : "",
+    visibility: r.ok ? r.data?.visibility ?? "org" : "org",
+    own: r.ok ? !!r.data?.own : false,
   };
+  paintPublish();
   shareItem = r.ok && r.data?.itemId
     ? { id: r.data.itemId, kind: r.data.kind ?? typeOf(current), categories: r.data.categories ?? [] }
     : null;
@@ -1622,18 +1654,40 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow" | "releases" | "publish";
 /** One agent a bundle ships: agents/<name>.md, or a task's slot under the older name. */
 interface BundleAgentRow { ref: string; name: string; description: string; loop: string; model: string; source: "file" | "slot" }
 interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents", "agents"],
-  app: ["overview", "contents", "skills", "tools", "agents", "connections"],
-  task: ["overview", "flow", "contents", "agents", "runs", "connections"],
-  plugin: ["overview", "contents", "skills"],
+  skill: ["overview", "contents", "agents", "publish"],
+  app: ["overview", "contents", "skills", "tools", "agents", "connections", "releases", "publish"],
+  task: ["overview", "flow", "contents", "agents", "runs", "connections", "publish"],
+  plugin: ["overview", "contents", "skills", "publish"],
 };
+/** THE DEVELOPER'S DESK (his ask, 2026-10-07): Releases (an app instance's,
+ *  what Build and run makes) and Publish (the hub: version, notes, standing,
+ *  the reviewer's note, the thread, visibility, retire / remove). The tabs
+ *  and panes are made here, once, for every library page. */
+function ensureDeskTabs(): void {
+  const row = document.querySelector<HTMLElement>(`${cfg.panel} .skills-tabs.detail`);
+  const view = el("skill-detail-view");
+  if (!row || !view) return;
+  for (const [key, label] of [["releases", "Releases"], ["publish", "Publish"]] as const) {
+    if (!row.querySelector(`.skills-tab[data-dtab="${key}"]`)) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "skills-tab"; b.dataset.dtab = key; b.textContent = label;
+      row.appendChild(b);
+      b.addEventListener("click", () => selectDetailTab(key));
+    }
+    if (!el(`skill-${key}`)) {
+      const pane = document.createElement("div");
+      pane.id = cfg.id(`skill-${key}`); pane.className = "skill-overview hidden pub-pane";
+      view.appendChild(pane);
+    }
+  }
+}
 /** Show only the tabs this item earns. */
 function paintDetailTabs(type: BundleType): void {
   const allowed = TABS_FOR[type];
@@ -1651,6 +1705,10 @@ function selectDetailTab(t: DetailTab): void {
   el("skill-agents")?.classList.toggle("hidden", t !== "agents");
   el("skill-runs")?.classList.toggle("hidden", t !== "runs");
   el("skill-flow")?.classList.toggle("hidden", t !== "flow");
+  el("skill-releases")?.classList.toggle("hidden", t !== "releases");
+  el("skill-publish")?.classList.toggle("hidden", t !== "publish");
+  if (t === "releases") void paintReleases();
+  if (t === "publish") paintPublish();
   if (t === "runs" && current && !hubItem) void paintTaskRuns(current);
   if (t === "flow") paintFlow();
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
@@ -1832,15 +1890,27 @@ async function onEdit(): Promise<void> {
 
 async function share(): Promise<void> {
   if (!current) return;
+  // RELEASE NOTES ARE REQUIRED ON A RE-SHARE (his spec, 2026-10-07): the
+  // Publish tab collects them; a re-share without them lands there.
+  const notes = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
+  if (notesRequired(shareState.head, shareState.pending, hubVersions) && !notes) {
+    selectDetailTab("publish");
+    el<HTMLTextAreaElement>("pub-notes")?.focus();
+    fail("Say what changed: release notes are required when sharing a new version.");
+    return;
+  }
+  const instance = !!current.instance;
   const sure = await confirmAction({
     title: `Share "${current.name}" with your organization?`,
-    body: "Its SKILL.md and files go to your organization's hub. An org admin's share goes live at once; anyone else's waits on the review desk. Members install it from Discover.",
-    confirmLabel: "Share",
+    body: instance
+      ? `Release ${current.instance?.release ?? ""} of your running copy goes to your organization's hub${current.instance?.version ? ` as version ${current.instance.version}` : ""}. An org admin's share goes live at once; anyone else's waits on the review desk. Members install their own copy from Discover; your folder never leaves your machine.`
+      : "Its SKILL.md and files go to your organization's hub. An org admin's share goes live at once; anyone else's waits on the review desk. Members install it from Discover.",
+    confirmLabel: shareFace(shareState).label,
   });
   if (!sure) return;
   const btn = el<HTMLButtonElement>("skill-share");
   if (btn) btn.disabled = true;
-  const r = await api().skillPublish(current.id) as Env<{ version: number; status: string }>;
+  const r = await api().skillPublish(current.id, notes) as Env<{ version: number; status: string }>;
   if (btn) btn.disabled = false;
   if (!r.ok) { fail(r.error || "Couldn't share."); return; }
   const v = r.data?.version;
@@ -1854,7 +1924,285 @@ async function share(): Promise<void> {
   notice(approved
     ? `"${current.name}" is live on your organization's hub as v${v}. Members install it from Discover.`
     : `"${current.name}" v${v} went to your organization's review desk. An org admin decides; sharing again replaces it.`);
+  const ta = el<HTMLTextAreaElement>("pub-notes"); if (ta) ta.value = "";
   void loadVersions();
+  void refreshShares();
+}
+
+// ── THE RELEASES TAB (an app instance's; his ask, 2026-10-07) ────────────────
+async function paintReleases(): Promise<void> {
+  const host = el("skill-releases");
+  if (!host || !current) return;
+  if (!current.instance) { host.innerHTML = `<div class="crud-empty">Releases belong to an installed app. Build and run makes the first.</div>`; return; }
+  host.innerHTML = loadingHtml("Reading the releases…");
+  const id = current.id;
+  const r = await api().appInstanceReleases(id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<ReleaseRowLike[]>;
+  if (!current || current.id !== id) return;
+  if (!r.ok) { host.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "Couldn't read the releases.")}</div>`; return; }
+  const rows = [...(r.data ?? [])].sort((a, b) => b.n - a.n);
+  host.innerHTML = `<div class="skill-overview-main">
+    <div class="skill-overview-label">Releases</div>
+    <div class="skill-overview-desc">Every Build and run is the next release of your running copy. The live one serves the panel and the tools; pin an older one to roll back — nothing is rebuilt.</div>
+    <div class="pub-rows"></div></div>`;
+  const list = host.querySelector(".pub-rows") as HTMLElement;
+  if (!rows.length) { list.innerHTML = `<div class="crud-empty">No release yet. Build and run makes the first.</div>`; return; }
+  for (const rel of rows) {
+    const row = document.createElement("div");
+    row.className = "pub-row" + (rel.pinned ? " live" : "");
+    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div></div><div class="pub-row-actions"></div>`;
+    (row.querySelector(".pub-row-title") as HTMLElement).textContent = releaseLine(rel);
+    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${rel.note ? `${rel.note} · ` : ""}${when(typeof rel.at === "number" ? new Date(rel.at * (rel.at < 1e12 ? 1000 : 1)).toISOString() : String(rel.at))}${rel.by ? ` · by ${rel.by}` : ""}`;
+    if (!rel.pinned) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "action-btn"; b.textContent = "Pin";
+      b.title = `Serve release ${rel.n}`;
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        const p = await api().appInstancePin(id, rel.n) as Env<{ release?: number | null }>;
+        if (!p.ok) { b.disabled = false; fail(p.error || "Couldn't pin that release."); return; }
+        notice(`${current?.name ?? "The app"} is on release ${p.data?.release ?? rel.n}`);
+        await loadSkillsSettings();
+        if (current?.id === id) { await openDetail(id); selectDetailTab("releases"); }
+      });
+      (row.querySelector(".pub-row-actions") as HTMLElement).appendChild(b);
+    }
+    list.appendChild(row);
+  }
+}
+
+// ── THE PUBLISH TAB (the hub; his ask, 2026-10-07) ───────────────────────────
+function paintPublish(): void {
+  const host = el("skill-publish");
+  if (!host || !current || hubItem) return;
+  const s = current;
+  const face = shareFace(shareState);
+  const manifestVersion = s.instance?.version || s.frontmatter?.version || "";
+  const admin = isAdmin;
+  const own = !!shareState.own || !versionItemId;
+  const live = shareState.lifecycle !== "retired" && shareState.lifecycle !== "removed";
+  const needNotes = notesRequired(shareState.head, shareState.pending, hubVersions);
+  host.innerHTML = `<div class="skill-overview-main pub-main">
+    <div class="pub-standing"></div>
+    <div class="pub-grid">
+      <div class="pub-field"><div class="skill-overview-label">Version</div><div class="pub-version"></div><div class="mdl-hint">${s.instance ? "The manifest's version — bump it by hand before a new share. Release numbers are the system's, per Build and run." : "The frontmatter's version, if it names one."}</div></div>
+      <div class="pub-field"><div class="skill-overview-label">Visibility</div><div class="pub-visibility"></div></div>
+    </div>
+    <div class="pub-field"><div class="skill-overview-label">Release notes${needNotes ? " (required)" : ""}</div>
+      <textarea id="${cfg.id("pub-notes")}" class="crud-input pub-notes" rows="3" placeholder="${needNotes ? "What changed in this version" : "What this does, in a line or two (optional on a first share)"}"></textarea>
+      <div class="pub-actions"><button type="button" class="action-btn primary pub-share"></button><button type="button" class="action-btn pub-withdraw hidden">Withdraw from review</button><button type="button" class="action-btn pub-shelves">Shelves…</button></div>
+      <div class="mdl-hint pub-blocked"></div></div>
+    <div class="pub-field"><div class="skill-overview-label">Versions on the hub</div><div class="pub-rows pub-history"></div></div>
+    <div class="pub-field pub-lifecycle"><div class="skill-overview-label">On Discover</div><div class="pub-lifecycle-body"></div></div>
+  </div>`;
+  (host.querySelector(".pub-standing") as HTMLElement).textContent = standingLine(shareState);
+  (host.querySelector(".pub-version") as HTMLElement).textContent = manifestVersion ? `v${manifestVersion}` : "no version in the manifest";
+  // Visibility: the org's hub, or submitted to Glyphh (an org admin's move, once a version is live).
+  const vis = host.querySelector(".pub-visibility") as HTMLElement;
+  const isPublic = shareState.visibility === "public";
+  vis.textContent = isPublic ? "Your organization and the Glyphh catalog" : "Your organization";
+  if (admin && versionItemId && shareState.head) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "action-btn pub-public";
+    b.textContent = isPublic ? "Withdraw from Glyphh" : "Submit to Glyphh";
+    b.title = isPublic ? "Take it off the Glyphh catalog's desk" : "Send the live version to the Glyphh catalog's review desk";
+    b.addEventListener("click", async () => {
+      const item = shareItem; if (!item) return;
+      b.disabled = true;
+      const r = isPublic
+        ? await api().skillWithdrawPublic(item.id, item.kind)
+        : await api().skillSubmitPublic(item.id, item.kind, (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim());
+      b.disabled = false;
+      if (!r.ok) { fail(r.error || "The Glyphh desk didn't answer."); return; }
+      notice(isPublic ? `${s.name} is off the Glyphh desk` : `${s.name} v${shareState.head} went to the Glyphh catalog's review desk`);
+      void loadVersions();
+    });
+    vis.appendChild(b);
+  }
+  const shareBtn = host.querySelector(".pub-share") as HTMLButtonElement;
+  shareBtn.textContent = face.label;
+  shareBtn.disabled = !!face.blocked || !live;
+  (host.querySelector(".pub-blocked") as HTMLElement).textContent = face.blocked || (!live ? "A retired or removed item takes no new versions until an org admin brings it back." : "");
+  shareBtn.addEventListener("click", () => void share());
+  const wd = host.querySelector(".pub-withdraw") as HTMLButtonElement;
+  wd.classList.toggle("hidden", !shareState.pending);
+  wd.addEventListener("click", () => void withdrawShare(s.id, s.name));
+  (host.querySelector(".pub-shelves") as HTMLButtonElement).addEventListener("click", (e) => {
+    if (!shareItem) { fail("Share it first — the shelves are the hub item's."); return; }
+    if (!hubCategories.length) { void api().hubCategories().then((c) => { const r = c as Env<Array<{ id: string; label: string }>>; if (r.ok) hubCategories = r.data ?? []; openCategoryMenu(e.currentTarget as HTMLElement); }); return; }
+    openCategoryMenu(e.currentTarget as HTMLElement);
+  });
+  // The history: every version with its notes, the reviewer's note, and its thread.
+  const hist = host.querySelector(".pub-history") as HTMLElement;
+  if (!hubVersions.length) hist.innerHTML = `<div class="crud-empty">Nothing on the hub yet.</div>`;
+  for (const v of hubVersions) {
+    const row = document.createElement("div");
+    row.className = `pub-row pub-v-${v.status || "approved"}`;
+    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div><div class="pub-row-note hidden"></div></div><div class="pub-row-actions"><button type="button" class="action-btn pub-thread">Thread</button></div>`;
+    (row.querySelector(".pub-row-title") as HTMLElement).textContent = versionLabel({ ...v, status: v.status || "approved", manifestVersion: v.version === shareState.head ? manifestVersion || null : null });
+    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${v.notes || "no release notes"} · ${when(v.createdAt)}`;
+    const note = row.querySelector(".pub-row-note") as HTMLElement;
+    if (v.decisionNote || v.reviewSummary) { note.classList.remove("hidden"); note.textContent = v.decisionNote ? `Reviewer: ${v.decisionNote}` : `Review agent: ${v.reviewSummary}`; }
+    (row.querySelector(".pub-thread") as HTMLButtonElement).addEventListener("click", (e) => { if (versionItemId) void toggleThread(row, { kind: typeOf(s), itemId: versionItemId, version: v.version }, e.currentTarget as HTMLButtonElement); });
+    hist.appendChild(row);
+  }
+  // Retire / Remove (his law, 2026-10-07): the author their own, an org admin any; only an admin brings one back.
+  const lc = host.querySelector(".pub-lifecycle-body") as HTMLElement;
+  if (!versionItemId || !shareItem) { lc.innerHTML = `<div class="mdl-hint">Not on Discover yet.</div>`; }
+  else if (!mayRetire({ admin, own })) { lc.innerHTML = `<div class="mdl-hint">${escapeHtml(live ? "Live on Discover." : standingLine(shareState))}</div>`; }
+  else {
+    const item = shareItem;
+    const act = (label: string, state: "live" | "retired" | "removed", danger: boolean, title: string, body: string): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = danger ? "action-btn danger" : "action-btn"; b.textContent = label;
+      b.addEventListener("click", async () => {
+        const noteInput = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
+        const sure = await confirmAction({ title, body, confirmLabel: label, danger });
+        if (!sure) return;
+        const r = await api().skillLifecycle(item.id, item.kind, state, state === "live" ? "" : noteInput);
+        if (!r.ok) { fail(r.error || "Couldn't change that."); return; }
+        notice(state === "live" ? `${s.name} is back on Discover` : state === "retired" ? `${s.name} is retired` : `${s.name} is off Discover`);
+        void loadVersions(); void refreshShares(); discoverRows = [];
+      });
+      return b;
+    };
+    lc.innerHTML = `<div class="mdl-hint pub-lc-hint"></div><div class="pub-actions"></div>`;
+    (lc.querySelector(".pub-lc-hint") as HTMLElement).textContent = live
+      ? "Retire = leaves Discover, no new installs, members who hold it keep running it (a note in the box above names the replacement). Remove = off Discover for good; running copies stay until their members remove them."
+      : standingLine(shareState);
+    const acts = lc.querySelector(".pub-actions") as HTMLElement;
+    if (live) {
+      acts.appendChild(act("Retire", "retired", false, `Retire "${s.name}"?`, "It leaves Discover and takes no new installs. Members who hold it keep running it, marked Retired."));
+      acts.appendChild(act("Remove from Discover", "removed", true, `Remove "${s.name}" from Discover?`, "Off the catalog for good. Running copies stay until their members remove them. Only an org admin can bring it back."));
+    } else if (admin) {
+      acts.appendChild(act("Bring back", "live", false, `Bring "${s.name}" back to Discover?`, "It is live again: members can install it."));
+    }
+  }
+}
+
+/** THE THREAD under a version (reviewer ↔ author; the AI review is entry one). */
+async function toggleThread(row: HTMLElement, ref: { versionId?: string; kind?: string; itemId?: string; version?: number }, btn?: HTMLButtonElement): Promise<void> {
+  const open = row.querySelector<HTMLElement>(".pub-thread-pane");
+  if (open) { open.remove(); if (btn) btn.textContent = "Thread"; return; }
+  const pane = document.createElement("div");
+  pane.className = "pub-thread-pane";
+  pane.innerHTML = loadingHtml("Reading the thread…");
+  row.appendChild(pane);
+  if (btn) btn.textContent = "Hide thread";
+  const r = await api().skillComments(ref) as Env<{ versionId: string; status: string; decisionNote: string; comments: CommentLike[] }>;
+  if (!r.ok || !r.data) { pane.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "No thread yet.")}</div>`; return; }
+  const t = r.data;
+  const paintThread = (): void => {
+    pane.innerHTML = `<div class="pub-comments"></div><div class="pub-reply"><textarea class="crud-input" rows="2" placeholder="Reply…"></textarea><button type="button" class="action-btn primary">Send</button></div>`;
+    const list = pane.querySelector(".pub-comments") as HTMLElement;
+    if (!t.comments.length) list.innerHTML = `<div class="mdl-hint">No comments yet.</div>`;
+    for (const c of t.comments) {
+      const line = document.createElement("div");
+      line.className = "pub-comment" + (c.by === "ai" ? " ai" : "");
+      line.innerHTML = `<div class="pub-comment-by"></div><div class="pub-comment-body"></div>`;
+      (line.querySelector(".pub-comment-by") as HTMLElement).textContent = `${commentAuthor(c)}${c.verdict ? ` · ${c.verdict}` : ""}${c.createdAt ? ` · ${when(c.createdAt)}` : ""}`;
+      (line.querySelector(".pub-comment-body") as HTMLElement).textContent = c.body;
+      list.appendChild(line);
+    }
+    const ta = pane.querySelector("textarea") as HTMLTextAreaElement;
+    const send = pane.querySelector("button") as HTMLButtonElement;
+    send.addEventListener("click", async () => {
+      const body = ta.value.trim();
+      if (!body) return;
+      send.disabled = true;
+      const a = await api().skillCommentAdd(t.versionId, body) as Env<CommentLike>;
+      send.disabled = false;
+      if (!a.ok || !a.data) { fail(a.error || "Couldn't post that."); return; }
+      t.comments.push(a.data);
+      paintThread();
+    });
+  };
+  paintThread();
+}
+
+// ── THE REVIEW DESK (org admins; his ask, 2026-10-07) ────────────────────────
+async function loadQueue(): Promise<void> {
+  const r = await api().libraryQueue().catch(() => ({ ok: false } as Env<unknown>)) as Env<QueueRowLike[]>;
+  queueRows = r.ok ? queueForKinds(r.data ?? [], KINDS) : [];
+}
+
+function renderReview(host: HTMLElement): void {
+  const q = query.trim().toLowerCase();
+  const shown = queueRows.filter((r) => !q || `${r.name} ${r.slug} ${r.submitted_by_name ?? ""}`.toLowerCase().includes(q));
+  const count = el("skills-count"); if (count) count.textContent = shown.length ? `${shown.length} waiting` : "";
+  paintControls();
+  if (!shown.length) { host.innerHTML = `<div class="crud-empty">Nothing is waiting on the review desk.</div>`; return; }
+  const g = group(host, "Waiting for a decision", shown.length);
+  for (const r of shown) {
+    const row = document.createElement("div");
+    row.className = "pub-row pub-queue-row";
+    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div><div class="pub-row-note hidden"></div>
+        <div class="pub-decide hidden"><textarea class="crud-input" rows="2" placeholder="A note to the author (required for changes or a decline)"></textarea><div class="pub-actions"></div></div></div>
+      <div class="pub-row-actions"><button type="button" class="action-btn pub-files">Files</button><button type="button" class="action-btn pub-thread">Thread</button><button type="button" class="action-btn primary pub-open">Decide</button></div>`;
+    (row.querySelector(".pub-row-title") as HTMLElement).textContent = `${r.name} · v${r.version}${typeChipText(r.kind)}${r.status === "changes" ? " · changes requested" : ""}`;
+    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${r.submitted_by_name ? `by ${r.submitted_by_name} · ` : ""}${r.notes || "no release notes"}${r.created_at ? ` · ${when(r.created_at)}` : ""}`;
+    const note = row.querySelector(".pub-row-note") as HTMLElement;
+    if (r.review_verdict) { note.classList.remove("hidden"); note.textContent = `Review agent: ${r.review_verdict}`; }
+    (row.querySelector(".pub-thread") as HTMLButtonElement).addEventListener("click", (e) => void toggleThread(row, { versionId: r.id }, e.currentTarget as HTMLButtonElement));
+    (row.querySelector(".pub-files") as HTMLButtonElement).addEventListener("click", async (e) => {
+      const b = e.currentTarget as HTMLButtonElement;
+      const open = row.querySelector<HTMLElement>(".pub-files-pane");
+      if (open) { open.remove(); b.textContent = "Files"; return; }
+      const f = await api().libraryVersionFiles(r.id) as Env<Record<string, string>>;
+      const pane = document.createElement("div");
+      pane.className = "pub-files-pane";
+      const files = f.ok ? f.data ?? {} : {};
+      pane.innerHTML = Object.keys(files).length ? "" : `<div class="mdl-hint">${escapeHtml(f.error || "No files in this version.")}</div>`;
+      for (const [p, text] of Object.entries(files).sort()) {
+        const d = document.createElement("details");
+        d.innerHTML = `<summary></summary><pre class="pub-file"></pre>`;
+        (d.querySelector("summary") as HTMLElement).textContent = p;
+        (d.querySelector("pre") as HTMLElement).textContent = text.startsWith("data:") ? "(image)" : text.slice(0, 20_000);
+        pane.appendChild(d);
+      }
+      row.appendChild(pane);
+      b.textContent = "Hide files";
+    });
+    const decide = row.querySelector(".pub-decide") as HTMLElement;
+    (row.querySelector(".pub-open") as HTMLButtonElement).addEventListener("click", () => decide.classList.toggle("hidden"));
+    const acts = decide.querySelector(".pub-actions") as HTMLElement;
+    for (const verdict of ["approve", "changes", "reject"] as Verdict[]) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = verdict === "approve" ? "action-btn primary" : verdict === "reject" ? "action-btn danger" : "action-btn";
+      b.textContent = VERDICT_LABEL[verdict];
+      b.addEventListener("click", async () => {
+        const noteText = (decide.querySelector("textarea") as HTMLTextAreaElement).value.trim();
+        if (decisionNeedsNote(verdict, noteText)) { fail("Tell the author why — a note is required for changes or a decline."); return; }
+        b.disabled = true;
+        const d = await api().libraryDecide(r.id, verdict, noteText) as Env<{ status: string }>;
+        b.disabled = false;
+        if (!d.ok) { fail(d.error || "The decision didn't land."); return; }
+        notice(`${r.name} v${r.version}: ${verdict === "approve" ? "approved" : verdict === "changes" ? "changes requested" : "declined"}`);
+        await loadQueue();
+        renderList();
+        discoverRows = [];
+      });
+      acts.appendChild(b);
+    }
+    g.appendChild(row);
+  }
+}
+
+/** The kind beside a queue row's name, when this page lists more than one. */
+function typeChipText(kind: string): string {
+  return KINDS.length > 1 && kind !== cfg.kind ? ` · ${kind}` : "";
+}
+
+/** The Review tab exists for org admins only, made once per page. */
+async function ensureReviewTab(): Promise<void> {
+  const info = await window.glyphh.getAccountInfo?.().catch(() => null);
+  isAdmin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
+  const row = document.querySelector<HTMLElement>(`${cfg.panel} .skills-tabs:not(.detail)`);
+  if (!row || !isAdmin || row.querySelector(`.skills-tab[data-tab="review"]`)) return;
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "skills-tab"; b.dataset.tab = "review"; b.textContent = "Review";
+  const after = row.querySelector(`.skills-tab[data-tab="updates"], .skills-tab[data-tab="discover"]`);
+  if (after) after.after(b); else row.prepend(b);
+  b.addEventListener("click", async () => { tab = "review"; await loadQueue(); renderList(); });
 }
 
 function authorOf(s: SkillRow): string {
@@ -1922,12 +2270,14 @@ function wire(): void {
       })();
     });
   }
+  ensureDeskTabs();
+  void ensureReviewTab();
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
   const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
   el<HTMLButtonElement>("skills-update-all")?.addEventListener("click", (e) => void updateAllInstances(e.currentTarget as HTMLButtonElement));
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.addEventListener("click", async () => {
-    tab = b.dataset.tab as "mine" | "discover" | "updates";
+    tab = b.dataset.tab as "mine" | "discover" | "updates" | "review";
     discoverView = { kind: "home" };
     if (tab === "discover") await loadDiscover();
     renderList();

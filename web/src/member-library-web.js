@@ -371,9 +371,9 @@ export function buildMemberLibrary(client, deps = {}) {
       return ok(bundleRowOf(k, name, item.data ?? {}, item.updatedAt, item.files?.length ?? Object.keys(writes).length));
     } catch (err) { return fail(err); }
   };
-  const skillDelete = async (pageId) => {
+  const skillDelete = async (pageId, opts = {}) => {
     try {
-      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.remove(pageId));
+      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.remove(pageId, { purge: !!opts?.purge }));
       // A TAB ROW IS A LIBRARY ROW (his report, 2026-10-07: deleting an app on
       // the web answered "this runs on your desktop"): the record lives in the
       // cloud, so the web tombstones it like any row — nothing is on a desktop.
@@ -714,7 +714,6 @@ export function buildMemberLibrary(client, deps = {}) {
     try {
       const out = {};
       const mine = await mineRows();
-      if (!mine.length) return ok(out);
       const kinds = [...new Set(mine.map((m) => m.kind))];
       const byKind = new Map(await Promise.all(kinds.map(async (k) => [k, await orgList(k)])));
       for (const m of mine) {
@@ -723,13 +722,30 @@ export function buildMemberLibrary(client, deps = {}) {
         const state = { head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, rejected: hit.rejectedVersion ?? null };
         if (state.head || state.pending || state.rejected) out[bundlePageId(m.kind, m.id)] = state;
       }
+      // An app INSTANCE's share stands on its slug's org item (2026-10-07).
+      const apps = byKind.get('app') ?? await orgList('app');
+      for (const inst of await appInstances.listInstances().catch(() => [])) {
+        const hit = apps.find((it) => it.slug?.toLowerCase() === String(inst.slug || '').toLowerCase());
+        if (!hit) continue;
+        const state = { head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, rejected: hit.rejectedVersion ?? null };
+        if (state.head || state.pending || state.rejected) out[`app-instance:${inst.key}`] = state;
+      }
       return ok(out);
     } catch (err) { return fail(err); }
   };
+  /** The slug + name a page id stands for on the hub: a record's, or an instance's (2026-10-07). */
+  const hubIdentity = async (pageId) => {
+    if (appInstances.isInstanceCardId(String(pageId))) {
+      const inst = await appInstances.find(pageId);
+      return { kind: 'app', id: inst.slug, name: String(inst.manifest?.name || inst.slug) };
+    }
+    const { ref, item } = await bundleItem(pageId);
+    return { kind: ref.kind, id: ref.id, name: item.data?.name };
+  };
   const skillWithdraw = async (pageId) => {
     try {
-      const { ref, item } = await bundleItem(pageId);
-      const hit = await orgItemFor(ref.kind, ref.id, item.data?.name);
+      const ref = await hubIdentity(pageId);
+      const hit = await orgItemFor(ref.kind, ref.id, ref.name);
       if (!hit) return { ok: false, error: "this one isn't on your organization's hub" };
       const r = await http().del(`/api/library/${ref.kind}/${encodeURIComponent(hit.id)}/submission`);
       return ok({ withdrawn: Number(r?.withdrawn ?? 0) });
@@ -737,17 +753,76 @@ export function buildMemberLibrary(client, deps = {}) {
   };
   const skillVersions = async (pageId) => {
     try {
-      const { ref, item } = await bundleItem(pageId);
+      const ref = await hubIdentity(pageId);
       const kind = ref.kind;
-      const hit = await orgItemFor(kind, ref.id, item.data?.name);
-      if (!hit) return ok({ itemId: null, kind, versions: [], head: null, pending: null, declined: null, categories: [] });
+      const hit = await orgItemFor(kind, ref.id, ref.name);
+      if (!hit) return ok({ itemId: null, kind, versions: [], head: null, pending: null, declined: null, changes: null, lifecycle: 'live', lifecycleNote: '', visibility: 'org', own: false, categories: [] });
       const rows = await http().get(`/api/library/${kind}/${encodeURIComponent(hit.id)}/versions`).catch(() => []);
-      const list = (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || '', createdAt: r.created_at, status: r.status || 'approved', reviewSummary: r.review_summary || '' }));
+      const list = (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || '', createdAt: r.created_at, status: r.status || 'approved', reviewSummary: r.review_summary || '', decisionNote: r.decision_note || '' }));
       // A DECLINE IS NEWS (his order, 2026-09-17): the newest rejected version counts while nothing newer stands.
       const newest = list[0];
       const declined = newest && newest.status === 'rejected' ? { version: newest.version, summary: newest.reviewSummary } : null;
-      return ok({ itemId: hit.id, kind, versions: list, declined, head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null, categories: Array.isArray(hit.categories) ? hit.categories : [] });
+      // CHANGES REQUESTED is a standing of its own (2026-10-07) — the desktop's versionsFor.
+      const changesRow = list.find((v) => v.status === 'changes');
+      let me = '';
+      try { me = String((await client.me())?.userId || ''); } catch { me = ''; }
+      return ok({
+        itemId: hit.id, kind, versions: list, declined, head: hit.headVersion ?? null, pending: hit.pendingVersion ?? null,
+        changes: hit.changesVersion ? { version: hit.changesVersion, note: changesRow?.decisionNote || hit.decisionNote || '' } : null,
+        lifecycle: hit.lifecycle || 'live', lifecycleNote: hit.lifecycleNote || '', visibility: hit.visibility || 'org', own: !!me && hit.createdBy === me,
+        categories: Array.isArray(hit.categories) ? hit.categories : [],
+      });
     } catch (err) { return fail(err); }
+  };
+  // THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07) — the desktop's hub-ipc names.
+  const versionIdOf = async (kind, itemId, version) => {
+    const rows = await http().get(`/api/library/${kindOf(kind)}/${encodeURIComponent(itemId)}/versions`).catch(() => []);
+    const hit = (Array.isArray(rows) ? rows : []).find((r) => r.version === Number(version) && r.id);
+    if (hit?.id) return hit.id;
+    const head = await http().get(`/api/library/${kindOf(kind)}/${encodeURIComponent(itemId)}/head`).catch(() => ({ versionId: null }));
+    if (!head?.versionId) throw new Error(`no version ${version} to open a thread on`);
+    return head.versionId;
+  };
+  const skillComments = async (ref) => {
+    try {
+      const vid = ref?.versionId || await versionIdOf(ref?.kind, String(ref?.itemId || ''), Number(ref?.version || 0));
+      return ok(await http().get(`/api/library/versions/${encodeURIComponent(vid)}/comments`));
+    } catch (err) { return fail(err); }
+  };
+  const skillCommentAdd = async (versionId, body) => {
+    try { return ok(await http().post(`/api/library/versions/${encodeURIComponent(String(versionId))}/comments`, { body: String(body ?? '') })); }
+    catch (err) { return fail(err); }
+  };
+  const skillLifecycle = async (itemId, kind, state, note) => {
+    try { return ok(await http().post(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}/lifecycle`, { state: state === 'retired' || state === 'removed' ? state : 'live', ...(note ? { note: String(note) } : {}) })); }
+    catch (err) { return fail(err); }
+  };
+  const skillSubmitPublic = async (itemId, kind, notes) => {
+    try { return ok(await http().post(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}/public`, { notes: String(notes ?? '') })); }
+    catch (err) { return fail(err); }
+  };
+  const skillWithdrawPublic = async (itemId, kind) => {
+    try { return ok(await http().del(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}/public`)); }
+    catch (err) { return fail(err); }
+  };
+  const libraryQueue = async () => {
+    try { const rows = await http().get('/api/library/queue'); return ok(Array.isArray(rows) ? rows : []); }
+    catch (err) { return fail(err); }
+  };
+  const libraryDecide = async (versionId, verdict, note) => {
+    try { return ok(await http().post(`/api/library/versions/${encodeURIComponent(String(versionId))}/decide`, { verdict: verdict === 'approve' || verdict === 'reject' ? verdict : 'changes', note: String(note ?? '') })); }
+    catch (err) { return fail(err); }
+  };
+  const libraryVersionFiles = async (versionId) => {
+    try {
+      const v = await http().get(`/api/library/versions/${encodeURIComponent(String(versionId))}`);
+      const p = v?.payload && typeof v.payload === 'object' ? v.payload : {};
+      const files = p.files && typeof p.files === 'object' ? p.files : null;
+      return ok(files ?? { 'SKILL.md': typeof p.prompt === 'string' ? p.prompt : '' });
+    } catch (err) { return fail(err); }
+  };
+  const appInstanceReleases = async (pageId) => {
+    try { return ok(await appInstances.releases(pageId)); } catch (err) { return fail(err); }
   };
   const skillVersionFiles = async (itemId, version, kind) => {
     try {
@@ -767,6 +842,8 @@ export function buildMemberLibrary(client, deps = {}) {
    *  go to the org's hub as text; a binary file stops it, as on the desktop. */
   const skillPublish = async (pageId, notes = '') => {
     try {
+      // SHARE TO PUBLISH an app INSTANCE (2026-10-07): the server promotes its pinned release by key.
+      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.share(pageId, notes));
       const { ref, item } = await bundleItem(pageId);
       const paths = (item.files ?? []).map((f) => f.path);
       const files = {};
@@ -819,6 +896,7 @@ export function buildMemberLibrary(client, deps = {}) {
     panelAppsList, panelAppsCreate, panelAppsUpdate, panelAppsDelete,
     glyphhAppPreviewOpen, glyphhAppPreviewClear, skillTab,
     skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin, appInstanceUpdate, appInstancesUpdateAll, appInstancesInstallDefaults,
+    appInstanceReleases, skillComments, skillCommentAdd, skillLifecycle, skillSubmitPublic, skillWithdrawPublic, libraryQueue, libraryDecide, libraryVersionFiles,
     // A bundle's own agents (agents/*.md) are read off the folder on the desktop; the record carries none.
     skillAgents: emptyList,
     skillAgentSet: needsDesktop,
