@@ -1339,6 +1339,9 @@ async function saveLayout() {
   }
   // The Model/Session rows only bind when the grid hosts the agent panel.
   const hasAgentSeat = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
+  // A CLI agent cell takes the workspace's session choice too (his report,
+  // 2026-10-07: the order is the cell, then the workspace, then Settings).
+  const hasCliCell = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase().startsWith("agent:"));
   const selections = hasAgentSeat ? builderModelSelections : {};
   const saved = await window.glyphh.layoutsSaveGrid({
     name,
@@ -1349,7 +1352,7 @@ async function saveLayout() {
     cells: assignedCells,
     folderMode,
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
-    sessionMode: (hasAgentSeat && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
+    sessionMode: ((hasAgentSeat || hasCliCell) && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     // The type binds like the model slots: only with an agent seat to bind to.
     ...(hasAgentSeat && (layoutTypeSelect?.value === "work" || layoutTypeSelect?.value === "code") ? { type: layoutTypeSelect.value as "work" | "code" } : {}),
