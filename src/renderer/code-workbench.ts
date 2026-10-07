@@ -4027,9 +4027,15 @@ async function init(): Promise<void> {
         // APPS join and leave the wall the same way — an app the user adds
         // mid-session (the Apps page, the agent's create_app_entry) appears
         // without a restart; a deleted one leaves (never an OPEN panel).
+        // THE SAME FILTER AS THE FIRST BUILD (his report, 2026-10-07: an edit
+        // on Build or Customize made the web's wall load every saved tab). The
+        // first build drops what this surface cannot host (surfaceHostsTile —
+        // the browser shows no saved tab rows); this refresh did not, so every
+        // tab row the server holds joined the wall as "new".
+        const hosted = (a: PanelRowLite): boolean => surfaceHostsTile(appTileOf(a), surfaceCaps(IS_WEB_TARGET));
         if (Array.isArray(rows)) {
           echoRows = rows;   // .dip / layout-cell resolution sees the fresh set too
-          const liveApps = new Map(rows.filter(wallAppRow).map((a) => [(a.slug || a.id).toLowerCase(), a]));
+          const liveApps = new Map(rows.filter(wallAppRow).filter(hosted).map((a) => [(a.slug || a.id).toLowerCase(), a]));
           for (const e of [...entries]) {
             // A TOOL-BACKED app (Drive, Images, Design…) wears a tool tile with
             // the same slug and appId; it counts as seen too, or every refresh
@@ -4070,7 +4076,7 @@ async function init(): Promise<void> {
         if (Array.isArray(fresh) || Array.isArray(rows)) {
           const liveKeys = new Set<string>();
           if (Array.isArray(fresh)) for (const l of fresh) liveKeys.add(`layout:${(l.name || "").toLowerCase()}`);
-          if (Array.isArray(rows)) for (const a of rows.filter(wallAppRow)) liveKeys.add(`app:${(a.slug || a.id).toLowerCase()}`);
+          if (Array.isArray(rows)) for (const a of rows.filter(wallAppRow).filter(hosted)) liveKeys.add(`app:${(a.slug || a.id).toLowerCase()}`);
           // Only OUR dynamic families are prunable — nav slots, folders and
           // anything else the dock carries are none of this code's business —
           // and a read that answered nothing prunes nothing (keepDockKeys).

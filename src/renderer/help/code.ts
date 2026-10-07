@@ -1783,7 +1783,11 @@ async function loadStore(): Promise<void> {
       // one. A panel is TOLD which thread to show (the rail's open-session
       // command); told nothing, it starts clean. The shell keeps the pointer,
       // so the main window still reopens where the user left off.
-      currentId = IS_AGENT_PANEL ? "" : s.currentId;
+      // …and since 2026-10-07 the main window does NOT either: every launch
+      // lands on Work → New (his order); the last thread waits in Recents.
+      // The store keeps its pointer for the surfaces that read it.
+      void s.currentId;
+      currentId = "";
     } catch { chats = []; currentId = ""; }
     if (!chats.length) {
       try {
@@ -2893,7 +2897,7 @@ function renderThread(): void {
         inner.appendChild(turnErrorCardEl(b.msg.text));
         return;
       } else {
-        if (b.msg.thinking) inner.appendChild(thinkingEl(b.msg.thinking));
+        if (b.msg.thinking && b.msg.thinking.trim()) inner.appendChild(thinkingEl(b.msg.thinking));
         el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
         inner.appendChild(el);
@@ -7428,9 +7432,9 @@ export function initCode(): void {
   for (const b of Array.from(document.querySelectorAll<HTMLElement>("#rail-type-tabs .rail-type-tab"))) {
     b.addEventListener("click", () => { const t = b.dataset.type; if (t === "work" || t === "code") setTypeTab(t); });
   }
-  // A NET-NEW USER ON THE WEB STARTS ON WORK → NEW (his order, 2026-10-05):
-  // the saved tab wins; with none saved the web lands on Work, the desktop
-  // on Code (surface.ts defaultTypeTab).
+  // EVERY LAUNCH LANDS ON WORK → NEW (his order, 2026-10-07; surface.ts
+  // defaultTypeTab): the saved tab is read for the record but never decides
+  // the landing. A switch made while running still writes it.
   void window.glyphh.getPreference?.(TYPE_TAB_PREF, "").then((v) => {
     typeTab = defaultTypeTab(onWebTarget(), v);
     applyTypeTab();

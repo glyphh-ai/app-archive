@@ -258,13 +258,8 @@ describe("his explicit orders about the web's page — not world splits", () => 
     expect(webNewClosesEverything(true)).toBe(true);
     expect(webNewClosesEverything(false)).toBe(false);
   });
-  it("a net-new user on the web starts on Work; a saved tab wins; the desktop starts on Code (his order, 2026-10-05)", () => {
-    expect(defaultTypeTab(true, "")).toBe("work");
-    expect(defaultTypeTab(true, undefined)).toBe("work");
-    expect(defaultTypeTab(true, "code")).toBe("code");
-    expect(defaultTypeTab(false, "")).toBe("code");
-    expect(defaultTypeTab(false, "work")).toBe("work");
-    expect(defaultTypeTab(true, "wat")).toBe("work");
+  it("every launch lands on Work, desktop and web alike, whatever tab was saved (his order, 2026-10-07)", () => {
+    for (const web of [true, false]) for (const saved of ["", undefined, "code", "work", "wat"]) expect(defaultTypeTab(web, saved)).toBe("work");
   });
   it("the rail header's order is the desktop's on both; the wordmark holds the chrome spot on the web only", () => {
     expect(WEB_RAIL_WORDMARK).toBe(".app-rail-logo");

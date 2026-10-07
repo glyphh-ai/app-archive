@@ -539,23 +539,43 @@ export function maybeSpeakFirstLine(sofar: string): void {
   if (!line) return;
   earlyFired = true;
   earlyLine = line;
-  void (async () => {
+  // The remainder waits for this line to finish (onTurnComplete awaits it), so
+  // the two never overlap and the line is never cut mid-sentence.
+  earlyPlayback = (async () => {
     const p = await voicePref();
     if (p.outputModel && p.autoplay) await playReplyTTS(line, p);
-  })();
+  })().catch(() => undefined);
 }
+/** The early line's playback, awaited before the remainder speaks. */
+let earlyPlayback: Promise<void> | null = null;
+/** The last reply spoken: a second completion of the SAME turn (the web's
+ *  stream end and its thread-store reconcile both report one) is ignored. */
+let lastSpoken: { text: string; at: number } | null = null;
+const SAME_TURN_MS = 15_000;
+/** Words only — how the early line and the settled text are compared. */
+const spokenKey = (s: string): string => s.replace(/[*_#>`]/g, "").replace(/\s+/g, " ").trim();
 
 /** Called from finishRun when a reply lands: speak it (if autoplay) — minus
  *  the first line when it was already spoken early — then, in a hands-free
  *  session, start listening again for the next thing the user says. */
 export async function onTurnComplete(text: string): Promise<void> {
+  // ONE SPEAKER (his report, 2026-10-07): the same reply completing twice
+  // speaks once; the early line finishes before the remainder; the trim that
+  // takes the early line off the settled text compares words, not bytes.
+  const key = spokenKey(text || "");
+  if (key && lastSpoken && lastSpoken.text === key && Date.now() - lastSpoken.at < SAME_TURN_MS) return;
+  if (key) lastSpoken = { text: key, at: Date.now() };
   const p = await voicePref();
   let say = text;
   if (earlyLine) {
-    const t = say.trimStart();
-    if (t.startsWith(earlyLine)) say = t.slice(earlyLine.length).trimStart();
+    const t = spokenKey(say);
+    const e = spokenKey(earlyLine);
+    if (e && t.startsWith(e)) say = t.slice(e.length).trim();
   }
+  const early = earlyPlayback;
+  earlyPlayback = null;
   resetEarlySpeech();
+  if (early) await early;
   // Voice mode reads every reply aloud; otherwise the member's Settings › Voice choice stands.
   if (say) await playReplyTTS(say, voiceModeOn ? { ...p, autoplay: true } : p);
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
