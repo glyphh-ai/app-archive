@@ -7,10 +7,16 @@
           <div id="tabs-head" class="skills-head">
             <h2>Tabs</h2>
             <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="app-search" type="text" placeholder="Search tabs" spellcheck="false" autocomplete="off" /></div>
-            <button id="apps-add-btn" class="action-btn primary" type="button">+ Add</button>
-            <button id="apps-chrome-btn" class="action-btn" type="button" title="Bring your Chrome bookmarks in as tabs">Import from Google</button>
-            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
-            <button id="apps-refresh-btn" class="action-btn hidden" title="Refresh tabs" aria-label="Refresh tabs" type="button"></button>
+            <!-- ONE right-aligned box for the head's buttons (his report,
+                 2026-10-07: "tabs don't have a new tab button"): with two
+                 visible buttons under space-between, the first sat under the
+                 centred search box and could not be seen or clicked. -->
+            <div class="skills-head-actions">
+              <button id="apps-add-btn" class="action-btn primary" type="button">+ New tab</button>
+              <button id="apps-chrome-btn" class="action-btn" type="button" title="Bring your Chrome bookmarks in as tabs">Import from Google</button>
+              <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
+              <button id="apps-refresh-btn" class="action-btn hidden" title="Refresh tabs" aria-label="Refresh tabs" type="button"></button>
+            </div>
           </div>
           <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
             <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
@@ -238,6 +244,9 @@
                     <button id="app-dash-cancel" class="action-btn">Cancel</button>
                     <button id="app-dash-save" class="action-btn primary">Save</button>
                   </div>
+                  <!-- The detail form's own error line: #app-form-error belongs to the
+                       (hidden) add form, so a bad URL on Save had nowhere to show. -->
+                  <div id="app-detail-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
 
                 </div>
 
