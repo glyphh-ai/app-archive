@@ -21150,6 +21150,12 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 .skills-tabs.detail .skills-tab { border-radius: 0; padding: 8px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; background: none; }
 .skills-tabs.detail .skills-tab.active { border-bottom-color: var(--text); }
 .skills-count { font-size: 12px; color: var(--text-3); }
+/* APPS CARRY A VERSION (2026-10-07): the red square that counts the apps
+   with an update waiting — on the Updates tab and on the rail's Build item. */
+.skills-badge, .rail-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--danger-soft); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
+.skills-badge { margin-left: 6px; vertical-align: middle; }
+.rail-count { margin-left: auto; }
+.skills-badge.hidden, .rail-count.hidden { display: none; }
 .skill-group { margin-bottom: 18px; }
 .skill-group-head { display: flex; align-items: baseline; gap: 6px; padding: 6px 4px; font-size: 13px; font-weight: 600; color: var(--text); }
 .skill-group-count { font-weight: 400; color: var(--text-3); font-size: 12px; }

@@ -220,6 +220,54 @@ export async function pinInstanceRelease(ref: string, n: number): Promise<AppIns
   return live;
 }
 
+// ── APPS CARRY A VERSION; DEFAULTS INSTALL BY MANIFEST (his order, 2026-10-07) ──
+
+/** Move an instance to the catalog's head: the same key, the next release
+ *  pinned, data and secrets kept (POST /api/app-instances/{key}/update). */
+export async function updateInstance(ref: string): Promise<AppInstanceSummary> {
+  const inst = await findInstance(ref);
+  if (!inst) throw new Error(`no app instance ${ref}`);
+  const live = await getClient().http.post<AppInstanceSummary>(`/api/app-instances/${encodeURIComponent(inst.key)}/update`, {});
+  invalidateInstances();
+  return live;
+}
+
+/** Every instance of the caller's with an update waiting, moved at once. */
+export async function updateAllInstances(): Promise<{ updated: AppInstanceSummary[]; failed: Array<{ key: string; error: string }> }> {
+  const r = await getClient().http.post<{ updated?: AppInstanceSummary[]; failed?: Array<{ key: string; error: string }> }>("/api/app-instances/update-all", {});
+  invalidateInstances();
+  return { updated: r?.updated ?? [], failed: r?.failed ?? [] };
+}
+
+/** THE DEFAULTS, IN THE BACKGROUND (his order, 2026-10-07): the apps whose
+ *  manifest says installAsDefault — minus the org's overrides, minus what the
+ *  member already holds or removed — become this member's instances. Never on
+ *  the boot path: the renderer asks for it after first paint, main runs it,
+ *  and a landed install announces itself like any other. */
+export async function installDefaultApps(): Promise<{ installed: number; failed: number }> {
+  const r = await getClient().http.post<{ installed?: AppInstanceSummary[]; failed?: Array<{ slug: string; error: string }> }>("/api/app-instances/defaults/install", {});
+  const installed = r?.installed?.length ?? 0;
+  const failed = r?.failed?.length ?? 0;
+  if (installed) {
+    invalidateInstances();
+    for (const inst of r!.installed!) { try { await ensureInstanceTab(inst, null); } catch { /* the tab can wait for the next open */ } }
+    const [{ invalidateOrgApps }, { broadcast }] = await Promise.all([import("./org-apps.js"), import("./broadcast.js")]);
+    invalidateOrgApps();
+    broadcast("panel-apps-changed");
+  }
+  if (failed) console.warn("[app-instances] default installs that failed:", r!.failed!.map((f) => `${f.slug}: ${f.error}`).join("; "));
+  return { installed, failed };
+}
+
+/** THE ORG'S WORD ON DEFAULTS (his order, 2026-10-07): every catalog app with
+ *  its manifest flag, the org's override and what that makes it; PUT merges
+ *  `{itemRef: on|off|null}` (null clears the override). Org admin only. */
+export type DefaultOverride = "on" | "off";
+export interface AdminAppDefaults { items: Array<{ itemRef: string; source: "org" | "public"; slug: string; name: string; description: string; release: number; version: string | null; flagged: boolean; override: DefaultOverride | null; default: boolean }>; overrides: Record<string, DefaultOverride> }
+export const adminAppDefaults = (): Promise<AdminAppDefaults> => getClient().http.get<AdminAppDefaults>("/api/admin/app-defaults");
+export const setAdminAppDefaults = (overrides: Record<string, DefaultOverride | null>): Promise<AdminAppDefaults> =>
+  getClient().http.put<AdminAppDefaults>("/api/admin/app-defaults", { overrides });
+
 /** The `app-instance-pin` IPC's body (the same name on the web, member-
  *  library-web.js): a card id or an instance key, the release to pin. */
 export async function appInstancePinHandler(id: string, n: number): Promise<{ ok: boolean; data?: AppInstanceSummary; error?: string }> {

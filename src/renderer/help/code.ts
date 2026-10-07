@@ -12,6 +12,7 @@
  */
 
 import { threadLocus } from "./thread-locus.js";
+import { installDefaultsInBackground, refreshBuildBadge } from "./app-updates.js";
 import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
@@ -7126,9 +7127,13 @@ function initRailApps(): void {
   // sections open via the rail nav / settings modal now, and the trays below
   // are pure quick-launch grids.
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
-  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
+  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); void refreshBuildBadge(); });
   // A bundle registered its tab in main (install, import, boot): the rail repaints.
-  window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); });
+  window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); void refreshBuildBadge(); });
+  // APPS CARRY A VERSION; DEFAULTS BY MANIFEST (2026-10-07): the red count on
+  // Build, and the default apps installed in the background after first paint.
+  void refreshBuildBadge();
+  installDefaultsInBackground();
 
   // Apps search — its own page; Enter runs the text as a command (palette parity).
   if (leftApps) wireRailSearch(leftApps.search, () => { leftApps.page = 0; paintAppsGrid(leftApps); });

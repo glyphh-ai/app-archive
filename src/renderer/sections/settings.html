@@ -1206,6 +1206,10 @@
                   </div>
                   <div id="orglib-queue" class="hidden"></div>
                   <div id="orglib-list"></div>
+                  <!-- DEFAULT APPS (his order, 2026-10-07): the catalog apps whose
+                       manifest says installAsDefault land on every member's open;
+                       the org admin's word per app overrides the manifest. -->
+                  <div id="orglib-defaults" class="hidden"></div>
                 </div>
               </div>
 
@@ -2291,7 +2295,11 @@
                   <div class="skills-tabs">
                     <button class="skills-tab active" data-tab="mine" type="button">Your apps</button>
                     <button class="skills-tab" data-tab="discover" type="button">Discover</button>
+                    <!-- APPS CARRY A VERSION (his order, 2026-10-07): the iTunes look —
+                         an Updates tab with a red count, Update All beside it. -->
+                    <button class="skills-tab" data-tab="updates" type="button">Updates<span id="gapps-updates-badge" class="skills-badge hidden"></span></button>
                     <div style="flex:1;"></div>
+                    <button id="gapps-update-all" class="action-btn skill-update-btn hidden" type="button">Update All</button>
                     <span id="gapps-count" class="skills-count"></span>
                     <button id="gapps-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
                     <button id="gapps-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>

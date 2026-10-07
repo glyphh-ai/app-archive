@@ -1102,6 +1102,13 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
   /** A cloud app's Rollback: pin release `n` of the instance a card id (or key) names. */
   appInstancePin: (id: string, n: number) => ipcRenderer.invoke("app-instance-pin", id, n) as Promise<LibEnvelope>,
+  /** APPS CARRY A VERSION (2026-10-07): move one instance (a card id or key) to the catalog's head; move every one; install the manifest-flagged defaults in the background. */
+  appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
+  appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
+  appInstancesInstallDefaults: () => ipcRenderer.invoke("app-instances-install-defaults") as Promise<LibEnvelope>,
+  /** Org admin: the catalog's default apps and the org's overrides (GET / PUT /api/admin/app-defaults). */
+  orgAppDefaultsGet: () => ipcRenderer.invoke("org-app-defaults-get") as Promise<LibEnvelope>,
+  orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => ipcRenderer.invoke("org-app-defaults-set", overrides) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
   skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,

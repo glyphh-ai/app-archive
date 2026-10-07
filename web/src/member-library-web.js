@@ -389,6 +389,16 @@ export function buildMemberLibrary(client, deps = {}) {
   const appInstancePin = async (pageId, n) => {
     try { return ok(await appInstances.pin(pageId, n)); } catch (err) { return fail(err); }
   };
+  /** Update one / all / the defaults (2026-10-07): the same IPC names as the desktop's. */
+  const appInstanceUpdate = async (pageId) => {
+    try { return ok(await appInstances.update(pageId)); } catch (err) { return fail(err); }
+  };
+  const appInstancesUpdateAll = async () => {
+    try { return ok(await appInstances.updateAll()); } catch (err) { return fail(err); }
+  };
+  const appInstancesInstallDefaults = async () => {
+    try { return ok(await appInstances.installDefaults()); } catch (err) { return fail(err); }
+  };
   const skillSetEnabled = async (pageId, on) => {
     try {
       const { ref, item } = await bundleItem(pageId);
@@ -806,7 +816,7 @@ export function buildMemberLibrary(client, deps = {}) {
     layoutsList, layoutsSaveGrid, layoutsDelete,
     panelAppsList, panelAppsCreate, panelAppsUpdate, panelAppsDelete,
     glyphhAppPreviewOpen, glyphhAppPreviewClear, skillTab,
-    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin,
+    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin, appInstanceUpdate, appInstancesUpdateAll, appInstancesInstallDefaults,
     // A bundle's own agents (agents/*.md) are read off the folder on the desktop; the record carries none.
     skillAgents: emptyList,
     skillAgentSet: needsDesktop,

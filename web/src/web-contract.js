@@ -651,6 +651,9 @@ export function buildContract(client, deps) {
     skillCreate: library.skillCreate,
     skillDelete: library.skillDelete,
     appInstancePin: library.appInstancePin,
+    appInstanceUpdate: library.appInstanceUpdate,
+    appInstancesUpdateAll: library.appInstancesUpdateAll,
+    appInstancesInstallDefaults: library.appInstancesInstallDefaults,
     skillSetEnabled: library.skillSetEnabled,
     skillAgents: library.skillAgents,
     skillAgentSet: library.skillAgentSet,
@@ -832,6 +835,15 @@ export function buildContract(client, deps) {
     libraryAdminQueue: async () => {
       try { return { ok: true, ...(await client.libraryMarket.reviewQueue()) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), queue: [] }; }
+    },
+    // THE ORG'S WORD ON DEFAULTS (2026-10-07): the same IPC names as the desktop's.
+    orgAppDefaultsGet: async () => {
+      try { return { ok: true, data: await client.http.get('/api/admin/app-defaults') }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    orgAppDefaultsSet: async (overrides) => {
+      try { return { ok: true, data: await client.http.put('/api/admin/app-defaults', { overrides: overrides && typeof overrides === 'object' ? overrides : {} }) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     libraryAdminReview: async (id, action, notes) => {
       try { await client.libraryMarket.reviewListing(id, action, notes); return { ok: true }; }
