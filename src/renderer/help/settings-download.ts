@@ -32,7 +32,8 @@ const TARGETS: ReadonlyArray<{ key: string; label: string; asset: string }> = [
   { key: "mac-arm64", label: "macOS — Apple Silicon", asset: "Glyphh-arm64.dmg" },
   { key: "mac-x64",   label: "macOS — Intel",         asset: "Glyphh-x64.dmg" },
   { key: "win",       label: "Windows",               asset: "Glyphh-Setup.exe" },
-  { key: "linux",     label: "Linux — AppImage",      asset: "Glyphh-x86_64.AppImage" },
+  { key: "linux",     label: "Linux — x64 AppImage",   asset: "Glyphh-x86_64.AppImage" },
+  { key: "linux-arm64", label: "Linux — arm64 AppImage", asset: "Glyphh-arm64.AppImage" },
 ];
 
 /** Best guess at the visitor's platform, for the primary button. */
