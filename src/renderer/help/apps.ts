@@ -470,6 +470,285 @@ function switchAppTab(tab: string) {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
   if (tab === "dashboard") void loadPanelTab();
+  if (tab === "rpa") void renderRpaTab();
+}
+
+// ── RPA ON A TAB (his order, 2026-10-07; desktop only) ───────────────────
+//
+// The commands mapped on this tab's panel and the sequences over them. The
+// user picks elements on the panel on screen; the agents map and run the same
+// commands through their rpa_* tools, and each one is a tool named
+// <tab>_<key>. Everything goes through main's registry (the rpaTab door), so
+// the page, the tools and the loop never drift apart.
+
+type RpaGuideView = { pre?: string; post?: string; verify?: string; recover?: string; delay?: number };
+type RpaCommandView = { key: string; description: string; action: string; selector?: string; text?: string; url?: string; script?: string; waitFor?: string; guide?: RpaGuideView };
+type RpaStepView = { command: string; value?: string; waitFor?: string };
+type RpaSequenceView = { name: string; description: string; steps: RpaStepView[] };
+type RpaDoor = (method: string, params: Record<string, unknown>) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
+
+const rpaDoor = (): RpaDoor | undefined => (window.glyphh as unknown as { rpaTab?: RpaDoor }).rpaTab;
+let rpaEditing: RpaCommandView | null = null;
+let rpaEditingSeq: RpaSequenceView | null = null;
+
+function rpaStatus(text: string, err = false): void {
+  const el = document.getElementById("app-rpa-status");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("err", err);
+}
+
+async function rpaCall<T = unknown>(method: string, params: Record<string, unknown>): Promise<T | null> {
+  const door = rpaDoor();
+  if (!door || !currentApp) return null;
+  const r = await door(method, { app: currentApp.slug, ...params });
+  if (!r.ok) { rpaStatus(r.error || `${method} failed`, true); return null; }
+  return r.result as T;
+}
+
+const rpaVal = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+const rpaSet = (id: string, v: string): void => { const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null; if (el) el.value = v; };
+
+/** The field the action takes: text for type, url for goto, script for custom. */
+function rpaValueFieldFor(action: string): void {
+  document.getElementById("app-rpa-f-text-row")?.classList.toggle("hidden", action !== "type");
+  document.getElementById("app-rpa-f-url-row")?.classList.toggle("hidden", action !== "goto");
+  document.getElementById("app-rpa-f-script-row")?.classList.toggle("hidden", action !== "custom");
+  document.getElementById("app-rpa-f-selector-row")?.classList.toggle("hidden", action === "goto" || action === "custom");
+}
+
+function rpaFillForm(c: RpaCommandView | null): void {
+  rpaEditing = c;
+  rpaSet("app-rpa-f-key", c?.key ?? "");
+  rpaSet("app-rpa-f-desc", c?.description ?? "");
+  rpaSet("app-rpa-f-action", c?.action ?? "click");
+  rpaSet("app-rpa-f-selector", c?.selector ?? "");
+  rpaSet("app-rpa-f-text", c?.text ?? "");
+  rpaSet("app-rpa-f-url", c?.url ?? "");
+  rpaSet("app-rpa-f-script", c?.script ?? "");
+  rpaSet("app-rpa-f-wait", c?.waitFor ?? "");
+  rpaSet("app-rpa-f-pre", c?.guide?.pre ?? "");
+  rpaSet("app-rpa-f-post", c?.guide?.post ?? "");
+  rpaSet("app-rpa-f-verify", c?.guide?.verify ?? "");
+  rpaSet("app-rpa-f-recover", c?.guide?.recover ?? "");
+  rpaSet("app-rpa-f-delay", c?.guide?.delay ? String(c.guide.delay) : "");
+  rpaValueFieldFor(c?.action ?? "click");
+  const title = document.getElementById("app-rpa-form-title");
+  if (title) title.textContent = c ? `Edit ${c.key}` : "Map a command";
+}
+
+function rpaFillSeqForm(sq: RpaSequenceView | null): void {
+  rpaEditingSeq = sq;
+  rpaSet("app-rpa-s-name", sq?.name ?? "");
+  rpaSet("app-rpa-s-desc", sq?.description ?? "");
+  rpaSet("app-rpa-s-steps", sq ? sq.steps.map((st) => [st.command, st.value ?? "", st.waitFor ?? ""].join(" | ").replace(/( \| )+$/, "")).join("\n") : "");
+  const title = document.getElementById("app-rpa-seq-title");
+  if (title) title.textContent = sq ? `Edit ${sq.name}` : "Save a sequence";
+}
+
+/** "command | value | waitFor" per line. */
+function rpaStepsOf(text: string): RpaStepView[] {
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [command = "", value = "", waitFor = ""] = l.split("|").map((x) => x.trim());
+    return { command, ...(value ? { value } : {}), ...(waitFor ? { waitFor } : {}) };
+  });
+}
+
+async function renderRpaTab(): Promise<void> {
+  const pane = document.getElementById("app-rpa-pane");
+  if (!pane || !currentApp) return;
+  const slug = currentApp.slug;
+  const toolName = (k: string) => `${slug}_${k}`.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  if (!pane.dataset.built) {
+    pane.dataset.built = "1";
+    pane.innerHTML = `
+      <div class="rpa-pane">
+        <div class="rpa-head">
+          <label class="settings-label">Commands</label>
+          <span id="app-rpa-live" class="rpa-live"></span>
+          <button id="app-rpa-open" class="action-btn" type="button">Open tab</button>
+        </div>
+        <p class="settings-hint" style="margin:0;">What the agents can do on this tab's panel, with you watching. Each command is a tool named <code>${escMkt(slug)}_&lt;key&gt;</code>; the Glyphh agent and the CLIs map more themselves with rpa_pick and rpa_map.</p>
+        <div id="app-rpa-commands" class="rpa-rows"></div>
+        <div class="rpa-form">
+          <label class="settings-label" id="app-rpa-form-title" style="margin:0;">Map a command</label>
+          <div class="rpa-grid">
+            <div><label class="settings-label">Key</label><input id="app-rpa-f-key" class="settings-input" placeholder="send" spellcheck="false" /></div>
+            <div><label class="settings-label">Action</label><select id="app-rpa-f-action" class="settings-input">
+              <option value="click">Click</option><option value="type">Type</option><option value="read">Read text</option><option value="readHtml">Read HTML</option><option value="goto">Go to</option><option value="custom">Custom script</option></select></div>
+          </div>
+          <label class="settings-label">What it does</label>
+          <input id="app-rpa-f-desc" class="settings-input" placeholder="Send the open mail" />
+          <div id="app-rpa-f-selector-row">
+            <label class="settings-label">Element</label>
+            <div class="rpa-sel-row"><input id="app-rpa-f-selector" class="settings-input" placeholder="button[aria-label=Send]" spellcheck="false" /><button id="app-rpa-pick" class="action-btn" type="button" title="Point at it on the panel">Pick…</button></div>
+          </div>
+          <div id="app-rpa-f-text-row" class="hidden"><label class="settings-label">Text <span style="color:var(--text-2);font-weight:400;">— {{value}} is what the caller passes</span></label><input id="app-rpa-f-text" class="settings-input" placeholder="{{value}}" spellcheck="false" /></div>
+          <div id="app-rpa-f-url-row" class="hidden"><label class="settings-label">Address</label><input id="app-rpa-f-url" class="settings-input" placeholder="https://…/{{value}}" spellcheck="false" /></div>
+          <div id="app-rpa-f-script-row" class="hidden"><label class="settings-label">Script <span style="color:var(--text-2);font-weight:400;">— runs in the page; VALUE is in scope</span></label><textarea id="app-rpa-f-script" class="settings-input" rows="3" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea></div>
+          <label class="settings-label">Wait for <span style="color:var(--text-2);font-weight:400;">— a selector that must exist first (optional)</span></label>
+          <input id="app-rpa-f-wait" class="settings-input" spellcheck="false" />
+          <label class="settings-label">Guide <span style="color:var(--text-2);font-weight:400;">— what makes it reliable without you</span></label>
+          <div class="rpa-grid">
+            <input id="app-rpa-f-pre" class="settings-input" placeholder="Before: the compose window is open" />
+            <input id="app-rpa-f-post" class="settings-input" placeholder="After: the mail is sent" />
+            <input id="app-rpa-f-verify" class="settings-input" placeholder="Verify selector: .sent-toast" spellcheck="false" />
+            <input id="app-rpa-f-recover" class="settings-input" placeholder="If it fails: use the icon button" />
+          </div>
+          <div class="rpa-grid"><div><label class="settings-label">Delay (ms)</label><input id="app-rpa-f-delay" type="number" min="0" class="settings-input" placeholder="0" /></div></div>
+          <div class="settings-actions" style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+            <div style="flex:1;"></div>
+            <button id="app-rpa-f-clear" class="action-btn" type="button">Clear</button>
+            <button id="app-rpa-f-save" class="action-btn primary" type="button">Map</button>
+          </div>
+        </div>
+        <div class="rpa-head" style="margin-top:6px;"><label class="settings-label">Sequences</label></div>
+        <p class="settings-hint" style="margin:0;">Shortcuts over the commands, run in order. A step is <code>command | value | wait-for</code>; a value may carry <code>{{placeholders}}</code> the caller fills.</p>
+        <div id="app-rpa-sequences" class="rpa-rows"></div>
+        <div class="rpa-form">
+          <label class="settings-label" id="app-rpa-seq-title" style="margin:0;">Save a sequence</label>
+          <div class="rpa-grid">
+            <div><label class="settings-label">Name</label><input id="app-rpa-s-name" class="settings-input" placeholder="send-mail" spellcheck="false" /></div>
+            <div><label class="settings-label">What it does</label><input id="app-rpa-s-desc" class="settings-input" placeholder="Compose and send a mail" /></div>
+          </div>
+          <label class="settings-label">Steps <span style="color:var(--text-2);font-weight:400;">— one per line</span></label>
+          <textarea id="app-rpa-s-steps" class="settings-input" rows="4" spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;" placeholder="compose\nto | {{to}}\nbody | {{text}}\nsend"></textarea>
+          <div class="settings-actions" style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+            <div style="flex:1;"></div>
+            <button id="app-rpa-s-clear" class="action-btn" type="button">Clear</button>
+            <button id="app-rpa-s-save" class="action-btn primary" type="button">Save</button>
+          </div>
+        </div>
+        <div id="app-rpa-status" class="rpa-status"></div>
+        <pre id="app-rpa-result" class="rpa-result hidden"></pre>
+      </div>`;
+    document.getElementById("app-rpa-f-action")?.addEventListener("change", () => rpaValueFieldFor(rpaVal("app-rpa-f-action")));
+    document.getElementById("app-rpa-f-clear")?.addEventListener("click", () => rpaFillForm(null));
+    document.getElementById("app-rpa-s-clear")?.addEventListener("click", () => rpaFillSeqForm(null));
+    document.getElementById("app-rpa-open")?.addEventListener("click", () => {
+      if (!currentApp) return;
+      openAppInWorkbench({ slug: currentApp.slug, name: currentApp.name, url: currentApp.url, glyphh: currentApp.appArchetype === "glyphh-app" || undefined });
+      setTimeout(() => void renderRpaTab(), 1500);
+    });
+    document.getElementById("app-rpa-pick")?.addEventListener("click", async () => {
+      rpaStatus("Point at the element on the panel (Esc cancels)…");
+      const r = await rpaCall<{ picked: { selector: string; tag: string; text: string; isEditable: boolean; isClickable: boolean } | null }>("pick", {});
+      if (!r) return;
+      if (!r.picked) { rpaStatus("Pick cancelled."); return; }
+      rpaSet("app-rpa-f-selector", r.picked.selector);
+      if (!rpaVal("app-rpa-f-desc") && r.picked.text) rpaSet("app-rpa-f-desc", r.picked.text.slice(0, 80));
+      if (!rpaEditing) { rpaSet("app-rpa-f-action", r.picked.isEditable ? "type" : r.picked.isClickable ? "click" : "read"); rpaValueFieldFor(rpaVal("app-rpa-f-action")); }
+      rpaStatus(`Picked <${r.picked.tag}> ${r.picked.text ? `“${r.picked.text.slice(0, 60)}”` : ""}`);
+    });
+    document.getElementById("app-rpa-f-save")?.addEventListener("click", async () => {
+      const delay = Number(rpaVal("app-rpa-f-delay"));
+      const guide = { pre: rpaVal("app-rpa-f-pre"), post: rpaVal("app-rpa-f-post"), verify: rpaVal("app-rpa-f-verify"), recover: rpaVal("app-rpa-f-recover"), ...(delay > 0 ? { delay } : {}) };
+      const r = await rpaCall<{ mapped: RpaCommandView }>("map", {
+        key: rpaVal("app-rpa-f-key"), description: rpaVal("app-rpa-f-desc"), action: rpaVal("app-rpa-f-action"),
+        selector: rpaVal("app-rpa-f-selector"), text: rpaVal("app-rpa-f-text"), url: rpaVal("app-rpa-f-url"), script: rpaVal("app-rpa-f-script"), waitFor: rpaVal("app-rpa-f-wait"), guide,
+      });
+      if (!r) return;
+      rpaStatus(`Mapped ${r.mapped.key} — tool ${toolName(r.mapped.key)}.`);
+      rpaFillForm(null);
+      await renderRpaTab();
+    });
+    document.getElementById("app-rpa-s-save")?.addEventListener("click", async () => {
+      const r = await rpaCall<{ saved: RpaSequenceView }>("sequenceSave", { name: rpaVal("app-rpa-s-name"), description: rpaVal("app-rpa-s-desc"), steps: rpaStepsOf(rpaVal("app-rpa-s-steps")) });
+      if (!r) return;
+      rpaStatus(`Saved ${r.saved.name} — tool ${toolName(r.saved.name)}.`);
+      rpaFillSeqForm(null);
+      await renderRpaTab();
+    });
+  }
+
+  const state = await rpaCall<{ live: boolean; commands: RpaCommandView[]; sequences: RpaSequenceView[] }>("commands", {});
+  const live = document.getElementById("app-rpa-live");
+  if (live) { live.textContent = state?.live ? "panel open" : "panel closed"; live.classList.toggle("up", !!state?.live); }
+  const result = document.getElementById("app-rpa-result");
+  const showResult = (v: unknown) => { if (!result) return; result.textContent = typeof v === "string" ? v : JSON.stringify(v, null, 2); result.classList.remove("hidden"); };
+
+  const cmdHost = document.getElementById("app-rpa-commands");
+  if (cmdHost) {
+    const cmds = state?.commands ?? [];
+    cmdHost.innerHTML = cmds.length ? cmds.map((c) => `
+      <div class="rpa-row" data-key="${escMkt(c.key)}">
+        <div class="rpa-row-main">
+          <div class="rpa-row-title">${escMkt(c.key)} <span class="rpa-tool">${escMkt(toolName(c.key))}</span></div>
+          <div class="rpa-row-sub">${escMkt(c.description)} · ${escMkt(c.action)}</div>
+          <div class="rpa-row-sel">${escMkt(c.selector || c.url || (c.script ? "script" : ""))}</div>
+        </div>
+        <div class="rpa-row-actions">
+          <button class="action-btn" data-act="test" type="button">Test</button>
+          <button class="action-btn" data-act="edit" type="button">Edit</button>
+          <button class="action-btn danger" data-act="remove" type="button">Remove</button>
+        </div>
+      </div>`).join("") : `<div class="inline-empty">Nothing mapped yet. Pick an element on the panel below, or ask the agent to map one.</div>`;
+    cmdHost.querySelectorAll<HTMLButtonElement>("button[data-act]").forEach((btn) => btn.addEventListener("click", async () => {
+      const key = (btn.closest(".rpa-row") as HTMLElement).dataset.key!;
+      const c = cmds.find((x) => x.key === key);
+      if (!c) return;
+      if (btn.dataset.act === "edit") { rpaFillForm(c); return; }
+      if (btn.dataset.act === "remove") {
+        if (!(await confirmAction({ title: `Remove ${key}?`, body: "Sequences that use it stop working until it is mapped again.", confirmLabel: "Remove", cancelLabel: "Cancel" }))) return;
+        if (await rpaCall("unmap", { key }) !== null) { rpaStatus(`Removed ${key}.`); await renderRpaTab(); }
+        return;
+      }
+      let value: string | undefined;
+      if (c.action === "type" || c.action === "goto" || c.action === "custom") {
+        const v = await promptAction(`Test ${key} — the value for {{value}}`, "", "", "Run");
+        if (v === null) return;
+        value = v;
+      }
+      rpaStatus(`Running ${key}…`);
+      const r = await rpaCall<{ result?: unknown; verified?: string }>("run", { command: key, ...(value !== undefined ? { value } : {}) });
+      if (!r) return;
+      rpaStatus(`${key} ran${r.verified ? ` and verified ${r.verified}` : ""}.`);
+      if (r.result !== undefined) showResult(r.result);
+    }));
+  }
+
+  const seqHost = document.getElementById("app-rpa-sequences");
+  if (seqHost) {
+    const seqs = state?.sequences ?? [];
+    seqHost.innerHTML = seqs.length ? seqs.map((sq) => `
+      <div class="rpa-row" data-name="${escMkt(sq.name)}">
+        <div class="rpa-row-main">
+          <div class="rpa-row-title">${escMkt(sq.name)} <span class="rpa-tool">${escMkt(toolName(sq.name))}</span></div>
+          <div class="rpa-row-sub">${escMkt(sq.description)}</div>
+          <div class="rpa-row-sel">${escMkt(sq.steps.map((st) => st.command).join(" → "))}</div>
+        </div>
+        <div class="rpa-row-actions">
+          <button class="action-btn" data-act="run" type="button">Run</button>
+          <button class="action-btn" data-act="edit" type="button">Edit</button>
+          <button class="action-btn danger" data-act="remove" type="button">Remove</button>
+        </div>
+      </div>`).join("") : `<div class="inline-empty">No sequences yet.</div>`;
+    seqHost.querySelectorAll<HTMLButtonElement>("button[data-act]").forEach((btn) => btn.addEventListener("click", async () => {
+      const name = (btn.closest(".rpa-row") as HTMLElement).dataset.name!;
+      const sq = seqs.find((x) => x.name === name);
+      if (!sq) return;
+      if (btn.dataset.act === "edit") { rpaFillSeqForm(sq); return; }
+      if (btn.dataset.act === "remove") {
+        if (!(await confirmAction({ title: `Remove ${name}?`, body: "The sequence and its tool go away; the commands stay.", confirmLabel: "Remove", cancelLabel: "Cancel" }))) return;
+        if (await rpaCall("sequenceRemove", { name }) !== null) { rpaStatus(`Removed ${name}.`); await renderRpaTab(); }
+        return;
+      }
+      const names = new Set<string>();
+      for (const st of sq.steps) for (const m of String(st.value ?? "").matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)) names.add(m[1]!);
+      const args: Record<string, string> = {};
+      for (const n of names) {
+        const v = await promptAction(`Run ${name} — the value for {{${n}}}`, "", "", "Next");
+        if (v === null) return;
+        args[n] = v;
+      }
+      rpaStatus(`Running ${name}…`);
+      const r = await rpaCall<{ steps: { command: string; result?: unknown }[] }>("sequenceRun", { sequence: name, args });
+      if (!r) return;
+      rpaStatus(`${name} ran: ${r.steps.length} ${r.steps.length === 1 ? "step" : "steps"}.`);
+      const reads = r.steps.filter((st) => st.result !== undefined);
+      if (reads.length) showResult(reads);
+    }));
+  }
 }
 
 // ── Marketplace tab — the listing an installer sees ──────────────
@@ -659,6 +938,13 @@ async function openPanelAppDetail(app: PanelApp) {
   // A tab is a tab (his order, 2026-09-16): one basic form for every kind. An
   // installed app's tools, connections and contents live on Settings → Build → Apps.
   document.querySelectorAll<HTMLElement>(".app-detail-tab:not([data-tab='dashboard'])").forEach((el) => el.classList.add("hidden"));
+  // RPA ON A TAB (2026-10-07): desktop only, for a tab that has a panel to
+  // drive (a web address or a built app) — never a native launcher row.
+  const rpaAble = !IS_WEB && !!rpaDoor() && !mktInstalled && (!!app.url || app.appArchetype === "glyphh-app");
+  document.querySelector(".app-detail-tab[data-tab='rpa']")?.classList.toggle("hidden", !rpaAble);
+  const rpaPane = document.getElementById("app-rpa-pane");
+  if (rpaPane) { delete rpaPane.dataset.built; rpaPane.innerHTML = ""; }
+  rpaEditing = null; rpaEditingSeq = null;
   document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => {
     // The consumer view keeps Connections (the grants the app needs) and
     // drops Releases (the publisher's history, not the installer's).

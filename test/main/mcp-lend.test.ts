@@ -38,6 +38,12 @@ describe("lendSplit", () => {
     expect(s.local("glyphh_app_scaffold")).toBe(true);
     expect(MACHINE_TOOLS.has("app_install")).toBe(true);
     expect(s.local("app_deploy")).toBe(false);
+    // RPA ON A TAB (2026-10-07): the picker and the mapped runs act on THIS
+    // screen's panels — local only, never the gateway.
+    for (const t of ["rpa_commands", "rpa_pick", "rpa_map", "rpa_unmap", "rpa_run", "rpa_sequence_save", "rpa_sequence_remove", "rpa_sequence_run"]) {
+      expect(s.local(t), t).toBe(true);
+      expect(s.gateway(t), t).toBe(false);
+    }
     // One name, one server: nothing the loop may see is lent twice or by nobody.
     for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS].filter((n) => !LOOP_HIDDEN.has(n))) expect([s.local(t), s.gateway(t)], t).toContain(true);
     for (const t of [...WINDOW_TOOLS, ...MACHINE_TOOLS, ...CLOUD_TOOLS]) expect(s.local(t) && s.gateway(t), t).toBe(false);

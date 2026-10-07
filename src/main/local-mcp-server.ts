@@ -840,6 +840,79 @@ function buildMcpServer(): McpServer {
     async (a) => via("rpa.goto", a),
   );
 
+  // ── RPA ON A TAB (his order, 2026-10-07): the mapped commands and the
+  // sequences a saved tab carries, which the agent builds out itself. Every
+  // mapped command is also its own tool, <tab>_<key>, in the loop's catalog. ──
+  const guideArg = z.object({
+    pre: z.string().optional().describe("What must be true before it runs"),
+    post: z.string().optional().describe("What to expect after it succeeds"),
+    verify: z.string().optional().describe("A selector that must exist afterwards, or the run failed"),
+    recover: z.string().optional().describe("What to try when it fails"),
+    delay: z.number().optional().describe("Milliseconds to wait after acting, before verifying"),
+  }).optional().describe("The guide that makes the command reliable");
+  mcp.tool(
+    "rpa_commands",
+    "The RPA commands and sequences mapped on a saved tab (its slug from panels_available), and whether its panel is open. Map more with rpa_pick + rpa_map; run one with rpa_run, or by its own tool name <tab>_<command>.",
+    { app: z.string().describe("The tab's slug") },
+    async (a) => via("rpa.commands", a),
+  );
+  mcp.tool(
+    "rpa_pick",
+    "Ask the user to point at an element on the tab's panel: a picker overlay appears on the panel on their screen (it opens if it is not up), they click the element, and you get its selector, tag, text and whether it is editable or clickable. Use it when you cannot find a selector by rpa_read; then rpa_map it.",
+    { app: z.string().describe("The tab's slug") },
+    async (a) => via("rpa.pick", a),
+  );
+  mcp.tool(
+    "rpa_map",
+    "Map (or remap) an RPA command on a saved tab: a key, what it does, the action (click, type, read, readHtml, goto, custom) and the selector it acts on. `text`/`url` take {{value}} for the caller's value; `custom` runs `script` in the page with VALUE in scope. Give it a guide (verify selector, delay, recover) so it runs reliably without the user.",
+    {
+      app: z.string().describe("The tab's slug"),
+      key: z.string().describe("The command key: lowercase, digits, _ or -"),
+      description: z.string().describe("What it does, for whoever runs it"),
+      action: z.enum(["click", "type", "read", "readHtml", "goto", "custom"]),
+      selector: z.string().optional().describe("The element (click, type, read, readHtml)"),
+      text: z.string().optional().describe("type: the text; {{value}} is the caller's value (default)"),
+      url: z.string().optional().describe("goto: the address; {{value}} allowed"),
+      script: z.string().optional().describe("custom: JavaScript run in the page; VALUE is in scope"),
+      waitFor: z.string().optional().describe("A selector to wait for before acting"),
+      guide: guideArg,
+    },
+    async (a) => via("rpa.map", a),
+  );
+  mcp.tool(
+    "rpa_unmap",
+    "Remove an RPA command from a saved tab.",
+    { app: z.string(), key: z.string() },
+    async (a) => via("rpa.unmap", a),
+  );
+  mcp.tool(
+    "rpa_run",
+    "Run one mapped RPA command on the tab's panel, the user watching (the panel opens if it is not up). `value` fills {{value}} for type, goto and custom. A read returns the text.",
+    { app: z.string(), command: z.string(), value: z.string().optional() },
+    async (a) => via("rpa.run", a),
+  );
+  mcp.tool(
+    "rpa_sequence_save",
+    "Save (or replace) an RPA sequence on a saved tab: a shortcut of ordered steps over its mapped commands. A step's `value` may carry {{placeholders}}, filled from rpa_sequence_run's args; a read's result is in scope for later steps as {{<command>}}. The sequence becomes its own tool, <tab>_<name>.",
+    {
+      app: z.string(), name: z.string().describe("lowercase, digits, _ or -"), description: z.string(),
+      steps: z.array(z.object({ command: z.string(), value: z.string().optional(), waitFor: z.string().optional() })).min(1),
+    },
+    async (a) => via("rpa.sequenceSave", a),
+  );
+  mcp.tool(
+    "rpa_sequence_remove",
+    "Remove an RPA sequence from a saved tab.",
+    { app: z.string(), name: z.string() },
+    async (a) => via("rpa.sequenceRemove", a),
+  );
+  mcp.tool(
+    "rpa_sequence_run",
+    "Run a saved RPA sequence on the tab's panel, step by step, the user watching. `args` fills the steps' {{placeholders}}. It stops at the first failing step and says which.",
+    { app: z.string(), sequence: z.string(), args: z.record(z.string(), z.unknown()).optional() },
+    async (a) => via("rpa.sequenceRun", a),
+  );
+
   // ── Scrape (the runners for saved loops/skills/agents left with the scheduler, 2026-09-21) ──
   // ── Memory pages (his order, 2026-09-20): what the curator skill reads and writes ──
   const memText = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });

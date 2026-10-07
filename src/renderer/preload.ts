@@ -647,6 +647,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   // (attach + loopback MCP) can drive it.
   rpaRegister: (slug: string, wcId: number) => ipcRenderer.send("wb:rpa-register", slug, wcId),
   rpaUnregister: (slug: string) => ipcRenderer.send("wb:rpa-unregister", slug),
+  // RPA ON A TAB (2026-10-07): the Tabs page's RPA tab drives the same doors
+  // the agent's tools do — commands, pick, map, unmap, run, sequenceSave,
+  // sequenceRemove, sequenceRun — on main's registry.
+  rpaTab: (method: string, params: Record<string, unknown>) =>
+    ipcRenderer.invoke("rpa-tab", method, params) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
   // Invoke an installed app's declared tool locally — the Apps page MCP "Test" button.
   appCallTool: (slug: string, tool: string, args: unknown) =>
     ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,

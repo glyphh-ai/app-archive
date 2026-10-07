@@ -31,6 +31,9 @@ import { frameTargets } from "./attach-run-frames.js";
 import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
+import { mineSync as tabRows } from "./apps-store.js";
+import { dispatchRelayMethod } from "./relay-client.js";
+import { commandToolSpec, rpaOf, sequenceToolSpec } from "../shared/rpa.js";
 
 export type { LoopPermission };
 
@@ -93,6 +96,30 @@ async function catalogEntries(): Promise<LoopCatalogEntry[]> {
       });
     }
   }
+  // RPA ON A TAB (his order, 2026-10-07): every command mapped on a saved tab,
+  // and every sequence, is a tool of its own, <tab>_<key>, that drives the
+  // tab's panel on screen. The family is the tab, so "do X in Gmail" finds it.
+  for (const row of tabRows()) {
+    const cfg = rpaOf(row.config);
+    const call = (method: string, params: Record<string, unknown>) => async () => {
+      try { return { text: asText(await dispatchRelayMethod(method, params)), failed: false }; }
+      catch (err) { return { text: err instanceof Error ? err.message : String(err), failed: true }; }
+    };
+    for (const cmd of Object.values(cfg.commands)) {
+      const spec = commandToolSpec(row.slug, cmd);
+      out.push({
+        name: spec.name, description: spec.description, family: `rpa: ${row.name}`, inputSchema: spec.inputSchema, readOnly: spec.readOnly,
+        run: async (args) => call("rpa.run", { app: row.slug, command: cmd.key, ...(args.value !== undefined ? { value: String(args.value) } : {}) })(),
+      });
+    }
+    for (const seq of Object.values(cfg.sequences)) {
+      const spec = sequenceToolSpec(row.slug, seq);
+      out.push({
+        name: spec.name, description: spec.description, family: `rpa: ${row.name}`, inputSchema: spec.inputSchema,
+        run: async (args) => call("rpa.sequenceRun", { app: row.slug, sequence: seq.name, args })(),
+      });
+    }
+  }
   if (connectionsAvailable()) {
     const conns = await Promise.race([
       listConnectionTools().catch(() => []),
@@ -137,7 +164,10 @@ function libraryChanged(): boolean {
   try {
     const skills = listSkills(["skill", "task", "plugin"]).map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
     const conns = listConnRows().map((c) => `${c.slug}:${c.enabled ? 1 : 0}:${c.hiddenTools.join(",")}`).sort();
-    sig = createHash("sha1").update([...skills, "|", ...conns].join("\n")).digest("hex");
+    // A tab's RPA mapping changed (a command mapped, a sequence saved) → the
+    // catalog carries a new tool; the tab rows ride the fingerprint for it.
+    const tabs = tabRows().map((t) => `${t.slug}:${t.updatedAt}`).sort();
+    sig = createHash("sha1").update([...skills, "|", ...conns, "|", ...tabs].join("\n")).digest("hex");
   } catch { return false; }
   if (sig === lastLibrary) return false;
   const first = lastLibrary === "";

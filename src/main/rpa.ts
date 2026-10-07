@@ -161,6 +161,10 @@ export function installRpaHandlers(): void {
     return { dataUrl: `data:image/png;base64,${png.toString("base64")}` };
   });
 
+  // The live webContents id behind a panel name — for the mapping runner
+  // (rpa-map.ts), which waits on selectors and runs the picker in the page.
+  registerRelayHandler("rpa.target", async (params) => ({ id: target(params).id }));
+
   // Navigate the panel to a URL.
   registerRelayHandler("rpa.goto", async (params) => {
     const url = str(params, "url");
