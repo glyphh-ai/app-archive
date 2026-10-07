@@ -47,87 +47,14 @@ vi.mock("../../src/main/local-agents.js", () => ({
   readAgentRow: (slug: string) => agents.get(slug) ?? null,
 }));
 
-import { desktopLayouts, getLayoutManager } from "../../src/main/layout-manager.js";
-import * as appsStore from "../../src/main/apps-store.js";
 import { readTombstones } from "../../src/main/library-events.js";
-import { agentAdapter, bundleAdapter, dripAdapter, manifestOf, readSyncState, scheduleAdapter, tabAdapter, workspaceAdapter } from "../../src/main/library-adapters.js";
+import { bundleAdapter, dripAdapter, manifestOf, readSyncState, scheduleAdapter } from "../../src/main/library-adapters.js";
 import { initLocalDb, getLocalDb } from "../../src/main/local-db.js";
 import { DripManager, setDripManagerInstance } from "../../src/main/drip-manager.js";
 import { deleteSchedule, listSchedulesView, saveSchedule, setScheduleEnabled, stopLoopScheduler } from "../../src/main/local-library.js";
 import type { MemberLibraryItem } from "@glyphh/sdk";
 
 const item = (kind: MemberLibraryItem["kind"], id: string, updatedAt: number, data: unknown, files: MemberLibraryItem["files"] = []): MemberLibraryItem => ({ kind, id, updatedAt, deletedAt: null, data, files, createdAt: "" });
-
-describe("workspaces", () => {
-  it("a save stamps the writer's clock; the row carries the grid; a delete tombstones; a pull lands; a remote delete removes", async () => {
-    const lm = getLayoutManager();
-    const before = Date.now();
-    await lm.saveLayout({ name: "Research Desk", version: 2, cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [] });
-    const file = JSON.parse(readFileSync(join(root, "user", "workspaces", "research-desk", "workspace.json"), "utf-8"));
-    expect(file.updatedAt).toBeGreaterThanOrEqual(before);
-    // Made HERE (his order, 2026-10-06): the save stamps the surface — a desktop's.
-    expect(file.surface).toBe("desktop");
-    const rows = workspaceAdapter().list();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: "research-desk", updatedAt: file.updatedAt, data: { name: "Research Desk", cols: 1, surface: "desktop", updatedAt: file.updatedAt } });
-    // A pull: another machine's grid, at the server's clock.
-    workspaceAdapter().apply(item("workspace", "web-made", 5_000, { name: "Web Made", version: 2, cols: 3, rows: 1, colWidths: [1, 1, 1], rowHeights: [1], cells: [] }));
-    expect(workspaceAdapter().list().find((r) => r.id === "web-made")).toMatchObject({ updatedAt: 5_000, data: { cols: 3 } });
-    expect(existsSync(join(root, "user", "workspaces", "web-made", "workspace.json"))).toBe(true);
-    // ONE LIST (2026-10-06): a workspace saved on the web is adopted like any other row — the folder is a cache of the server's rows.
-    workspaceAdapter().apply(item("workspace", "cloud-only", 6_000, { name: "Cloud Only", version: 2, surface: "web", cols: 2, rows: 1, colWidths: [1, 1], rowHeights: [1], cells: [] }));
-    expect(workspaceAdapter().list().find((r) => r.id === "cloud-only")).toMatchObject({ updatedAt: 6_000, data: { cols: 2, surface: "web" } });
-    expect(existsSync(join(root, "user", "workspaces", "cloud-only", "workspace.json"))).toBe(true);
-    // THE DESKTOP'S LIST (his order, 2026-10-06): the web-made one stays in the folder and the sync's
-    // list, but the list the wall and the Workspaces page read is the desktop-made ones — the stamped
-    // one and the one from before the stamp.
-    expect(desktopLayouts(lm.listLayouts()).map((g) => g.name).sort()).toEqual(["Research Desk", "Web Made"]);
-    expect(workspaceAdapter().list().map((r) => r.id).sort()).toEqual(["cloud-only", "research-desk", "web-made"]);
-    // A local delete: the folder goes, a tombstone is written at the delete's clock.
-    expect(await lm.deleteLayout("Research Desk")).toBe(true);
-    expect(readTombstones()["workspace:research-desk"]).toBeGreaterThanOrEqual(before);
-    // A remote delete: the folder goes, quietly.
-    workspaceAdapter().remove("web-made");
-    expect(workspaceAdapter().list().map((r) => r.id)).toEqual(["cloud-only"]);
-    expect(readTombstones()["workspace:web-made"]).toBeUndefined();
-  });
-  it("a file written before stamps existed takes its mtime as the clock", () => {
-    const dir = join(root, "user", "workspaces", "old");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "workspace.json"), JSON.stringify({ name: "Old", version: 2, cols: 1, rows: 1, colWidths: [1], rowHeights: [1], cells: [] }));
-    utimesSync(join(dir, "workspace.json"), new Date(123_000), new Date(123_000));
-    getLayoutManager().resetForUserChange();
-    expect(workspaceAdapter().list().find((r) => r.id === "old")).toMatchObject({ updatedAt: 123_000 });
-  });
-});
-
-describe("app tabs", () => {
-  it("the record is tab.json minus its config vars; the ISO stamp is the clock; a pull keeps the machine's vars", async () => {
-    const made = await appsStore.createEntry({ kind: "web", slug: "crm", name: "CRM", url: "https://crm", config: { iconUrl: "https://i", env: { TOKEN: "s3cret" } } });
-    const [row] = tabAdapter().list();
-    expect(row).toMatchObject({ id: "crm", updatedAt: Date.parse(made.updatedAt), data: { slug: "crm", config: { iconUrl: "https://i" } } });
-    expect(JSON.stringify(row.data)).not.toContain("s3cret");
-    // The web renamed it: the pull lands with the server's clock, the env stays local.
-    tabAdapter().apply(item("tab", "crm", 9_000_000, { ...(row.data as object), name: "CRM (web)", config: { iconUrl: "https://new" } }));
-    const after = appsStore.readRow("crm")!;
-    expect(after).toMatchObject({ name: "CRM (web)", updatedAt: new Date(9_000_000).toISOString(), config: { iconUrl: "https://new", env: { TOKEN: "s3cret" } } });
-    expect(tabAdapter().list()[0].updatedAt).toBe(9_000_000);
-    await appsStore.removeEntry("crm");
-    expect(readTombstones()["tab:crm"]).toBeGreaterThan(0);
-    expect(tabAdapter().list()).toEqual([]);
-  });
-});
-
-describe("agents", () => {
-  it("the record is the agent file; the ISO stamp is the clock; a pull restamps it to the server's", () => {
-    agents.set("ada", { id: "ada", slug: "ada", name: "Ada", description: "", prompt: "", provider: "", model: "", skills: [], apps: [], live: true, guardrails: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.500Z" });
-    expect(agentAdapter().list()).toEqual([{ id: "ada", updatedAt: Date.parse("2026-10-04T00:00:00.500Z"), data: agents.get("ada") }]);
-    agentAdapter().apply(item("agent", "ada", 7_000, { ...(agents.get("ada") as object), name: "Ada 2" }));
-    expect(agents.get("ada")).toMatchObject({ name: "Ada 2", updatedAt: new Date(7_000).toISOString() });
-    agentAdapter().remove("ada");
-    expect(agents.size).toBe(0);
-  });
-});
 
 describe("skills and tasks (folders)", () => {
   const skills = join(root, "user", "skills");

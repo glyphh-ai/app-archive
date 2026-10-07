@@ -1,23 +1,18 @@
 /**
- * Layouts — the LOCAL workspace library (THE PURGE, 2026-09-10).
+ * Layouts — THE WORKSPACES, read from the server and held in memory.
  *
- * A workspace persists as a folder on disk:
- *
- *   ~/.glyphh/workspaces/<id>/workspace.json   — the grid definition (this file)
- *   ~/.glyphh/workspaces/<id>/state.json       — drag/panel state (workspace-state.ts)
- *
- * `<id>` is the workspace's slug. The server layout library is gone — the
- * files ARE the truth; the old per-user `.layouts` cache imports once, then
- * retires. The BrowserView grid engine left long ago: opening a layout goes
- * through app-resolver's openLayoutByName, which turns every cell into a
- * renderer-owned workbench panel. What remains is CRUD over the folder.
+ * Until 2026-10-07 a workspace was a folder on this machine
+ * (~/.glyphh/<user>/workspaces/<id>/workspace.json) the library sync kept
+ * level with the server. His order that day: the server is the only truth;
+ * this manager keeps a RUNNING COPY of the member library's `workspace` rows
+ * (library-remote.ts primes it at sign-in and refreshes it) and writes
+ * straight back. Nothing on disk. Opening a layout still goes through
+ * app-resolver's openLayoutByName, which turns every cell into a
+ * renderer-owned workbench panel.
  */
 
-import fs from "fs";
-import path from "path";
-import { userScopedPath } from "./app-paths.js";
-import { layoutRowOf, workspaceId as sharedWorkspaceId, workspaceSurfaceOf, type LayoutRowLike, type WorkspaceSurface } from "../shared/member-library.js";
-import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
+import { isGridLayout, layoutRowOf, workspaceId as sharedWorkspaceId, workspaceSurfaceOf, type LayoutRowLike, type WorkspaceSurface } from "../shared/member-library.js";
+import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
 // The flattened spec shape the palette / app resolver / agent tools read.
 // (The name is historical — "server" layouts are local files now.)
@@ -45,8 +40,6 @@ export interface ServerLayout {
   /** The SPACE this layout belongs to (chat | cowork | code). */
   space?: "chat" | "cowork" | "code";
 }
-
-export const WORKSPACES_DIR = (): string => userScopedPath("workspaces");
 
 /** The folder id a workspace persists under — its name, slugged (the
  *  member library's record id for the workspace, shared/member-library.ts). */
@@ -124,17 +117,13 @@ export function toLayoutRow(l: GridLayout): LayoutRow {
   return layoutRowOf(l);
 }
 
-/** Every workspace on disk, flattened to the spec shape. */
+/** Every workspace in the running copy, flattened to the spec shape. */
 export async function fetchServerLayouts(): Promise<ServerLayout[]> {
   const out: ServerLayout[] = [];
-  let ids: string[] = [];
-  try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return out; }
-  for (const id of ids) {
-    const file = path.join(WORKSPACES_DIR(), id, "workspace.json");
-    try {
-      const grid = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
-      if (!Array.isArray(grid.cells)) continue;
-      out.push({
+  for (const grid of getLayoutManager().listLayouts()) {
+    const id = sharedWorkspaceId(grid.name);
+    if (!Array.isArray(grid.cells)) continue;
+    out.push({
         id,
         name: grid.name || id,
         cols: Math.max(1, grid.cols || 1),
@@ -149,150 +138,59 @@ export async function fetchServerLayouts(): Promise<ServerLayout[]> {
         ...(grid.space === "chat" || grid.space === "cowork" || grid.space === "code" ? { space: grid.space } : {}),
         ...(grid.modelSelections && typeof grid.modelSelections === "object" ? { modelSelections: grid.modelSelections } : {}),
       });
-    } catch { /* not a workspace folder — skip */ }
   }
   return out;
 }
 
-// ── Legacy types (one-time import of the old per-user cache) ─
-
-interface LegacySplit { panelId: string; x: number; y: number; width: number; height: number }
-interface LegacyLayout { name: string; splits: LegacySplit[] }
-
-const legacyFile = () => userScopedPath(".layouts");
-
-// ── LayoutManager ───────────────────────────────────────────
-
 export class LayoutManager {
   private layouts: Map<string, GridLayout> = new Map();
+  private loading: Promise<void> | null = null;
 
-  constructor() {
-    this.load();
-  }
-
-  // ── Layout CRUD ───────────────────────────────────────────
-
-  /** Save a workspace — its folder is created on first save. The save is
-   *  stamped with this client's clock and the surface it was made on (a grid
-   *  without one is this desktop's), then announced, so the sync pushes it. */
-  saveLayout(grid: GridLayout): Promise<void> {
+  /** Save a workspace: stamped with this client's clock and the surface it
+   *  was made on (a grid without one is this desktop's), written to the
+   *  server, held in the running copy. */
+  async saveLayout(grid: GridLayout): Promise<void> {
     const stamped: GridLayout = { ...grid, surface: grid.surface ?? "desktop", updatedAt: Date.now() };
+    await remotePut("workspace", sharedWorkspaceId(stamped.name), stamped);
     this.layouts.set(stamped.name, stamped);
-    this.persistOne(stamped);
-    noteLibrarySave("workspace", workspaceId(stamped.name));
-    return Promise.resolve();
   }
 
-  /** Delete a workspace — the whole folder goes (definition AND state), a
-   *  tombstone is written and the sync pushes the remove. */
+  /** Delete a workspace on the server; the running copy drops it. */
   async deleteLayout(name: string): Promise<boolean> {
     if (!this.layouts.has(name)) return false;
-    this.removeFolder(name);
-    noteLibraryDelete("workspace", workspaceId(name));
-    return true;
-  }
-
-  // ── The sync's side (library-sync.ts): pulls land here, remote deletes too ──
-
-  /** A workspace the server holds, written as-is (its clock is the server
-   *  row's). Never announced — it came FROM the sync. */
-  applyRemoteLayout(grid: GridLayout): void {
-    this.layouts.set(grid.name, grid);
-    this.persistOne(grid);
-  }
-
-  /** The server tombstoned this workspace (by folder id): the folder goes, quietly. */
-  removeLayoutLocal(id: string): boolean {
-    const hit = Array.from(this.layouts.values()).find((l) => workspaceId(l.name) === id);
-    if (!hit) return false;
-    this.removeFolder(hit.name);
-    return true;
-  }
-
-  private removeFolder(name: string): void {
+    await remoteRemove("workspace", sharedWorkspaceId(name));
     this.layouts.delete(name);
-    try { fs.rmSync(path.join(WORKSPACES_DIR(), workspaceId(name)), { recursive: true, force: true }); }
-    catch { /* already gone */ }
+    return true;
   }
 
-  /** List all layouts */
+  /** Every workspace in the running copy. */
   listLayouts(): GridLayout[] {
     return Array.from(this.layouts.values());
   }
 
-  /** The files are the truth — re-scan and return. (Name kept from the
-   *  server-sync era; the layouts-list IPC still calls it.) */
+  /** Reload the running copy from the server and return it. */
   async refreshAndList(): Promise<GridLayout[]> {
-    this.layouts.clear();
-    this.load();
+    await this.load();
     return this.listLayouts();
   }
 
-  // ── Persistence ───────────────────────────────────────────
-
-  private load() {
-    // One-time import: the old per-user `.layouts` cache becomes folders.
-    try {
-      const raw = JSON.parse(fs.readFileSync(legacyFile(), "utf-8")) as unknown[];
-      for (const item of raw) {
-        const obj = item as Record<string, unknown>;
-        const grid = obj.version === 2
-          ? (obj as unknown as GridLayout)
-          : this.migrateLayout(obj as unknown as LegacyLayout);
-        if (!fs.existsSync(path.join(WORKSPACES_DIR(), workspaceId(grid.name), "workspace.json"))) {
-          this.persistOne(grid);
-        }
+  private load(): Promise<void> {
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      const fresh = await remoteList<GridLayout>("workspace");
+      this.layouts.clear();
+      for (const r of fresh) {
+        if (!isGridLayout(r.data) || !r.data.name) continue;
+        this.layouts.set(r.data.name, { ...(r.data as GridLayout), updatedAt: r.updatedAt });
       }
-      fs.renameSync(legacyFile(), `${legacyFile()}.migrated`);
-      console.log("[layouts] imported legacy .layouts into ~/.glyphh/workspaces");
-    } catch { /* no legacy cache — nothing to import */ }
-
-    let ids: string[] = [];
-    try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return; }
-    for (const id of ids) {
-      try {
-        const grid = JSON.parse(fs.readFileSync(path.join(WORKSPACES_DIR(), id, "workspace.json"), "utf-8")) as GridLayout;
-        if (grid.name && Array.isArray(grid.cells)) this.layouts.set(grid.name, grid);
-      } catch { /* not a workspace folder — skip */ }
-    }
+    })().finally(() => { this.loading = null; });
+    return this.loading;
   }
 
-  private persistOne(grid: GridLayout): void {
-    try {
-      const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
-      fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, "workspace.json");
-      fs.writeFileSync(`${file}.tmp`, JSON.stringify(grid, null, 2), "utf-8");
-      fs.renameSync(`${file}.tmp`, file);
-    } catch (err) {
-      console.error(`[layouts] failed to persist "${grid.name}":`, err instanceof Error ? err.message : err);
-    }
-  }
-
-  /** Identity switch — workspaces are machine-local now, so this is just a
-   *  re-scan (kept because auth.ts calls it on account change). */
+  /** Identity switch: the copy is the previous member's — drop it and reload. */
   resetForUserChange(): void {
     this.layouts.clear();
-    this.load();
-  }
-
-  private migrateLayout(legacy: LegacyLayout): GridLayout {
-    const n = legacy.splits.length;
-    return {
-      name: legacy.name,
-      version: 2,
-      cols: n,
-      rows: 1,
-      colWidths: legacy.splits.map((s) => s.width),
-      rowHeights: [1],
-      cells: legacy.splits.map((s, i) => ({
-        panelId: s.panelId,
-        col: i,
-        row: 0,
-        colSpan: 1,
-        rowSpan: 1,
-      })),
-    };
+    void this.load().catch(() => undefined);
   }
 }
 

@@ -6,7 +6,9 @@
  * and the scheduled tasks it fires. Where a session is you driving a loop,
  * an agent is the same machinery running without you.
  *
- *   ~/.glyphh/agents/<slug>.json   — the agent record (below)
+ *   the member library's `agent` rows — the agent record (below), read from
+ *                                    the server and held in memory (his order,
+ *                                    2026-10-07: nothing replicated to disk)
  *   user-state.sqlite              — its tasks ARE loop_schedules rows
  *                                    stamped owner_agent_id (migration 10)
  *
@@ -21,9 +23,6 @@
  * with an owner. No parallel scheduler, no second run table.
  */
 
-import fs from "fs";
-import path from "path";
-import { userScopedPath } from "./app-paths.js";
 import { ipcMain } from "electron";
 import cron from "node-cron";
 import { getLocalDb } from "./local-db.js";
@@ -33,10 +32,9 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, type GuardrailsPolicyLike } from "../shared/member-library.js";
-import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
-
-const AGENTS_DIR = (): string => userScopedPath("agents");
+import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike } from "../shared/member-library.js";
+import { noteLibraryDelete } from "./library-events.js";
+import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
 /** Local caps. Blank fields mean "no cap" — the pre-purge page called these
  *  guardrails and inherited an org ceiling; locally there is no ceiling, so
@@ -94,25 +92,34 @@ const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
+// THE RUNNING COPY of the server's agent rows (library-remote.ts primes it).
+const agents = new Map<string, AgentRow>();
 function readAgent(slug: string): AgentRow | null {
-  try { return JSON.parse(fs.readFileSync(path.join(AGENTS_DIR(), `${slug}.json`), "utf-8")) as AgentRow; }
-  catch { return null; }
+  return agents.get(String(slug)) ?? null;
+}
+/** Load (or reload) every agent the server holds for this member. */
+export async function primeAgents(): Promise<void> {
+  const fresh = await remoteList<AgentRow>("agent");
+  const before = new Map(agents);
+  agents.clear();
+  for (const r of fresh) {
+    if (!isAgentRow(r.data)) continue;
+    const row = { ...(r.data as AgentRow), slug: r.id, id: r.id, updatedAt: new Date(r.updatedAt).toISOString() };
+    agents.set(row.slug, row);
+    const old = before.get(row.slug);
+    if (!old || old.live !== row.live) rearmTasksOf(row.slug);
+  }
+  announceAgents();
 }
 
+/** The row lands in the running copy at once and on the server behind it. */
 function writeAgent(row: AgentRow): void {
-  fs.mkdirSync(AGENTS_DIR(), { recursive: true });
-  const file = path.join(AGENTS_DIR(), `${row.slug}.json`);
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(row, null, 2), "utf-8");
-  fs.renameSync(`${file}.tmp`, file);
+  agents.set(row.slug, row);
+  void remotePut("agent", row.slug, row).catch((e) => console.warn("[agents] save failed:", String(e)));
 }
 
 export function listAgents(): AgentRow[] {
-  let names: string[] = [];
-  try { names = fs.readdirSync(AGENTS_DIR()).filter((n) => n.endsWith(".json")); } catch { return []; }
-  return names
-    .map((n) => readAgent(n.slice(0, -5)))
-    .filter((a): a is AgentRow => !!a)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(agents.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function getAgent(ref: string): AgentRow {
@@ -149,32 +156,12 @@ export function saveAgent(input: AgentInput): AgentRow {
   // Live flips park or arm every one of its tasks at once.
   if (!existing || existing.live !== row.live) rearmTasksOf(row.slug);
   announceAgents();
-  noteLibrarySave("agent", row.slug);
   return row;
 }
 
-/** Delete the agent: its schedules go with it, a tombstone is written and
- *  the sync pushes the remove. */
+/** Delete the agent: its schedules go with it and the server drops the row. */
 export function deleteAgent(ref: string): void {
   const slug = String(ref);
-  removeAgentLocal(slug);
-  noteLibraryDelete("agent", slug);
-}
-
-// ── The sync's side (library-sync.ts) ────────────────────────────────────────
-
-/** An agent the server holds, written as-is (its ISO `updatedAt` IS the
- *  server row's clock); its tasks re-arm by the new `live`. Never announced to
- *  the sync — it came from there — but the roster listeners hear it. */
-export function applyRemoteAgent(row: AgentRow): void {
-  const existing = readAgent(row.slug);
-  writeAgent(row);
-  if (!existing || existing.live !== row.live) rearmTasksOf(row.slug);
-  announceAgents();
-}
-
-/** The agent goes without a tombstone — the server already holds one. */
-export function removeAgentLocal(slug: string): void {
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
   // would keep firing a prompt nobody can see or edit. Each is tombstoned:
@@ -184,11 +171,12 @@ export function removeAgentLocal(slug: string): void {
   const owned = rawTasksOf(slug).map((t) => t.id);
   db.prepare("DELETE FROM loop_schedules WHERE owner_agent_id = ?").run(slug);
   for (const id of owned) noteLibraryDelete("schedule", id);
-  fs.rmSync(path.join(AGENTS_DIR(), `${slug}.json`), { force: true });
+  agents.delete(slug);
+  void remoteRemove("agent", slug).catch((e) => console.warn("[agents] delete failed:", String(e)));
   announceAgents();
 }
 
-/** The agent file as it is, for the sync's local list. */
+/** The agent row as the running copy holds it (schedule-store reads `live`). */
 export function readAgentRow(slug: string): AgentRow | null { return readAgent(slug); }
 
 // ── Tasks (schedule rows owned by an agent) ──────────────────────────────────

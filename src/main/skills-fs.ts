@@ -75,9 +75,13 @@ export interface SkillDetail extends SkillSummary {
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".DS_Store"]);
 
+// THE APP HOME IS GONE (his order, 2026-10-07): an app is a cloud instance;
+// nothing of one lives on this disk. The source name stays for the bundle
+// TYPE a folder can declare; it lists nothing and adopts nothing.
+const NO_HOME = (): string => userScopedPath(".no-app-home");
 const ROOTS: Record<SkillSource, () => string> = {
   glyphh: () => userScopedPath("skills"),
-  app: () => userScopedPath("apps"),
+  app: NO_HOME,
   plugin: () => userScopedPath("plugins"),
   task: () => TASKS_HOME(),
   claude: () => path.join(homedir(), ".claude", "skills"),
@@ -276,8 +280,9 @@ function adoptAll(): void {
       if (!e.isDirectory() || e.name.startsWith(".")) continue;
       const src = path.join(root, e.name);
       if (!fs.existsSync(path.join(src, "SKILL.md"))) continue;
+      if (isApp(src)) continue;   // an app bundle in a CLI's folder is not adopted: apps live in the cloud
       try {
-        const target = isApp(src) ? ROOTS.app() : home;
+        const target = home;
         fs.mkdirSync(target, { recursive: true });
         let dest = path.join(target, e.name);
         if (fs.existsSync(dest)) {
@@ -298,7 +303,7 @@ export function syncLinks(): void {
   adoptAll();
   // Both homes link into every CLI: an app's SKILL.md is how agents drive it.
   const homes: Array<[string, string[]]> = [];
-  for (const home of [ROOTS.glyphh(), ROOTS.app()]) {
+  for (const home of [ROOTS.glyphh()]) {
     let names: string[] = [];
     try { names = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* none yet */ }
     homes.push([home, names]);
@@ -360,7 +365,7 @@ function syncPluginMarketplace(): void {
 /** The homes a kind reads from. A list of kinds unions them, which is how one
  *  page lists skills and apps together while both pages still exist. */
 const SOURCES_FOR = (kind: HomeKind): SkillSource[] =>
-  kind === "app" ? ["app"] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
+  kind === "app" ? [] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
 
 export function listSkills(kind: HomeKind | HomeKind[] = "skill"): SkillSummary[] {
   syncLinks();

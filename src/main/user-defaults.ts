@@ -18,9 +18,7 @@
  *          Glyphh (full height), with the EDITOR pinned.
  */
 
-import fs from "fs";
-import path from "path";
-import { WORKSPACES_DIR, workspaceId, type GridLayout } from "./layout-manager.js";
+import { getLayoutManager, type GridLayout } from "./layout-manager.js";
 
 // Cell panelIds use the OPENER'S vocabulary (code-workbench layout cells):
 // built-in panels are "tool:<view>" and the agent surface is "tool:coding".
@@ -98,65 +96,44 @@ function dropRailCells(grid: GridLayout): boolean {
   return true;
 }
 
-/** Rewrite bare seeded panelIds in existing workspace files (idempotent). */
-function repairSeededIds(): void {
-  let ids: string[] = [];
-  try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return; }
-  for (const id of ids) {
-    const file = path.join(WORKSPACES_DIR(), id, "workspace.json");
-    try {
-      const grid = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
-      if (!Array.isArray(grid.cells) || grid.target === "desktop") continue;
-      let changed = false;
-      for (const c of grid.cells) {
-        const fix = SEED_ID_FIX[(c.panelId || "").trim().toLowerCase()];
-        if (fix) { c.panelId = fix; changed = true; }
-      }
-      if (dropRailCells(grid)) changed = true;
-      if (changed) {
-        fs.writeFileSync(file, JSON.stringify(grid, null, 2), "utf-8");
-        console.info("[user-defaults] repaired seeded panel ids in", id);
-      }
-    } catch { /* not a workspace folder — skip */ }
+/** Rewrite bare seeded panelIds in the member's workspaces (idempotent). */
+async function repairSeededIds(): Promise<void> {
+  const lm = getLayoutManager();
+  for (const grid of lm.listLayouts()) {
+    if (!Array.isArray(grid.cells) || grid.target === "desktop") continue;
+    let changed = false;
+    for (const c of grid.cells) {
+      const fix = SEED_ID_FIX[(c.panelId || "").trim().toLowerCase()];
+      if (fix) { c.panelId = fix; changed = true; }
+    }
+    if (dropRailCells(grid)) changed = true;
+    if (changed) {
+      await lm.saveLayout(grid);
+      console.info("[user-defaults] repaired seeded panel ids in", grid.name);
+    }
   }
 }
-
 /** A retired seed (Vibe, 2026-09-16) goes only while it is still the untouched
  *  seed; a user who edited it keeps their workspace. */
-function retireSeed(grid: GridLayout): void {
-  const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
-  const file = path.join(dir, "workspace.json");
-  try {
-    const cur = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
-    const same = (a: GridLayout, b: GridLayout): boolean => JSON.stringify(a.cells.map((c) => c.panelId)) === JSON.stringify(b.cells.map((c) => c.panelId));
-    if (same(cur, grid)) fs.rmSync(dir, { recursive: true, force: true });
-  } catch { /* absent, or not ours to judge */ }
+async function retireSeed(grid: GridLayout): Promise<void> {
+  const lm = getLayoutManager();
+  const cur = lm.listLayouts().find((l) => l.name === grid.name);
+  if (!cur) return;
+  const same = (a: GridLayout, b: GridLayout): boolean => JSON.stringify(a.cells.map((c) => c.panelId)) === JSON.stringify(b.cells.map((c) => c.panelId));
+  if (same(cur, grid)) await lm.deleteLayout(grid.name);
 }
-
-/** Write one workspace if the user doesn't already have that id. */
-function ensure(grid: GridLayout): boolean {
-  const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
-  const file = path.join(dir, "workspace.json");
-  if (fs.existsSync(file)) return false;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(grid, null, 2), "utf-8");
-  return true;
-}
-
 /**
  * Fill in anything a fresh account is missing. Safe to call on every sign-in:
  * it writes only what is absent, so a user who deleted a default keeps it
  * deleted for the session and gets it back on the next — which is the honest
  * trade for "a new account is never empty".
  */
-export function provisionUserDefaults(): void {
+export async function provisionUserDefaults(): Promise<void> {
   try {
-    fs.mkdirSync(WORKSPACES_DIR(), { recursive: true });
-    repairSeededIds();
-    retireSeed(vibe());
-    retireSeed(dev());
-    const made = ([] as GridLayout[]).filter(ensure).length;
-    if (made) console.info("[user-defaults] provisioned", made, "workspace(s)");
+    await getLayoutManager().refreshAndList();
+    await repairSeededIds();
+    await retireSeed(vibe());
+    await retireSeed(dev());
   } catch (err) {
     // A failure here must never block sign-in — the user simply lands with no
     // workspaces and can build their own.

@@ -1,24 +1,18 @@
 /**
- * apps-store.ts — the LOCAL app registry (THE PURGE, 2026-09-10).
+ * apps-store.ts — THE TAB ROWS, read from the server and held in memory.
  *
- * The server app library is gone: an app is a folder on this machine,
+ * Until 2026-10-07 a tab was a folder on this machine
+ * (~/.glyphh/<user>/apps/<slug>/tab.json) that the library sync kept level
+ * with the server. His order that day ("why would we replicate down to the
+ * local machine?"): the server is the only truth; the desktop keeps a RUNNING
+ * COPY in memory for its synchronous readers (library-remote.ts primes it at
+ * sign-in and refreshes it) and writes straight back. Nothing on disk.
  *
- *   ~/.glyphh/apps/<id>/app.json        — the registry row (id = slug)
- *
- * (an installed glyphh-app is a cloud instance; its row's config names it and
- * nativeRef is null).
- *
- * The API mirrors the slice of the old SDK client the desktop used
- * (mine / createEntry / updateEntry / removeEntry), so call sites swap
- * `getClient().apps.` for `appsStore.` and nothing else moves.
+ * The API keeps the slice the desktop used (mine / readRow / createEntry /
+ * updateEntry / removeEntry), so no call site moves.
  */
-
-import fs from "fs";
-import path from "path";
-import { userScopedPath } from "./app-paths.js";
-import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
-
-export const APPS_DIR = (): string => userScopedPath("apps");
+import { isTabRow } from "../shared/member-library.js";
+import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
 /** The stored row — the fields org-apps' toRow() projection reads. */
 export interface LocalAppRow {
@@ -55,57 +49,41 @@ export interface CreateEntryInput {
 /** `url` / `nativeRef` take null to CLEAR them (a cloud instance's row keeps no local entry). */
 export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug" | "url" | "nativeRef">> & { url?: string | null; nativeRef?: string | null; secretNames?: string[] };
 
-/** The tab row. A Glyphh app BUNDLE lives in the same folder and owns app.json
- *  (its manifest), so the row keeps its own file beside it. */
-const rowFile = (slug: string): string => path.join(APPS_DIR(), slug, "tab.json");
-const legacyRowFile = (slug: string): string => path.join(APPS_DIR(), slug, "app.json");
-const ROW_KINDS = new Set(["web", "native", "glyphh"]);
+// ── The running copy ─────────────────────────────────────────────────────────
+const rows = new Map<string, LocalAppRow>();
+let primed = false;
 
-function writeRow(row: LocalAppRow): void {
-  const dir = path.join(APPS_DIR(), row.slug);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = rowFile(row.slug);
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(row, null, 2), "utf-8");
-  fs.renameSync(`${file}.tmp`, file);
+/** Load (or reload) every tab row the server holds for this member. */
+export async function primeTabs(): Promise<void> {
+  const fresh = await remoteList<LocalAppRow>("tab");
+  rows.clear();
+  for (const r of fresh) {
+    if (!isTabRow(r.data)) continue;
+    const slug = r.id.toLowerCase();
+    rows.set(slug, { ...r.data, slug, id: r.data.id || slug, updatedAt: new Date(r.updatedAt).toISOString() });
+  }
+  primed = true;
+}
+
+/** Announce a change the way main's own writes always did. */
+async function announce(): Promise<void> {
+  const [{ invalidateOrgApps }, { broadcast }] = await Promise.all([import("./org-apps.js"), import("./broadcast.js")]);
+  invalidateOrgApps();
+  broadcast("panel-apps-changed");
 }
 
 export function readRow(slug: string): LocalAppRow | null {
-  try {
-    const row = JSON.parse(fs.readFileSync(rowFile(slug), "utf-8")) as LocalAppRow;
-    return row && row.slug ? row : null;
-  } catch {
-    return migrateLegacyRow(slug);
-  }
+  return rows.get(slug.toLowerCase().trim()) ?? null;
 }
 
-/** Rows written before tab.json sat in app.json; a bundle manifest there has no
- *  slug/kind and is left alone. */
-function migrateLegacyRow(slug: string): LocalAppRow | null {
-  try {
-    const raw = JSON.parse(fs.readFileSync(legacyRowFile(slug), "utf-8")) as Partial<LocalAppRow>;
-    if (!raw || typeof raw.slug !== "string" || !ROW_KINDS.has(String(raw.kind))) return null;
-    const row = raw as LocalAppRow;
-    writeRow(row);
-    fs.rmSync(legacyRowFile(slug), { force: true });
-    return row;
-  } catch {
-    return null;
-  }
-}
-
-/** Every registered app on this machine. */
+/** Every tab row, from the running copy. */
 export function mineSync(): LocalAppRow[] {
-  let ids: string[] = [];
-  try { ids = fs.readdirSync(APPS_DIR()); } catch { return []; }
-  const rows: LocalAppRow[] = [];
-  for (const id of ids) {
-    const row = readRow(id);
-    if (row) rows.push(row);
-  }
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Every tab row; the first call primes the copy from the server. */
 export async function mine(): Promise<LocalAppRow[]> {
+  if (!primed) { try { await primeTabs(); } catch { /* offline: the copy stands */ } }
   return mineSync();
 }
 
@@ -133,50 +111,35 @@ export async function createEntry(input: CreateEntryInput): Promise<LocalAppRow>
     createdAt: now,
     updatedAt: now,
   };
-  writeRow(row);
-  noteLibrarySave("tab", slug);
+  await remotePut("tab", slug, row);
+  rows.set(slug, row);
+  void announce();
   return row;
 }
 
 export async function updateEntry(slug: string, patch: UpdateEntryInput): Promise<LocalAppRow> {
-  const row = readRow(slug.toLowerCase().trim());
+  const row = readRow(slug);
   if (!row) throw new Error(`app "${slug}" not found`);
-  if (patch.name !== undefined) row.name = String(patch.name);
-  if (patch.url !== undefined) row.prodUrl = patch.url ?? null;
-  if (patch.nativeRef !== undefined) row.nativeRef = patch.nativeRef ?? null;
-  if (patch.description !== undefined) row.description = String(patch.description);
-  if (patch.config !== undefined) row.config = patch.config ?? null;
-  if (patch.access !== undefined) row.access = patch.access === "public" ? "public" : "members";
-  if (patch.kind !== undefined) row.kind = patch.kind;
-  if (patch.secretNames !== undefined) row.secretNames = patch.secretNames.map(String);
-  row.updatedAt = new Date().toISOString();
-  writeRow(row);
-  noteLibrarySave("tab", row.slug);
-  return row;
+  const next = { ...row };
+  if (patch.name !== undefined) next.name = String(patch.name);
+  if (patch.url !== undefined) next.prodUrl = patch.url ?? null;
+  if (patch.nativeRef !== undefined) next.nativeRef = patch.nativeRef ?? null;
+  if (patch.description !== undefined) next.description = String(patch.description);
+  if (patch.config !== undefined) next.config = patch.config ?? null;
+  if (patch.access !== undefined) next.access = patch.access === "public" ? "public" : "members";
+  if (patch.kind !== undefined) next.kind = patch.kind;
+  if (patch.secretNames !== undefined) next.secretNames = patch.secretNames.map(String);
+  next.updatedAt = new Date().toISOString();
+  await remotePut("tab", next.slug, next);
+  rows.set(next.slug, next);
+  void announce();
+  return next;
 }
 
-/** Delete the tab row: a tombstone is written and the sync pushes the remove. */
+/** Delete the tab row on the server; the running copy drops it. */
 export async function removeEntry(slug: string): Promise<void> {
   const key = slug.toLowerCase().trim();
-  removeEntryLocal(key);
-  noteLibraryDelete("tab", key);
+  await remoteRemove("tab", key);
+  rows.delete(key);
+  void announce();
 }
-
-// ── The sync's side (library-sync.ts) ────────────────────────────────────────
-
-/** A tab the server holds, written as-is (its ISO `updatedAt` IS the server
- *  row's clock). Never announced — it came FROM the sync. */
-export function applyRemoteTab(row: LocalAppRow): void {
-  writeRow(row);
-}
-
-/** The row goes without a tombstone — the server already holds one. */
-export function removeEntryLocal(slug: string): void {
-  const dir = path.join(APPS_DIR(), slug);
-  try {
-    fs.rmSync(rowFile(slug), { force: true });
-    // The folder is also a bundle's home when SKILL.md is there: the tab goes, the app stays.
-    if (!fs.existsSync(path.join(dir, "SKILL.md"))) fs.rmSync(dir, { recursive: true, force: true });
-  } catch { /* already gone */ }
-}
-

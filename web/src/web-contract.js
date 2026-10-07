@@ -33,6 +33,7 @@ import {
 // STANDARD drip effects ship with the product — the same shared catalog +
 // generators the desktop main process uses (electron-free by design).
 import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
+import { WS_STATE_PREF, WS_STATE_BUDGET, trimWsState } from '../../src/shared/ui-state-trim';
 // DOM-free at import time; only running a recipe touches the document.
 import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
 // The CLI agent window on web: the command is computed HERE (the worker's pty
@@ -1340,22 +1341,6 @@ export { NEEDS_DESKTOP };
 
 /** The server pref the workbench's UI-state map rides on web (and the legacy
  *  seed ui-state.ts reads on the desktop's first file-store load). */
-export const WS_STATE_PREF = 'workbenchUiState';
-/** Bytes of JSON the map may take in the prefs record. */
-export const WS_STATE_BUDGET = 28 * 1024;
-
-/** Keep the newest entries (by `at`) that fit the budget; drop the rest. Pure. */
-export function trimWsState(snapshot, budget = WS_STATE_BUDGET) {
-  const entries = Object.entries(snapshot && typeof snapshot === 'object' ? snapshot : {})
-    .filter(([, e]) => e && typeof e === 'object' && typeof e.v === 'string')
-    .sort((a, b) => (Number(b[1].at) || 0) - (Number(a[1].at) || 0));
-  const out = {};
-  let size = 2;
-  for (const [k, e] of entries) {
-    const cost = JSON.stringify({ [k]: e }).length;
-    if (size + cost > budget) continue;
-    out[k] = { v: e.v, at: Number(e.at) || 0 };
-    size += cost;
-  }
-  return out;
-}
+// THE ONE TRIM (shared/ui-state-trim.ts): the desktop's main process writes the
+// same pref the same way since 2026-10-07.
+export { WS_STATE_PREF, WS_STATE_BUDGET, trimWsState };

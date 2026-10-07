@@ -93,7 +93,7 @@ export function setActiveUser(userId: string | null): void {
   fs.mkdirSync(userScopedDir(), { recursive: true });
   // A NEW account is never empty: workspaces are local, so the desktop
   // provisions its own defaults here — the first moment the scope is known.
-  if (userId) { provisionUserDefaults(); void installDefaultHubItems(); }
+  if (userId) { void provisionUserDefaults(); void installDefaultHubItems(); }
   initLocalDb();
   appCache.invalidate();
 

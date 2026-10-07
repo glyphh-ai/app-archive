@@ -11,7 +11,7 @@
 
 import * as path from "node:path";
 import * as appsStore from "./apps-store.js";
-import { APPS_DIR, type LocalAppRow } from "./apps-store.js";
+import { type LocalAppRow } from "./apps-store.js";
 import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
 import { appCache } from "./glyphh-client.js";
 import { tabRowOf } from "../shared/member-library.js";
@@ -127,9 +127,10 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
  *  and a URL tab's favicon URL. */
 function toRow(app: LocalAppRow, row: OrgAppRow = tabRowOf(app) as OrgAppRow): OrgAppRow {
   const bundleDir = typeof app.config?.bundleDir === "string" ? app.config.bundleDir : null;
+  // (the tab folder on this machine is gone — 2026-10-07; a bundle folder
+  // or an installed entry beside the row are the only local icon sources)
   const iconDataUrl = iconDataUrlForDirs([
     bundleDir,
-    path.join(APPS_DIR(), app.slug),
     app.kind === "glyphh" && app.nativeRef ? path.dirname(app.nativeRef) : null,
   ]);
   const faviconUrl = app.kind === "web" ? faviconUrlFor(app.prodUrl) : "";
