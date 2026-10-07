@@ -5,8 +5,8 @@
  * app").
  *
  * The desktop and the web run the SAME code on every surface — the Echo
- * (wall, dock, search, folders), the workspaces, the ⋮ menu, the Build /
- * Customize pages — reading the same server records and prefs. The only
+ * (wall, dock, search, folders), the workspaces, the ⋮ menu, the Customize
+ * page — reading the same server records and prefs. The only
  * differences are CAPABILITIES a browser does not have, checked where the
  * capability is used, never as "two worlds":
  *
@@ -22,7 +22,7 @@
  *
  * What stays below is NOT a world-split but one of his explicit orders about
  * the web's page: + New closes everything, Close all opens a fresh session,
- * Artifacts / Build / Customize open full screen, the rail header's order,
+ * Artifacts / Customize open full screen, the rail header's order,
  * the type tab a net-new user lands on, and the settings rows for a
  * capability the browser lacks. Every rule here is PURE data so the
  * workbench, the settings nav and the tests read the same answer.
@@ -124,16 +124,35 @@ export function bootsSurface(web: boolean, surface: BootSurface): boolean {
 
 // ── SETTINGS: THE GROUP PAGES ──────────────────────────────────────────────
 
-/** The settings pages of the BUILD group: Skills, Agents, Apps, Tasks and the
- *  Claude Code plugins. Connections sits beside them (WEB_GROUP_ROWS). */
+/** ONE PAGE (his report, 2026-10-07: "The Build and Customize tabs are
+ *  confusing. It should just be one tab"). The two lists below are the
+ *  halves of the one Customize page; their names stay for the rows they
+ *  list. The library half: Skills, Agents, Apps, Tasks and the Claude Code
+ *  plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
-/** The CUSTOMIZE group, whole: Tabs, Workspaces, Drips, Schedules. */
+/** The shape half: Tabs, Workspaces, Drips, Schedules. */
 export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["tabs", "layouts", "drips", "schedules"]);
 
-/** The settings nav group headers the web's Settings modal does not list —
- *  the rail's Build / Customize pages carry those tabs on the web. */
-export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-group-build", "nav-group-customize"]);
+/** THE ONE PAGE'S TAB ORDER (his report, 2026-10-07): Skills, Agents, Apps,
+ *  Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks stays a
+ *  hidden row (2026-09-17) and so never paints a tab. The Settings nav lists
+ *  its rows in this order under the one Customize header. */
+export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tabs", "layouts", "drips", "schedules", "tasks"]);
+
+/** The tabs with a Discover half (a hub / a directory). The page's one
+ *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead
+ *  of each tab having a different Yours / Discover it should span all the
+ *  tabs and switching it should stay"); a tab without one shows an empty
+ *  state under Discover rather than a dead switch. */
+export const DISCOVER_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "apps", "plugins", "tasks", "connections-cfg"]);
+export function subHasDiscover(sub: string): boolean {
+  return DISCOVER_SUBS.includes(sub);
+}
+
+/** The settings nav group header the web's Settings modal does not list —
+ *  the rail's Customize page carries those tabs on the web. */
+export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-group-customize"]);
 
 /** The pages the web's Settings modal lists (the test pins this list against
  *  the desktop-only ones so a page can never be on both sides). */
@@ -149,12 +168,11 @@ export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp
 /** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
  *  customize webpanels should be what is shown in the left rail", then
  *  "remove connections and devices from the left rail on web"): Artifacts,
- *  Build, Customize — each opens FULL SCREEN (webPanelOpensFullScreen).
- *  Connections and Devices stay reachable inside Settings. The desktop's
- *  rail keeps the same three, opening as ordinary work panels. */
+ *  Customize — each opens FULL SCREEN (webPanelOpensFullScreen). Build folded
+ *  into Customize (his report, 2026-10-07). Connections and Devices stay
+ *  reachable inside Settings. The desktop's rail keeps the same two. */
 export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
   { sub: "artifacts", label: "Artifacts" },
-  { sub: "build", label: "Build" },
   { sub: "customize", label: "Customize" },
 ]);
 
@@ -167,45 +185,51 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  panel (kept mounted, state preserved) and paints the panel edge to edge
  *  under a header where the agent header is — "‹ <title>" on the left (back
  *  = close), an X on the right. Closing restores exactly what was showing.
- *  Build and Customize take this path on the desktop too (GROUP_PAGES);
- *  Artifacts stays an ordinary work panel there. */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "build", "customize"]);
+ *  Customize takes this path on the desktop too (GROUP_PAGES); Artifacts
+ *  stays an ordinary work panel there. */
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
-/** THE GROUP PAGES ARE PAGES ON BOTH SURFACES (his order, 2026-10-07: "the
+/** THE GROUP PAGE IS A PAGE ON BOTH SURFACES (his order, 2026-10-07: "the
  *  desktop app should handle the Build and customize pages the same as they
  *  are handled in the web: they render as pages and remove the like pages
- *  from settings to make it more manageable"). Build and Customize open full
- *  screen on the desktop as on the web; Artifacts is the web's alone (a work
- *  panel on the desktop). */
-export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["build", "customize"]);
+ *  from settings to make it more manageable"). ONE page since his report the
+ *  same day ("it should just be one tab"): Customize opens full screen on the
+ *  desktop as on the web; Artifacts is the web's alone (a work panel on the
+ *  desktop). */
+export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["customize"]);
+export type GroupPage = "customize";
 export function panelOpensFullScreen(key: string, web: boolean): boolean {
   return web ? webPanelOpensFullScreen(key) : GROUP_PAGES.includes(key);
 }
+/** A DEAD PAGE KEY RESOLVES TO THE ONE PAGE (his report, 2026-10-07): a saved
+ *  dock slot, a wall card, a remembered rail section or an older caller
+ *  naming "build" opens Customize. */
+export const GROUP_PAGE_ALIASES: Readonly<Record<string, GroupPage>> = Object.freeze({ build: "customize" });
+export function groupPageKey(key: string): string {
+  return GROUP_PAGE_ALIASES[key] ?? key;
+}
 /** The group page a settings row is a tab of, or null for a plain settings
  *  page. Every such row opens its page, never the modal, on both surfaces. */
-export function groupOfSub(sub: string): "build" | "customize" | null {
-  if (WEB_BUILD_SUBS.includes(sub) || sub === "connections-cfg") return "build";
-  if (WEB_CUSTOMIZE_SUBS.includes(sub)) return "customize";
-  return null;
+export function groupOfSub(sub: string): GroupPage | null {
+  return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", build: "Build", customize: "Customize" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
 
-/** THE BUILD AND CUSTOMIZE PAGES ARE THE SAME ON BOTH SURFACES (his order,
- *  2026-10-05: "why is the web build tab different than the desktop one?").
- *  A group page lists its tabs ONE way on both hosts: the group's nav rows
- *  that are not `.hidden` (navigation.ts groupTabs) — Skills, Agents, Apps,
- *  Tasks, Connections, Plugins for Build; Tabs, Workspaces, Drips, Schedules
- *  for Customize. The web's Settings modal therefore never marks those rows
- *  `.hidden`: it marks them WEB_CUT_ROW_CLASS (CSS-hidden in the Settings
- *  nav only), and their panels stay mounted for the full-screen page to adopt. */
+/** THE CUSTOMIZE PAGE IS THE SAME ON BOTH SURFACES (his order, 2026-10-05:
+ *  "why is the web build tab different than the desktop one?"). The page
+ *  lists its tabs ONE way on both hosts: the group's nav rows that are not
+ *  `.hidden` (navigation.ts groupTabs), in CUSTOMIZE_TAB_ORDER. The web's
+ *  Settings modal therefore never marks those rows `.hidden`: it marks them
+ *  WEB_CUT_ROW_CLASS (CSS-hidden in the Settings nav only), and their panels
+ *  stay mounted for the full-screen page to adopt. */
 export const WEB_CUT_ROW_CLASS = "web-cut-row";
-/** The settings rows the group pages own: every Build and Customize tab. */
+/** The settings rows the Customize page owns: every tab of the one page. */
 export const WEB_GROUP_ROWS: ReadonlyArray<string> = Object.freeze([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
 /** Is this settings row a group page's — its panel stays MOUNTED (not
  *  CSS-hidden) and its nav row wears WEB_CUT_ROW_CLASS, never `.hidden`? */
@@ -255,8 +279,8 @@ export function webRailWordmark(web: boolean): boolean {
 }
 
 /** The rail's More toggle — hidden on the web (ids and selectors, applied by
- *  web-surface.ts). Build and Customize left this list on 2026-10-05: they
- *  are the rail's full-screen pages now. */
+ *  web-surface.ts). Customize left this list on 2026-10-05: it is the rail's
+ *  full-screen page now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-more-toggle",
 ]);
@@ -406,8 +430,8 @@ export function workspaceOpenLines(name: string, plan: LayoutPlan): { error: str
  *  the page. */
 export type WorkspaceOpenHost = "web-full-panel" | "settings-modal" | "customize-panel";
 export function workspaceOpenClosesHosts(web: boolean): ReadonlyArray<WorkspaceOpenHost> {
-  // Build and Customize are full-screen pages on BOTH surfaces now (his
-  // order, 2026-10-07), so the full-screen host closes on both; the desktop
+  // Customize is a full-screen page on BOTH surfaces now (his order,
+  // 2026-10-07), so the full-screen host closes on both; the desktop
   // still closes its Settings modal and the older Customize work panel too
   // (his report, 2026-10-07: opening a workspace from Customize left panels up).
   return web ? Object.freeze(["web-full-panel"] as WorkspaceOpenHost[]) : Object.freeze(["web-full-panel", "settings-modal", "customize-panel"] as WorkspaceOpenHost[]);

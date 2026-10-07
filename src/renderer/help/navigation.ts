@@ -4,7 +4,7 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
-import { groupOfSub } from "./surface.js";
+import { groupOfSub, groupPageKey, subHasDiscover, CUSTOMIZE_TAB_ORDER, type GroupPage } from "./surface.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
@@ -14,13 +14,13 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings } from "./settings-skills.js";
+import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
 import { loadRemoteControl } from "./settings-remote.js";
 import { initDevices, loadDevices } from "./settings-devices.js";
 import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
-import { loadSettingsConnections } from "./settings-connections.js";
+import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
@@ -161,7 +161,7 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
-  else if (sec === "build" || sec === "customize") loadSettingsGroup(sec);
+  else if (sec === "customize") loadSettingsGroup(sec);
   else if (sec === "drips") loadDrips();
   else if (sec === "connections") void loadConnections();
   else if (sec === "layouts") loadLayouts();
@@ -339,11 +339,11 @@ function onSettingsModalKey(e: KeyboardEvent): void {
 }
 
 /** THE APP'S SETTINGS NAV SHAPE, idempotent (moves are moves; a row already
- *  in place stays). Runs when the modal opens AND when a Build / Customize
- *  group page builds its tabs (his report, 2026-10-05: the web's Build page
- *  listed Artifacts — the row sits in the Build group in settings.html and
- *  only moved under Settings once the modal had opened, so a group page
- *  built first listed it on either host). */
+ *  in place stays). Runs when the modal opens AND when the Customize page
+ *  builds its tabs (his report, 2026-10-05: the web's Build page listed
+ *  Artifacts — the row sits in the group in settings.html and only moved
+ *  under Settings once the modal had opened, so a group page built first
+ *  listed it on either host). */
 function arrangeAppSettingsNav(): void {
   // DESKTOP nav shape (his spec, 2026-08-25): the Settings group (General,
   // Appearance, Account, Voice, MCP Server), then an Organization group
@@ -381,22 +381,16 @@ function arrangeAppSettingsNav(): void {
       // A header with nothing under it is not drawn (his report, 2026-09-29):
       // Billing is its only item and is org_admin's alone.
       orgGroup.classList.toggle("hidden", !!document.getElementById("nav-billing")?.classList.contains("hidden"));
-      // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
-      const buildGroup = nav.querySelector("#nav-group-build");
-      if (buildGroup) {
-        anchor.after(buildGroup);
-        anchor = buildGroup;
-        for (const sub of ["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
-          const item = pick(sub);
-          if (item) { anchor.after(item); anchor = item; }
-        }
-      }
-      // CUSTOMIZE follows Build (his order, 2026-09-16): Workspaces, Drips.
+      // ONE CUSTOMIZE GROUP follows Organization (his report, 2026-10-07:
+      // "The Build and Customize tabs are confusing. It should just be one
+      // tab"): the Build rows and the Customize rows under one header, in
+      // the page's tab order (surface.ts CUSTOMIZE_TAB_ORDER; artifacts
+      // moved to Settings). groupTabs reads this group for the page's tabs.
       const customizeGroup = nav.querySelector("#nav-group-customize");
       if (customizeGroup) {
         anchor.after(customizeGroup);
         anchor = customizeGroup;
-        for (const sub of ["tabs", "layouts", "drips", "schedules"]) {
+        for (const sub of CUSTOMIZE_TAB_ORDER) {
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -408,9 +402,9 @@ function arrangeAppSettingsNav(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
-  // THE GROUP PAGES (his order, 2026-10-07): a Build / Customize row is a tab
-  // of its full-screen page on both surfaces, never a page of the modal — a
-  // deep link, the + menu's Manage rows and every older caller land there.
+  // THE GROUP PAGE (his order, 2026-10-07): a Customize row is a tab of the
+  // full-screen page on both surfaces, never a page of the modal — a deep
+  // link, the + menu's Manage rows and every older caller land there.
   const group = sub ? groupOfSub(sub) : null;
   if (group && sub) { openGroupTab(group, sub); return; }
   // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
@@ -938,20 +932,87 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
-// ── Build / Customize work-panels ─────────────────────────────────────────
+// ── The Customize work-panel ──────────────────────────────────────────────
 //
-// A Settings GROUP (the nav's Build or Customize rows) opens as ONE workbench
-// page with the group's pages as tabs (his order, 2026-09-20: "the same
-// settings pages, just tabs, bigger"). Move-not-clone, like the modal: the
-// .settings-panel nodes are MOVED from .settings-panels into the page's own
-// .settings-panels (inside a .settings-modal-body host, so every modal rule
-// applies verbatim) and moved back the moment the modal opens. The tab list is
-// read from the nav group itself, so role gating (hidden rows) carries over.
+// The Settings GROUP (the nav's Customize rows) opens as ONE workbench page
+// with the group's pages as tabs (his order, 2026-09-20: "the same settings
+// pages, just tabs, bigger"; one page since his report, 2026-10-07: "The
+// Build and Customize tabs are confusing. It should just be one tab").
+// Move-not-clone, like the modal: the .settings-panel nodes are MOVED from
+// .settings-panels into the page's own .settings-panels (inside a
+// .settings-modal-body host, so every modal rule applies verbatim) and moved
+// back the moment the modal opens. The tab list is read from the nav group
+// itself, so role gating (hidden rows) carries over.
 
 /** The .settings-panels pen each borrowed panel came from, by sub. */
 const groupPanelPen: Record<string, HTMLElement | null> = {};
-/** The tab each group last showed, so reopening lands where the user was. */
+/** The tab each group last showed, so reopening lands where the user was —
+ *  remembered across launches as the `customizeLastSub` pref (his report,
+ *  2026-10-07: "switching it should stay"). */
 const groupLastSub: Record<string, string> = {};
+const LAST_SUB_PREF = "customizeLastSub";
+/** ONE Yours | Discover SWITCH FOR THE WHOLE PAGE (his report, 2026-10-07:
+ *  "instead of each tab having a different Yours / Discover it should span
+ *  all the tabs and switching it should stay"): the scope every tab shows
+ *  under, remembered as the `customizeScope` pref. */
+type GroupScope = "mine" | "discover";
+let groupScope: GroupScope = "mine";
+const SCOPE_PREF = "customizeScope";
+const asScope = (v: unknown): GroupScope => (v === "discover" ? "discover" : "mine");
+
+/** Read both prefs once at init, before any door opens the page (the same
+ *  door every other remembered pref uses: window.glyphh.getPreference, served
+ *  by the preload on the desktop and the bridge on the web). */
+function primeGroupPrefs(): void {
+  // A page asking for the other scope by itself (the directory's
+  // "Connections" crumb in settings-connections.ts) flips the one switch.
+  document.addEventListener("glyphh:customize-scope", (ev) => setGroupScope(asScope((ev as CustomEvent).detail)));
+  void window.glyphh.getPreference?.(SCOPE_PREF, "mine").then((v) => { groupScope = asScope(v); }).catch(() => {});
+  void window.glyphh.getPreference?.(LAST_SUB_PREF, "").then((v) => {
+    const sub = typeof v === "string" ? v : "";
+    if (sub && !groupLastSub.customize) groupLastSub.customize = sub;
+  }).catch(() => {});
+}
+
+/** Hand the scope to the page a tab shows: the library pages and Connections
+ *  carry a Discover half; every other tab shows the empty state below.
+ *  `force` is the switch's own click (Yours leaves a secondary tab such as
+ *  Updates for the list); a tab switch only applies the scope. */
+function applyScopeTo(sub: string, scope: GroupScope, force: boolean): void {
+  if (setLibraryScope(sub, scope, force)) return;
+  if (sub === "connections-cfg") setConnectionsScope(scope);
+}
+
+/** The inline empty state a tab without a Discover half shows under
+ *  Discover — the switch stays live, the tab says there is nothing to find. */
+function paintNoDiscover(host: HTMLElement | null, sub: string, label: string, scope: GroupScope): void {
+  const panel = host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`);
+  if (!panel) return;
+  const bare = scope === "discover" && !subHasDiscover(sub);
+  panel.classList.toggle("scope-discover-empty", bare);
+  let note = panel.querySelector<HTMLElement>(":scope > .settings-group-nodiscover");
+  if (!bare) { note?.remove(); return; }
+  if (!note) {
+    note = document.createElement("div");
+    note.className = "crud-empty settings-group-nodiscover";
+    panel.prepend(note);
+  }
+  note.textContent = `Nothing to discover for ${label} yet.`;
+}
+
+/** Set the page's scope — the switch's click, or a door that wants Discover
+ *  (the composer's "Add connector"). Persists when it changed, repaints the
+ *  switch and, with the page open, re-shows the current tab under the scope
+ *  (a Yours click on Updates returns to the list, so the switch is never a
+ *  dead button). */
+export function setGroupScope(scope: GroupScope): void {
+  if (groupScope !== scope) void window.glyphh.setPreference?.(SCOPE_PREF, scope);
+  groupScope = scope;
+  document.querySelectorAll<HTMLElement>(".settings-group-scope > .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.scope === scope));
+  const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="customize"]`);
+  const shown = sec?.querySelector<HTMLElement>(".settings-group-tabs > .skills-tab.active")?.dataset.sub;
+  if (sec && shown && sec.classList.contains("active")) showGroupTab("customize", shown, true);
+}
 
 function groupTabs(group: string): Array<{ sub: string; label: string }> {
   const head = document.getElementById(`nav-group-${group}`);
@@ -969,7 +1030,8 @@ function groupTabs(group: string): Array<{ sub: string; label: string }> {
   return out;
 }
 
-/** Build (or refresh) a group page: tabs from its nav rows, panels adopted. */
+/** Build (or refresh) the group page: tabs from its nav rows, panels adopted,
+ *  the one scope switch wired once. */
 export function loadSettingsGroup(group: string): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   const strip = sec?.querySelector<HTMLElement>(".settings-group-tabs");
@@ -978,6 +1040,12 @@ export function loadSettingsGroup(group: string): void {
   arrangeAppSettingsNav();
   const tabs = groupTabs(group);
   if (!tabs.length) { host.innerHTML = `<div class="ws-empty">Nothing to show here yet.</div>`; return; }
+  const scopeStrip = sec.querySelector<HTMLElement>(".settings-group-scope");
+  if (scopeStrip && !scopeStrip.dataset.wired) {
+    scopeStrip.dataset.wired = "1";
+    scopeStrip.querySelectorAll<HTMLButtonElement>(".skills-tab[data-scope]").forEach((b) => b.addEventListener("click", () => setGroupScope(asScope(b.dataset.scope))));
+  }
+  scopeStrip?.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.scope === groupScope));
   strip.innerHTML = "";
   for (const t of tabs) {
     const b = document.createElement("button");
@@ -998,27 +1066,34 @@ export function loadSettingsGroup(group: string): void {
   showGroupTab(group, tabs.some((t) => t.sub === want) ? want : tabs[0].sub);
 }
 
-/** Open a group page (Build / Customize) AT a tab — the composer's `+` menu
- *  "Manage skills / connectors" on the web, where the Settings modal hides the
- *  Build group and the rail's full-screen page carries those tabs. The tab is
- *  remembered first so a fresh mount lands on it; an already-open page just
- *  switches. */
-export function openGroupTab(group: "build" | "customize", sub: string): void {
+/** Open the Customize page AT a tab — the composer's `+` menu "Manage skills
+ *  / connectors", a deep link, the app card's Publish. The tab is remembered
+ *  first so a fresh mount lands on it (loadSettingsGroup shows it); an
+ *  already-open page just switches. Whether the page was painted is read
+ *  BEFORE the open (his report, 2026-10-07: a fresh mount painted the tab
+ *  through loadSettingsGroup and then showed it a second time). */
+export function openGroupTab(group: GroupPage, sub: string): void {
   groupLastSub[group] = sub;
+  const painted = !!document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"] .settings-group-tabs > .skills-tab[data-sub="${sub}"]`);
   (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(group);
-  const painted = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"] .settings-group-tabs > .skills-tab[data-sub="${sub}"]`);
   if (painted) showGroupTab(group, sub);
 }
 
-function showGroupTab(group: string, sub: string): void {
+function showGroupTab(group: string, sub: string, forceScope = false): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   if (!sec) return;
+  if (groupLastSub[group] !== sub) void window.glyphh.setPreference?.(LAST_SUB_PREF, sub);
   groupLastSub[group] = sub;
   sec.querySelectorAll<HTMLElement>(".settings-group-tabs > .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
   const host = sec.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
   host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
   if (host) host.scrollTop = 0;
+  // The page's one scope reaches the tab before it loads, so the tab paints
+  // straight into Yours or Discover (his report, 2026-10-07).
+  applyScopeTo(sub, groupScope, forceScope);
   loadSettingsSub(sub);
+  const label = sec.querySelector<HTMLElement>(`.settings-group-tabs > .skills-tab[data-sub="${sub}"]`)?.textContent?.trim() || sub;
+  paintNoDiscover(host ?? null, sub, label, groupScope);
 }
 
 /**
@@ -1115,6 +1190,7 @@ function parkSettingsSection(section: string): void {
 
 export function initHelp() {
   hideDesktopOnlySubs();   // both: the group rows leave the modal; web: the desktop's capability rows too
+  primeGroupPrefs();       // the Customize page's remembered tab and scope (his report, 2026-10-07)
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
   // The workbench bundle can't import help modules — it calls this bridge
@@ -1159,7 +1235,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", build: "build", customize: "customize" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", customize: "customize" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;

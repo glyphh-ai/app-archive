@@ -17,7 +17,8 @@ import {
   agentCardMovable, webNewSessionInPlace,
   webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
   WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailWordmark, webCloseAllOpensNew,
-  workspaceOpenClosesHosts, RAIL_HEADER_ORDER, webRailHeaderOrder } from "../../src/renderer/help/surface.js";
+  workspaceOpenClosesHosts, RAIL_HEADER_ORDER, webRailHeaderOrder,
+  CUSTOMIZE_TAB_ORDER, DISCOVER_SUBS, subHasDiscover, GROUP_PAGE_ALIASES, groupPageKey } from "../../src/renderer/help/surface.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
 describe("THE CAPABILITY MODEL (his order, 2026-10-06: one list, capability checks, never two worlds)", () => {
@@ -177,15 +178,26 @@ describe("webBootSurfaces — what paints at boot", () => {
   });
 });
 
-describe("settings — the group pages are the same on both surfaces; only capability rows hide", () => {
-  it("the Build group: Skills, Agents, Apps, Tasks, plugins (Connections beside them)", () => {
+describe("settings — the one Customize page is the same on both surfaces; only capability rows hide", () => {
+  it("the library half: Skills, Agents, Apps, Tasks, plugins (Connections beside them)", () => {
     expect([...WEB_BUILD_SUBS]).toEqual(["skills", "agents", "apps", "tasks", "plugins"]);
     expect(WEB_BUILD_SUBS).not.toContain("connections-cfg");
   });
-  it("the Customize group, whole: Tabs, Workspaces, Drips, Schedules", () => {
+  it("the shape half: Tabs, Workspaces, Drips, Schedules", () => {
     expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["tabs", "layouts", "drips", "schedules"]);
   });
-  it("every Build / Customize tab is a group row on both surfaces — panel mounted, never `.hidden`", () => {
+  it("ONE page's tab order (his report, 2026-10-07): Skills, Agents, Apps, Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks last, a hidden row", () => {
+    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "tabs", "layouts", "drips", "schedules", "tasks"]);
+    expect([...CUSTOMIZE_TAB_ORDER].sort()).toEqual([...WEB_GROUP_ROWS].sort());   // every row of the page, once
+    expect(Object.isFrozen(CUSTOMIZE_TAB_ORDER)).toBe(true);
+  });
+  it("the one Yours | Discover switch spans every tab: the library tabs and Connections have a Discover half, the rest show an empty state", () => {
+    expect([...DISCOVER_SUBS]).toEqual(["skills", "apps", "plugins", "tasks", "connections-cfg"]);
+    for (const sub of DISCOVER_SUBS) expect(subHasDiscover(sub)).toBe(true);
+    for (const sub of ["agents", "tabs", "layouts", "drips", "schedules", "general", ""]) expect(subHasDiscover(sub)).toBe(false);
+    for (const sub of DISCOVER_SUBS) expect(WEB_GROUP_ROWS).toContain(sub);
+  });
+  it("every Customize tab is a group row on both surfaces — panel mounted, never `.hidden`", () => {
     expect([...WEB_GROUP_ROWS]).toEqual([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
     for (const sub of WEB_GROUP_ROWS) expect(webGroupPanelKept(sub)).toBe(true);
     for (const sub of ["remote", "mcp", "general", "artifacts"]) expect(webGroupPanelKept(sub)).toBe(false);
@@ -202,9 +214,10 @@ describe("settings — the group pages are the same on both surfaces; only capab
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
   });
-  it("the web rail's menu is ONLY Artifacts, Build, Customize (his order, 2026-10-05)", () => {
-    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Build", "Customize"]);
-    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "build", "customize"]);
+  it("the web rail's menu is ONLY Artifacts, Customize (his order, 2026-10-05; Build folded in, his report, 2026-10-07)", () => {
+    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain("build");
     for (const sub of ["connections-cfg", "devices"]) {
       expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
       expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
@@ -212,38 +225,44 @@ describe("settings — the group pages are the same on both surfaces; only capab
   });
   it("the hidden settings rows are ONLY a capability the browser lacks (streamed panels); the dock's rows show; the rail hides only More", () => {
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row"]);
-    expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-build", "nav-group-customize"]);
+    expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
     expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
     for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
   });
 });
 
-describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Build / Customize open full, replacing everything; X restores)", () => {
-  it("exactly the rail's three open full screen on the web", () => {
-    expect([...webFullScreenPanels]).toEqual(["artifacts", "build", "customize"]);
+describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
+  it("exactly the rail's two open full screen on the web", () => {
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "customize"]);
     expect(webFullScreenPanels.map((k) => k)).toEqual(WEB_RAIL_LINKS.map((l) => l.sub));
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {
     for (const k of ["files", "agents", "terminal", "settings", "gmail", "", "preview"]) expect(webPanelOpensFullScreen(k)).toBe(false);
   });
-  it("the desktop opens Build and Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
-    expect([...GROUP_PAGES]).toEqual(["build", "customize"]);
+  it("the desktop opens Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
+    expect([...GROUP_PAGES]).toEqual(["customize"]);
     for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
     expect(panelOpensFullScreen("artifacts", false)).toBe(false);
     expect(panelOpensFullScreen("artifacts", true)).toBe(true);
     for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
   });
-  it("every Build / Customize settings row names its page; a plain settings page names none", () => {
-    for (const sub of [...WEB_BUILD_SUBS, "connections-cfg"]) expect(groupOfSub(sub)).toBe("build");
-    for (const sub of WEB_CUSTOMIZE_SUBS) expect(groupOfSub(sub)).toBe("customize");
+  it("every Customize settings row names the one page; a plain settings page names none", () => {
+    for (const sub of [...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]) expect(groupOfSub(sub)).toBe("customize");
     for (const sub of ["general", "appearance", "memory", "devices", "mcp", "remote", "artifacts", "usage", ""]) expect(groupOfSub(sub)).toBeNull();
   });
-  it("the header reads '‹ Artifacts' / '‹ Build' / '‹ Customize'", () => {
+  it("a dead page key resolves to the one page: 'build' opens Customize; a live key is itself (his report, 2026-10-07)", () => {
+    expect(GROUP_PAGE_ALIASES).toEqual({ build: "customize" });
+    expect(groupPageKey("build")).toBe("customize");
+    for (const k of ["customize", "artifacts", "apps", "layouts", ""]) expect(groupPageKey(k)).toBe(k);
+    expect(panelOpensFullScreen(groupPageKey("build"), false)).toBe(true);
+    expect(panelOpensFullScreen("build", false)).toBe(false);   // only through the alias
+  });
+  it("the header reads '‹ Artifacts' / '‹ Customize'; a dead key gets no title of its own", () => {
     expect(webFullScreenTitle("artifacts")).toBe("Artifacts");
-    expect(webFullScreenTitle("build")).toBe("Build");
     expect(webFullScreenTitle("customize")).toBe("Customize");
+    expect(webFullScreenTitle(groupPageKey("build"))).toBe("Customize");
     expect(Object.keys(WEB_FULL_SCREEN_TITLES).sort()).toEqual([...webFullScreenPanels].sort());
     expect(webFullScreenTitle("wat")).toBe("wat");
   });

@@ -22,6 +22,8 @@ import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
 import { planGates } from "./plan-gate.js";
 import { toastError } from "./toast.js";
+import { hostHas } from "./web-surface.js";
+import { hideAppOverlay } from "../app-overlay.js";
 
 type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
 type McpConn = Awaited<ReturnType<typeof window.glyphh.mcpConnectionsList>>["connections"][number];
@@ -82,9 +84,31 @@ let wired = false;
 
 // ── loading ─────────────────────────────────────────────────────────────────
 /** An app to open as soon as the page loads, on its permissions — the door a
- *  refused unattended call offers ("not set to Always allow"). */
+ *  refused unattended call offers ("not set to Always allow"). Consumed by
+ *  the page's own load ONLY, never by a quiet re-read (his report,
+ *  2026-10-07: a stale one hijacked a later load). */
 let pendingApp: { app: string } | null = null;
 export function openConnectionOnLoad(appSlug: string): void { pendingApp = { app: String(appSlug || "") }; }
+
+/** THE CUSTOMIZE PAGE'S ONE SCOPE (his report, 2026-10-07: "instead of each
+ *  tab having a different Yours / Discover it should span all the tabs"):
+ *  the page hands Yours | Discover down before this tab loads. */
+export function setConnectionsScope(scope: "mine" | "discover"): void {
+  tab = scope;
+  if (scope === "mine") catView = null;
+}
+/** The directory's "Connections" crumb asks the page to flip its switch
+ *  back to Yours, so the two never disagree. */
+function requestScope(scope: "mine" | "discover"): void {
+  document.dispatchEvent(new CustomEvent("glyphh:customize-scope", { detail: scope }));
+}
+
+/** Is the Connections tab on screen? A redirect after a connect is never
+ *  forced onto a member who moved on (his report, 2026-10-07). */
+const pageShowing = (): boolean => {
+  const panel = document.querySelector<HTMLElement>(`.settings-panel[data-sub="connections-cfg"]`);
+  return !!panel && panel.getClientRects().length > 0;
+};
 
 export async function loadSettingsConnections(): Promise<void> {
   const body = el("conn2-body");
@@ -94,6 +118,21 @@ export async function loadSettingsConnections(): Promise<void> {
   el("conn2-detail-view")?.classList.add("hidden");
   el("conn2-list-view")?.classList.remove("hidden");
   fail("");
+  await loadLists();
+  // A deep link lands on the account's permissions, where the toggles are.
+  if (pendingApp) {
+    const want = pendingApp.app.toLowerCase();
+    pendingApp = null;
+    const hit = entries.find((e) => (e.conn?.appSlug || e.mcp?.slug || "").toLowerCase() === want);
+    if (hit) void openDetail({ entry: hit, page: "permissions" });
+  }
+}
+
+/** Re-read the lists and repaint the list view — the page's load and every
+ *  quiet re-read share this; neither view is touched here. */
+async function loadLists(): Promise<void> {
+  const body = el("conn2-body");
+  if (!body) return;
   if (!entries.length) body.innerHTML = loadingHtml("Loading your connections…");
   const [res, custom, gate, gates] = await Promise.all([
     window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] })),
@@ -140,13 +179,6 @@ export async function loadSettingsConnections(): Promise<void> {
   ].sort((a, b) => a.name.localeCompare(b.name));
   if (tab === "discover" && !catalog.length) await loadCatalog("");
   render();
-  // A deep link lands on the account's permissions, where the toggles are.
-  if (pendingApp) {
-    const want = pendingApp.app.toLowerCase();
-    pendingApp = null;
-    const hit = entries.find((e) => (e.conn?.appSlug || e.mcp?.slug || "").toLowerCase() === want);
-    if (hit) void openDetail({ entry: hit, page: "permissions" });
-  }
   void primeConnectedIcons(
     entries.filter((x) => x.conn).map((x) => ({ connection: { accountId: x.conn!.accountId, pipedreamSlug: x.conn!.appSlug } })),
     render,
@@ -259,6 +291,10 @@ function render(): void {
   const host = el("conn2-body");
   if (!host) return;
   document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.classList.toggle("active", b.dataset.conn2Tab === tab));
+  // On Discover the header search steps aside: the directory bar carries its
+  // own (his screens, 2026-09-16). Painted here, since the page's switch —
+  // not this panel's tab pair — flips the tab (his report, 2026-10-07).
+  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.toggle("hidden", tab === "discover");
   noteDirSearchFocus();
   host.textContent = "";
   if (!pdAllowed) host.appendChild(lockedNote());
@@ -428,13 +464,19 @@ export async function renderConnectionTable(
 }
 
 const LOCKED_TITLE = "Connections are on a paid plan — upgrade to connect apps";
+/** The apps a connect is in flight for: every Connect button for one paints
+ *  "Connecting…" across the re-renders the polling causes, so the progress
+ *  the member sees is the button's, not an overlay's (his report, 2026-10-07). */
+const connecting = new Set<string>();
 
 function connectButton(e: Entry): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "action-btn conn2-connect";
-  b.textContent = "Connect";
-  if (!pdAllowed && !e.mcp) { b.disabled = true; b.title = LOCKED_TITLE; }
+  const busy = !!e.conn && connecting.has(e.conn.appSlug);
+  b.textContent = busy ? "Connecting…" : "Connect";
+  if (busy) b.disabled = true;
+  else if (!pdAllowed && !e.mcp) { b.disabled = true; b.title = LOCKED_TITLE; }
   b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectEntry(e, b); });
   return b;
 }
@@ -442,10 +484,11 @@ function connectAppButton(a: CatalogApp, wide = false): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   const done = connectedSlugs().has(a.id);
+  const busy = !done && connecting.has(a.id);
   b.className = wide ? "action-btn conn2-connect" : "action-btn conn2-plus" + (done ? " done" : "");
-  b.innerHTML = wide ? (done ? "Connected" : "Connect") : (done ? CHECK : PLUS);
-  b.disabled = done || !pdAllowed;
-  b.title = done ? "Connected" : pdAllowed ? "Connect" : LOCKED_TITLE;
+  b.innerHTML = wide ? (done ? "Connected" : busy ? "Connecting…" : "Connect") : (done ? CHECK : busy ? "…" : PLUS);
+  b.disabled = done || busy || !pdAllowed;
+  b.title = done ? "Connected" : busy ? "Connecting…" : pdAllowed ? "Connect" : LOCKED_TITLE;
   b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectApp(a.id, b); });
   return b;
 }
@@ -461,48 +504,81 @@ async function connectEntry(e: Entry, btn: HTMLButtonElement): Promise<void> {
   if (e.conn) await connectApp(e.conn.appSlug, btn);
 }
 
+/** THE CONNECT CLOCK (his report, 2026-10-07: "Adding a connection is not
+ *  redirecting immediately to the connection → MCP tools / permissions
+ *  screen. It is random."). The account lands out of band after the OAuth
+ *  window closes; six ticks of 1.5 s missed it as often as not. A re-read now,
+ *  then these waits — ~30 s in all — and a connectors-changed push from the
+ *  main process wakes the clock at once instead of at its next tick. */
+const CONNECT_WAITS_MS: ReadonlyArray<number> = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+let wakeConnectPoll: (() => void) | null = null;
+const connectSleep = (ms: number): Promise<void> => new Promise((resolve) => {
+  const t = setTimeout(() => { wakeConnectPoll = null; resolve(); }, ms);
+  wakeConnectPoll = () => { clearTimeout(t); wakeConnectPoll = null; resolve(); };
+});
+
+/** Re-read until `slug` is connected on an account that was NOT connected
+ *  before the flow began; null once the clock runs out. */
+async function awaitConnected(slug: string, before: ReadonlySet<string>): Promise<Entry | null> {
+  for (let i = 0; ; i++) {
+    await reloadQuietly();
+    const hit = entries.find((e) => !!e.conn && e.conn.appSlug === slug && e.connected && !before.has(e.conn.id));
+    if (hit) return hit;
+    if (i >= CONNECT_WAITS_MS.length) return null;
+    await connectSleep(CONNECT_WAITS_MS[i]);
+  }
+}
+
 async function connectApp(slug: string, btn: HTMLButtonElement): Promise<void> {
+  if (connecting.has(slug)) return;
   btn.disabled = true;
   const was = btn.innerHTML;
   btn.textContent = "Connecting…";
+  connecting.add(slug);
+  const settle = (): void => { connecting.delete(slug); btn.disabled = false; btn.innerHTML = was; hideAppOverlay(); };
+  // The accounts connected BEFORE the flow, so a second account of the same
+  // app still reads as the new one.
+  const before: ReadonlySet<string> = new Set(entries.filter((e) => e.conn && e.connected).map((e) => e.conn!.id));
+  const app = catalog.find((a) => a.id === slug) ?? (current?.app?.id === slug ? current.app : undefined);
   const r = await (window.glyphh.connectorsConnect?.(slug) ?? Promise.resolve({ ok: false, error: "Connect is not available here." }))
     .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-  if (!r.ok) { btn.disabled = false; btn.innerHTML = was; fail(r.error || "Couldn't connect."); return; }
-  // The account lands asynchronously after the OAuth: a few reloads catch it.
-  const keep = current;
-  let tries = 0;
-  const tick = async (): Promise<void> => {
-    await reloadQuietly();
-    if (keep) {
-      const fresh = keep.entry ? entries.find((x) => x.key === keep.entry!.key) : entries.find((x) => x.conn?.appSlug === slug);
-      // Once the account has landed the user is on their connection, not the
-      // directory: open its permissions page (his report, 2026-09-20).
-      const landed = !!fresh?.connected;
-      await openDetail(fresh ? { entry: fresh, app: keep.app, page: landed ? "permissions" : keep.page } : keep, true);
-    }
-    if (++tries < 6 && !connectedSlugs().has(slug)) setTimeout(() => void tick(), 1500);
-  };
-  await tick();
+  if (!r.ok) { settle(); fail(r.error || "Couldn't connect."); return; }
+  // THE REDIRECT (his report, 2026-10-07): once the account lands, its
+  // permissions page opens from wherever Connect was pressed — a Discover
+  // card's +, a Popular card, a list row or the detail's hero (the old path
+  // only redirected with a detail already open, and only for 9 s).
+  const fresh = await awaitConnected(slug, before);
+  if (!fresh) {
+    settle();
+    fail(`${app?.name ?? slug} hasn't shown up yet — it will appear under Your connections once it lands.`);
+    return;
+  }
+  connecting.delete(slug);
+  // The member moved on (the tab is off screen): the lists are fresh, and
+  // nothing is forced over what they are looking at.
+  if (!pageShowing()) { hideAppOverlay(); return; }
+  await openDetail({ entry: fresh, app, page: "permissions" });
+  // The "Connecting" overlay (connections.ts raises it on `verifying`) drops
+  // once the permissions page has painted — never left up (his report, 2026-10-07).
+  hideAppOverlay();
 }
 
-/** Re-read the lists without leaving the detail view. */
+/** Re-read the lists without touching either view (the detail stays up;
+ *  the deep-link `pendingApp` is the page load's alone). */
 async function reloadQuietly(): Promise<void> {
-  const onDetail = !!current;
-  await loadSettingsConnections();
-  if (onDetail) { el("conn2-list-view")?.classList.add("hidden"); el("conn2-detail-view")?.classList.remove("hidden"); }
+  await loadLists();
 }
 
 // ── discover ────────────────────────────────────────────────────────────────
 function renderDiscover(host: HTMLElement): void {
-  // On Discover the header search steps aside: the search and the Filter sit
-  // under the breadcrumb (his screens, 2026-09-16).
-  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.add("hidden");
+  // (The header search is hidden by render(): the directory bar below the
+  // breadcrumb carries its own — his screens, 2026-09-16.)
   if (catView) { renderCategoryPage(host); return; }
   const count = el("conn2-count"); if (count) count.textContent = `${catalog.length} available`;
   const crumb = document.createElement("div");
   crumb.className = "conn2-crumb";
   crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
-  crumb.querySelector(".crumb-link")!.addEventListener("click", () => { tab = "mine"; render(); });
+  crumb.querySelector(".crumb-link")!.addEventListener("click", () => { tab = "mine"; render(); requestScope("mine"); });
   host.appendChild(crumb);
   host.appendChild(dirBar(catalogQuery, (q) => { void loadCatalog(q).then(() => { catalogAll = false; render(); refocusDirSearch(); }); }, "All"));
 
@@ -634,7 +710,7 @@ function renderCategoryPage(host: HTMLElement): void {
   crumb.className = "conn2-crumb";
   crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="crumb-link dir">Directory</span><span class="sep">/</span><span class="here"></span>`;
   (crumb.querySelector(".here") as HTMLElement).textContent = catView!;
-  crumb.querySelector(".crumb-link:not(.dir)")!.addEventListener("click", () => { catView = null; tab = "mine"; render(); });
+  crumb.querySelector(".crumb-link:not(.dir)")!.addEventListener("click", () => { catView = null; tab = "mine"; render(); requestScope("mine"); });
   crumb.querySelector(".crumb-link.dir")!.addEventListener("click", () => void openCategory(null));
   host.appendChild(crumb);
   host.appendChild(dirBar(catQuery, (q) => { catQuery = q; void loadCategoryPage(true).then(() => { render(); refocusDirSearch(); }); }, catView!));
@@ -1122,9 +1198,16 @@ function wire(): void {
     el("conn2-list-view")?.classList.remove("hidden");
     render();
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.addEventListener("click", () => {
-    if (b.dataset.conn2Tab === "mine") document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.remove("hidden");
-  }));
+  // A CONNECTORS-CHANGED PUSH from the main process (an account landed after
+  // its OAuth) wakes a waiting connect at once instead of at its next tick,
+  // and otherwise keeps the list honest (his report, 2026-10-07). The web
+  // bridge serves no such push, so the subscription is capability-gated.
+  if (hostHas("onConnectorsChanged")) {
+    window.glyphh.onConnectorsChanged(() => {
+      if (wakeConnectPoll) { wakeConnectPoll(); return; }
+      if (pageShowing() && !current) void reloadQuietly();
+    });
+  }
 }
 
 // ── the adopted original: catalog modal + connect flow (one implementation) ──

@@ -869,10 +869,13 @@ export function initConnections(): void {
   // the whole app so the handoff never looks dead.
   window.glyphh.onConnectorsConnectProgress?.((p) => {
     if (p.phase === "verifying") showAppOverlay("Connecting");
-    // A SUCCESSFUL done keeps the overlay up — the connect click handler
-    // drops it once the detail screen has painted (the slow tail lives
-    // there). A failure drops it here so the error is immediately visible.
-    else if (p.phase === "done" && !p.ok) hideAppOverlay();
+    // DONE DROPS THE OVERLAY, success or failure (his report, 2026-10-07:
+    // the Connections page's Connect never hid it — a successful done used
+    // to leave it up "for the click handler", and only this page's handlers
+    // had one). Each click handler shows its own progress from here on: the
+    // ones in this module raise the overlay again over their slow tail, the
+    // Connections page (settings-connections.ts connectApp) uses its button.
+    else if (p.phase === "done") hideAppOverlay();
   });
 
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });

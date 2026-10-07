@@ -12137,14 +12137,26 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-section-body > .help-section[data-section="apps"],
 .ws-section-body > .help-section[data-section="connections"],
 .ws-section-body > .help-section[data-section="layouts"],
-.ws-section-body > .help-section[data-section="build"],
 .ws-section-body > .help-section[data-section="customize"] {
   display: flex; flex-direction: column;
 }
-/* Build / Customize: the hosted .settings-panels own the gutter and the
-   scroll (same rules as the modal); the tab strip sits on the same 28px edge. */
+/* Customize: the hosted .settings-panels own the gutter and the scroll (same
+   rules as the modal); the tab strip sits on the same 28px edge. ONE page
+   (his report, 2026-10-07): the tab strip on the left, the page's one
+   Yours | Discover switch on the right of the same row. */
 .ws-section-body > .help-section.settings-group { padding: 10px 0 0; }
-.settings-group-tabs { padding: 0 28px; }
+.settings-group-head { display: flex; align-items: center; gap: 12px; padding: 0 28px; }
+.settings-group-head > .settings-group-tabs { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.settings-group-scope { flex: 0 0 auto; margin-left: auto; }
+/* The per-panel Yours / Discover pair is the page's switch now: hidden inside
+   the host, while a panel's secondary tabs (Updates, Review) stay. */
+.settings-group-host .skills-tab[data-tab="mine"],
+.settings-group-host .skills-tab[data-tab="discover"],
+.settings-group-host .skills-tab[data-conn2-tab] { display: none; }
+/* A tab with no Discover half under Discover: its own content steps aside
+   for the one inline line (navigation.ts paintNoDiscover). */
+.settings-group-host .settings-panel.scope-discover-empty > :not(.settings-group-nodiscover) { display: none; }
+.settings-group-nodiscover { margin: 8px 0; }
 /* Settings/Docs scroll an INNER pane (.settings-panels) — the hosted
    section's own right/bottom gutter left that pane's scrollbar floating
    inboard of the card edge. Mirror the full-page rule (#page-body:has):

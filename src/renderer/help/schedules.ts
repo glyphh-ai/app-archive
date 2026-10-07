@@ -279,7 +279,8 @@ function paintRecents(): void {
       closeSettingsModal();
       (window as unknown as { __glyphhOpenSessionWith?: (o: { prompt: string }) => void }).__glyphhOpenSessionWith?.({ prompt });
     },
-    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
+    // The Connections TAB of the Customize page (his report, 2026-10-07).
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections-cfg"); },
   });
 }
 
@@ -397,7 +398,8 @@ async function paintRuns(id: string): Promise<void> {
       // The same bridge the library uses to start a session with a prompt.
       (window as unknown as { __glyphhOpenSessionWith?: (o: { prompt: string }) => void }).__glyphhOpenSessionWith?.({ prompt });
     },
-    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
+    // The Connections TAB of the Customize page (his report, 2026-10-07).
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections-cfg"); },
   });
 }
 

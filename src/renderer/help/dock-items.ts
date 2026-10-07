@@ -15,7 +15,12 @@
  * FULL-BLEED object silhouettes in saturated fills with white/tinted details,
  * never a glyph trapped in a uniform colored square. Tabs, Workspaces, Drips
  * and Platform live in Settings and keep no slot (his orders, 2026-09-12/16);
- * Settings is back (2026-09-17); the Browser was never a web slot.
+ * Settings is back (2026-09-17); the Browser was never a web slot. Customize
+ * joined (his report, 2026-10-07: "The dock needs an icon to get to the new
+ * unified Customize page, make it match the other icons we have already") —
+ * a filled sliders silhouette, amber, white tracks and knobs, ahead of
+ * Settings; a click opens the page (code-workbench.ts openDockItem →
+ * __wbOpenSection).
  */
 
 export interface DockItem { key: string; title: string; icon: string }
@@ -24,6 +29,9 @@ export const DOCK_ITEMS: ReadonlyArray<DockItem> = Object.freeze([
   { key: "glyphh",   title: "New session",    icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   // An empty square with a + (his order, 2026-09-16): the New tab form, straight from the dock.
   { key: "newtab",   title: "New tab",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 2.5"/><path d="M12 8v8M8 12h8"/></svg>` },
+  // Customize (his report, 2026-10-07): a sliders silhouette — the rounded
+  // rect in amber, three white tracks, the knobs offset along them.
+  { key: "customize", title: "Customize",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f59e0b;stroke:none"/><rect x="6" y="7.1" width="12" height="1.8" rx="0.9" style="fill:#ffffff;opacity:.75;stroke:none"/><rect x="6" y="11.1" width="12" height="1.8" rx="0.9" style="fill:#ffffff;opacity:.75;stroke:none"/><rect x="6" y="15.1" width="12" height="1.8" rx="0.9" style="fill:#ffffff;opacity:.75;stroke:none"/><circle cx="14.5" cy="8" r="1.9" style="fill:#ffffff;stroke:none"/><circle cx="9.5" cy="12" r="1.9" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="16" r="1.9" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "settings", title: "Settings",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "cc",       title: "Command center", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "closeall", title: "Close all",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },

@@ -13,8 +13,8 @@ const keyOf = (x: Tile): string | null => x.key;
 const names = (xs: Tile[]): string[] => xs.map((x) => x.name);
 
 describe("DOCK_ITEMS — the dock's shipped slots", () => {
-  it("is the five nav slots, openers first, controls last, each key once", () => {
-    expect(DOCK_ITEMS.map((d) => d.key)).toEqual(["glyphh", "newtab", "settings", "cc", "closeall"]);
+  it("is the six nav slots, openers first, Customize ahead of the controls (his report, 2026-10-07), each key once", () => {
+    expect(DOCK_ITEMS.map((d) => d.key)).toEqual(["glyphh", "newtab", "customize", "settings", "cc", "closeall"]);
     expect(new Set(DOCK_ITEMS.map((d) => d.key)).size).toBe(DOCK_ITEMS.length);
   });
   it("carries a title and an icon for every slot", () => {
@@ -25,6 +25,7 @@ describe("DOCK_ITEMS — the dock's shipped slots", () => {
   });
   it("answers a nav key and nothing else", () => {
     expect(dockItemFor("settings")?.title).toBe("Settings");
+    expect(dockItemFor("customize")?.title).toBe("Customize");
     expect(dockItemFor("agent:claude")).toBeNull();
     expect(dockItemFor("dock:settings")).toBeNull();
   });
