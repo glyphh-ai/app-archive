@@ -9941,8 +9941,13 @@ async function init(): Promise<void> {
       };
       wv.addEventListener("enter-html-full-screen", () => cardGuestFs(true));
       wv.addEventListener("leave-html-full-screen", () => cardGuestFs(false));
-      // DEFAULT session on purpose: glyphh-preview:// (local file/PDF/office
-      // previews) is registered there only. "plugins" = native PDF viewer.
+      // ONE cookie jar (his report, 2026-10-07: "Browsers are not remembering
+      // auth cookies or states on the apps"): the Browser tool's tabs share
+      // persist:yo with the app tab cards, pop-outs, auth popups and the
+      // Chrome cookie import — a sign-in in one is a sign-in in all. The
+      // glyphh-preview:// scheme (local file/PDF/office previews) is
+      // registered on persist:yo as well (main.ts). "plugins" = native PDF viewer.
+      wv.setAttribute("partition", "persist:yo");
       wv.setAttribute("allowpopups", "");
       wv.setAttribute("plugins", "");
       // ── Failures become a PAGE, not a blank rectangle ──

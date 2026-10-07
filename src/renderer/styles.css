@@ -21138,6 +21138,9 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 .skills-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
 /* The search is centered on the page itself, whatever the title and button widths. */
 .skills-head > .skills-search { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, 46%); }
+/* The head's buttons ride together at the right edge, clear of the centred
+   search box (2026-10-07: "+ New tab" was hidden under it on the Tabs page). */
+.skills-head-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; position: relative; z-index: 1; }
 .skills-search { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
 .skills-search svg { width: 14px; height: 14px; flex-shrink: 0; }
 .skills-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; outline: none; }

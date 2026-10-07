@@ -229,6 +229,9 @@ export async function importFromChrome(opts: { profile?: string; cookies?: boole
         base.cookiesImported++;
       } catch { base.cookiesFailed++; }
     }
+    // To disk now: an import followed by a quick quit must not lose the jar
+    // (2026-10-07: "Browsers are not remembering auth cookies or states").
+    try { await jar.flushStore(); } catch { /* best effort */ }
   } catch (err) {
     base.cookieError = err instanceof Error ? err.message : String(err);
   }

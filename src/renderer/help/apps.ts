@@ -7,6 +7,7 @@ import {
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { hostHas } from "./web-surface.js";
+import { wellFormedUrl } from "./url-well-formed.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { toolViewIcon } from "./layouts.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
@@ -48,6 +49,7 @@ function returnAddForm(): void {
 }
 const appsHead = document.getElementById("tabs-head");
 const appFormError = document.getElementById("app-form-error")!;
+const appDetailError = document.getElementById("app-detail-error");
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
 // WEB surface (browser tab): there is no privileged <webview>, so the editor's
@@ -430,7 +432,7 @@ function renderAppsList() {
   grid.appendChild(chips);
 
   if (!filtered.length) {
-    grid.insertAdjacentHTML("beforeend", `<div class="crud-empty">${query ? `No tabs matching "${escapeHtml(query)}"` : "No tabs yet — <b>+ Add</b> opens a web page or an installed app beside your agent."}</div>`);
+    grid.insertAdjacentHTML("beforeend", `<div class="crud-empty">${query ? `No tabs matching "${escapeHtml(query)}"` : "No tabs yet — <b>+ New tab</b> opens a web page or an installed app beside your agent."}</div>`);
     return;
   }
   const table = document.createElement("div");
@@ -1040,6 +1042,7 @@ function closeAppDetail() {
   document.getElementById("app-preview-frame")?.remove();
   document.getElementById("app-preview-fallback")?.remove();
   panelLoaded = false;
+  appDetailError?.classList.add("hidden");
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
   appsToolbar.classList.remove("hidden"); appsHead?.classList.remove("hidden");
@@ -1191,8 +1194,9 @@ function initApps() {
   document.getElementById("apps-refresh-btn")?.addEventListener("click", () => { void loadApps(); });
   document.getElementById("apps-chrome-btn")?.addEventListener("click", () => { void openChromeImport(); });
   window.glyphh.onPanelAppsChanged?.(() => {
-    // Don't stomp an open editor — the list re-fetches next time it shows.
-    if (appDetail.classList.contains("hidden")) void loadApps();
+    // Don't stomp an open editor or an open New tab form — the list
+    // re-fetches next time it shows (a late broadcast used to close the form).
+    if (appDetail.classList.contains("hidden") && appAddForm.classList.contains("hidden")) void loadApps();
   });
 
   // "Open Connections" from the required-connections warning.
@@ -1371,19 +1375,25 @@ function initApps() {
       const apps = (await window.glyphh.panelAppsList?.()) || [];
       reloadPanelApps(apps.map(toPanelApp));
       if (standalone) { const cb = standalone.onSaved; returnAddForm(); cb(); return; }
-      const createdLocal = panelApps.find((a) => a.slug === tab.slug);
-      if (createdLocal) openPanelAppDetail(createdLocal);
+      // Back to the list, form blank for the next add (2026-10-07: landing in
+      // the new tab's editor left no way to add another).
+      prepareAddForm();
+      await loadApps();
       return;
     }
     const addType = "browser" as AppType;   // apps ARE web panels
     const isBrowser = true;
     const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
-    if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
+    // A web tab needs a WELL-FORMED address: "mail.google.com" is completed to
+    // https://, anything that is not http(s) with a real host is refused here
+    // rather than saved as a tab that can never load.
+    const normalizedUrl = addType === "browser" ? wellFormedUrl(url) : null;
+    if (addType === "browser" && !normalizedUrl) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
     if (addType === "native" && !execPath) { addExecPath.classList.add("invalid"); clearInvalid(addExecPath); valid = false; }
     if (!valid) {
       appFormError.textContent = addType === "browser"
-        ? "Name and URL are required."
+        ? (!name || !url ? "Name and URL are required." : "Enter a full web address, e.g. https://mail.google.com")
         : "Name and executable path are required.";
       appFormError.classList.remove("hidden");
       return;
@@ -1415,7 +1425,7 @@ function initApps() {
       // A web app opens as a Glyphh panel — there is no browser or window
       // placement to configure, so it carries no launcher config at all.
       ? {
-          name, slug: id, isBrowser: true, url, execPath: null,
+          name, slug: id, isBrowser: true, url: normalizedUrl!, execPath: null,
           launchConfig: (document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {},
         }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
@@ -1431,9 +1441,10 @@ function initApps() {
     const apps = (await window.glyphh.panelAppsList?.()) || [];
     reloadPanelApps(apps.map(toPanelApp));
     if (standalone) { const cb = standalone.onSaved; returnAddForm(); cb(); return; }
-    const createdLocal = panelApps.find((a) => a.id === created.app!.id);
-    if (createdLocal) openPanelAppDetail(createdLocal);
-    else loadApps();
+    // Back to the list, form blank for the next add (2026-10-07: landing in
+    // the new tab's editor left no way to add another).
+    prepareAddForm();
+    await loadApps();
   });
 
   // App detail back button
@@ -1498,6 +1509,7 @@ function initApps() {
   // Dashboard save
   document.getElementById("app-dash-save")?.addEventListener("click", async () => {
     if (!currentAppId) return;
+    appDetailError?.classList.add("hidden");
     const newSlug = appDetailId.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
     const type = (detailTypeSelect?.value || "browser") as AppType;
     // A BUILT app keeps its kind (the server refuses to retype one) and its bundle
@@ -1514,8 +1526,18 @@ function initApps() {
       const { mcpApproved, guardrails } = readMcpConfig();
       patch.launchConfig = { ...(currentApp?.launchConfig || {}), mcpApproved, guardrails };
     } else if (type === "browser") {
+      // `appDetailUrl` is the INPUT captured at load — a same-id div is
+      // injected into the head, so getElementById would find the wrong node.
       const url = appDetailUrl.value.trim();
-      if (url) patch.url = url;
+      if (url) {
+        const normalized = wellFormedUrl(url);
+        if (!normalized) {
+          appDetailUrl.classList.add("invalid"); clearInvalid(appDetailUrl);
+          if (appDetailError) { appDetailError.textContent = "Enter a full web address, e.g. https://mail.google.com"; appDetailError.classList.remove("hidden"); }
+          return;
+        }
+        patch.url = normalized;
+      }
       patch.launchConfig = (document.getElementById("app-detail-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {};
       patch.execPath = null;
     } else {
@@ -1527,8 +1549,9 @@ function initApps() {
     }
     const saved = await window.glyphh.panelAppsUpdate?.(currentAppId, patch);
     if (!saved?.ok) {
-      appFormError.textContent = saved?.error || "Failed to save app.";
-      appFormError.classList.remove("hidden");
+      const err = appDetailError || appFormError;   // the add form's line is hidden behind the detail
+      err.textContent = saved?.error || "Failed to save app.";
+      err.classList.remove("hidden");
       return;
     }
 

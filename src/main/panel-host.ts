@@ -102,13 +102,15 @@ export class ElectronPanelSource implements PanelSource {
 
     // OFFSCREEN window: paints via 'paint' events regardless of visibility (a
     // show:false window is occluded → compositor paused → a CDP screencast
-    // never emits; that was the black panel). Default partition → the user's
-    // persistent session: their real logged-in cookies apply.
+    // never emits; that was the black panel). persist:yo → the ONE cookie jar
+    // the app tabs, pop-outs and the Chrome import use, so a streamed panel
+    // opens already signed in (his report, 2026-10-07: "Browsers are not
+    // remembering auth cookies or states on the apps").
     const win = new BrowserWindow({
       show: false,
       width: this.width,
       height: this.height,
-      webPreferences: { offscreen: true, sandbox: false, contextIsolation: true, javascript: true, images: true },
+      webPreferences: { offscreen: true, sandbox: false, contextIsolation: true, javascript: true, images: true, partition: "persist:yo" },
     });
     this.win = win;
 

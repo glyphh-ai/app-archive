@@ -306,10 +306,11 @@ async function boot() {
   });
 
   // ── glyphh-preview:// — streams a local file into the Browser panel's
-  // iframe (which cannot navigate to file:// itself). Default session only:
-  // app webviews live on persist:yo, and installed-app documents carry a
-  // default-src 'none' CSP, so neither can reach this scheme.
-  protocol.handle("glyphh-preview", (request) => {
+  // webview (which cannot navigate to file:// itself). Registered on the
+  // default session AND on persist:yo: the Browser tool's tabs moved to
+  // persist:yo (2026-10-07, one cookie jar with the app tabs so sign-ins
+  // stick), and the previews they open must keep working there.
+  const servePreview = (request: Request) => {
     const u = new URL(request.url);
     let p = decodeURIComponent(u.pathname);
     if (process.platform === "win32") p = p.replace(/^\//, "").replace(/\//g, "\\");
@@ -317,7 +318,10 @@ async function boot() {
       return new Response(`preview not found: ${p}`, { status: 404 });
     }
     return net.fetch(pathToFileURL(p).toString());
-  });
+  };
+  protocol.handle("glyphh-preview", servePreview);
+  const yoProtocol = electronSession.fromPartition("persist:yo").protocol;
+  if (!yoProtocol.isProtocolHandled("glyphh-preview")) yoProtocol.handle("glyphh-preview", servePreview);
 
   // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
   const skillsDir = userScopedPath("skills");
@@ -1370,8 +1374,9 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
 let quitting = false;
 app.on("before-quit", () => { quitting = true; });
 
-app.on("window-all-closed", () => {
+app.on("window-all-closed", async () => {
   cleanupAll(updateReadyForQuit ? 30_000 : 4000);
+  await flushCookieStores();   // bounded; the sign-ins reach disk before the quit
   app.quit();
 });
 
@@ -1397,9 +1402,27 @@ let cleanedUp = false;
 // (autoInstallOnAppQuit), so cleanupAll's hard-exit backstop must not fire
 // mid-handoff — the same failure the "Restart now" path already guards.
 let updateReadyForQuit = false;
+/** Write the cookie jars to disk NOW, best effort, bounded so a quit is never
+ *  held (his report, 2026-10-07: "Browsers are not remembering auth cookies or
+ *  states on the apps" — a hard exit from the backstop could drop a sign-in
+ *  Chromium had not yet persisted). */
+let cookieFlush: Promise<void> | null = null;
+function flushCookieStores(): Promise<void> {
+  if (cookieFlush) return cookieFlush;
+  const flush = Promise.allSettled([
+    electronSession.fromPartition("persist:yo").cookies.flushStore(),
+    electronSession.defaultSession.cookies.flushStore(),
+  ]).then(() => undefined, () => undefined);
+  const bounded = new Promise<void>((resolve) => setTimeout(resolve, 1500).unref());
+  cookieFlush = Promise.race([flush, bounded]).catch(() => undefined);
+  return cookieFlush;
+}
+
 function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
+  // Cookies first, before the hard-exit backstop is armed below.
+  try { void flushCookieStores(); } catch { /* noop */ }
   try { closeAllPanels(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
