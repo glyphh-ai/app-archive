@@ -47,7 +47,7 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 **Installed app tools — the marketplace** (headless; no window needed)
 - \`app_list_tools\` — discover the MCP tools the user's installed Glyphh apps expose: \`[{ app, name, tools: [{ name, description, inputSchema }] }]\`. Every user's apps differ — discover first, never assume.
 - \`app_call_tool { app, tool, args }\` — run one headlessly (send a message, query a graph, search a vector store, create an event). \`args\` must match the tool's \`inputSchema\`.
-- \`app_install { bundleBase64 }\` — install/update a \`.glyphh\` bundle as an app in the cloud (an instance in the user's organization); its tools then light up for \`app_call_tool\` on every surface.
+- \`app_install { dir }\` — install/update a Glyphh app from a FOLDER on the user's machine (a built bundle folder is zipped as it is; a project with a build script is built by the platform as a job — \`app_build_status { job }\` reads it) as an app in the cloud (an instance in the user's organization); its tools then light up for \`app_call_tool\` on every surface. Never read a bundle into a tool call; \`bundleBase64\` is only for a small bundle handed over from outside.
 
 **The user's agents** (sub-agents Glyphh hands work to — each with its own brief and model)
 - \`agents_list\` — the user's agents: \`[{ agent, name, description, model, hasBrief }]\`. \`description\` says when to use each one.
@@ -134,7 +134,7 @@ glyphh.handle("ask", async ({ q }) => {
 \`\`\`
 
 **Deploy** — install the bundle and its tools go live:
-\`app_install { bundleBase64 }\` → then \`app_list_tools\` shows \`recall\`'s tools
+\`app_install { dir }\` → then \`app_list_tools\` shows \`recall\`'s tools
 and \`app_call_tool { app:"recall", tool:"ask", args:{ q } }\` runs them.
 Re-install the same slug to update the instance in place.
 

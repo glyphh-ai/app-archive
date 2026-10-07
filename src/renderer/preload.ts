@@ -1106,6 +1106,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
   appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
   appInstancesInstallDefaults: () => ipcRenderer.invoke("app-instances-install-defaults") as Promise<LibEnvelope>,
+  /** THE APP CARD (2026-10-07): Build and run a folder on this machine (a source build answers its job); read a build job. */
+  appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
+  appBuildStatus: (job: string) => ipcRenderer.invoke("app-build-status", job) as Promise<LibEnvelope>,
   /** Org admin: the catalog's default apps and the org's overrides (GET / PUT /api/admin/app-defaults). */
   orgAppDefaultsGet: () => ipcRenderer.invoke("org-app-defaults-get") as Promise<LibEnvelope>,
   orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => ipcRenderer.invoke("org-app-defaults-set", overrides) as Promise<LibEnvelope>,

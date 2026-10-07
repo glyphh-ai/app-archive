@@ -1,6 +1,6 @@
 ---
 name: build-glyphh-app
-description: Author a Glyphh app, a Next.js static-export project with a manifest, a server-side worker (Postgres, pgvector, Neo4j, connectors, cron, notifications) and tools that land in the agent's toolbox, then deploy it as a versioned release with app_deploy. Use when a developer or user wants to build, change, deploy or roll back a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh").
+description: Author a Glyphh app, a Next.js static-export project with a manifest, a server-side worker (Postgres, pgvector, Neo4j, connectors, cron, notifications) and tools that land in the agent's toolbox, then install it as a versioned release with app_install { dir }. Use when a developer or user wants to build, change, deploy or roll back a Glyphh app (e.g. "make a Glyphh app that…", "build an app that tracks X and reminds me", "expose Y as a tool for my Glyphh").
 ---
 
 # Build a Glyphh App
@@ -147,19 +147,24 @@ Mono, text Geist) so the panel is indistinguishable from the host.
 3. **Write the page**: list what the worker stores, act through `db.exec` and
    the connectors, gate on `connector.status`.
 4. **Build locally**: `npm install && npm run build`. Fix every error.
-5. **Deploy**: `app_deploy { slug, kind?, note? }`. It tars the session's folder
-   (`manifest.json` + `package.json` + …), the platform builds it (`npm ci`,
-   `next build` with the instance's base path, `worker.js` bundled and linted),
-   records it as the next release and pins it. The answer carries `{ key,
-   release, log tail, tools }`. A failed build answers the log; fix and deploy
-   again. Never ship through a login or device-auth flow; the session is
-   already authenticated.
+5. **Build and run**: `app_install { dir, kind?, note? }` — `dir` is the app's
+   folder ON THE MACHINE (default: the session's folder). The runtime tars the
+   source itself and the platform builds it as a JOB (`npm ci`, `next build`
+   with the instance's base path, `worker.js` bundled and linted), records it
+   as the next release and pins it. The answer carries `{ key, mode, release,
+   job, log tail, tools, url }`; `release` is null while the job still builds —
+   `app_build_status { job }` reads it. A failed build answers the log; fix and
+   install again (the next release of the same instance). NEVER tar or base64 a
+   folder yourself and never paste a bundle into a tool call: the path door is
+   the only one that works. Never ship through a login or device-auth flow; the
+   session is already authenticated.
 6. **Verify**: `app_list_tools` shows the app and its tools; `app_call_tool
    { app, tool, args }` runs one headlessly; the panel renders at
    `/app-host/<key>/ui/`.
 7. **Roll back** with `app_pin { app, n }` (`app_releases { app }` lists them).
-   `app_install { bundleBase64 }` installs an already BUILT bundle you were
-   handed; it is not for authoring.
+   A folder that already holds `manifest.json` + its entry (a built bundle)
+   goes through the same `app_install { dir }`, zipped as it is; `bundleBase64`
+   is only for a small bundle (< 64 KB) handed over from outside.
 
 ## Reference apps (the server's defaults, `glyphh/default-apps/`)
 

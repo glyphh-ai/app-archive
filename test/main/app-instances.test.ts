@@ -226,7 +226,13 @@ const sdk = {
   releases: async (key: string) => { calls.push({ method: "SDK", path: `releases ${key}` }); return [{ ...RELEASE, n: 1, pinned: false }, RELEASE]; },
   pin: async (key: string, n: number) => { calls.push({ method: "SDK", path: `pin ${key} ${n}` }); return { ...ORG, key, release: n }; },
 };
+const JOB_ID = "job_0123456789abcdef01234567";
+let jobReads = 0;
+let jobFails = false;
+const readyBodies: unknown[] = [];
 vi.mock("electron", () => ({ ipcMain: { handle: () => undefined } }));
+vi.mock("../../src/main/org-apps.js", () => ({ invalidateOrgApps: () => undefined }));
+vi.mock("../../src/main/broadcast.js", () => ({ broadcast: () => undefined }));
 vi.mock("../../src/main/glyphh-client.js", () => ({
   SERVER_URL: "https://api.test",
   appCache: { cached: async (_k: string, fn: () => Promise<unknown>) => fn(), invalidate: () => undefined },
@@ -234,14 +240,26 @@ vi.mock("../../src/main/glyphh-client.js", () => ({
     appInstances: sdk,
     token: async () => { if (!token) throw new Error("signed out"); return token; },
     http: {
-      get: async (path: string) => { calls.push({ method: "GET", path }); return path === "/api/app-instances" ? listed : []; },
+      get: async (path: string) => {
+        calls.push({ method: "GET", path });
+        if (path === "/api/app-instances") return listed;
+        if (path === `/api/app-instances/jobs/${JOB_ID}`) {
+          jobReads += 1;
+          if (jobFails) return { id: JOB_ID, key: "recall", status: "failed", log: "npm ERR! boom", release: null, error: "next build exited 1" };
+          return jobReads >= 2 ? { id: JOB_ID, key: "recall", status: "ready", log: "x".repeat(10_000) + "\nbuild ok", release: RELEASE, error: null } : { id: JOB_ID, key: "recall", status: "building", log: "npm ci", release: null, error: null };
+        }
+        return [];
+      },
       post: async (path: string, body?: unknown) => {
         calls.push({ method: "POST", path, body });
         if (path === "/api/app-instances") {
           if (forbidOrg && (body as { kind: string }).kind === "org") { const e = new Error("org admin only") as Error & { code: string }; e.code = "E_FORBIDDEN"; throw e; }
           return { instance: { ...ORG, status: "pending", kind: (body as { kind: "org" | "personal" }).kind }, upload: { url: "https://r2.test/put", key: "bundles/x" } };
         }
-        if (path.endsWith("/ready")) return { ...ORG, status: "ready" };
+        if (path.endsWith("/ready")) { readyBodies.push(body); return { ...ORG, status: "ready", release: 7 }; }
+        // THE BUILD IS A JOB (2026-10-07): /run answers the job at once.
+        const run = path.match(/^\/api\/app-instances\/([^/]+)\/builds\/(\d+)\/run$/);
+        if (run) { jobReads = 0; return { job: { id: JOB_ID, key: run[1], status: "queued", log: "", release: null, error: null } }; }
         if (path.endsWith("/invoke")) return { ok: true, tool: "list_expenses", result: [{ id: 1 }] };
         return {};
       },
@@ -332,7 +350,7 @@ describe("checkDeployFolder — the thread's folder is the sandbox", () => {
     expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": "{nope" }))).toThrow(/not valid JSON/);
     expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": "[]" }))).toThrow(/JSON object/);
     expect(() => main.checkDeployFolder("/work/recall", "recall", fakeFs({ ...GOOD, "/work/recall/manifest.json": JSON.stringify({ name: "Recall" }) }))).toThrow(/names no slug/);
-    expect(() => main.checkDeployFolder("/work/recall", "other", fakeFs(GOOD))).toThrow(/is the app "recall" but app_deploy was asked to deploy "other"/);
+    expect(() => main.checkDeployFolder("/work/recall", "other", fakeFs(GOOD))).toThrow(/is the app "recall" but the call named "other"/);
     expect(() => main.checkDeployFolder("/work/recall", "", fakeFs(GOOD))).toThrow(/needs the app's slug/);
   });
   it("answers the folder and the manifest (slug lowercased) when the shape holds", () => {
@@ -372,11 +390,18 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => { puts.push({ url: String(url), init: init! }); return new Response(null, { status: 200 }); }) as typeof fetch;
   const RECALL: AppInstanceSummary = { ...ORG, key: "recall", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }, { name: "ingest" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
 
-  it("deploys onto the existing instance of that slug: no create, source PUT as gzip, the build run with the note, the log a tail", async () => {
+  const sleep = async () => undefined;
+  it("deploys onto the existing instance of that slug: no create, source PUT as gzip, the build run with the note AS A JOB that is followed to ready, the log a tail", async () => {
     calls.length = 0; puts.length = 0; listed = [RECALL];
-    const out = await main.deployFolderAsInstance(dir, { slug: "recall", note: "second", fetchImpl, pack });
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall", "runBuild recall 3"]);
-    expect(calls.find((c) => c.path === "runBuild recall 3")?.body).toEqual({ note: "second" });
+    const logs: string[] = [];
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", note: "second", fetchImpl, pack, sleep, onLog: (l) => logs.push(l) });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall"]);
+    expect(calls.find((c) => c.path === "/api/app-instances/recall/builds/3/run")?.body).toEqual({ note: "second" });
+    expect(calls.filter((c) => c.path === `/api/app-instances/jobs/${JOB_ID}`)).toHaveLength(2);
+    expect(logs[0]).toBe("npm ci");
+    expect(out.mode).toBe("source");
+    expect(out.job?.status).toBe("ready");
+    expect(out.url).toBe("/app-host/recall/ui/");
     expect(puts).toHaveLength(1);
     expect(puts[0].url).toBe("https://r2.test/put-source");
     expect(puts[0].init.method).toBe("PUT");
@@ -389,11 +414,12 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
   });
   it("with no instance yet, creates one first (org, falling back to personal when refused) with the source's identity standing in for the bundle", async () => {
     calls.length = 0; puts.length = 0; listed = []; forbidOrg = true;
-    const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack });
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack, sleep });
     const made = calls.filter((c) => c.path === "create").map((c) => c.body as { kind: string; slug: string; bundle: { sizeBytes: number } });
     expect(made.map((m) => m.kind)).toEqual(["org", "personal"]);
     expect(made[1]).toMatchObject({ slug: "recall", bundle: { sizeBytes: 8 } });
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "create", "builds recall~u1", "runBuild recall~u1 3"]);
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "create", "builds recall~u1"]);
+    expect(calls.some((c) => c.path === "/api/app-instances/recall~u1/builds/3/run")).toBe(true);
     expect(out.key).toBe("recall~u1");
     // No live row answers yet: the folder's declared tools stand in.
     expect(out.tools).toEqual(["ask"]);
@@ -401,20 +427,88 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
   });
   it("`kind` names the instance: a personal deploy never touches the org's", async () => {
     calls.length = 0; listed = [RECALL];
-    await main.deployFolderAsInstance(dir, { slug: "recall", kind: "personal", fetchImpl, pack });
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "builds recall~u1", "runBuild recall~u1 3"]);
+    await main.deployFolderAsInstance(dir, { slug: "recall", kind: "personal", fetchImpl, pack, sleep });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "builds recall~u1"]);
     expect((calls.find((c) => c.path === "create")!.body as { kind: string }).kind).toBe("personal");
   });
   it("refuses the folder rules before any call, and a refused upload before the build", async () => {
     calls.length = 0; listed = [RECALL];
     await expect(main.deployFolderAsInstance(null, { slug: "recall", fetchImpl, pack })).rejects.toThrow(/no folder is set/);
-    await expect(main.deployFolderAsInstance(dir, { slug: "other", fetchImpl, pack })).rejects.toThrow(/was asked to deploy "other"/);
+    await expect(main.deployFolderAsInstance(dir, { slug: "other", fetchImpl, pack })).rejects.toThrow(/the call named "other"/);
     expect(calls.filter((c) => c.method === "SDK")).toHaveLength(0);
     const refuse = (async () => new Response(null, { status: 403 })) as typeof fetch;
     await expect(main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl: refuse, pack })).rejects.toThrow(/source upload was refused/);
     expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall"]);
-    fs.rmSync(dir, { recursive: true, force: true });
     listed = [ORG];
+  });
+  it("wait: false answers at once with the job and no release; a failed job is an error that carries the log", async () => {
+    calls.length = 0; listed = [RECALL];
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack, wait: false });
+    expect(out.release).toBeNull();
+    expect(out.job).toMatchObject({ id: JOB_ID, status: "queued" });
+    expect(calls.filter((c) => c.path === `/api/app-instances/jobs/${JOB_ID}`)).toHaveLength(0);
+    jobFails = true;
+    await expect(main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack, sleep })).rejects.toThrow(/the build failed: next build exited 1[\s\S]*npm ERR! boom/);
+    jobFails = false;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("ONE DOOR, BY PATH (2026-10-07): installFolderAsInstance", () => {
+  const RECALL: AppInstanceSummary = { ...ORG, key: "recall", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
+  const fetchImpl = (async () => new Response(null, { status: 200 })) as typeof fetch;
+  it("a folder with a build script is SOURCE: the build job lane", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-src-"));
+    fs.writeFileSync(path.join(dir, "manifest.json"), PROJECT_MANIFEST);
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { build: "next build" } }));
+    expect(main.folderShapeOf(dir)).toBe("source");
+    calls.length = 0; listed = [RECALL];
+    const out = await main.installFolderAsInstance(dir, { fetchImpl, pack: async () => Buffer.from("tgz"), sleep: async () => undefined });
+    expect(out.mode).toBe("source");
+    expect(out.key).toBe("recall");
+    expect(out.release).toEqual(RELEASE);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  it("a folder with manifest.json + its entry is a BUNDLE: zipped, created, PUT, readied with the note; the slug must agree", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-bundle-"));
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ manifestVersion: 2, kind: "glyphh-app", name: "Recall", slug: "recall", entry: "index.html", capabilities: [], tools: [{ name: "ask" }] }));
+    fs.writeFileSync(path.join(dir, "index.html"), "<html></html>");
+    fs.mkdirSync(path.join(dir, "node_modules/x"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules/x/i.js"), "1");
+    expect(main.folderShapeOf(dir)).toBe("bundle");
+    const zipped = main.zipBundleFolder(dir);
+    expect(zipped.length).toBeGreaterThan(0);
+    calls.length = 0; readyBodies.length = 0; listed = [];
+    const out = await main.installFolderAsInstance(dir, { fetchImpl, kind: "org", note: "first" });
+    expect(out.mode).toBe("bundle");
+    expect(out.job).toBeNull();
+    expect(out.release?.n).toBe(7);
+    // The LIVE summary's tools win over the folder's declared ones (the fixture's /ready answers the org row).
+    expect(out.tools).toEqual(["list_expenses"]);
+    expect(readyBodies).toEqual([{ note: "first" }]);
+    expect(calls.map((c) => `${c.method} ${c.path}`).slice(0, 2)).toEqual(["POST /api/app-instances", "POST /api/app-instances/expense-desk/ready"]);
+    await expect(main.installFolderAsInstance(dir, { fetchImpl, slug: "other" })).rejects.toThrow(/is the app "recall" but the call named "other"/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  it("refuses what it cannot read: no folder, no manifest, a bundle whose entry is missing", async () => {
+    await expect(main.installFolderAsInstance("", {})).rejects.toThrow(/no folder/);
+    await expect(main.installFolderAsInstance("/nope/none", {})).rejects.toThrow(/not a directory/);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-empty-"));
+    await expect(main.installFolderAsInstance(dir, {})).rejects.toThrow(/no manifest\.json/);
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ kind: "glyphh-app", name: "X", slug: "x", entry: "ui/index.html" }));
+    await expect(main.installFolderAsInstance(dir, {})).rejects.toThrow(/entry "ui\/index\.html" is not in it/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  it("the base64 door is capped: a flood is refused with the path door named", () => {
+    expect(() => main.refuseBase64Flood("a".repeat(main.BASE64_INPUT_CAP))).not.toThrow();
+    expect(() => main.refuseBase64Flood("a".repeat(main.BASE64_INPUT_CAP + 1))).toThrow(/Pass `dir` instead/);
+  });
+  it("a build job id is checked before any read; waiting stops at the deadline with the job as it stands", async () => {
+    expect(() => main.readBuildJob("nope")).toThrow(/not a build job id/);
+    calls.length = 0; jobReads = 0;
+    // one read (building), the deadline already passed: answered still building
+    const j = await main.waitBuildJob(JOB_ID, { timeoutMs: 0, sleep: async () => undefined });
+    expect(j.status).toBe("building");
   });
 });
 

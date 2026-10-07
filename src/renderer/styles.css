@@ -3746,6 +3746,14 @@ body[data-session-space="cowork"] .code-view-toggles { display: none !important;
 .code-connect-card .ccx-btn:disabled { opacity: 0.75; cursor: default; }
 .code-connect-card[data-status="connected"] .ccx-btn { background: var(--active-bg); color: var(--text); }
 .code-connect-card[data-status="failed"] .ccx-sub { color: var(--danger); }
+/* THE APP CARD (2026-10-07): the connect card's grammar with three actions. */
+.code-app-card { max-width: 560px; align-items: flex-start; }
+.code-app-card .ccx-initial { background: color-mix(in srgb, var(--accent) 22%, var(--surface-3)); color: var(--accent); }
+.code-app-card .cax-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: none; }
+.code-app-card .cax-actions .action-btn { height: 28px; padding: 0 12px; font-size: 12px; }
+.code-app-card[data-state="failed"] .ccx-sub { color: var(--danger); }
+.code-app-card[data-state="building"] .ccx-initial, .code-app-card[data-state="installing"] .ccx-initial { animation: code-app-pulse 1.4s ease-in-out infinite; }
+@keyframes code-app-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 /* Both types carry a folder now (Work keeps documents/downloads, Code its
    repo), so the + menu's folder actions are never hidden — the rule that hid
