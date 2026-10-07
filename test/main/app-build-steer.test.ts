@@ -26,4 +26,14 @@ describe("THE CONTRACT IS PUSHED INTO THE TURN (2026-10-07)", () => {
     expect(appBuildSteerFor("fix the tests", "/w")).toBe("");
     expect(appBuildSteerFor("a glyphh app for notes", null)).toContain("glyphh_app_scaffold");
   });
+
+  it("a desktop-born cloud turn whose folder is on the desktop is steered to the device's door", () => {
+    const s = appBuildSteer("/Users/me/app", { viaDevice: true });
+    expect(s).toContain("on the member's DESKTOP");
+    expect(s).toContain('device_app_install { dir: "<the app\'s folder>" }');
+    expect(s).toContain("device_write_file");
+    expect(s).not.toContain("glyphh_app_scaffold");
+    expect(appBuildSteerFor("a glyphh app", "/w", { viaDevice: true })).toContain("device_app_install");
+    expect(appBuildSteerFor("a glyphh app", "/w")).toContain("glyphh_app_scaffold");
+  });
 });

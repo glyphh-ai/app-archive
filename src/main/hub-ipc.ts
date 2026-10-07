@@ -356,13 +356,37 @@ export async function installDefaultHubItems(): Promise<void> {
 
 /** SHARE TO PUBLISH an app INSTANCE (his order, 2026-10-07): the server
  *  promotes its pinned release by R2 key — nothing is read here. */
-async function publishInstance(cardId: string, notes: string): Promise<{ version: number; status: string }> {
+/** THE ICON AND SCREENSHOTS ATTACHED ON THE PUBLISH TAB (his ask, 2026-10-07). */
+export interface ShareMedia { icon?: string | null; screenshots?: Array<{ name: string; caption?: string; dataUrl: string }> }
+const mediaBody = (media: ShareMedia | undefined): Record<string, unknown> => ({
+  ...(media?.icon ? { icon: media.icon } : {}),
+  ...(media?.screenshots?.length ? { screenshots: media.screenshots.map((s) => ({ name: s.name, caption: s.caption ?? "", dataUrl: s.dataUrl })) } : {}),
+});
+
+async function publishInstance(cardId: string, notes: string, media?: ShareMedia): Promise<{ version: number; status: string }> {
   const key = instanceKeyOfCardId(cardId);
-  return getClient().http.post<{ version: number; status: string }>(`/api/app-instances/${encodeURIComponent(key)}/share`, { notes });
+  return getClient().http.post<{ version: number; status: string }>(`/api/app-instances/${encodeURIComponent(key)}/share`, { notes, ...mediaBody(media) });
 }
 
-async function publish(skillId: string, notes: string): Promise<{ version: number; status: string }> {
-  if (isInstanceCardId(skillId)) return publishInstance(skillId, notes);
+/** A folder share's media: the files beside the bundle, and the icon +
+ *  screenshots on its `<kind>.json` (the hub's icon column reads it). */
+export function withFolderMedia(kind: Kind, files: Record<string, string>, media: ShareMedia | undefined): Record<string, string> {
+  if (!media || (!media.icon && !media.screenshots?.length)) return files;
+  const out = { ...files };
+  const manifestName = kind === "app" || kind === "task" ? `${kind}.json` : null;
+  let manifest: Record<string, unknown> = {};
+  if (manifestName) { try { manifest = JSON.parse(out[manifestName] || "{}") as Record<string, unknown>; } catch { manifest = {}; } }
+  if (media.icon) { out["icon.svg"] = media.icon; manifest.icon = "icon.svg"; }
+  if (media.screenshots?.length) {
+    for (const k of Object.keys(out)) if (k.startsWith("screenshots/")) delete out[k];
+    manifest.screenshots = media.screenshots.map((s) => { out[`screenshots/${s.name}`] = s.dataUrl; return { path: `screenshots/${s.name}`, caption: s.caption ?? "" }; });
+  }
+  if (manifestName) out[manifestName] = JSON.stringify({ name: "", ...manifest }, null, 2);
+  return out;
+}
+
+async function publish(skillId: string, notes: string, media?: ShareMedia): Promise<{ version: number; status: string }> {
+  if (isInstanceCardId(skillId)) return publishInstance(skillId, notes, media);
   const skill = getSkill(skillId);
   const files: Record<string, string> = {};
   let bytes = 0;
@@ -376,7 +400,7 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
   const { body } = parseSkillMd(files["SKILL.md"] || "");
   const slug = skill.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "skill";
   const r = await getClient().http.post<{ version: number; status: string }>(`/api/library/${kindOfId(skillId)}/promote`, {
-    slug, name: skill.name, description: skill.description, notes, payload: { files, prompt: body, manifest: skill.frontmatter },
+    slug, name: skill.name, description: skill.description, notes, payload: { files: withFolderMedia(kindOfId(skillId), files, media), prompt: body, manifest: skill.frontmatter },
   });
   return r;
 }
@@ -528,7 +552,7 @@ export function registerHubIpc(): void {
     return categories;
   }));
   ipcMain.handle("skill-update", (_e, id: string) => env(() => update(String(id))));
-  ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
+  ipcMain.handle("skill-publish", (_e, id: string, notes?: string, media?: ShareMedia) => env(() => publish(String(id), String(notes ?? ""), media && typeof media === "object" ? media : undefined)));
   // THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07;
   // punch list 7, 16, 18). The web answers the same names (member-library-web.js).
   ipcMain.handle("skill-comments", (_e, ref: { versionId?: string; kind?: string; itemId?: string; version?: number }) => env(() => commentsFor(ref && typeof ref === "object" ? ref : {})));

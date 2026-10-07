@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appCardFace, buildAndRunPrompt, cardFromInstallAnswer, cardFromManifestWrite, folderOfPath, mergeAppCard, parseInstallAnswer } from "../../src/renderer/help/app-card.js";
+import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, folderOfPath, logLines, mergeAppCard, parseInstallAnswer } from "../../src/renderer/help/app-card.js";
 
 describe("the app card in the thread (2026-10-07)", () => {
   it("a manifest.json the turn wrote makes a BUILT card for its folder; anything else does not", () => {
@@ -37,5 +37,20 @@ describe("the app card in the thread (2026-10-07)", () => {
     expect(appCardFace({ folder: "/w/x", state: "built", release: 1, url: "/app-host/x/ui/" })).toMatchObject({ primary: "Build and run again", canOpen: true, canShare: true });
     expect(appCardFace({ folder: "/w/x", state: "failed", error: "boom" }).sub).toMatch(/boom/);
     expect(buildAndRunPrompt("/w/x")).toMatch(/app_install \{ dir: "\/w\/x" \}/);
+  });
+
+  it("THE BUILD LOG IN THE THREAD: a log rides the building card, stays on failure, clears when it runs", () => {
+    expect(buildLogOf({ job: "job_1", status: "building", log: "npm ci\n" })).toEqual({ job: "job_1", status: "building", log: "npm ci\n" });
+    expect(buildLogOf({ job: 1 })).toBeNull();
+    expect(buildLogOf("x")).toBeNull();
+    expect(logLines("a\nb\r\n\n c\nd", 2)).toBe(" c\nd");
+    const building = mergeAppCard({ folder: "/w", state: "built" }, { folder: "/w", state: "building", job: "job_1", log: "npm ci" });
+    expect(building.log).toBe("npm ci");
+    const grown = mergeAppCard(building, { folder: "/w", state: "building", job: "job_1" });
+    expect(grown.log).toBe("npm ci");
+    const failed = mergeAppCard(grown, { folder: "/w", state: "failed", error: "boom" });
+    expect(failed.log).toBe("npm ci");
+    const ran = mergeAppCard(failed, { folder: "/w", state: "installed", key: "x", release: 1 });
+    expect(ran.log).toBeUndefined();
   });
 });

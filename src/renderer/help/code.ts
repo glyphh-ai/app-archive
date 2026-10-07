@@ -31,7 +31,7 @@ import { memberLine, turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
-import { appCardFace, buildAndRunPrompt, cardFromInstallAnswer, cardFromManifestWrite, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
+import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, logLines, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
@@ -1522,14 +1522,17 @@ function followAppJob(chat: CodeChat, msg: CodeMsg): void {
     const r = await window.glyphh.appBuildStatus(job).catch(() => null) as { ok: boolean; data?: { status?: string; release?: { n?: number } | null; error?: string | null; log?: string } ; error?: string } | null;
     const j = r?.ok ? r.data : null;
     if (!msg.app || msg.app.job !== job) { appJobPolls.delete(job); return; }
-    if (!j || j.status === "queued" || j.status === "building") { appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS)); return; }
+    if (!j || j.status === "queued" || j.status === "building") {
+      // THE BUILD LOG IN THE THREAD: the card shows the log as it grows.
+      if (j?.log && j.log !== msg.app.log) { msg.app.log = j.log; if (currentId === chat.id) scheduleRenderThread(); }
+      appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS)); return;
+    }
     appJobPolls.delete(job);
     if (j.status === "ready") {
       noteAppCard(chat, cardFromInstallAnswer(msg.app.folder, { key: msg.app.key ?? undefined, url: msg.app.url ?? undefined, release: j.release ?? null, tools: msg.app.tools }, false));
       document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
     } else {
-      const tail = String(j.log ?? "").trim().split("\n").slice(-3).join(" · ");
-      noteAppCard(chat, { folder: msg.app.folder, state: "failed", error: [j.error, tail].filter(Boolean).join(" — ") });
+      noteAppCard(chat, { folder: msg.app.folder, state: "failed", error: j.error || "the build failed", log: String(j.log ?? "") });
     }
     void saveStore();
     if (currentId === chat.id) scheduleRenderThread();
@@ -1577,6 +1580,12 @@ function appCardEl(chat: CodeChat, msg: CodeMsg): HTMLElement {
   (wrap.querySelector(".ccx-initial") as HTMLElement).textContent = (face.title || "?").charAt(0).toUpperCase();
   (wrap.querySelector(".ccx-name") as HTMLElement).textContent = face.title;
   (wrap.querySelector(".ccx-sub") as HTMLElement).textContent = face.sub;
+  if ((card.state === "building" || card.state === "failed") && card.log) {
+    const pre = document.createElement("pre");
+    pre.className = "cax-log";
+    pre.textContent = logLines(card.log);
+    (wrap.querySelector(".ccx-info") as HTMLElement).appendChild(pre);
+  }
   const run = wrap.querySelector(".cax-run") as HTMLButtonElement;
   run.textContent = face.primary;
   run.disabled = !face.primaryOn;
@@ -5215,7 +5224,7 @@ function send(): void {
   // remote control is off here — never a Terminal to work around it.
   const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
   // THE APP CONTRACT RIDES THE TURN (2026-10-07): an app prompt, or the New app door.
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat, outputAppOf(c.outputFormat)), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : "", appBuildSteerFor(text, threadFolder(c) || null)].filter(Boolean).join("\n\n");
+  const steer = [briefSteer(), outputStandingLine(c.outputFormat, outputAppOf(c.outputFormat)), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -5305,6 +5314,21 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         const cloudRun = String((src as { kind?: string }).kind || "").startsWith("cloud");
         if (!onWeb && !cloudRun) return;
         openRunRef({ ...(ref ? { ref } : {}), ...(url ? { url } : {}) });
+      },
+      // THE BUILD LOG IN THE THREAD (2026-10-07): the worker's app_install
+      // streams the job's log as log frames; the app card shows it growing.
+      onLog: (l) => {
+        const chat = chats.find((ch) => ch.id === chatId);
+        const b = buildLogOf(l.detail);
+        if (!chat || !b) return;
+        const card = [...chat.messages].reverse().find((m) => m.kind === "app" && m.app && (m.app.job === b.job || m.app.state === "building" || m.app.state === "installing"))?.app
+          ?? [...chat.messages].reverse().find((m) => m.kind === "app" && m.app)?.app;
+        const folder = card?.folder || threadFolder(chat) || "";
+        if (!folder) return;
+        const done = b.status === "ready" || b.status === "failed";
+        noteAppCard(chat, done ? { folder, state: b.status === "ready" ? "installed" : "failed", log: b.log, ...(b.status === "failed" ? { error: "the build failed" } : {}) } : { folder, state: "building", job: b.job, log: b.log });
+        void saveStore();
+        if (chatId === currentId) scheduleRenderThread();
       },
       // Rich per-tool breadcrumbs, LOCAL-path grammar: the start row carries the
       // tool's key input (`⚙ Run: <cmd>` — the frame's title), and the done frame

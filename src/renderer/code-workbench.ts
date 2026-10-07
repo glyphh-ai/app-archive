@@ -6336,8 +6336,13 @@ async function init(): Promise<void> {
           const stampLayoutModels = (): void => {
             if (codingLoop || layout.loop) sess?.stampLoop?.(codingLoop || layout.loop!);
             if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
-            if (codingType) sess?.stampType?.(codingType);   // the TYPE rides the same contract
           };
+          // THE TYPE IS THE SURFACE'S, NOT THE SESSION'S (his report, 2026-10-07:
+          // "the tab on the left rail must adjust to what that workspace calls
+          // out so that the new agent renders properly"): a workspace that names
+          // Work or Code moves the rail's type tab the moment it opens, in every
+          // session mode — before a new session is born, so it is born right.
+          if (codingType) sess?.stampType?.(codingType);
           if (sess && mode === "new") {
             sess.startNew();
             stampLayoutModels();
@@ -6360,6 +6365,7 @@ async function init(): Promise<void> {
               const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
               if (target && spaceOfMode((target as { mode?: string }).mode) === space) {
                 if (sess.currentId() !== target.id) sess.switch(target.id);
+                if (codingType) sess.stampType?.(codingType);   // the workspace's type over the resumed session's
               } else {
                 sess.startNew();
                 stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
@@ -10876,9 +10882,10 @@ async function init(): Promise<void> {
         const stampConfig = (): void => {
           if (codingCfg.loop || layout.loop) sess?.stampLoop?.(codingCfg.loop || layout.loop!);
           if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
-          const t = workspaceType(codingCfg, layout);
-          if (t) sess?.stampType?.(t);
         };
+        // THE TYPE applies in every mode (his report, 2026-10-07) — first, so a new session is born right.
+        const t = workspaceType(codingCfg, layout);
+        if (t) sess?.stampType?.(t);
         if (!sess || mode === "keep") { stampFolder(); return; }
         if (mode === "new") { sess.startNew(); stampConfig(); stampFolder(); return; }
         let last: string | null = null;

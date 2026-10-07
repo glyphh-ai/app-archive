@@ -24,6 +24,21 @@ export interface AppCard {
   state: AppCardState;
   error?: string;
   tools?: string[];
+  /** THE BUILD LOG IN THE THREAD (his ask, 2026-10-07): the job's log tail while it builds, kept on failure. */
+  log?: string;
+}
+
+/** The last lines of a log, for the card. */
+export function logLines(log: string | undefined | null, n = 14): string {
+  const lines = String(log ?? "").replace(/\r/g, "").split("\n").filter((l) => l.trim());
+  return lines.slice(-n).join("\n");
+}
+
+/** A log frame from the worker's app_install: {job, status, log}, or nothing. */
+export function buildLogOf(detail: unknown): { job: string; status: string; log: string } | null {
+  const d = detail as { job?: unknown; status?: unknown; log?: unknown } | null;
+  if (!d || typeof d !== "object" || typeof d.job !== "string" || typeof d.log !== "string") return null;
+  return { job: d.job, status: String(d.status ?? ""), log: d.log };
 }
 
 /** app_install's answer, as the tool returns it (main/app-instances.ts DeployAnswer). */
@@ -82,6 +97,7 @@ export function mergeAppCard(have: AppCard, next: AppCard): AppCard {
     tools: next.tools ?? have.tools,
     job: next.state === "building" ? next.job ?? have.job ?? null : null,
     error: next.state === "failed" ? next.error : undefined,
+    log: next.log ?? (next.state === "building" || next.state === "failed" ? have.log : undefined),
   };
 }
 

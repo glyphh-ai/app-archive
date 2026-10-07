@@ -840,10 +840,25 @@ export function buildMemberLibrary(client, deps = {}) {
   };
   /** SHARE = PROMOTE (hub-ipc.publish): the record's files, read back off R2,
    *  go to the org's hub as text; a binary file stops it, as on the desktop. */
-  const skillPublish = async (pageId, notes = '') => {
+  /** A folder share's media (the desktop's hub-ipc withFolderMedia): files beside the bundle + the icon and screenshots on <kind>.json. */
+  const withFolderMedia = (kind, files, media) => {
+    if (!media || (!media.icon && !(media.screenshots?.length))) return files;
+    const out = { ...files };
+    const manifestName = kind === 'app' || kind === 'task' ? `${kind}.json` : null;
+    let manifest = {};
+    if (manifestName) { try { manifest = JSON.parse(out[manifestName] || '{}'); } catch { manifest = {}; } }
+    if (media.icon) { out['icon.svg'] = media.icon; manifest.icon = 'icon.svg'; }
+    if (media.screenshots?.length) {
+      for (const k of Object.keys(out)) if (k.startsWith('screenshots/')) delete out[k];
+      manifest.screenshots = media.screenshots.map((s) => { out[`screenshots/${s.name}`] = s.dataUrl; return { path: `screenshots/${s.name}`, caption: s.caption ?? '' }; });
+    }
+    if (manifestName) out[manifestName] = JSON.stringify({ name: '', ...manifest }, null, 2);
+    return out;
+  };
+  const skillPublish = async (pageId, notes = '', media) => {
     try {
       // SHARE TO PUBLISH an app INSTANCE (2026-10-07): the server promotes its pinned release by key.
-      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.share(pageId, notes));
+      if (appInstances.isInstanceCardId(String(pageId))) return ok(await appInstances.share(pageId, notes, media));
       const { ref, item } = await bundleItem(pageId);
       const paths = (item.files ?? []).map((f) => f.path);
       const files = {};
@@ -864,7 +879,7 @@ export function buildMemberLibrary(client, deps = {}) {
       const name = data.name || ref.id;
       const slug = name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'skill';
       const r = await http().post(`/api/library/${ref.kind}/promote`, {
-        slug, name, description: data.description || '', notes: String(notes ?? ''), payload: { files, prompt: body, manifest: data.frontmatter ?? {} },
+        slug, name, description: data.description || '', notes: String(notes ?? ''), payload: { files: withFolderMedia(ref.kind, files, media), prompt: body, manifest: data.frontmatter ?? {} },
       });
       return ok(r);
     } catch (err) { return fail(err); }
