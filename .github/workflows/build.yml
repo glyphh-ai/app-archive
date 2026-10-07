@@ -430,7 +430,7 @@ jobs:
               node scripts/bundle-cli.mjs ../cli
               rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk
               cp ../sdk/package.json node_modules/@glyphh/sdk/package.json && cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
-              npx electron-builder --linux --arm64 --publish never
+              npx electron-builder --linux --arm64 -c.linux.target=AppImage --publish never
               chown -R "$HOST_UID:$HOST_GID" release
             '
           ls -la release
