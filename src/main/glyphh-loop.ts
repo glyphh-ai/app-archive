@@ -29,7 +29,8 @@ import { agentKindOf } from "../shared/member-library.js";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
-import { frameTargets } from "./attach-run-frames.js";
+import { frameTargets, isRelaySink } from "./attach-run-frames.js";
+import { openRing, recordFrame } from "./attach-run-ring.js";
 import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
@@ -360,6 +361,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   };
   // The turn's own words, for a done nobody is listening to (below).
   let answer = "";
+  let ringStarted = false;
   const emit = (ev: LoopEvent & { runId: string; agent?: { childId: string; slug: string; name: string; model: string } }): void => {
     const { type, ...payload } = ev;
     // A SUB-AGENT'S WORDS ARE NOT THE ANSWER (his order, 2026-09-29): a child's
@@ -417,6 +419,14 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     // after a desktop panel adopts the thread (attach-run-frames.ts frameTargets).
     for (const target of frameTargets(sender, to)) {
       try { if (!target.isDestroyed()) target.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
+    }
+    // EVERY TURN HAS A RING (his report, 2026-10-08): a turn a desktop panel
+    // started had no frames off the machine, so the web page watching the same
+    // thread saw nothing until the thread synced at the end. A relayed turn's
+    // sink writes its own ring; a panel's turn is recorded here, prompt first.
+    if (!isRelaySink(sender)) {
+      if (!ringStarted) { ringStarted = true; openRing(ev.runId, p.chatId); recordFrame(ev.runId, p.chatId, "glyphh-agent:prompt", { text }); }
+      recordFrame(ev.runId, p.chatId, `glyphh-agent:${type}`, { ...payload, ...extra });
     }
   };
   // ATTACHMENTS (the composer's paperclip, paste and drop). Images always

@@ -24,12 +24,8 @@ import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
 import { pushToAttach } from "./attach-host.js";
 import { appendStoredMessage, runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
-import { toWireFrame, turnText, relayPermission, markRelaySink } from "./attach-run-frames.js";
-
-interface RunRecord { frames: Array<Record<string, unknown> & { seq: number }>; status: "running" | "done" | "error"; chatId: string }
-const RING_CAP = 4000;
-const RING_TTL_AFTER_END_MS = 10 * 60_000;
-const rings = new Map<string, RunRecord>();
+import { turnText, relayPermission, markRelaySink } from "./attach-run-frames.js";
+import { openRing, recordFrame, ringOf, ringForThread, framesSince } from "./attach-run-ring.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -39,26 +35,17 @@ function str(params: unknown, key: string): string {
 /** A fake WebContents whose `send` forwards the bridge's frames up the socket
  *  AND retains them on the run's ring for reattach. */
 function makeSink(runId: string, chatId: string): WebContents {
-  let seq = 0;
   let answer = "";
-  const rec: RunRecord = { frames: [], status: "running", chatId };
-  rings.set(runId, rec);
+  openRing(runId, chatId);
   const sink = {
     isDestroyed: () => false,
     send: (channel: string, data: Record<string, unknown>) => {
-      const frame = toWireFrame(channel, { ...(data ?? {}), runId }, seq++, runId);
+      const frame = recordFrame(runId, chatId, channel, data ?? {});
       if (!frame) return;
-      rec.frames.push(frame as Record<string, unknown> & { seq: number });
-      if (rec.frames.length > RING_CAP) rec.frames.splice(0, rec.frames.length - RING_CAP);
-      const t = (frame as { type?: string }).type;
+      const t = frame.type;
       // A sub-agent's delta is tagged; the parent's answer is the untagged text.
       if (t === "delta" && !(frame as { agent?: unknown }).agent) answer += String((frame as { delta?: string }).delta ?? "");
       if (t === "done") appendStoredMessage(chatId, { role: "assistant", text: answer });
-      if (t === "done" || t === "error") {
-        rec.status = t === "done" ? "done" : "error";
-        const timer = setTimeout(() => rings.delete(runId), RING_TTL_AFTER_END_MS);
-        (timer as { unref?: () => void }).unref?.();
-      }
       pushToAttach(`run:${runId}`, frame);
     },
   };
@@ -92,13 +79,21 @@ export function installAttachRunHandlers(): void {
     return { runId, started: true };
   });
 
+  // By runId: the run's frames after `from`. By THREAD (no runId): the
+  // thread's newest run, so a web page can discover a turn this machine's own
+  // panel started — the same ring the loop writes for every turn.
   registerRelayHandler("agent.frames", async (params) => {
     const p = (params ?? {}) as Record<string, unknown>;
-    const runId = str(p, "runId");
     const from = typeof p.from === "number" && Number.isFinite(p.from) ? p.from : -1;
-    const rec = rings.get(runId);
+    let runId = str(p, "runId");
+    if (!runId) {
+      const hit = ringForThread(str(p, "threadId"));
+      if (!hit) return { runId: null, status: "idle", frames: [] };
+      runId = hit.runId;
+    }
+    const rec = ringOf(runId);
     if (!rec) return { runId, status: "gone", frames: [] };
-    return { runId, status: rec.status, frames: rec.frames.filter((f) => f.seq > from) };
+    return { runId, status: rec.status, frames: framesSince(runId, from) };
   });
 
   registerRelayHandler("agent.answer", async (params) => {
@@ -110,7 +105,7 @@ export function installAttachRunHandlers(): void {
 
   registerRelayHandler("agent.stop", async (params) => {
     const runId = str(params, "runId");
-    const rec = rings.get(runId);
+    const rec = ringOf(runId);
     return { stopped: rec ? stopAgentChat(rec.chatId) : false };
   });
 
@@ -118,7 +113,7 @@ export function installAttachRunHandlers(): void {
     const runId = str(params, "runId");
     const permission = relayPermission((params as Record<string, unknown> | null)?.permission);
     if (!runId || !permission) throw new Error("agent.permission requires { runId, permission }");
-    const rec = rings.get(runId);
+    const rec = ringOf(runId);
     return { updated: rec ? setAgentPermission(rec.chatId, permission) : false };
   });
 }

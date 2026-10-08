@@ -1695,6 +1695,7 @@ function syncActiveRunAttach(): void {
 
 function observeIfRunning(chat: CodeChat): void {
   const chatId = chat.id;
+  if (resolveLocalMachine(chat.source)) void saveStore();
   const handle = attachToActiveRun(
     chat as unknown as RemoteChat,
     {
@@ -3770,9 +3771,34 @@ function repaintSourceUi(): void {
  *     source change actually take effect (it used to hit the guard and no-op).
  * Persisted either way.
  */
+/** The machine a local source names, re-resolved against the desktops
+ *  attached NOW. The attach socket's id is minted anew on every reconnect
+ *  (sleep, a network blip, a restart), so a session bound by id alone went
+ *  "no machine" (412) after the first one — nothing streamed, nothing ran
+ *  (his report, 2026-10-08). The machine's NAME is the stable key: a stale
+ *  id is swapped for the id that name has now; a source with no name takes
+ *  the only attached desktop. Returns true when the source changed. */
+function resolveLocalMachine(src: Source | null | undefined): boolean {
+  if (!src || src.kind !== "local" || !onWebTarget()) return false;
+  const known = threadStore.attachedMachines();
+  if (!known.length) return false;
+  if (src.machineId && known.some((m) => m.id === src.machineId)) {
+    const name = known.find((m) => m.id === src.machineId)?.name;
+    if (name && src.machine !== name) { src.machine = name; return true; }
+    return false;
+  }
+  const byName = src.machine ? known.find((m) => m.name === src.machine) : undefined;
+  const pick = byName ?? (known.length === 1 ? known[0] : undefined);
+  if (!pick || pick.id === src.machineId) return false;
+  src.machineId = pick.id;
+  if (pick.name) src.machine = pick.name;
+  return true;
+}
+
 function pickSource(next: Source): void {
   const cur = current();
   const onHome = document.body.classList.contains("composer-on-home");
+  resolveLocalMachine(next);   // a pick by id carries the machine's name from here on
 
   // A BORN session's source is IMMUTABLE — but a DIFFERENT pick on a born
   // session means "work on THIS now", so it starts a NEW session lazily (the
@@ -5384,6 +5410,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
   if (run && !run.runId) run.runId = `r-remote-${chatId}`;
   // Resolved ONCE per turn (a rover loop advances its pool here).
   const remoteModel = resolveRemoteTurnModel();
+  if (resolveLocalMachine(c.source)) { void saveStore(); repaintSourceUi(); }
 
   void runRemoteTurn(
     c as unknown as RemoteChat,
