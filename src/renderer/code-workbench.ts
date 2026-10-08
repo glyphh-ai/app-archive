@@ -677,11 +677,19 @@ new MutationObserver(() => {
  *  grant after a mount tells the guard the terminal took the caret on purpose. */
 let termFocusGrantUntil = 0;
 let headsMarked = false;
+/** When the member last clicked the left rail (or its collapsed strip). A
+ *  full-screen page (Customize, Build) shows "‹ Title" only when the rail opened
+ *  it; from anywhere else the title is a plain, left-justified heading. */
+let railClickAt = -Infinity;
+document.addEventListener("pointerdown", (e) => {
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.("#app-rail, #rail-collapsed-strip")) railClickAt = performance.now();
+}, true);
 function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
   if (!collapsed && !headsMarked) return;
   headsMarked = collapsed;
-  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head"));
+  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head"));
   if (!collapsed) { heads.forEach((h) => h.classList.remove("clears-strip")); return; }
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
@@ -695,7 +703,7 @@ function markHeadsUnderStrip(): void {
   }
   for (const [x, y] of [[12, Math.round(topH / 2)], [Math.round(stripW - 8), Math.round(topH / 2)]]) {
     for (const el of document.elementsFromPoint(x, y)) {
-      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head");
+      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head");
       if (h) { under.add(h); break; }
     }
   }
@@ -7662,9 +7670,15 @@ async function init(): Promise<void> {
           <button type="button" class="ws-icon-btn web-full-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
         </div><div class="web-full-body"></div>`;
       host.querySelector<HTMLElement>(".web-full-back span")!.textContent = webFullScreenTitle(key);
+      // "‹" only when the left rail opened this page (bug: it always showed).
+      const fromRail = performance.now() - railClickAt < 2000;
+      host.classList.toggle("from-rail", fromRail);
       const panelBody = host.querySelector<HTMLElement>(".web-full-body")!;
       // "‹ Artifacts": the viewer goes back to the list; the list closes.
-      host.querySelector(".web-full-back")!.addEventListener("click", () => { if (!webFullPanel?.back()) closeWebFullPanel(); });
+      host.querySelector(".web-full-back")!.addEventListener("click", () => {
+        // Without the "‹" the title is a heading: it only steps a viewer back.
+        if (!webFullPanel?.back() && host.classList.contains("from-rail")) closeWebFullPanel();
+      });
       host.querySelector(".web-full-close")!.addEventListener("click", () => closeWebFullPanel());
       body.appendChild(host);
       webFullHost = host;

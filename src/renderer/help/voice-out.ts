@@ -65,6 +65,7 @@ export function isSpeaking(): boolean { return playing !== null; }
 /** Stop any in-flight reply playback (user hit Stop / Esc, started talking, or a
  *  new turn began, so the agent doesn't talk over itself). */
 export function stopReply(): void {
+  speakSeq++;                        // a synthesis still in flight is dropped when it returns
   if (playing) { try { playing.pause(); } catch { /* already gone */ } playing = null; emitSpeaking(false); }
 }
 
@@ -103,8 +104,8 @@ export async function playReplyTTS(text: string, pref: OutPref): Promise<void> {
   if (!pref.autoplay || !pref.outputModel) return;
   const say = speakable(text || "");
   if (!say) return;
-  const mine = ++speakSeq;
   stopReply();
+  const mine = ++speakSeq;
   try {
     const bytes = asBytes(await g().voiceSynthesize?.(say, pref.outputModel, pref.voiceId ?? null));
     if (mine !== speakSeq) return;   // a newer reply superseded this one while it synthesized

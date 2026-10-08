@@ -471,8 +471,9 @@ function switchAppTab(tab: string) {
   document.querySelectorAll<HTMLElement>(".app-tab-right").forEach(el => {
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  if (tab === "dashboard") void loadPanelTab();
-  if (tab === "rpa") void renderRpaTab();
+  // The live page sits beside the RPA commands (restored 2026-10-08); General
+  // is the basic form alone since 2026-09-16.
+  if (tab === "rpa") { void loadPanelTab(); void renderRpaTab(); }
 }
 
 // ── RPA ON A TAB (his order, 2026-10-07; desktop only) ───────────────────
@@ -872,12 +873,11 @@ async function loadPanelTab() {
   // terminal/editor apps (execPath, no url) still fall through to "no url".
   const isGlyphhApp = app.appArchetype === "glyphh-app" || /\.html?$/i.test(app.execPath || "");
 
+  previewMessage("");
+  const addr = document.getElementById("app-preview-addr");
+  if (addr) addr.textContent = isGlyphhApp ? `${app.slug} — local build` : (app.url || "");
   if (!app.url && !isGlyphhApp) {
-    // #app-commands-list was removed from the markup — guard, don't crash
-    // (the old non-null assertion threw "Cannot set properties of null" and
-    // took down Open App on web).
-    const noUrlHost = document.getElementById("app-commands-list");
-    if (noUrlHost) noUrlHost.innerHTML = `<div class="inline-empty">No URL configured for this tab. Add one above to open it in the work panel.</div>`;
+    previewMessage("No address set for this tab. Add one on General to see its page here.");
     return;
   }
 
@@ -889,16 +889,17 @@ async function loadPanelTab() {
       // is the same bytes anyway. The hosted URL is the fallback for an app
       // whose source lives on someone else's machine.
       const wcId = await ensurePreviewWcId();
-      // Register the preview guest so the app-data seam injects the bearer.
-      if (wcId !== undefined) (window.glyphh as unknown as { rpaRegister?: (slug: string, wcId: number) => void }).rpaRegister?.(app.slug, wcId);
+      // Register the preview guest so the app-data seam injects the bearer —
+      // as the tab's RPA PREVIEW, never over its work panel's registration.
+      previewTargetSlug = app.slug;
+      syncPreviewTarget();
       const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
       // LOCAL BUILD ONLY (his law, 2026-09-01): the preview never loads the
       // published site — what you see is what's on disk, not what shipped.
       // No local build → say so honestly instead of silently showing prod.
       if (res?.ok && res.fileUrl) { if (appPreview) appPreview.src = res.fileUrl; }
       else {
-        const errHost = document.getElementById("app-commands-list");
-        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "No local build to preview yet — build the app (update_app) and it appears here."}</div>`;
+        previewMessage(res?.error || "No local build to preview yet — build the app (update_app) and it appears here.");
         return;
       }
     } else {
@@ -908,6 +909,42 @@ async function loadPanelTab() {
     }
     panelLoaded = true;
   }
+  // The page is what Pick and Test act on while it is on screen.
+  previewTargetSlug = app.slug;
+  await ensurePreviewWcId();
+  syncPreviewTarget();
+}
+
+/** The note in the preview pane ("" hides it and shows the page). */
+function previewMessage(text: string): void {
+  const el = document.getElementById("app-preview-msg");
+  if (el) { el.textContent = text; el.classList.toggle("hidden", !text); }
+  appPreview?.classList.toggle("hidden", !!text);
+}
+
+// ── The preview as the tab's RPA target (2026-10-08) ─────────────────────
+// Registered with main as the tab's PREVIEW only while it is on screen (the
+// RPA tab up, the Tabs page showing), so Pick, Test and the agents' rpa_* act
+// on the page the user is watching; the moment it leaves the screen — another
+// tab, the detail closed, Customize gone — it lets go and the tab's work panel
+// (if open) is the target again.
+let previewTargetSlug = "";
+let previewRegistered = "";
+let previewOnScreen = false;
+type RpaRegistry = { rpaRegister?: (slug: string, wcId: number, opts?: { preview?: boolean }) => void; rpaUnregister?: (slug: string, opts?: { preview?: boolean }) => void };
+function syncPreviewTarget(): void {
+  const g = window.glyphh as unknown as RpaRegistry;
+  const wcId = getPreviewWebContentsId();
+  const want = previewOnScreen && previewTargetSlug && wcId !== undefined ? previewTargetSlug : "";
+  if (previewRegistered && previewRegistered !== want) g.rpaUnregister?.(previewRegistered, { preview: true });
+  if (want && wcId !== undefined) g.rpaRegister?.(want, wcId, { preview: true });
+  previewRegistered = want;
+}
+if (appPreview && !IS_WEB && typeof IntersectionObserver !== "undefined") {
+  new IntersectionObserver((entries) => {
+    previewOnScreen = entries.some((e) => e.isIntersecting);
+    syncPreviewTarget();
+  }).observe(appPreview);
 }
 
 /** The preview <webview> creates its guest (and thus a webContents id) shortly
@@ -926,6 +963,9 @@ async function openPanelAppDetail(app: PanelApp) {
   currentAppId = app.id;
   currentApp = app;
   panelLoaded = false;
+  // The last tab's page is not this one's RPA target.
+  previewTargetSlug = "";
+  syncPreviewTarget();
 
   // Built-app tabs. Releases + Connections show for the builder AND anyone who
   // installed it; Marketplace + Public hosting are the builder's alone.
@@ -1034,6 +1074,9 @@ function getPreviewWebContentsId(): number | undefined {
 }
 
 function closeAppDetail() {
+  // The preview stops being the tab's RPA target.
+  previewTargetSlug = "";
+  syncPreviewTarget();
   // Drop any glyphh capability grant on the reused preview webContents.
   void window.glyphh.glyphhAppPreviewClear?.(getPreviewWebContentsId());
   // The preview pane left the Tabs detail with the basic form (2026-09-16); the webview is optional now.
@@ -1230,6 +1273,13 @@ function initApps() {
     }, 400);
   });
 
+  // DESKTOP preview toolbar (the RPA tab's page): Refresh reloads it.
+  if (!IS_WEB) {
+    document.getElementById("app-preview-refresh")?.addEventListener("click", () => {
+      try { appPreview.reload(); } catch { panelLoaded = false; void loadPanelTab(); }
+    });
+  }
+
   // WEB preview toolbar: Refresh re-navigates the iframe, and "Open in new
   // tab" mirrors web appLaunch's tab fallback — a browser can't force a site
   // to allow framing, so the honest affordance is always on offer.
@@ -1324,6 +1374,8 @@ function initApps() {
     toggleArchetypeFields("app-add", "generic");
     appFormError.classList.add("hidden");
   };
+  // Customize › Tabs search: filter as the member types (lost in 767fc241).
+  appSearchInput?.addEventListener("input", () => { appsPage = 0; renderAppsList(); });
   document.getElementById("apps-add-btn")?.addEventListener("click", () => {
     returnAddForm();
     prepareAddForm();

@@ -426,8 +426,8 @@ async function boot() {
   const fromAgentPanel = (e: Electron.IpcMainEvent): boolean => {
     try { return /[?&]solo=/.test(e.sender.getURL()); } catch { return true; }
   };
-  ipcMain.on("wb:rpa-register", (e, slug: string, wcId: number) => { if (!fromAgentPanel(e)) registerRpaTarget(String(slug), Number(wcId)); });
-  ipcMain.on("wb:rpa-unregister", (e, slug: string) => { if (!fromAgentPanel(e)) unregisterRpaTarget(String(slug)); });
+  ipcMain.on("wb:rpa-register", (e, slug: string, wcId: number, opts?: { preview?: boolean }) => { if (!fromAgentPanel(e)) registerRpaTarget(String(slug), Number(wcId), { preview: opts?.preview === true }); });
+  ipcMain.on("wb:rpa-unregister", (e, slug: string, opts?: { preview?: boolean }) => { if (!fromAgentPanel(e)) unregisterRpaTarget(String(slug), { preview: opts?.preview === true }); });
 
   // The shared instance: the attach socket's layouts.* read through it too.
   layoutManager = getLayoutManager();

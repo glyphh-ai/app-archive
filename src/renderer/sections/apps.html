@@ -307,3 +307,26 @@
                   </div>
                 </div>
 
+              </div><!-- /.app-builder-controls -->
+
+              <!-- Right panel: swaps per tab. RPA right (restored 2026-10-08):
+                   the tab's own page, live. While it is on screen it is the
+                   page Pick, Test and the agents' rpa_* tools act on (it
+                   registers as the tab's RPA preview — help/apps.ts). -->
+              <div class="app-builder-preview">
+                <div class="app-tab-right" data-tab="rpa">
+                  <div class="preview-toolbar">
+                    <span id="app-preview-addr" class="rpa-preview-addr"></span>
+                    <button id="app-preview-refresh" class="preview-action preview-action-visible" type="button">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                      Refresh
+                    </button>
+                  </div>
+                  <div id="app-preview-msg" class="inline-empty hidden"></div>
+                  <webview id="app-preview" partition="persist:yo" allowpopups></webview>
+                </div>
+              </div>
+            </div><!-- /.app-builder-split -->
+          </div><!-- /#app-detail -->
+          </div><!-- /#apps-library-page -->
+        </div>

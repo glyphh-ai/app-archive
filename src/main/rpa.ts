@@ -15,16 +15,26 @@ import { registerRelayHandler } from "./relay-client.js";
 
 /** slug → the panel webview's webContents id (set by the renderer). */
 const targets = new Map<string, number>();
+/** slug → the Tabs page's RPA preview of that tab (2026-10-08). It is the page
+ *  the user is looking at while it is on screen, so Pick, Test and the agents'
+ *  rpa_* tools act on it first; the renderer drops it the moment it leaves the
+ *  screen and the work panel (if any) is the target again. Kept apart from
+ *  `targets` so neither one's close ever unregisters the other. */
+const previews = new Map<string, number>();
 
-export function registerRpaTarget(slug: string, wcId: number): void {
-  if (slug && Number.isInteger(wcId)) targets.set(slug, wcId);
+export interface RpaTargetOpts { preview?: boolean }
+
+export function registerRpaTarget(slug: string, wcId: number, opts?: RpaTargetOpts): void {
+  if (slug && Number.isInteger(wcId)) (opts?.preview ? previews : targets).set(slug, wcId);
 }
-export function unregisterRpaTarget(slug: string): void {
-  targets.delete(slug);
+export function unregisterRpaTarget(slug: string, opts?: RpaTargetOpts): void {
+  (opts?.preview ? previews : targets).delete(slug);
 }
 /** Reverse lookup: which panel slug owns this webContents (null if none). */
 export function slugForWebContents(wcId: number): string | null {
-  for (const [slug, id] of targets) { if (id === wcId) return slug; }
+  for (const map of [previews, targets]) {
+    for (const [slug, id] of map) { if (id === wcId) return slug; }
+  }
   return null;
 }
 
@@ -51,9 +61,12 @@ function target(params: unknown): WebContents {
  *  "preview", so every rpa_goto on "browser" said it was not open. */
 const BROWSER_NAMES = new Set(["browser", "preview"]);
 function liveTarget(slug: string): WebContents | undefined {
-  const id = targets.get(slug);
-  const wc = id !== undefined ? webContents.fromId(id) : undefined;
-  return wc && !wc.isDestroyed() ? wc : undefined;
+  for (const map of [previews, targets]) {
+    const id = map.get(slug);
+    const wc = id !== undefined ? webContents.fromId(id) : undefined;
+    if (wc && !wc.isDestroyed()) return wc;
+  }
+  return undefined;
 }
 
 /** Whether a panel is up and drivable, by the name the agent uses. */

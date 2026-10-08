@@ -112,6 +112,7 @@ export function stopHandsFree(): void {
   awaitingReply = false;
   endAfterUtterance = false;
   voiceModeOn = false;
+  stopReply();                       // voice mode is over: hush a reply playing or still synthesizing
   paintVoiceMode();
   stopRecording();
 }
@@ -543,7 +544,8 @@ export function maybeSpeakFirstLine(sofar: string): void {
   // the two never overlap and the line is never cut mid-sentence.
   earlyPlayback = (async () => {
     const p = await voicePref();
-    if (p.outputModel && p.autoplay) await playReplyTTS(line, p);
+    // Read the LIVE mode after the await: voice mode may have ended meanwhile.
+    if (voiceModeOn) await playReplyTTS(line, { ...p, autoplay: true });
   })().catch(() => undefined);
 }
 /** The early line's playback, awaited before the remainder speaks. */
@@ -576,8 +578,10 @@ export async function onTurnComplete(text: string): Promise<void> {
   earlyPlayback = null;
   resetEarlySpeech();
   if (early) await early;
-  // Voice mode reads every reply aloud; otherwise the member's Settings › Voice choice stands.
-  if (say) await playReplyTTS(say, voiceModeOn ? { ...p, autoplay: true } : p);
+  // Replies are spoken ONLY in voice mode, read live after the awaits above.
+  // The stored `autoplay` pref (SDK default true, no longer in Settings) must
+  // not make typed / dictated turns, or turns after voice mode ended, talk.
+  if (say && voiceModeOn) await playReplyTTS(say, { ...p, autoplay: true });
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
 }
 

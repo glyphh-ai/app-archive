@@ -12146,8 +12146,10 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
    Yours | Discover switch on the right of the same row. */
 .ws-section-body > .help-section.settings-group { padding: 10px 0 0; }
 .settings-group-head { display: flex; align-items: center; gap: 12px; padding: 0 28px; }
-.settings-group-head > .settings-group-tabs { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
-.settings-group-scope { flex: 0 0 auto; margin-left: auto; }
+.settings-group-head > .settings-group-tabs { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
+/* The Yours | Discover switch sits RIGHT AFTER the tabs (not flung to the far
+   edge, where nobody saw it), set off by a thin rule. */
+.settings-group-scope { flex: 0 0 auto; margin-left: 4px; padding-left: 16px; border-left: 1px solid var(--border, rgba(127,127,127,.25)); }
 /* The per-panel Yours / Discover pair is the page's switch now: hidden inside
    the host, while a panel's secondary tabs (Updates, Review) stay. */
 .settings-group-host .skills-tab[data-tab="mine"],
@@ -22105,7 +22107,14 @@ body.web-full-open .echo-layout-bar { visibility: hidden; }
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   height: 40px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--border-2); background: var(--surface);
 }
-body.rail-collapsed:not(.rail-peek) .web-full-head { padding-left: var(--rail-strip-w); }
+/* Clear the collapsed-rail strip only when the head is really under it
+   (markHeadsUnderStrip reads the rects) — the unconditional pad pushed the
+   title off the left edge whenever the rail was collapsed. */
+body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: var(--rail-strip-w); }
+/* Opened from anywhere but the rail: no "‹", the title sits flush left. */
+.web-full-panel:not(.from-rail) .web-full-back svg { display: none; }
+.web-full-panel:not(.from-rail) .web-full-back { padding-left: 8px; cursor: default; }
+.web-full-panel:not(.from-rail) .web-full-back:hover { background: none; color: var(--text-2); }
 .web-full-back {
   display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 4px; border: 0; border-radius: 6px;
   background: none; color: var(--text-2); font: 600 13px var(--font-display, inherit); cursor: pointer;
@@ -22403,3 +22412,9 @@ body[data-session-space="code"] .code-source-slot .code-source-mascot { display:
 .echo-card-head .echo-card-folder svg, .echo-card-head .echo-card-branch svg { width: 12px; height: 12px; flex: none; }
 .echo-card-head .echo-card-folder span, .echo-card-head .echo-card-branch span { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .echo-card-head .echo-card-branch { color: var(--text-3); font-family: var(--font-mono); font-size: 11px; cursor: default; }
+/* RPA ON A TAB, the right side (restored 2026-10-08): the tab's live page
+   beside the commands, which Pick and Test act on. */
+.app-tab-right[data-tab="rpa"] { gap: 0; border-left: 1px solid var(--border-2); min-height: 0; overflow: hidden; }
+.app-tab-right[data-tab="rpa"] #app-preview { flex: 1; min-height: 0; }
+.app-tab-right[data-tab="rpa"] #app-preview-msg { margin: 16px; }
+.rpa-preview-addr { flex: 1; min-width: 0; font: 11px var(--font-mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

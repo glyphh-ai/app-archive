@@ -645,8 +645,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("glyphh-app:preview-clear", previewWcId) as Promise<{ ok: boolean }>,
   // RPA: register/clear a panel's webContents id so main's rpa.* handlers
   // (attach + loopback MCP) can drive it.
-  rpaRegister: (slug: string, wcId: number) => ipcRenderer.send("wb:rpa-register", slug, wcId),
-  rpaUnregister: (slug: string) => ipcRenderer.send("wb:rpa-unregister", slug),
+  rpaRegister: (slug: string, wcId: number, opts?: { preview?: boolean }) => ipcRenderer.send("wb:rpa-register", slug, wcId, opts),
+  rpaUnregister: (slug: string, opts?: { preview?: boolean }) => ipcRenderer.send("wb:rpa-unregister", slug, opts),
   // RPA ON A TAB (2026-10-07): the Tabs page's RPA tab drives the same doors
   // the agent's tools do — commands, pick, map, unmap, run, sequenceSave,
   // sequenceRemove, sequenceRun — on main's registry.
