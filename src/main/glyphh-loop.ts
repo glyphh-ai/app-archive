@@ -24,6 +24,8 @@ import { memoryFacts, memoryCapture } from "./memory.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
+import { runCliHeadless } from "./cli-agents.js";
+import { agentKindOf } from "../shared/member-library.js";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
@@ -213,6 +215,10 @@ async function mcpServers(): Promise<LoopMcpServer[]> {
  * they always defined an agent, and nothing new has to be invented or stored.
  * An agent with no prompt is not a brief, and the engine drops it; a member
  * with no agents gets no spawn tool at all.
+ *
+ * WHAT RUNS IT rides along (his order, 2026-10-07: "allow agents and tasks to
+ * define cli or glyphh agents with models"): a `kind: "cli"` agent is one of
+ * the member's CLI agents, and the engine hands it to runCliAgent below.
  */
 async function agentDefs(): Promise<LoopAgentDef[]> {
   try {
@@ -223,6 +229,7 @@ async function agentDefs(): Promise<LoopAgentDef[]> {
         name: a.name || a.slug,
         description: a.description || "",
         prompt: a.prompt,
+        ...(agentKindOf(a) === "cli" ? { kind: "cli" as const, cli: a.cli ?? "" } : {}),
         // Its own model, bare (records hold catalog ids); empty runs it on the
         // parent's model, which is the honest default for "no slot chosen".
         ...(bareModel(a.model ?? "") ? { model: bareModel(a.model) } : {}),
@@ -244,6 +251,13 @@ const loop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  // A CLI AGENT AS A CHILD (his order, 2026-10-07): the named CLI runs headless
+  // on this machine with the agent's brief ahead of the task, on the chat's
+  // model slot and in its folder; its printed text is the child's answer.
+  runCliAgent: async (def, task, { model, workdir, signal }) => {
+    const r = await runCliHeadless(def.cli ?? "", `${def.prompt.trim()}\n\n${task}`, { model, cwd: workdir, signal });
+    return { text: r.failed ? r.error || r.text : r.text, failed: r.failed };
+  },
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -416,6 +430,11 @@ export async function runGlyphhHeadless(
   try {
     await loop.run({
       chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
+      // THE TYPE (2026-10-07): the engine's default is Code, and a Code turn
+      // with no folder is refused ("This session has no folder") — so every
+      // headless run without one failed. A run with no folder is Work; one
+      // given a folder is Code in it.
+      space: opts.workdir ? "code" : "work",
       ...(opts.workdir ? { workdir: opts.workdir } : {}),
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");

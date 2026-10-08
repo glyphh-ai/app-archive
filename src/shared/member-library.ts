@@ -381,6 +381,13 @@ export interface AgentRowLike {
   prompt: string;
   provider: string;
   model: string;
+  /** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define
+   *  cli or glyphh agents with models"): "glyphh" (the default, and what a
+   *  row written before the field means) is the Glyphh loop with the model
+   *  slot; "cli" is one of the member's CLI agents run headless, `cli`
+   *  naming which (a cli-agents.ts id: claude, codex, gemini, …). */
+  kind?: AgentKind;
+  cli?: string;
   skills: string[];
   apps: string[];
   live: boolean;
@@ -389,11 +396,16 @@ export interface AgentRowLike {
   updatedAt: string;
 }
 
+export type AgentKind = "glyphh" | "cli";
+
 export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; skills?: string[]; apps?: string[];
+  provider?: string; model?: string; kind?: AgentKind; cli?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
 }
+
+/** A row's kind, "glyphh" for every row that predates the field. */
+export const agentKindOf = (a: Pick<AgentRowLike, "kind"> | null | undefined): AgentKind => (a?.kind === "cli" ? "cli" : "glyphh");
 
 export const agentSlug = (name: string): string =>
   String(name ?? "").trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
@@ -424,6 +436,11 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
   const name = String(input.name ?? existing?.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
   const slug = agentSlug(String(input.slug || existing?.slug || name));
+  // Runs as (his order, 2026-10-07): a CLI agent must name its CLI; a Glyphh
+  // agent carries none, so a switch back never leaves a stale id behind.
+  const kind: AgentKind = input.kind === undefined ? agentKindOf(existing) : agentKindOf(input);
+  const cli = kind === "cli" ? String(input.cli ?? existing?.cli ?? "").trim() : "";
+  if (kind === "cli" && !cli) throw new Error("a CLI agent needs a cli (claude, codex, gemini, …)");
   return {
     id: slug,
     slug,
@@ -432,6 +449,8 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
     provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
     model: String(input.model ?? existing?.model ?? ""),
+    kind,
+    cli,
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
     apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
     live: input.live === undefined ? existing?.live ?? true : !!input.live,

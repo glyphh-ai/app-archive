@@ -25,9 +25,17 @@ describe("lendSplit", () => {
       expect(s.local(t), t).toBe(true);
       expect(s.gateway(t), t).toBe(false);
     }
-    for (const t of ["skills_list", "skill_save", "tasks_list", "task_run", "schedules_list", "schedule_save", "agents_list", "app_releases", "app_pin"]) {
+    for (const t of ["skills_list", "skill_save", "tasks_list", "task_runs", "schedules_list", "schedule_save", "agents_list", "app_releases", "app_pin"]) {
       expect(s.local(t), t).toBe(false);
       expect(s.gateway(t), t).toBe(true);
+    }
+    // A RUN HAPPENS WHERE THE RPA LIVES (his order, 2026-10-07): with the
+    // desktop up, task_run and skill_run run on this machine, with its tools.
+    for (const t of ["task_run", "skill_run"]) {
+      expect(s.local(t), t).toBe(true);
+      expect(s.gateway(t), t).toBe(false);
+      expect(MACHINE_TOOLS.has(t), t).toBe(true);
+      expect(CLOUD_TOOLS.has(t), t).toBe(false);
     }
     // app_install { dir } zips or tars THIS machine's folder: the local server
     // answers it (and the job it starts); the gateway's base64 copies are not
@@ -61,6 +69,9 @@ describe("lendSplit", () => {
     expect(s.gateway("app_install")).toBe(true);
     expect(s.gateway("skill_get")).toBe(true);
     expect(s.gateway("skills_list")).toBe(true);
+    // No desktop: the gateway's copies run a task or a skill in the cloud.
+    expect(s.gateway("task_run")).toBe(true);
+    expect(s.gateway("skill_run")).toBe(true);
   });
 
   it("keeps the library local when no gateway is lent", () => {

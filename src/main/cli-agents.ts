@@ -24,6 +24,7 @@ import path from "path";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { userScopedPath } from "./app-paths.js";
+import { CLI_BIN, CLI_IDS, CLI_NAMES, HEADLESS_CLIS, isCliId, type CliId } from "./cli-ids.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix, getPreference } from "./stores/preferences-db";
@@ -32,12 +33,14 @@ import { SERVER_URL } from "./glyphh-client.js";
 import { CLI_INSTALL, missingCli } from "./cli-install.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { bareModel, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
-import { hostDialect, andThen, cd as shCd, invoke, setVar, sourceEnvFile, type Dialect } from "./shell-dialect.js";
+import { hostDialect, andThen, cd as shCd, invoke, quote, setVar, shellInvocation, sourceEnvFile, type Dialect } from "./shell-dialect.js";
 import { bundledGlyphhCli } from "./bundled-cli.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
-export type CliId = "claude" | "codex" | "gemini" | "copilot" | "cursor" | "glyphh";
+// The id table is cli-ids.ts (pure, 2026-10-07) so the agent record's
+// validation can read it without this module's seams; re-exported unchanged.
+export { CLI_IDS, type CliId };
 
 export interface CliAgentRow {
   id: CliId;
@@ -57,21 +60,9 @@ export interface CliAgentRow {
 /** A listed agent plus the composed command, so renderers can open synchronously. */
 export type CliAgentListed = CliAgentRow & { command: string; gatewayCapable: boolean };
 
-/** THE GLYPHH CLI IS NAMED FOR WHAT IT IS (his order, 2026-09-30: "glyphh cli
- *  (we need to rename the icon on the echo panel to this)"). */
-const AGENT_NAMES: Record<CliId, string> = {
-  claude: "Claude", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor", glyphh: "Glyphh CLI",
-};
-const CLI_BIN: Record<CliId, string> = {
-  claude: "claude", codex: "codex", gemini: "gemini", copilot: "copilot", cursor: "cursor-agent", glyphh: "glyphh",
-};
-export const CLI_IDS = Object.keys(AGENT_NAMES) as CliId[];
-
-const isCliId = (v: string): v is CliId => (CLI_IDS as string[]).includes(v);
-
 export function agentRowFor(id: string): CliAgentRow | null {
   if (!isCliId(id)) return null;
-  return { id, name: AGENT_NAMES[id], cli: id, cmd: CLI_BIN[id], mcp: true, session: "keep" };
+  return { id, name: CLI_NAMES[id], cli: id, cmd: CLI_BIN[id], mcp: true, session: "keep" };
 }
 
 const mcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.json");
@@ -198,9 +189,9 @@ const codexModelOverride = (model: string): string => {
 
 /** Settings → Connections' tool modes projected onto Claude Code's own flags.
  *  "Never" is also enforced at the gateway; the other CLIs prompt for the rest. */
-function claudeToolFlags(): string {
+function claudeToolFlags(extraAllow: string[] = []): string {
   const modes = preferencesByPrefix<Record<string, string>>("connToolModes:");
-  const allow: string[] = [];
+  const allow: string[] = [...extraAllow];
   const deny: string[] = [];
   for (const [key, byTool] of Object.entries(modes)) {
     if (key.startsWith("app:") || !byTool || typeof byTool !== "object") continue;
@@ -327,6 +318,134 @@ async function ensureAgentEnv(row: CliAgentRow, viaGateway: boolean): Promise<bo
   if (creds) { writeGatewayEnv(row.id, row.cli, vars, creds); return true; }
   clearGatewayEnv(row.id, row.cli, vars);
   return false;
+}
+
+// ── THE HEADLESS LANE (his order, 2026-10-07: "allow agents and tasks to
+//    define cli or glyphh agents with models; give apps, agents, skills,
+//    plugins — everything — the ability to call the rpa tooling") ───────────
+//
+// A CLI agent spawned by the Glyphh loop, filling a task slot or firing on a
+// clock has no terminal: the CLI runs in PRINT MODE — a prompt in, its text
+// out — on the same gateway env and the same MCP wiring the terminal open
+// gets, so it sees this machine's local MCP (the rpa_* tools included).
+// Unattended means nobody can answer a tool prompt, so the Glyphh MCP server's
+// tools are pre-allowed the way the loop's own headless run is `auto`.
+
+export interface HeadlessOverrides {
+  model?: string;
+  cwd?: string;
+  /** Composed for the gateway lane (the model flag rides only there). */
+  gateway?: boolean;
+}
+
+/** The print-mode command line for one CLI — pure, so the tests prove each
+ *  shape. Throws for a CLI whose row table shows no headless mode. */
+export function composeHeadlessLine(row: CliAgentRow, prompt: string, ov: HeadlessOverrides, dialect?: Dialect): string {
+  if (!HEADLESS_CLIS.has(row.cli)) throw new Error(`${row.name} has no headless mode`);
+  const d = dialect ?? hostDialect();
+  const viaGateway = !!ov.gateway;
+  // The same rule as composeCommand: a model names a gateway model, so it
+  // rides only the gateway lane; on the CLI's own login the CLI decides.
+  const model = viaGateway ? ((ov.model ?? "").trim() || orgRequiredModel()) : "";
+  const cwd = expandHome((ov.cwd ?? "").trim());
+  const p = quote(String(prompt ?? "").trim(), d);
+  let base: string;
+  if (row.cli === "codex") {
+    const provider = viaGateway ? CODEX_PROVIDER : "";
+    const { port } = localMcpStatus();
+    const token = row.mcp ? ensureMcpToken(row.id) : "";
+    // Approval mode `auto`: unattended, there is no one to approve a tool call.
+    const mcp = row.mcp
+      ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + ` -c 'mcp_servers.glyphh.default_tools_approval_mode="auto"'`
+      : "";
+    base = (token ? `${setVar("GLYPHH_MCP_TOKEN", token, d)} ` : "")
+      + `${row.cmd}${CODEX_NO_UPDATE}${provider}${mcp}${codexModelOverride(model)} exec ${p}`;
+  } else if (row.cli === "claude") {
+    // `mcp__glyphh` pre-allows every tool of the Glyphh server (Claude Code's
+    // server-wide allow form); the member's connection modes still apply.
+    base = `${row.cmd} -p ${p} --output-format text${modelFlag(row.cli, model)}${claudeToolFlags(row.mcp ? ["mcp__glyphh"] : [])}${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
+  } else {
+    // gemini: its MCP seam is the settings file written at open; -y (yolo)
+    // approves tool calls, since nobody is there to.
+    base = `${row.cmd} -p ${p} -y${modelFlag(row.cli, model)}`;
+  }
+  const line = cwd ? andThen([shCd(cwd, d), base], d) : base;
+  return viaGateway && fs.existsSync(envFile(row.id)) ? `${sourceEnvFile(envFile(row.id), d)} ${line}` : line;
+}
+
+const HEADLESS_STDOUT_CAP = 200 * 1024;
+const HEADLESS_STDERR_TAIL = 4 * 1024;
+const HEADLESS_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Run one composed line through the login shell (so the sourced env file and
+ *  the member's PATH apply), capture what it printed, honor the abort signal
+ *  and the clock. */
+function runHeadlessLine(line: string, cwd: string, opts: { signal?: AbortSignal; timeoutMs?: number }): Promise<{ text: string; failed: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const [shell, args] = shellInvocation(hostDialect());
+    const child = spawn(shell, [...args, line], { cwd, env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    let settled = false;
+    let why = "";
+    const settle = (r: { text: string; failed: boolean; error?: string }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      resolve(r);
+    };
+    const kill = (reason: string): void => { why = reason; try { child.kill("SIGTERM"); } catch { /* already gone */ } };
+    const onAbort = (): void => kill("stopped");
+    const timer = setTimeout(() => kill(`timed out after ${Math.round((opts.timeoutMs ?? HEADLESS_TIMEOUT_MS) / 1000)}s`), opts.timeoutMs ?? HEADLESS_TIMEOUT_MS);
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+    child.stdout.on("data", (b: Buffer) => { if (out.length < HEADLESS_STDOUT_CAP) out += b.toString("utf-8").slice(0, HEADLESS_STDOUT_CAP - out.length); });
+    child.stderr.on("data", (b: Buffer) => { err = (err + b.toString("utf-8")).slice(-HEADLESS_STDERR_TAIL); });
+    child.on("error", (e) => settle({ text: out, failed: true, error: e.message }));
+    child.on("close", (code) => {
+      if (why) return settle({ text: out, failed: true, error: why });
+      if (code === 0) return settle({ text: out, failed: false });
+      settle({ text: out, failed: true, error: err.trim() || `${shell} exited ${code}` });
+    });
+  });
+}
+
+/**
+ * A CLI AGENT, HEADLESS: the Glyphh loop's `runCliAgent` seam, a task slot's
+ * CLI agent, a skill on a clock. The dependencies come up the way
+ * `cli-agent-open` brings them up — the gateway env (a paid, chosen lane:
+ * opensViaGateway), the local MCP server and the CLI's MCP config — then the
+ * print-mode line runs in the slot's folder and its text is the answer.
+ */
+export async function runCliHeadless(
+  id: string, prompt: string,
+  opts: { model?: string; cwd?: string; signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ text: string; failed: boolean; error?: string }> {
+  try {
+    const row = agentRowFor(String(id));
+    if (!row) throw new Error(`unknown CLI agent: ${String(id)}`);
+    if (!HEADLESS_CLIS.has(row.cli)) throw new Error(`${row.name} has no headless mode`);
+    const missing = await missingCli(row);
+    if (missing) throw new Error(`${row.name} is not installed (${missing.bin} is not on the PATH)${missing.install ? ` — install it with: ${missing.install}` : ""}`);
+    await refreshOrgModels().catch(() => undefined);
+    const wantGateway = opensViaGateway(row.cli, undefined, orgHasPlan(), !!getPreference<boolean>(CLI_GATEWAY_PREF, false));
+    const viaGateway = await ensureAgentEnv(row, wantGateway);
+    if (row.mcp) {
+      const r = await startLocalMcpServer();
+      if (!r.ok) throw new Error(r.error ?? "local MCP server failed to start");
+      ensureMcpConfig(row.id);
+      ensureRemoteMcp(row.id, row.cli, await mcpCreds());
+      ensureSettingsMcp(row.id, row.cli);
+    }
+    const cwd = agentTerminalFolder(opts.cwd);
+    const line = composeHeadlessLine(row, prompt, { ...(opts.model ? { model: opts.model } : {}), cwd, gateway: viaGateway });
+    console.warn("[agents] headless", JSON.stringify({ id: row.id, cwd, gateway: viaGateway, chars: prompt.length }));
+    return await runHeadlessLine(line, cwd, { ...(opts.signal ? { signal: opts.signal } : {}), ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) });
+  } catch (err) {
+    return { text: "", failed: true, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function listCliAgents(): CliAgentListed[] {

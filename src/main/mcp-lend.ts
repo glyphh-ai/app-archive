@@ -29,13 +29,18 @@ export const MACHINE_TOOLS: ReadonlySet<string> = new Set([
   // RPA ON A TAB (2026-10-07): the picker, the mapping and the runs act on a
   // panel on THIS screen, so only the local server answers them.
   "rpa_commands", "rpa_pick", "rpa_map", "rpa_unmap", "rpa_run", "rpa_sequence_save", "rpa_sequence_remove", "rpa_sequence_run",
+  // A RUN HAPPENS WHERE THE RPA LIVES (his order, 2026-10-07: "give apps,
+  // agents, skills, plugins — everything — the ability to call the rpa
+  // tooling"): with the desktop up, a task or a skill run NOW runs on this
+  // machine, with its tools; the gateway's copies serve cloud sessions.
+  "task_run", "skill_run",
 ]);
 
 /** The member's cloud reach: the gateway answers, from the library, the
  *  clock and the app instances, wherever the loop runs. */
 export const CLOUD_TOOLS: ReadonlySet<string> = new Set([
-  "skills_list", "skill_get", "skill_save", "skill_run", "skill_enable", "skill_delete", "skill_retype",
-  "tasks_list", "task_get", "task_run", "task_runs",
+  "skills_list", "skill_get", "skill_save", "skill_enable", "skill_delete", "skill_retype",
+  "tasks_list", "task_get", "task_runs",
   "schedules_list", "schedule_save", "schedule_run", "schedule_delete", "agents_list",
   "app_list_tools", "app_call_tool", "app_releases", "app_pin",
 ]);
