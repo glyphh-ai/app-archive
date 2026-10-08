@@ -28,7 +28,11 @@ const registry = createAgentLiveRegistry((runs) => broadcast("glyphh-agent:live"
 // turn's text so far, and tells the old panel to let go. Each engine registers
 // how to re-point its own run. ──
 const turnText = new Map<string, string>();
-type Rebinder = (chatId: string, sender: WebContents) => { rebound: boolean; previous: WebContents | null };
+/** `orphanOnly`: re-point ONLY when nobody live holds the run (the previous
+ *  holder is gone) — the automatic retry from the ledger push must never steal
+ *  a turn from the panel that is showing it. */
+export type RebindOpts = { orphanOnly?: boolean };
+type Rebinder = (chatId: string, sender: WebContents, opts: RebindOpts) => { rebound: boolean; previous: WebContents | null };
 const rebinders: Rebinder[] = [];
 export function registerRunRebinder(fn: Rebinder): void { rebinders.push(fn); }
 /** The turn's streamed text so far, for a panel adopting it mid-turn. */
@@ -45,14 +49,15 @@ export const agentLive = {
 
 export function registerAgentLiveIpc(): void {
   ipcMain.handle("glyphh-agent-live-list", () => agentLive.list());
-  ipcMain.handle("glyphh-agent-run-adopt", (e, p: { chatId?: string } | undefined) => {
+  ipcMain.handle("glyphh-agent-run-adopt", (e, p: { chatId?: string; orphanOnly?: boolean } | undefined) => {
     const chatId = String(p?.chatId ?? "");
+    const opts: RebindOpts = { orphanOnly: !!p?.orphanOnly };
     const run = agentLive.list().find((r) => r.chatId === chatId);
     if (!run) return { ok: false as const };
     let previous: WebContents | null = null;
     let rebound = false;
     for (const fn of rebinders) {
-      const r = fn(chatId, e.sender);
+      const r = fn(chatId, e.sender, opts);
       if (r.rebound) { rebound = true; previous = r.previous; break; }
     }
     if (!rebound) return { ok: false as const };

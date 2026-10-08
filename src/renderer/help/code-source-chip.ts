@@ -44,7 +44,10 @@ export type Source =
    *  id that keyed the pod workspace — the run + the fs panels scope to it,
    *  so a new session re-enters the same folder. `label` is display only. */
   | { kind: "cloud-space"; space: string; label?: string; dir?: string }
-  | { kind: "local"; path: string; machineId?: string };
+  /** `machineId` is the attach socket's id, minted anew on every reconnect;
+   *  `machine` is the desktop's NAME (its hostname), which is how a stale id
+   *  is re-resolved before a run (his report, 2026-10-08). */
+  | { kind: "local"; path: string; machineId?: string; machine?: string };
 
 // ── SDK / bridge handles (both targets) ──────────────────────────────────
 interface Repo { id: string; fullName: string; private: boolean; defaultBranch: string }

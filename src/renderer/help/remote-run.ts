@@ -137,6 +137,71 @@ interface SdkHandle {
    *  (`/api/harness`), auth'd by the user's session token. Region-routes to the
    *  org's regional rrotor + stator — no pod url, no provisioning. */
   harnessViaApi?: () => HarnessPod;
+  /** The relay to the member's own machines (SDK AttachClient): `dispatch`
+   *  runs one remote-control method there and returns its result. */
+  attach?: { dispatch: <T = unknown>(method: string, params?: Record<string, unknown>, opts?: { machineId?: string }) => Promise<T> };
+}
+
+/** The desktop's answer to `agent.frames` (main/attach-run.ts). */
+export interface DesktopFramesReply { runId: string | null; status: "running" | "done" | "error" | "gone" | "idle"; frames: HarnessWireFrame[] }
+
+/** How a web page watches a run on a desktop: the frames poll while a run is
+ *  on, the discovery poll between runs. */
+export const DESKTOP_WATCH_MS = { follow: 400, discover: 1500 } as const;
+
+/**
+ * Watch a DESKTOP thread from the web by polling the machine's own frame ring
+ * over the relay (`agent.frames`): by thread until a run is RUNNING there, then
+ * by runId from the last seq seen, until its done/error (his report, 2026-10-08:
+ * "the remote session to the desktops are not streaming when both ends are the
+ * glyphh agent"). A ring already finished at discovery is the thread's history,
+ * which the sync shows — only a live run is followed. `onRun` fires once per run
+ * before its first frame; the closing frame fires onDone/onError.
+ */
+export function watchDesktopRun(
+  dispatch: NonNullable<SdkHandle["attach"]>["dispatch"],
+  threadId: string,
+  machineId: string | undefined,
+  callbacks: RemoteRunCallbacks,
+  onRun?: (runId: string) => void,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): AttachHandle {
+  let stopped = false;
+  let runId: string | null = null;
+  let from = -1;
+  let state = { text: "", error: null as string | null };
+  const stubRun = {} as unknown as HarnessRunHandle;
+  const opts = machineId ? { machineId } : {};
+  const close = (reply: DesktopFramesReply): void => {
+    // The ring went without a closing frame (expired, or the desktop restarted).
+    if (reply.status === "gone") callbacks.onDone?.(state.text);
+    runId = null; from = -1;
+  };
+  const loop = async (): Promise<void> => {
+    while (!stopped) {
+      let reply: DesktopFramesReply;
+      try {
+        reply = await dispatch<DesktopFramesReply>("agent.frames", runId ? { runId, from } : { threadId, from: -1 }, opts);
+      } catch { await wait(DESKTOP_WATCH_MS.discover); continue; }
+      if (stopped) return;
+      if (!runId) {
+        if (!reply.runId || reply.status !== "running") { await wait(DESKTOP_WATCH_MS.discover); continue; }
+        runId = reply.runId; from = -1; state = { text: "", error: null };
+        onRun?.(runId);
+      }
+      for (const frame of reply.frames ?? []) {
+        if (typeof frame.seq !== "number" || frame.seq <= from) continue;
+        from = frame.seq;
+        dispatchFrame(frame, callbacks, state, stubRun);
+        if (frame.type === "done") callbacks.onDone?.(state.text);
+        else if (frame.type === "error") callbacks.onError?.(state.error || "the run reported an error");
+      }
+      if (reply.status !== "running") { close(reply); await wait(DESKTOP_WATCH_MS.discover); continue; }
+      await wait(DESKTOP_WATCH_MS.follow);
+    }
+  };
+  void loop();
+  return { runId: null, stop: () => { stopped = true; } };
 }
 
 const sdk = (): SdkHandle | undefined =>
@@ -916,6 +981,14 @@ export function attachToActiveRun(
   // glyphh-agent-run-adopt reconnect it, so only a cloud thread is observed
   // through the lane (a local one would ask the pod about a run it never had).
   if (!webRs && !isRemoteSource(chat.source)) return { runId: null, stop: () => {} };
+  // On the WEB a desktop thread is watched on the machine itself, over the
+  // relay — the broker the run-stream lane would ask does not exist on the
+  // server (web/src/mobile.tsx knows; this page polled it forever).
+  if (webRs && chat.source?.kind === "local") {
+    const dispatch = sdk()?.attach?.dispatch;
+    if (!dispatch) return { runId: null, stop: () => {} };
+    return watchDesktopRun(dispatch, runThreadId(chat), chat.source.machineId, callbacks, onRun);
+  }
   const rs = webRs ?? ipcRunStream();
   if (!rs?.attach) return { runId: null, stop: () => {} };
 

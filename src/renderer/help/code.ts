@@ -1668,7 +1668,15 @@ const observers = new Map<string, AttachHandle>();
 
 function stopObserving(chatId: string): void {
   const h = observers.get(chatId);
-  if (h) { h.stop(); observers.delete(chatId); }
+  if (!h) return;
+  h.stop(); observers.delete(chatId);
+  // The record the observer seeded goes with it (a run WE drive sits in
+  // remoteAborters and stays): a stale "working" entry blocked the re-attach on
+  // return, so the thread sat frozen with a spinner and no frames.
+  if (liveRuns.has(chatId) && !remoteAborters.has(chatId)) {
+    liveRuns.delete(chatId);
+    stopRunTickerIfIdle();
+  }
 }
 
 /** Reconcile the observer to the thread on screen: detach the old one, attach the
@@ -1687,6 +1695,7 @@ function syncActiveRunAttach(): void {
 
 function observeIfRunning(chat: CodeChat): void {
   const chatId = chat.id;
+  if (resolveLocalMachine(chat.source)) void saveStore();
   const handle = attachToActiveRun(
     chat as unknown as RemoteChat,
     {
@@ -1696,6 +1705,9 @@ function observeIfRunning(chat: CodeChat): void {
         const ch = chats.find((c) => c.id === chatId);
         if (!ch) return;
         // The observed turn's user message (first run frame) — render it like a local send.
+        // A re-attach replays from the first frame: the prompt already in the thread stays one.
+        const lastUser = [...ch.messages].reverse().find((m) => m.role === "user");
+        if (lastUser && lastUser.text === text) return;
         ch.messages.push({ role: "user", text, at: Date.now() });
         void saveStore();
         if (chatId === currentId) renderThread();
@@ -2136,6 +2148,10 @@ function ensureCodeSection(): void {
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
+    // A turn running in another (or a closed) document comes along with the
+    // thread — the workspace Session setting lands here, and used to leave the
+    // seat dormant while main streamed to a panel that no longer existed.
+    adoptRunIfElsewhere(target);
     // The switched-to session's OWN source drives the chip/locus/run.
     repaintSourceUi();
     applySessionFolder(target);   // the workbench follows the thread's folder
@@ -2848,6 +2864,7 @@ function selectChat(c: CodeChat): void {
   renderHistory();
   renderThread();
   adoptRunIfElsewhere(c);
+  broadcastTimeline(!!currentRun());   // the Plan timeline follows the thread on screen
   void checkWorkdirGate();
   applySessionFolder(c);   // the workbench follows the thread's folder
   // The opened session's OWN source drives the chip, the head locus and the
@@ -3117,7 +3134,7 @@ function renderThread(): void {
   // render its own two-column landing here, so the coding agent looked like a
   // different product from Chat and Work — the + New Session screen is where
   // suggestions and session lists belong, not inside an agent.
-  if (!c || !c.messages.length) {
+  if (!c || (!c.messages.length && !liveRuns.has(c.id))) {
     const ghost = document.createElement("div");
     ghost.className = "code-ghost";
     // MASCOT = the standard Glyphh mark, black & white (the time-of-day
@@ -3754,9 +3771,34 @@ function repaintSourceUi(): void {
  *     source change actually take effect (it used to hit the guard and no-op).
  * Persisted either way.
  */
+/** The machine a local source names, re-resolved against the desktops
+ *  attached NOW. The attach socket's id is minted anew on every reconnect
+ *  (sleep, a network blip, a restart), so a session bound by id alone went
+ *  "no machine" (412) after the first one — nothing streamed, nothing ran
+ *  (his report, 2026-10-08). The machine's NAME is the stable key: a stale
+ *  id is swapped for the id that name has now; a source with no name takes
+ *  the only attached desktop. Returns true when the source changed. */
+function resolveLocalMachine(src: Source | null | undefined): boolean {
+  if (!src || src.kind !== "local" || !onWebTarget()) return false;
+  const known = threadStore.attachedMachines();
+  if (!known.length) return false;
+  if (src.machineId && known.some((m) => m.id === src.machineId)) {
+    const name = known.find((m) => m.id === src.machineId)?.name;
+    if (name && src.machine !== name) { src.machine = name; return true; }
+    return false;
+  }
+  const byName = src.machine ? known.find((m) => m.name === src.machine) : undefined;
+  const pick = byName ?? (known.length === 1 ? known[0] : undefined);
+  if (!pick || pick.id === src.machineId) return false;
+  src.machineId = pick.id;
+  if (pick.name) src.machine = pick.name;
+  return true;
+}
+
 function pickSource(next: Source): void {
   const cur = current();
   const onHome = document.body.classList.contains("composer-on-home");
+  resolveLocalMachine(next);   // a pick by id carries the machine's name from here on
 
   // A BORN session's source is IMMUTABLE — but a DIFFERENT pick on a born
   // session means "work on THIS now", so it starts a NEW session lazily (the
@@ -5368,6 +5410,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
   if (run && !run.runId) run.runId = `r-remote-${chatId}`;
   // Resolved ONCE per turn (a rover loop advances its pool here).
   const remoteModel = resolveRemoteTurnModel();
+  if (resolveLocalMachine(c.source)) { void saveStore(); repaintSourceUi(); }
 
   void runRemoteTurn(
     c as unknown as RemoteChat,
@@ -6542,13 +6585,13 @@ function sessDot(id: string): HTMLSpanElement {
  *  chat the ledger says is running elsewhere, main re-points the frames here,
  *  hands over the turn's text so far, and the old panel lets go. Seeded like
  *  a local turn, so the spinner, the rail pulse and the stream paint at once. */
-function adoptRunIfElsewhere(c: CodeChat): void {
+function adoptRunIfElsewhere(c: CodeChat, opts: { orphanOnly?: boolean } = {}): void {
   if (liveRuns.has(c.id)) return;
   const r = liveElsewhere.find((x) => x.chatId === c.id || x.cliSessionId === c.id);
   if (!r) return;
-  const adopt = (window.glyphh as unknown as { glyphhRunAdopt?: (chatId: string) => Promise<{ ok: false } | { ok: true; runId: string; startedAt: number; text: string }> }).glyphhRunAdopt;
+  const adopt = (window.glyphh as unknown as { glyphhRunAdopt?: (chatId: string, o?: { orphanOnly?: boolean }) => Promise<{ ok: false } | { ok: true; runId: string; startedAt: number; text: string }> }).glyphhRunAdopt;
   if (!adopt) return;
-  void adopt(r.chatId).then((res) => {
+  void adopt(r.chatId, opts).then((res) => {
     if (!res?.ok || liveRuns.has(c.id) || !chats.some((x) => x.id === c.id)) return;
     stopObserving(c.id);
     liveRuns.set(c.id, { runId: res.runId, text: res.text || "", bubble: null, startAt: res.startedAt || Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
@@ -8811,7 +8854,15 @@ export function initCode(): void {
   // THE LIVE LEDGER (main's agent-live.ts): which sessions are running
   // anywhere in the app — the rail's rows pulse by it.
   const liveApi = window.glyphh as unknown as { glyphhLiveList?: () => Promise<LiveAgentRun[]>; onGlyphhLive?: (cb: (runs: LiveAgentRun[]) => void) => void };
-  const takeLive = (runs: LiveAgentRun[]): void => { liveElsewhere = Array.isArray(runs) ? runs : []; renderRailSessions(); };
+  // Every ledger push is a chance to pick up a turn whose holder is gone: the
+  // panel that started it closed on a workspace jump, and this document now
+  // shows the thread. Orphans only — a sibling that is live keeps its run.
+  const takeLive = (runs: LiveAgentRun[]): void => {
+    liveElsewhere = Array.isArray(runs) ? runs : [];
+    renderRailSessions();
+    const c = current();
+    if (c && !liveRuns.has(c.id)) adoptRunIfElsewhere(c, { orphanOnly: true });
+  };
   void liveApi.glyphhLiveList?.().then(takeLive).catch(() => {});
   liveApi.onGlyphhLive?.(takeLive);
 }

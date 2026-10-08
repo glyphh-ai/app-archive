@@ -165,7 +165,7 @@ declare global {
       onAgentPanelOpen?: (callback: (p: { loop?: string }) => void) => void;
       agentPanelOpenTool?: (p: { view: string; cwd?: string }) => Promise<boolean>;
       agentPanelActivate?: (p?: { wcId?: number }) => Promise<boolean>;
-      glyphhRunAdopt?: (chatId: string) => Promise<{ ok: false } | { ok: true; runId: string; cliSessionId: string | null; cli: string; startedAt: number; text: string }>;
+      glyphhRunAdopt?: (chatId: string, opts?: { orphanOnly?: boolean }) => Promise<{ ok: false } | { ok: true; runId: string; cliSessionId: string | null; cli: string; startedAt: number; text: string }>;
       onGlyphhAgentHandoff?: (callback: (d: { runId: string; chatId: string }) => void) => void;
       onAgentPanelOpenTool?: (callback: (p: { view: string; cwd?: string }) => void) => void;
       onAgentPanelCommand?: (callback: (cmd: unknown) => void) => void;
