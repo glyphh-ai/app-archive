@@ -22418,3 +22418,7 @@ body[data-session-space="code"] .code-source-slot .code-source-mascot { display:
 .app-tab-right[data-tab="rpa"] #app-preview { flex: 1; min-height: 0; }
 .app-tab-right[data-tab="rpa"] #app-preview-msg { margin: 16px; }
 .rpa-preview-addr { flex: 1; min-width: 0; font: 11px var(--font-mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A card PARKED ALIVE across a workspace jump (2026-10-08): off the stage,
+   invisible, its webview untouched so the page (a meet, a sign-in) runs on. */
+.echo-card.echo-parked { visibility: hidden !important; pointer-events: none !important; left: -20000px !important; transition: none !important; }
