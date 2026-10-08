@@ -34,8 +34,19 @@ import { effectiveToolMode } from "./conn-tool-modes.js";
 import { onUserChange } from "./user-scope.js";
 import { noteLibrarySave } from "./library-events.js";
 import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
+import { dispatchRelayMethod } from "./relay-client.js";
+import { pickSlotAgent, type SlotKind, type SlotRosterEntry } from "./task-slot-pick.js";
+// lane-agents provides this: `runCliHeadless` is exported from cli-agents.ts by
+// the agents lane (his order, 2026-10-07). It is read off the module shape so
+// this file typechecks before that lane lands; the merge may make it a named
+// import.
+import * as cliAgentsModule from "./cli-agents.js";
+type RunCliHeadless = (id: string, prompt: string, opts: { model?: string; cwd?: string; signal?: AbortSignal }) => Promise<{ text: string; failed: boolean; error?: string }>;
+const runCliHeadless = (): RunCliHeadless | undefined => (cliAgentsModule as unknown as { runCliHeadless?: RunCliHeadless }).runCliHeadless;
 
-export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
+/** A slot's lane: the Glyphh loop or a vendor CLI (his order, 2026-10-07:
+ *  "allow agents and tasks to define cli or glyphh agents with models"). */
+export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null; kind?: SlotKind; cli?: string }
 export interface TaskManifest {
   name: string;
   icon?: string;
@@ -49,10 +60,10 @@ export interface TaskManifest {
 }
 export interface TaskSpec {
   slug: string; name: string; description: string; program: string; icon: string | null;
-  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
+  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string; kind?: SlotKind; cli?: string }>;
   connections: string[]; schedule: string | null; enabled: boolean; dir: string;
 }
-export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "checkpoint" | "log" | "resume"; [k: string]: unknown }
+export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
 export interface RunJournal { checkpoints: Record<string, unknown>; events: RunEvent[] }
 export interface TaskRun {
   id: string; taskSlug: string; scheduleId: string | null; trigger: string; startedAt: string; durationMs: number | null;
@@ -85,7 +96,7 @@ function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
   if (m.icon) { try { icon = fs.readFileSync(path.join(dir, m.icon), "utf-8"); } catch { icon = null; } }
   return {
     slug, name: m.name || slug, description, program: m.program, icon,
-    slots: Object.entries(m.slots ?? {}).map(([name, s]) => ({ name, ...(s.label ? { label: s.label } : {}), ...(s.description ? { description: s.description } : {}), agent: s.agent ?? null, ...(s.model ? { model: s.model } : {}) })),
+    slots: Object.entries(m.slots ?? {}).map(([name, s]) => ({ name, ...(s.label ? { label: s.label } : {}), ...(s.description ? { description: s.description } : {}), agent: s.agent ?? null, ...(s.model ? { model: s.model } : {}), ...slotLane(s) })),
     connections: connDepNames(m.dependencies?.connections),
     schedule: m.schedule ?? null, enabled, dir,
   };
@@ -107,10 +118,18 @@ export function getTaskSpec(slug: string): TaskSpec {
   return hit;
 }
 
+/** The lane a slot declares, kept only when it says something: `kind` is
+ *  "glyphh" or "cli", and `cli` is the CLI id when the lane is a CLI. */
+function slotLane(s: { kind?: unknown; cli?: unknown }): { kind?: SlotKind; cli?: string } {
+  const kind = s.kind === "cli" || s.kind === "glyphh" ? s.kind : undefined;
+  const cli = typeof s.cli === "string" && s.cli.trim() ? s.cli.trim() : undefined;
+  return { ...(kind ? { kind } : {}), ...(cli ? { cli } : {}) };
+}
+
 /** The MCP authoring lane: a task written by an agent lands as a bundle. */
 export function saveTaskSpec(input: {
   slug?: string; name: string; description?: string; program?: string;
-  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null }>;
+  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null; kind?: SlotKind; cli?: string }>;
   connections?: Array<ConnDep | string>; schedule?: string | null;
 }): TaskSpec {
   const name = String(input.name ?? "").trim();
@@ -121,10 +140,10 @@ export function saveTaskSpec(input: {
   if (Array.isArray(input.slots) && input.slots.length) {
     input.slots.forEach((sl, i) => {
       const n = String(sl.name ?? `slot-${i + 1}`).toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-      slots[n] = { label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`), ...(sl.description ? { description: String(sl.description) } : {}), agent: sl.agent ? String(sl.agent) : null, ...(sl.model ? { model: String(sl.model) } : {}) };
+      slots[n] = { label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`), ...(sl.description ? { description: String(sl.description) } : {}), agent: sl.agent ? String(sl.agent) : null, ...(sl.model ? { model: String(sl.model) } : {}), ...slotLane(sl) };
     });
   } else if (existing) {
-    for (const s of existing.slots) slots[s.name] = { label: s.label, description: s.description, agent: s.agent, ...(s.model ? { model: s.model } : {}) };
+    for (const s of existing.slots) slots[s.name] = { label: s.label, description: s.description, agent: s.agent, ...(s.model ? { model: s.model } : {}), ...slotLane(s) };
   } else {
     slots.main = { label: "Main", description: "The agent this task runs through.", agent: null };
   }
@@ -185,12 +204,17 @@ function promptProgram(prompt: string, slot: string): string {
   return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
 }
 
-/** Slot → agent, written into task.json (the install-time fill). */
-export function setTaskSlot(slug: string, slot: string, agentId: string | null): TaskSpec {
+/** Slot → agent (+ its lane and model), written into task.json (the
+ *  install-time fill). `lane` fields given as "" or null are cleared. */
+export function setTaskSlot(slug: string, slot: string, agentId: string | null, lane: { kind?: SlotKind | null; cli?: string | null; model?: string | null } = {}): TaskSpec {
   const t = getTaskSpec(slug);
   const m = readManifest(t.dir);
   if (!m.slots?.[slot]) throw new Error(`task "${slug}" has no slot "${slot}"`);
-  m.slots[slot] = { ...m.slots[slot], agent: agentId || null };
+  const cur: TaskSlot = { ...m.slots[slot], agent: agentId || null };
+  if (lane.kind !== undefined) { if (lane.kind === "cli" || lane.kind === "glyphh") cur.kind = lane.kind; else delete cur.kind; }
+  if (lane.cli !== undefined) { if (lane.cli) cur.cli = String(lane.cli); else delete cur.cli; }
+  if (lane.model !== undefined) { if (lane.model) cur.model = String(lane.model); else delete cur.model; }
+  m.slots[slot] = cur;
   writeManifest(t.dir, m);
   return getTaskSpec(slug);
 }
@@ -262,7 +286,7 @@ function saveJournal(runId: string, journal: RunJournal): void {
 
 // ── the ctx verbs main answers ───────────────────────────────────────────────
 
-interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string }
+interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string; /** Cut when the run ends: a CLI turn still going is aborted with it. */ abort: AbortController }
 const live = new Map<string, Live>();
 /** How many restarts a single run may survive before it is called dead. */
 const MAX_RESUMES = 2;
@@ -272,16 +296,16 @@ const summarize = (v: unknown, max = 4000): unknown => {
   return s && s.length > max ? `${s.slice(0, max)}… (${s.length} chars)` : v;
 };
 
-function resolveSlotAgent(spec: TaskSpec, slot: string): { prompt: string; model?: string; agentName: string } {
+/** Who fills a slot: the one decision in task-slot-pick.ts (his order,
+ *  2026-10-07). The slot's model beats the agent's; an unbound slot is the
+ *  default Glyphh agent, never silently the roster's first; a slot naming a
+ *  vanished agent fails the run by name; a CLI agent runs through its CLI. */
+function resolveSlotAgent(spec: TaskSpec, slot: string): ReturnType<typeof pickSlotAgent> {
   const s = spec.slots.find((x) => x.name === slot);
   if (!s) throw new Error(`no slot "${slot}" on task "${spec.slug}"`);
-  const roster = slotAgentRoster();
-  const who = (s.agent ? roster.find((a) => a.id === s.agent) : undefined) ?? roster[0];
-  if (!who) throw new Error(`slot "${slot}" has no agent and none exist`);
-  const ctx = slotAgentContext(who.id);
-  // Every slot runs on the Glyphh loop now (the vendor-CLI lane is gone): what
-  // the agent brings is its standing prompt and its model.
-  return { prompt: ctx?.prompt || "", model: ctx?.model ?? s.model, agentName: who.name };
+  // lane-agents provides this: agentRoster() entries carry kind/cli.
+  const roster = slotAgentRoster() as SlotRosterEntry[];
+  return pickSlotAgent(s, roster, slotAgentContext);
 }
 
 function firstJson(text: string): unknown {
@@ -295,12 +319,40 @@ function firstJson(text: string): unknown {
   throw new Error("the agent's JSON did not parse");
 }
 
-async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { schema?: unknown; model?: string }): Promise<{ text: string; json?: unknown; agent: string }> {
-  const { prompt: standing, model, agentName } = resolveSlotAgent(spec, slot);
+async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { schema?: unknown; model?: string }, signal?: AbortSignal): Promise<{ text: string; json?: unknown; agent: string }> {
+  const who = resolveSlotAgent(spec, slot);
+  const { prompt: standing, agentName } = who;
+  // The program's own per-call model beats everything; then the slot's; then the agent's.
+  const model = opts.model ?? who.model;
   const ask = opts.schema ? `${prompt}\n\nReply with only JSON matching this shape, no prose:\n${JSON.stringify(opts.schema)}` : prompt;
-  const r = await runGlyphhHeadless(standing ? `${standing}\n\n${ask}` : ask, { ...(opts.model ?? model ? { model: String(opts.model ?? model) } : {}) });
-  if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
-  return { text: r.text, ...(opts.schema ? { json: firstJson(r.text) } : {}), agent: agentName };
+  const full = standing ? `${standing}\n\n${ask}` : ask;
+  let text: string;
+  if (who.kind === "cli") {
+    // A CLI AGENT RUNS THROUGH ITS CLI (his order, 2026-10-07), headless, in
+    // the bundle's folder, and dies with the run.
+    const run = runCliHeadless();
+    if (!run) throw new Error(`slot "${slot}" runs through ${who.cli}, but this build has no CLI lane`);
+    const r = await run(String(who.cli), full, { ...(model ? { model: String(model) } : {}), cwd: spec.dir, ...(signal ? { signal } : {}) });
+    if (r.failed) throw new Error(r.error || `${agentName} could not finish this step`);
+    text = r.text;
+  } else {
+    const r = await runGlyphhHeadless(full, { ...(model ? { model: String(model) } : {}) });
+    if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
+    text = r.text;
+  }
+  return { text, ...(opts.schema ? { json: firstJson(text) } : {}), agent: agentName };
+}
+
+/** The RPA doors a task program may open through ctx.rpa (his order,
+ *  2026-10-07: tasks call the rpa tooling). Each is a relay-registry method
+ *  (rpa-map.ts, rpa.ts); nothing else on the registry is reachable here. */
+const RPA_CTX_METHODS: ReadonlySet<string> = new Set(["rpa.commands", "rpa.run", "rpa.sequenceRun", "rpa.read"]);
+
+async function rpaCall(method: string, params: unknown): Promise<unknown> {
+  if (!RPA_CTX_METHODS.has(method)) throw new Error(`ctx.rpa has no "${method}" — it offers commands, run, sequence and read`);
+  const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+  if (!p.app || typeof p.app !== "string") throw new Error(`${method} needs the tab's app slug`);
+  return dispatchRelayMethod(method, p);
 }
 
 
@@ -327,10 +379,19 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
   switch (kind) {
     case "agent": {
       const [slot, prompt, opts] = args as [string, string, { schema?: unknown; model?: string }];
-      return agentTurn(l.spec, slot, prompt, opts ?? {}).then((r) => {
+      return agentTurn(l.spec, slot, prompt, opts ?? {}, l.abort.signal).then((r) => {
         push({ kind: "agent", slot, agent: r.agent, prompt: summarize(prompt, 2000), output: summarize(r.text, 8000), ...(r.json !== undefined ? { json: r.json } : {}) });
         return r;
       }, (err: Error) => { push({ kind: "agent", slot, prompt: summarize(prompt, 2000), error: err.message }); throw err; });
+    }
+    case "rpa": {
+      const [method, params] = args as [string, unknown];
+      const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
+      const at = { app: p.app, method, ...(p.command !== undefined ? { command: p.command } : {}), ...(p.sequence !== undefined ? { sequence: p.sequence } : {}), ...(p.selector !== undefined ? { selector: p.selector } : {}) };
+      return rpaCall(String(method), params).then((r) => {
+        push({ kind: "rpa", ...at, result: summarize(r, 4000) });
+        return r;
+      }, (err: Error) => { push({ kind: "rpa", ...at, error: err.message }); throw err; });
     }
     case "connection": {
       const [appSlug, tool, a] = args as [string, string, unknown];
@@ -385,7 +446,7 @@ function finish(runId: string, startedAt: string, status: "ok" | "failed", error
   // run that had died). A failing write must never leave the slot held, or the
   // task can never be started again for the life of the session.
   const l = live.get(runId);
-  if (l) { clearTimeout(l.timer); live.delete(runId); }
+  if (l) { clearTimeout(l.timer); live.delete(runId); l.abort.abort(); }
   try {
     getLocalDb().prepare("UPDATE loop_runs SET duration_ms = ?, status = ?, error = ?, result = ?, output = ? WHERE id = ?")
       .run(Date.now() - Date.parse(startedAt), status, error, result === undefined ? null : JSON.stringify(result), error ? error.slice(0, 20_000) : JSON.stringify(result ?? null).slice(0, 20_000), runId);
@@ -408,7 +469,7 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
     try { proc.kill(); } catch { /* gone */ }
     finish(run.id, run.startedAt, "failed", `timed out after ${Math.round((manifest.timeoutMs || DEFAULT_TIMEOUT_MS) / 60000)} min`, null);
   }, manifest.timeoutMs || DEFAULT_TIMEOUT_MS);
-  const l: Live = { proc, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt };
+  const l: Live = { proc, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt, abort: new AbortController() };
   live.set(run.id, l);
   proc.on("message", (msg: { type: string; id?: number; kind?: string; args?: unknown[]; result?: unknown; error?: string }) => {
     if (msg.type === "call" && typeof msg.id === "number") {
@@ -536,7 +597,8 @@ export function registerTaskRunnerIpc(): void {
   setTaskRunner((slug, scheduleId, input) => { runTask(slug, input, { kind: "schedule", scheduleId }); });
   ipcMain.handle("tasks-specs", () => env(() => listTaskSpecs()));
   ipcMain.handle("task-spec", (_e, slug: string) => env(() => getTaskSpec(String(slug))));
-  ipcMain.handle("task-slot-set", (_e, slug: string, slot: string, agentId: string | null) => env(() => setTaskSlot(String(slug), String(slot), agentId ? String(agentId) : null)));
+  ipcMain.handle("task-slot-set", (_e, slug: string, slot: string, agentId: string | null, lane?: { kind?: SlotKind | null; cli?: string | null; model?: string | null }) =>
+    env(() => setTaskSlot(String(slug), String(slot), agentId ? String(agentId) : null, lane && typeof lane === "object" ? lane : {})));
   ipcMain.handle("task-run", (_e, slug: string, input?: unknown) => env(() => runTask(String(slug), input ?? {})));
   ipcMain.handle("task-runs", (_e, slug: string) => env(() => listTaskRuns(String(slug))));
   ipcMain.handle("task-run-get", (_e, id: string) => env(() => getTaskRun(String(id))));

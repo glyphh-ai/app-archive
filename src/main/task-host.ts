@@ -56,10 +56,21 @@ function makeCtx(start: StartMsg): Record<string, unknown> {
   const data = (repo: string): { exec: (sql: string, params?: unknown) => Promise<unknown> } => ({
     exec: (sql, params) => call("data", repo, sql, params ?? []),
   });
+  // RPA ON A TAB from a program (his order, 2026-10-07: tasks call the rpa
+  // tooling): the mapped commands and sequences of the member's tabs, and a
+  // read of a tab's DOM. Main answers each on the relay registry and journals
+  // it like a connection call.
+  const rpa = {
+    commands: (app: string) => call("rpa", "rpa.commands", { app }),
+    run: (app: string, command: string, value?: unknown) => call("rpa", "rpa.run", { app, command, ...(value !== undefined ? { value } : {}) }),
+    sequence: (app: string, name: string, args?: Record<string, unknown>) => call("rpa", "rpa.sequenceRun", { app, sequence: name, args: args ?? {} }),
+    read: (app: string, selector?: string) => call("rpa", "rpa.read", { app, ...(selector ? { selector } : {}) }),
+  };
   return {
     agents,
     connections,
     data,
+    rpa,
     log: (message: unknown, detail?: unknown) => { void call("log", typeof message === "string" ? message : JSON.stringify(message), detail ?? null); },
     checkpoint: async (key: string, fn: () => unknown | Promise<unknown>): Promise<unknown> => {
       const have = (await call("checkpoint-get", key)) as { hit: boolean; value?: unknown };

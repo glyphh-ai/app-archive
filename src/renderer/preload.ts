@@ -1077,7 +1077,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // TASKS (2026-09-17): bundles the desktop runs itself (task-runner.ts) and the SCHEDULES lane over them.
   tasksSpecs: () => ipcRenderer.invoke("tasks-specs") as Promise<LibEnvelope>,
   taskSpec: (slug: string) => ipcRenderer.invoke("task-spec", slug) as Promise<LibEnvelope>,
-  taskSlotSet: (slug: string, slot: string, agentId: string | null) => ipcRenderer.invoke("task-slot-set", slug, slot, agentId) as Promise<LibEnvelope>,
+  taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { kind?: "glyphh" | "cli" | null; cli?: string | null; model?: string | null }) => ipcRenderer.invoke("task-slot-set", slug, slot, agentId, lane ?? {}) as Promise<LibEnvelope>,
   taskRun: (slug: string, input?: unknown) => ipcRenderer.invoke("task-run", slug, input) as Promise<LibEnvelope>,
   taskRuns: (slug: string) => ipcRenderer.invoke("task-runs", slug) as Promise<LibEnvelope>,
   taskRunGet: (id: string) => ipcRenderer.invoke("task-run-get", id) as Promise<LibEnvelope>,
@@ -1101,7 +1101,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,
   /** A bundle's own agents (agents/*.md, or a task's slots) and what they run on. */
   skillAgents: (id: string) => ipcRenderer.invoke("skill-agents", id) as Promise<LibEnvelope>,
-  skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) =>
+  skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }) =>
     ipcRenderer.invoke("skill-agent-set", id, ref, patch) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
   skillDelete: (id: string, opts?: { purge?: boolean }) => ipcRenderer.invoke("skill-delete", id, opts ?? {}) as Promise<LibEnvelope>,
