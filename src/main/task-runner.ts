@@ -36,13 +36,7 @@ import { noteLibrarySave } from "./library-events.js";
 import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { pickSlotAgent, type SlotKind, type SlotRosterEntry } from "./task-slot-pick.js";
-// lane-agents provides this: `runCliHeadless` is exported from cli-agents.ts by
-// the agents lane (his order, 2026-10-07). It is read off the module shape so
-// this file typechecks before that lane lands; the merge may make it a named
-// import.
-import * as cliAgentsModule from "./cli-agents.js";
-type RunCliHeadless = (id: string, prompt: string, opts: { model?: string; cwd?: string; signal?: AbortSignal }) => Promise<{ text: string; failed: boolean; error?: string }>;
-const runCliHeadless = (): RunCliHeadless | undefined => (cliAgentsModule as unknown as { runCliHeadless?: RunCliHeadless }).runCliHeadless;
+import { runCliHeadless } from "./cli-agents.js";
 
 /** A slot's lane: the Glyphh loop or a vendor CLI (his order, 2026-10-07:
  *  "allow agents and tasks to define cli or glyphh agents with models"). */
@@ -303,8 +297,7 @@ const summarize = (v: unknown, max = 4000): unknown => {
 function resolveSlotAgent(spec: TaskSpec, slot: string): ReturnType<typeof pickSlotAgent> {
   const s = spec.slots.find((x) => x.name === slot);
   if (!s) throw new Error(`no slot "${slot}" on task "${spec.slug}"`);
-  // lane-agents provides this: agentRoster() entries carry kind/cli.
-  const roster = slotAgentRoster() as SlotRosterEntry[];
+  const roster: SlotRosterEntry[] = slotAgentRoster();
   return pickSlotAgent(s, roster, slotAgentContext);
 }
 
@@ -330,9 +323,7 @@ async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { s
   if (who.kind === "cli") {
     // A CLI AGENT RUNS THROUGH ITS CLI (his order, 2026-10-07), headless, in
     // the bundle's folder, and dies with the run.
-    const run = runCliHeadless();
-    if (!run) throw new Error(`slot "${slot}" runs through ${who.cli}, but this build has no CLI lane`);
-    const r = await run(String(who.cli), full, { ...(model ? { model: String(model) } : {}), cwd: spec.dir, ...(signal ? { signal } : {}) });
+    const r = await runCliHeadless(String(who.cli), full, { ...(model ? { model: String(model) } : {}), cwd: spec.dir, ...(signal ? { signal } : {}) });
     if (r.failed) throw new Error(r.error || `${agentName} could not finish this step`);
     text = r.text;
   } else {
