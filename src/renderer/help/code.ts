@@ -6829,18 +6829,29 @@ function sessOpen(sess: RailSession): void {
     __wbAgentInstanced?: () => boolean;
     __wbFocusLiveHost?: (senderId: number, cmd?: { type: "open-session"; sess: RailSession }) => boolean;
     __wbAgentRoute?: (cmd: { type: "open-session"; sess: RailSession }) => boolean;
+    __wbAgentFocused?: () => boolean;
+    __wbHasAgentSeat?: () => boolean;
     __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "open-session"; sess: RailSession }) => void;
     __wbHasAgentPanel?: () => boolean;
   };
   if (shell.__wbAgentInstanced?.()) {
     const cmd = { type: "open-session" as const, sess };
-    // A RUNNING thread lands in the panel that runs it (and that panel switches
-    // to it); any other thread lands in the focused panel, else the first open
-    // one, else a fresh one (his rule, 2026-09-27).
+    // WHERE THE CLICK LANDS, in order (his rule, 2026-09-27; his report,
+    // 2026-10-08: a Work session clicked on the rail "doesn't open in the
+    // open agent window, it just flashes" — it was handed to the first solo
+    // panel instance while the member was looking at a workspace's seat):
+    //   1. a RUNNING thread → the panel that runs it;
+    //   2. the panel the member touched last;
+    //   3. the workspace's own seat, when one is on screen (the thread is
+    //      selected into this document below);
+    //   4. the first open instance, else a fresh one.
     const live = sessLiveEntry(sess);
     if (live && shell.__wbFocusLiveHost?.(live.senderId, cmd)) return;
-    if (shell.__wbAgentRoute?.(cmd)) return;
-    if (!shell.__wbHasAgentPanel?.()) { shell.__wbOpenAgentInstanceWith?.(agentForSess(sess)?.id, cmd); return; }
+    if (shell.__wbAgentFocused?.() && shell.__wbAgentRoute?.(cmd)) return;
+    if (!shell.__wbHasAgentSeat?.()) {
+      if (shell.__wbAgentRoute?.(cmd)) return;
+      if (!shell.__wbHasAgentPanel?.()) { shell.__wbOpenAgentInstanceWith?.(agentForSess(sess)?.id, cmd); return; }
+    }
   }
   // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
   // (select first — seating a different loop stamps the CURRENT chat).
@@ -8011,6 +8022,7 @@ export function initCode(): void {
   // THE SHELL'S ORDERS (agent-panel:command) — this panel is one instance
   // among many; the host document routes rail clicks and Home sends here.
   panelCommandHandler = (cmd) => {
+    console.warn("[panel] command", JSON.stringify({ type: cmd.type, id: cmd.id }));   // never silent (the house rule)
     if (cmd.type === "new-session") { newSessionInPlace(); return; }
     if (cmd.type === "open-session") { whenPanelReady(() => sessOpen(cmd.sess)); return; }
     if (cmd.type === "prompt") {

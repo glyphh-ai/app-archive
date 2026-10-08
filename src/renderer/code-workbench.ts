@@ -6935,6 +6935,14 @@ async function init(): Promise<void> {
       openAgentInstance(loop);
     };
     (window as unknown as { __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: PanelCommand) => void }).__wbOpenAgentInstanceWith = (loop, cmd) => { openAgentInstance(loop, cmd); };
+    /** The agent panel the member touched last, still open — the one a rail
+     *  click must land in (his report, 2026-10-08: a Work session clicked on
+     *  the rail "doesn't open in the open agent window, it just flashes"). */
+    (window as unknown as { __wbAgentFocused?: () => boolean }).__wbAgentFocused =
+      () => !!lastAgentInstance && !!lastAgentInstance.card?.isConnected && openList.includes(lastAgentInstance);
+    /** A workspace's in-document agent seat is up and visible. */
+    (window as unknown as { __wbHasAgentSeat?: () => boolean }).__wbHasAgentSeat =
+      () => openList.some((x) => !!x.card?.isConnected && x.tile.kind === "agent" && getComputedStyle(x.card).visibility !== "hidden");
     /** Route a command into the agent panel the user touched last; false when none is open. */
     (window as unknown as { __wbAgentRoute?: (cmd: PanelCommand) => boolean }).__wbAgentRoute = (cmd) => {
       const e = activeAgentInstance();
