@@ -128,7 +128,10 @@ describe("composeHeadlessLine — a CLI agent with no terminal (his order, 2026-
     const line = composeHeadlessLine(agentRowFor("claude")!, "say it's done", { gateway: false }, "posix");
     expect(line).toContain(`claude -p 'say it'\\''s done' --output-format text`);
     expect(line).toContain('--allowedTools "mcp__glyphh"');
-    expect(line).toContain(`--mcp-config "${path.join(home, "loops", "claude", "mcp.json")}" --strict-mcp-config`);
+    // The UNATTENDED door, and the screen tools denied by name (his report, 2026-10-08).
+    expect(line).toContain(`--mcp-config "${path.join(home, "loops", "claude", "mcp.unattended.json")}" --strict-mcp-config`);
+    expect(line).toContain('--disallowedTools "mcp__glyphh__panels_open"');
+    expect(line).toContain('"mcp__glyphh__rpa_run"');
     expect(line).not.toContain("--model");
     expect(line).not.toContain(envFile);
   });
@@ -148,18 +151,18 @@ describe("composeHeadlessLine — a CLI agent with no terminal (his order, 2026-
     expect(line).toContain(`-c 'model="gpt-5"'`);
     expect(line).toContain('model_provider="glyphh"');
     expect(line).toContain('default_tools_approval_mode="auto"');
-    expect(line).toContain('mcp_servers.glyphh.url="http://127.0.0.1:4777/mcp"');
+    expect(line).toContain('mcp_servers.glyphh.url="http://127.0.0.1:4777/mcp-unattended"');
     expect(composeHeadlessLine(agentRowFor("codex")!, "x", { gateway: false }, "posix")).not.toContain('model_provider="glyphh"');
   });
 
   it("gemini runs -p with yolo approvals and -m on the gateway", () => {
     const line = composeHeadlessLine(agentRowFor("gemini")!, "hi", { gateway: true, model: "gemini-3.8-flash" }, "posix");
-    expect(line).toContain(`gemini -p 'hi' -y -m "gemini-3.8-flash"`);
-    expect(composeHeadlessLine(agentRowFor("gemini")!, "hi", { gateway: false }, "posix")).toBe("gemini -p 'hi' -y");
+    expect(line).toContain(`gemini -p 'hi' -y --allowed-mcp-server-names glyphh_unattended -m "gemini-3.8-flash"`);
+    expect(composeHeadlessLine(agentRowFor("gemini")!, "hi", { gateway: false }, "posix")).toBe("gemini -p 'hi' -y --allowed-mcp-server-names glyphh_unattended");
   });
 
   it("starts in the folder it was given", () => {
-    expect(composeHeadlessLine(agentRowFor("gemini")!, "hi", { gateway: false, cwd: "/tmp/work" }, "posix")).toBe(`cd "/tmp/work" && gemini -p 'hi' -y`);
+    expect(composeHeadlessLine(agentRowFor("gemini")!, "hi", { gateway: false, cwd: "/tmp/work" }, "posix")).toBe(`cd "/tmp/work" && gemini -p 'hi' -y --allowed-mcp-server-names glyphh_unattended`);
   });
 
   it("refuses a CLI whose row table shows no headless mode", () => {

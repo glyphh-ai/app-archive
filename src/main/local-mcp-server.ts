@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { UNATTENDED_MCP_PATH, withoutUnattendedTools } from "./unattended-tools.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { callInstanceTool, listInstanceTools, installFolderAsInstance, listInstanceReleases, pinInstanceRelease, refuseBase64Flood, readBuildJob, waitBuildJob, logTail } from "./app-instances.js";
@@ -153,8 +154,10 @@ function isValidBearer(raw: string | undefined): boolean {
 
 // ── MCP tool surface (mirrors the cloud relay's WS-routed tools) ───
 
-function buildMcpServer(): McpServer {
-  const mcp = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
+  // THE UNATTENDED DOOR (his report, 2026-10-08): the same server with every
+  // tool that touches the screen left out (unattended-tools.ts).
+  const mcp = opts.unattended ? withoutUnattendedTools(new McpServer({ name: SERVER_NAME, version: SERVER_VERSION })) : new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   const via = async (method: string, params: unknown) => {
     try {
@@ -1009,13 +1012,13 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   }
 
   // Health check — unauthenticated, so users can curl to confirm it's up.
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/mcp")) {
+  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/mcp" || url.pathname === UNATTENDED_MCP_PATH)) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ name: SERVER_NAME, version: SERVER_VERSION, status: "ok" }));
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/mcp") {
+  if (req.method === "POST" && (url.pathname === "/mcp" || url.pathname === UNATTENDED_MCP_PATH)) {
     if (!isValidBearer(bearerFrom(req))) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid or missing bearer token. Generate one in Settings > MCP > Local server." }));
@@ -1031,7 +1034,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       return;
     }
     // Stateless: a fresh server + transport per request (matches the cloud relay).
-    const mcp = buildMcpServer();
+    const mcp = buildMcpServer({ unattended: url.pathname === UNATTENDED_MCP_PATH });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close().catch(() => {}); });
     try {
