@@ -6304,6 +6304,7 @@ async function init(): Promise<void> {
           .catch(() => { /* folder gone — open in place */ })
           .then(() => {
             cwd = folder;
+            lastCwd = folder;   // in step with the cwd listener, so a re-pick is not swallowed
             void paintWorkdirBar(cwd);
             openLayoutInEchoArranged(layout);
           });
@@ -6389,6 +6390,13 @@ async function init(): Promise<void> {
         const codingLoop = codingCell ? surfaceOf(codingCell).loop : "";
         const codingFolder = codingCfg.folder || "";
         const codingType = workspaceType(codingCfg, layout);
+        // THE TYPE IS STAMPED BEFORE A CELL OPENS (his report, 2026-10-08): the
+        // agent cell is a panel of its own and takes the type from the shell's
+        // rail at open, so the rail must already say it.
+        if (codingType) {
+          type StampApi = { stampType?(t: "work" | "code"): void };
+          (window as unknown as { __agentSessions?: StampApi }).__agentSessions?.stampType?.(codingType);
+        }
         let seatedAgent = false;
         for (const cell of cells) {
           const { id, loop: cellLoop } = surfaceOf(cell);
@@ -6989,7 +6997,11 @@ async function init(): Promise<void> {
       const id = `${Date.now().toString(36)}-${++agentInstances}`;
       // The host's theme rides along so the panel's first frame is already the right colour.
       const theme = document.documentElement.getAttribute("data-theme") || "";
-      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}${theme ? `&theme=${encodeURIComponent(theme)}` : ""}&instance=${encodeURIComponent(id)}`, window.location.href).href;
+      // The shell's TYPE rides along too (his report, 2026-10-08): a panel is
+      // its own document and boots on it — a preference change only reaches a
+      // panel already listening.
+      const type = document.body.dataset.railSpace || "";
+      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}${theme ? `&theme=${encodeURIComponent(theme)}` : ""}${type ? `&type=${encodeURIComponent(type)}` : ""}&instance=${encodeURIComponent(id)}`, window.location.href).href;
       return { name: "Glyphh", slug: `agent-panel:${id}`, kind: "app", url, workbench: true };
     };
     const isAgentInstance = (e: TileEntry): boolean => (e.tile.slug || "").startsWith("agent-panel:");
@@ -7957,9 +7969,17 @@ async function init(): Promise<void> {
           const b = x.card?.querySelector<HTMLElement>(".echo-card-body");
           if (!slot || !b) continue;
           if (slot.view === "files") { (slot as FilesSlot).root = null; b.innerHTML = ""; void renderFilesIntoSlot(b, slot as FilesSlot); }
-          else if (slot.view === "diff") { b.innerHTML = ""; void renderDiffIntoSlot(b, slot as DiffSlot); }
+          else if (slot.view === "diff") { (slot as DiffSlot).expanded = new Set(); b.innerHTML = ""; void renderDiffIntoSlot(b, slot as DiffSlot); }
           else if (slot.view === "plan") { b.innerHTML = ""; void renderPlanIntoSlot(b, slot as PlanSlot); }
         }
+        // Rail slots re-root too (his report, 2026-10-08): the Echo branch of
+        // the cwd listener returns before the rails loop ran.
+        let railBound = false;
+        for (const rail of rails) for (const slot of rail.slots) {
+          if (slot.view === "files") { (slot as FilesSlot).root = null; railBound = true; }
+          else if (slot.view === "diff" || slot.view === "plan") railBound = true;
+        }
+        if (railBound) renderRails();
       },
       openPreviewHtml: (html, label) => {
         const entry = getOrOpenTool("preview");
