@@ -31,6 +31,8 @@ import os from "os";
 import path from "path";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import { grantPanel, revokePanel, panelGrant } from "./glyphh-app-grants.js";
+import { isRpaAppMethod, rpaCapabilityAllowed } from "./app-rpa-gate.js";
+import { dispatchRelayMethod } from "./relay-client.js";
 import { lintRemoteAssets } from "@glyphh/sdk";
 import { SERVER_URL } from "./glyphh-client.js";
 import {
@@ -69,42 +71,40 @@ export interface GlyphhAppManifest {
   description?: string;
 }
 
-/** The names a manifest may declare. The instance's bridge (rrotor
- *  app-host/bridge.ts) answers them; the ones that need a member's machine
- *  (contacts, messages, fs.*, web.*, the house stores) it refuses with its own
- *  line at call time. Install refuses a name on neither list, loudly. */
+/** The names a manifest may declare: THE SDK VALIDATOR'S LIST (sdk
+ *  app-spec/validate.ts KNOWN_CAPABILITIES), kept in step by hand because the
+ *  SDK build the desktop links is not rebuilt from here. The instance's bridge
+ *  (rrotor app-server/bridge.ts) answers them; rpa.* is answered on THIS
+ *  desktop (his order, 2026-10-07: apps call the rpa tooling) — see the
+ *  glyphh-app:call handler. Install refuses a name on neither list, loudly. */
 const KNOWN_CAPABILITIES = new Set([
-  "contacts.search",
-  "messages.send",
   "db.exec",
-  "cron.schedule",
-  "cron.cancel",
-  "cron.list",
-  "notify.send",
-  "connector.status",
-  "connector.tools",
-  "connector.call",
-  "llm.embed",
-  "llm.chunk",
-  "llm.complete",
-  "agent.run",
-  "vector.upsert",
-  "vector.search",
-  "vector.delete",
+  "vector.upsert", "vector.search", "vector.delete",
   "graph.cypher",
-  "secrets.get",
-  "secrets.list",
+  "cron.schedule", "cron.cancel", "cron.list",
+  "notify.send",
+  "connector.status", "connector.tools", "connector.call",
+  "secrets.get", "secrets.list",
   "app.call",
-  "media.save",
-  "media.list",
-  "media.delete",
-  "drive.list", "drive.mkdir", "drive.move", "drive.folder.rename", "drive.folder.delete",
-  "design.list", "design.read", "design.write", "design.delete",
-  "slides.list", "slides.new", "slides.read", "slides.write", "slides.delete",
-  "fs.read",
-  "fs.write",
-  "fs.pick",
-  "web.fetch", "web.read",
+  // The member library's house kinds and image generation (2026-10-06).
+  "library.list", "library.get", "library.put", "library.remove", "library.fileGet", "library.filePut",
+  "images.generate",
+  // RPA on a tab from the panel's UI, on the desktop it is open on.
+  "rpa.commands", "rpa.run", "rpa.sequence",
+]);
+
+/** Names that used to be capabilities and refuse now, with what replaced
+ *  each — the validator's RETIRED_CAPABILITIES. Install refuses them by name
+ *  so the author learns the replacement instead of a bare "unknown". */
+const RETIRED_CAPABILITIES = new Map<string, string>([
+  ["llm.complete", "the agent writes and calls your tools with the result"],
+  ["llm.embed", "vector.upsert embeds text itself"],
+  ["llm.chunk", "split text in the worker"],
+  ["agent.run", "the agent is the caller, never a capability"],
+  ["contacts.search", "the google_contacts connector"],
+  ["messages.send", "the gmail or slack connector"],
+  ["web.fetch", "a connector"],
+  ["web.read", "a connector"],
 ]);
 
 /** Parse + validate a glyphh-app manifest ("" slug etc. rejected). */
@@ -178,6 +178,10 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<InstallAn
   const manifest = readGlyphhAppManifest(entry.getData().toString("utf8"));
   if (!manifest) return { ok: false, error: "manifest.json is not a valid glyphh-app manifest" };
 
+  const retired = manifest.capabilities.filter((c) => RETIRED_CAPABILITIES.has(c));
+  if (retired.length) {
+    return { ok: false, error: `Retired capabilities: ${retired.map((c) => `${c} (use ${RETIRED_CAPABILITIES.get(c)})`).join(", ")}.` };
+  }
   const unknown = manifest.capabilities.filter((c) => !KNOWN_CAPABILITIES.has(c));
   // NAME THE ALTERNATIVES (his rule, 2026-08-25): a bare refusal sent an agent
   // grepping the packaged asar for this very list. The set is small — print it.
@@ -330,7 +334,22 @@ export function registerGlyphhAppHost(): void {
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
     const grant = panelGrant(event.sender.id);
     if (!grant) return { ok: false, error: "this panel is not an installed app" };
-    return callInstanceBridge(grant.instance, String(method || ""), args ?? {});
+    const m = String(method || "");
+    // RPA ON A TAB (his order, 2026-10-07): the mapped commands live on this
+    // desktop's tabs, so rpa.* is answered here on the relay registry, gated
+    // by the instance's own manifest the way the bridge gates the rest.
+    if (isRpaAppMethod(m)) {
+      const inst = await findInstance(grant.instance).catch(() => undefined);
+      const gate = rpaCapabilityAllowed(inst?.manifest ?? null, m);
+      if (!gate.ok) return { ok: false, error: gate.error };
+      try {
+        const result = await dispatchRelayMethod(gate.relay, args && typeof args === "object" ? args : {});
+        return { ok: true, result };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return callInstanceBridge(grant.instance, m, args ?? {});
   });
 
   // A Glyphh-app panel (the wall, the rail, the Apps page): the instance the

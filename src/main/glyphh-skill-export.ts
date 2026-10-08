@@ -60,6 +60,36 @@ paste a token generated in Glyphh → Settings → MCP as a Bearer header.
 - \`connector_list_tools\` — every tool the user's connected apps expose (Slack, GitHub, Notion, Gmail, Salesforce, …), with schemas.
 - \`connector_call_tool { slug, name, args }\` — call one of them.
 
+## RPA on a tab
+
+The user's tabs (web apps open in Glyphh) carry MAPPED COMMANDS: named actions
+on a page the user, or you, taught Glyphh once, that then run by name — on the
+user's own signed-in session, no API needed. A mapped command is
+\`{ key, description, action, selector?, text?, url?, script?, waitFor?, guide? }\`:
+\`key\` is its name (\`send\`, \`search\`), \`action\` is one of \`click\` | \`type\` |
+\`read\` | \`readHtml\` | \`goto\` | \`custom\`, \`selector\` is the element it acts on
+(click, type, read, readHtml), \`text\`/\`url\` take \`{{value}}\` for the caller's
+value, \`script\` is the page JavaScript a \`custom\` command runs (VALUE in scope),
+and \`guide\` \`{ pre?, post?, verify?, recover?, delay? }\` is what makes it run
+reliably unattended (what must be true before, what to expect after, a selector
+that must exist afterwards, what to try on failure, a wait). A SEQUENCE is a
+named list of steps over those commands that runs in order and stops where it fails.
+
+- \`rpa_commands { app }\` — what a tab has: its mapped commands and sequences, and whether its panel is open. Discover first.
+- \`rpa_pick { app }\` — ask the user to click the element on the tab; returns its selector, tag and text — the way to map without guessing a selector.
+- \`rpa_map { app, key, description, action, selector?, text?, url?, script?, waitFor?, guide? }\` / \`rpa_unmap { app, key }\` — teach or forget a command.
+- \`rpa_run { app, command, value? }\` — run one, the user watching (the panel opens if it is not up); \`value\` fills \`{{value}}\`. A read returns the text.
+- \`rpa_sequence_save { app, name, description, steps:[{ command, value?, waitFor? }] }\` / \`rpa_sequence_remove { app, name }\` / \`rpa_sequence_run { app, sequence, args? }\` — keep and play a sequence; \`args\` fills the steps' \`{{placeholders}}\`.
+
+Every mapped command is ALSO a tool named \`<tab>_<key>\` inside the Glyphh
+loop (\`gmail_send\`, \`linear_search\`), and a sequence \`<tab>_<name>\`, so an
+agent on the user's machine calls them like any other tool. A task program reaches the same doors as
+\`ctx.rpa.run(app, command, value?)\`, \`ctx.rpa.sequence(app, name, args?)\`,
+\`ctx.rpa.commands(app)\` and \`ctx.rpa.read(app, selector?)\`. An app panel
+declares \`rpa.commands\`, \`rpa.run\` and/or \`rpa.sequence\` in its manifest
+\`capabilities\` and calls them from its UI with \`glyphh.call\` — answered on the
+desktop the panel is open on, never on the app server.
+
 ## Building a Glyphh app
 
 A Glyphh app is a portable \`.glyphh\` bundle (a zip) that installs in the

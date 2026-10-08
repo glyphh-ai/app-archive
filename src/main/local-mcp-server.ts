@@ -225,7 +225,7 @@ function buildMcpServer(): McpServer {
   function saveBundle(input: {
     type: BundleType; slug?: string; name: string; description?: string; prompt?: string;
     files?: Record<string, string>; program?: string; connections?: string[]; schedule?: string;
-    slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string }>;
+    slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string; kind?: "glyphh" | "cli"; cli?: string }>;
   }): Record<string, unknown> {
     const name = String(input.name ?? "").trim();
     if (!name) throw new Error("a bundle needs a name");
@@ -437,9 +437,11 @@ function buildMcpServer(): McpServer {
         name: z.string().optional(),
         label: z.string().optional(),
         description: z.string().optional(),
-        agent: z.string().nullable().optional().describe("CLI-agent id from agents_list (null = first agent)"),
-        model: z.string().optional(),
-      })).optional().describe('type:"task" only — the fixed slots the program calls agents through'),
+        agent: z.string().nullable().optional().describe("An agent slug from agents_list (Glyphh or CLI). null = the default Glyphh agent on the default model with no brief — never silently the first agent."),
+        kind: z.enum(["glyphh", "cli"]).optional().describe('The lane: "glyphh" runs the Glyphh loop, "cli" runs a vendor CLI headless (claude, codex, gemini, copilot, cursor). Omit to take it from the agent.'),
+        cli: z.string().optional().describe('kind:"cli" only — the CLI id (claude, codex, gemini, copilot, cursor) when no agent names one'),
+        model: z.string().optional().describe("The slot's model; it beats the agent's own. Omit for the agent's, then the org default."),
+      })).optional().describe('type:"task" only — the fixed slots the program calls agents through as ctx.agents.<slot>.run(prompt, { schema?, model? }). The program also has ctx.rpa: commands(app), run(app, command, value?), sequence(app, name, args?), read(app, selector?) — the mapped commands of the user\'s tabs (rpa_commands).'),
     },
     async (input) => {
       try { return text(saveBundle(input)); }

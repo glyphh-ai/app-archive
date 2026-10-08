@@ -547,14 +547,22 @@ export interface BundleAgent {
   ref: string;
   name: string;
   description: string;
-  /** What runs it (a cli-agents id). Empty = the app's default. */
+  /** Who runs it: an agent slug (a task slot's binding). Empty = the default Glyphh agent. */
   loop: string;
   /** Model override. Empty = whatever the loop resolves. */
   model: string;
+  /** THE LANE (his order, 2026-10-07: tasks define cli or glyphh agents with
+   *  models): "glyphh" or "cli"; absent = whatever the agent is. */
+  kind?: "glyphh" | "cli";
+  /** The CLI id (claude, codex, …) when the lane is a CLI. */
+  cli?: string;
   source: "file" | "slot";
 }
 
-const AGENT_KEYS = ["loop", "model"] as const;
+const AGENT_KEYS = ["loop", "model", "kind", "cli"] as const;
+/** The lane fields a patch may carry; "" clears one. */
+type AgentPatch = { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string };
+const laneKind = (v: unknown): "glyphh" | "cli" | undefined => (v === "cli" || v === "glyphh" ? v : undefined);
 
 export function listBundleAgents(id: string): BundleAgent[] {
   const { dir } = dirOf(id);
@@ -571,6 +579,8 @@ export function listBundleAgents(id: string): BundleAgent[] {
       description: fm.description || "",
       loop: fm.loop || "",
       model: fm.model || "",
+      ...(laneKind(fm.kind) ? { kind: laneKind(fm.kind) } : {}),
+      ...(fm.cli ? { cli: fm.cli } : {}),
       source: "file",
     });
   }
@@ -578,7 +588,7 @@ export function listBundleAgents(id: string): BundleAgent[] {
   // A task's slots ARE its agents.
   try {
     const m = JSON.parse(fs.readFileSync(path.join(dir, "task.json"), "utf-8")) as {
-      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>;
+      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null; kind?: string; cli?: string }>;
     };
     for (const [name, sl] of Object.entries(m.slots ?? {})) {
       out.push({
@@ -587,6 +597,8 @@ export function listBundleAgents(id: string): BundleAgent[] {
         description: sl.description || `ctx.agents.${name}`,
         loop: sl.agent || "",
         model: sl.model || "",
+        ...(laneKind(sl.kind) ? { kind: laneKind(sl.kind) } : {}),
+        ...(sl.cli ? { cli: String(sl.cli) } : {}),
         source: "slot",
       });
     }
@@ -595,18 +607,21 @@ export function listBundleAgents(id: string): BundleAgent[] {
 }
 
 /** Write what an agent runs on, into the file that declares it. */
-export function setBundleAgent(id: string, ref: string, patch: { loop?: string; model?: string }): BundleAgent[] {
+export function setBundleAgent(id: string, ref: string, patch: AgentPatch): BundleAgent[] {
   const { dir } = dirOf(id);
   if (ref.startsWith("slot:")) {
     const slot = ref.slice("slot:".length);
     const file = path.join(dir, "task.json");
     const m = JSON.parse(fs.readFileSync(file, "utf-8")) as {
-      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>;
+      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null; kind?: string; cli?: string }>;
     };
     const cur = m.slots?.[slot];
     if (!m.slots || !cur) throw new Error(`no agent "${slot}" in this task`);
     if (patch.loop !== undefined) cur.agent = patch.loop || null;
     if (patch.model !== undefined) cur.model = patch.model || null;
+    // The lane rides with the binding: kind "" / cli "" clear them.
+    if (patch.kind !== undefined) { const k = laneKind(patch.kind); if (k) cur.kind = k; else delete cur.kind; }
+    if (patch.cli !== undefined) { if (patch.cli) cur.cli = String(patch.cli); else delete cur.cli; }
     fs.writeFileSync(file, JSON.stringify(m, null, 2) + "\n", "utf-8");
     return listBundleAgents(id);
   }
@@ -907,7 +922,7 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));
   ipcMain.handle("skill-agents", (_e, id: string) => env(() => listBundleAgents(String(id))));
-  ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string }) =>
+  ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }) =>
     env(() => setBundleAgent(String(id), String(ref), patch ?? {})));
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
   ipcMain.handle("skill-delete", async (_e, id: string, opts?: { purge?: boolean }) => {
