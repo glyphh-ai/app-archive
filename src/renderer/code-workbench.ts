@@ -2660,6 +2660,11 @@ async function init(): Promise<void> {
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; /** a cloud app instance */ cloud?: boolean; archetype?: string | null; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+      /** PARKED ALIVE (his report, 2026-10-08): the card is hidden, its webview
+       *  untouched, waiting for its workspace to come back. */
+      parked?: boolean;
+      /** This open adopted a parked card: the live page wins over the memory. */
+      adoptedLive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
@@ -5532,6 +5537,40 @@ async function init(): Promise<void> {
      *  running — and reopening the same layout cell re-attaches instead of
      *  spawning fresh. Keyed by layout::memKey. Explicit ✕ still kills. */
     const parkedTerms = new Map<string, TermSlot>();
+    // WEB PANELS SURVIVE A WORKSPACE JUMP (his report, 2026-10-08: "closing
+    // that workspace kills the browser tabs you had open — a meet is bound to
+    // one open workspace"). A <webview> dies with its DOM node and reloads on
+    // a re-parent, so a parked card is never moved: it stays in the cards
+    // layer, hidden off the stage with its page running, and comes back as it
+    // was when its workspace (or its wall tile) opens again. Terminals park
+    // their pty the same way; this is the same contract for pages. A session
+    // mode of "new" on the outgoing workspace does not park. Capped, oldest out.
+    const parkedCards = new Map<string, { entry: TileEntry; at: number }>();
+    const PARKED_CARDS_MAX = 6;
+    const parkedKeyOf = (e: TileEntry): string | null => {
+      const card = e.card;
+      if (!card || e.tile.kind === "agent" || (e.tile.slug || "").startsWith("agent")) return null;
+      if (!card.querySelector("webview, .ws-preview-frame, iframe")) return null;
+      return echoLayoutName && e.memKey ? `web::${echoLayoutName.toLowerCase()}::${e.memKey}` : `web::loose::${(e.tile.slug || e.tile.name).toLowerCase()}`;
+    };
+    const destroyParkedCard = (key: string): void => {
+      const p = parkedCards.get(key);
+      if (!p) return;
+      parkedCards.delete(key);
+      const e = p.entry;
+      e.parked = false;
+      e.streamed?.dispose();
+      e.streamed = undefined;
+      e.toolSlot = undefined;
+      e.card?.remove();
+      e.card = undefined;
+    };
+    const takeParkedCard = (key: string): TileEntry | null => {
+      const p = parkedCards.get(key);
+      if (!p || !p.entry.card?.isConnected) { if (p) destroyParkedCard(key); return null; }
+      parkedCards.delete(key);
+      return p.entry;
+    };
     /** One open's worth: a reset to the design closes the agent cards WITHOUT
      *  parking, so every CLI restarts from the definition (his report,
      *  2026-10-07: "the workspace refresh is not resetting the agent clis"). */
@@ -5549,9 +5588,15 @@ async function init(): Promise<void> {
      *  setting it on the entry afterwards was too late (the shell had
      *  already spawned) and the parked pty was orphaned. */
     let pendingParkedTerms: TermSlot | null = null;
-    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean; keepSeat?: boolean }): void => {
+    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean; keepSeat?: boolean; parkWeb?: boolean }): void => {
       const card = e.card;
       if (!card) return;
+      // A WORKSPACE JUMP parks a page alive instead of killing it (his report,
+      // 2026-10-08) — unless the outgoing workspace's session mode is "new".
+      if (opts?.parkWeb && !e.parked && echoActiveLayout?.mode !== "new") {
+        const key = parkedKeyOf(e);
+        if (key) { parkWebCard(e, key); return; }
+      }
       // The AGENT card IS the session. Closing it must un-current that session
       // for its space — the card path bypasses closeSlot entirely, which is
       // why closing on web left the session as the tab's resume target.
@@ -5653,6 +5698,71 @@ async function init(): Promise<void> {
       if (!openList.length) setShadow(false, false);
       layoutCards();
     };
+    /** Hide a card alive: off the stage, out of the lists, its page running. */
+    const parkWebCard = (e: TileEntry, key: string): void => {
+      const card = e.card!;
+      if (card.classList.contains("expanded")) collapseCard(card);
+      if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
+      e.open = false;
+      e.parked = true;
+      drawTile(e);
+      const idx = openList.indexOf(e);
+      if (idx >= 0) openList.splice(idx, 1);
+      scheduleWallSave();
+      if (echoGrid) {
+        const freed = echoGrid.cells.find((c) => c.entry === e);
+        echoGrid.cells = echoGrid.cells.filter((c) => c.entry !== e);
+        if (freed) compactGrid(freed.col);
+        if (!echoGrid.cells.length) echoGrid = null;
+      }
+      notifyOpenApps();
+      card.classList.remove("placed");
+      card.classList.add("echo-parked");
+      card.style.pointerEvents = "none";
+      const held = parkedCards.get(key);
+      if (held && held.entry !== e) destroyParkedCard(key);
+      parkedCards.set(key, { entry: e, at: Date.now() });
+      while (parkedCards.size > PARKED_CARDS_MAX) {
+        const oldest = [...parkedCards.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+        if (!oldest) break;
+        destroyParkedCard(oldest[0]);
+      }
+      console.warn("[echo] park", JSON.stringify({ key, slug: e.tile.slug, parked: parkedCards.size }));
+      if (!openList.length) setShadow(false, false);
+      layoutCards();
+    };
+    /** A parked card comes back where its open wants it: on the lists, on
+     *  the stage, its page exactly as it was. */
+    const unparkCard = (e: TileEntry): void => {
+      const card = e.card!;
+      for (const [k, p] of parkedCards) if (p.entry === e) parkedCards.delete(k);
+      e.parked = false;
+      e.open = true;
+      card.classList.remove("echo-parked");
+      card.style.pointerEvents = "";
+      card.classList.add("placed");
+      openList.push(e);
+      drawTile(e);
+      const wv = card.querySelector("webview") as WebviewEl | null;
+      let wcId: number | undefined;
+      try { wcId = wv?.getWebContentsId?.(); } catch { wcId = undefined; }
+      if (wcId !== undefined && e.tile.slug) rpaYo().rpaRegister?.(e.tile.slug, wcId);
+      syncWallVisibility();
+      scheduleWallSave();
+      notifyOpenApps();
+      // A loose open beside a live grid takes a cell like a fresh card does
+      // (a layout open assigns its cells itself).
+      if (echoGrid && !openingLayout) {
+        const nCols = echoGrid.colWidths.length;
+        const avg = echoGrid.colWidths.reduce((a, b) => a + b, 0) / (nCols || 1) || 1;
+        echoGrid.colWidths.push(avg);
+        echoGrid.rowFracs.push([1]);
+        echoGrid.cells.push({ entry: e, col: nCols, row: 0, colSpan: 1, rowSpan: 1 });
+      }
+      console.warn("[echo] unpark", JSON.stringify({ slug: e.tile.slug, parked: parkedCards.size }));
+      layoutCards();
+      flash(card);
+    };
     /** B1: close a LAYOUT as one unit — tear down every open card that shares
      *  the given layoutId (or the active layout's id when none is passed), then
      *  drop the grid state so the surface falls back to the command center (B4).
@@ -5750,7 +5860,11 @@ async function init(): Promise<void> {
       scheduleWallSave();
     };
     const openShell = (e: TileEntry): HTMLElement | null => {
-      if (e.card) { flash(e.card); return null; }
+      if (e.card) {
+        if (e.parked) unparkCard(e);   // its page is alive and untouched (2026-10-08)
+        else flash(e.card);
+        return null;
+      }
       // An EXPANDED card is full-stage at z 2 — a new card would open
       // invisibly behind it ("clicked and nothing happened"). Collapse it;
       // the surface reflows to show both.
@@ -6232,7 +6346,7 @@ async function init(): Promise<void> {
         // session, or "keep current" has nothing to keep and the panel
         // drops to the landing before the session contract below can act.
         // "new" starts fresh and "last" re-targets explicitly, right after.
-        for (const x of [...openList]) closeCard(x, { parkTerms: true, keepSession: true });
+        for (const x of [...openList]) closeCard(x, { parkTerms: true, keepSession: true, parkWeb: true });
         killAgentTermsOnClose = false;   // one open's worth (resetLayoutToDesign)
         // and the full-screen page a workspace was opened from (his report, 2026-10-07)
         closeWebFullPanel();
@@ -6370,7 +6484,11 @@ async function init(): Promise<void> {
             }
             else if (v === "rail") { continue; }   // the rail is the fixed sidebar (2026-09-16): a Rail cell opens nothing
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
-              entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
+              // THE PAGE THAT WAS HERE comes back alive (his report, 2026-10-08) — the
+              // parked card of this very cell, else a fresh one.
+              const parkedTool = takeParkedCard(`web::${(layout.name || "").toLowerCase()}::${pendingKey}`);
+              if (parkedTool) { entry = parkedTool; entry.tile = { ...entry.tile, sticky: cell.sticky }; entry.adoptedLive = true; }
+              else entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
               // never stopped. Fresh slots get the DEFINITION's app setup
@@ -6431,7 +6549,9 @@ async function init(): Promise<void> {
             // resolves at mount (local entry or hosted) — per workspace.
             if (base?.glyphh && st?.route) base = { ...base, routeHint: st.route };
             if (base) {
-              entry = adHoc(base);
+              const parkedApp = takeParkedCard(`web::${(layout.name || "").toLowerCase()}::${pendingKey}`);
+              if (parkedApp) { entry = parkedApp; entry.tile = { ...entry.tile, sticky: cell.sticky }; entry.adoptedLive = true; }
+              else entry = adHoc(base);
               activateTile(entry);
             }
           }
@@ -6443,7 +6563,9 @@ async function init(): Promise<void> {
             // the editor gets its files back, the Browser its tabs; a native
             // Glyphh panel's document was grafted onto the slot before the
             // first paint (pendingSlotState above).
-            applySavedPanelState(entry, st);
+            // A card adopted alive keeps its live page; the memory is for a fresh one.
+            if (!entry.adoptedLive) applySavedPanelState(entry, st);
+            entry.adoptedLive = false;
             // remembered SLOT for this panel (swaps persist), layout default otherwise
             const g = saved && saved.col != null ? saved : null;
             gridCells.push({
