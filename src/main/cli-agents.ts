@@ -18,6 +18,7 @@
  * chat lane, the server roster or BYOK — all of which stay gone.
  */
 
+import { UNATTENDED_HIDDEN, UNATTENDED_MCP_PATH, claudeToolId } from "./unattended-tools.js";
 import fs from "fs";
 import { execFileSync, spawn } from "child_process";
 import path from "path";
@@ -66,6 +67,8 @@ export function agentRowFor(id: string): CliAgentRow | null {
 }
 
 const mcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.json");
+/** The headless lane's config: the local server's UNATTENDED door (his report, 2026-10-08). */
+const unattendedMcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.unattended.json");
 const envFile = (id: string): string => path.join(AGENTS_DIR(), id, "env");
 
 /**
@@ -88,6 +91,19 @@ function ensureMcpConfig(id: string): void {
     url: `http://127.0.0.1:${port}/mcp`,
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+/** The unattended door for a headless run: the same token, the path with no
+ *  screen tools behind it. Claude reads it as its --mcp-config; gemini as the
+ *  `glyphh_unattended` entry in its settings file. */
+function ensureUnattendedMcpConfig(id: string, cli: CliId): void {
+  const { port } = localMcpStatus();
+  let token = mcpTokenOf(id);
+  if (!token || !localMcpTokenValid(token)) token = localMcpGenToken(`agent:${id}`, 365).token;
+  fs.mkdirSync(path.join(AGENTS_DIR(), id), { recursive: true });
+  const url = `http://127.0.0.1:${port}${UNATTENDED_MCP_PATH}`;
+  upsertMcpServer(unattendedMcpFile(id), "glyphh", { type: "http", url, headers: { Authorization: `Bearer ${token}` } });
+  if (cli === "gemini") upsertMcpServer(path.join(homedir(), ".gemini", "settings.json"), "glyphh_unattended", { httpUrl: url, headers: { Authorization: `Bearer ${token}` } });
 }
 
 /** Upsert ONE server entry into an mcpServers JSON file, every other key preserved. */
@@ -356,19 +372,23 @@ export function composeHeadlessLine(row: CliAgentRow, prompt: string, ov: Headle
     const token = row.mcp ? ensureMcpToken(row.id) : "";
     // Approval mode `auto`: unattended, there is no one to approve a tool call.
     const mcp = row.mcp
-      ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
+      ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}${UNATTENDED_MCP_PATH}"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + ` -c 'mcp_servers.glyphh.default_tools_approval_mode="auto"'`
       : "";
     base = (token ? `${setVar("GLYPHH_MCP_TOKEN", token, d)} ` : "")
       + `${row.cmd}${CODEX_NO_UPDATE}${provider}${mcp}${codexModelOverride(model)} exec ${p}`;
   } else if (row.cli === "claude") {
+    // The unattended door, and the screen tools denied by name as well: a
+    // headless claude can never open a panel (his report, 2026-10-08).
+    const deny = row.mcp ? ` --disallowedTools ${[...UNATTENDED_HIDDEN].map((t) => `"${claudeToolId(t)}"`).join(",")}` : "";
     // `mcp__glyphh` pre-allows every tool of the Glyphh server (Claude Code's
     // server-wide allow form); the member's connection modes still apply.
-    base = `${row.cmd} -p ${p} --output-format text${modelFlag(row.cli, model)}${claudeToolFlags(row.mcp ? ["mcp__glyphh"] : [])}${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
+    base = `${row.cmd} -p ${p} --output-format text${modelFlag(row.cli, model)}${claudeToolFlags(row.mcp ? ["mcp__glyphh"] : [])}${deny}${row.mcp ? ` --mcp-config "${unattendedMcpFile(row.id)}"${STRICT_MCP}` : ""}`;
   } else {
     // gemini: its MCP seam is the settings file written at open; -y (yolo)
     // approves tool calls, since nobody is there to.
-    base = `${row.cmd} -p ${p} -y${modelFlag(row.cli, model)}`;
+    // Only the unattended entry of its settings file is allowed in.
+    base = `${row.cmd} -p ${p} -y --allowed-mcp-server-names glyphh_unattended${modelFlag(row.cli, model)}`;
   }
   const line = cwd ? andThen([shCd(cwd, d), base], d) : base;
   return viaGateway && fs.existsSync(envFile(row.id)) ? `${sourceEnvFile(envFile(row.id), d)} ${line}` : line;
@@ -438,6 +458,7 @@ export async function runCliHeadless(
       ensureMcpConfig(row.id);
       ensureRemoteMcp(row.id, row.cli, await mcpCreds());
       ensureSettingsMcp(row.id, row.cli);
+      ensureUnattendedMcpConfig(row.id, row.cli);
     }
     const cwd = agentTerminalFolder(opts.cwd);
     const line = composeHeadlessLine(row, prompt, { ...(opts.model ? { model: opts.model } : {}), cwd, gateway: viaGateway });

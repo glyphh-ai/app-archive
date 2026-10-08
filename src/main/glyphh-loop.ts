@@ -33,6 +33,7 @@ import { frameTargets } from "./attach-run-frames.js";
 import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
+import { UNATTENDED_HIDDEN, UNATTENDED_MCP_PATH, isScreenFamily } from "./unattended-tools.js";
 import { mineSync as tabRows } from "./apps-store.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { commandToolSpec, rpaOf, sequenceToolSpec } from "../shared/rpa.js";
@@ -183,7 +184,12 @@ function libraryChanged(): boolean {
  *  connected accounts' lookup pair). The names collide by design and
  *  mcp-lend.ts says who answers which; with the connections lane off neither
  *  side lends anything that bills through Pipedream. */
-async function mcpServers(): Promise<LoopMcpServer[]> {
+async function mcpServers(): Promise<LoopMcpServer[]> { return mcpServersFor(false); }
+/** The servers lent to a chat — or to an UNATTENDED run (his report,
+ *  2026-10-08: "the terminal window keeps randomly showing up"): the local
+ *  server's unattended door, with every tool that touches the screen left
+ *  out, so a schedule or a task slot can never open a panel. */
+async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
   const out: LoopMcpServer[] = [];
   const connections = connectionsAvailable();
   const local = await startLocalMcpServer().then(() => localMcpStatus().port).catch((err) => {
@@ -193,10 +199,11 @@ async function mcpServers(): Promise<LoopMcpServer[]> {
   const creds = await mcpCreds().catch(() => null);
   const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set([...CORE.work, ...CORE.code]) });
   if (local > 0) {
-    const token = localMcpGenToken("glyphh-loop", 365).token;
+    const token = localMcpGenToken(unattended ? "glyphh-loop-unattended" : "glyphh-loop", 365).token;
     out.push({
-      name: "glyphh-app", url: `http://127.0.0.1:${local}/mcp`,
-      headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE, allow: split.local,
+      name: "glyphh-app", url: `http://127.0.0.1:${local}${unattended ? UNATTENDED_MCP_PATH : "/mcp"}`,
+      headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE,
+      allow: unattended ? (t: string) => split.local(t) && !UNATTENDED_HIDDEN.has(t) : split.local,
     });
   }
   if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection", allow: split.gateway });
@@ -260,8 +267,30 @@ const loop = new GlyphhLoop({
   },
   warn: (m) => console.warn(m),
 });
+/** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
+ *  schedule, a task slot's turn, skill_run — runs here, on the local server's
+ *  unattended door and a catalog without the tabs' RPA tools, so nothing a
+ *  clock starts can open a panel, a workspace, Settings or a terminal. */
+const unattendedLoop = new GlyphhLoop({
+  host: "desktop",
+  gateway: gatewayCreds,
+  mcpServers: () => mcpServersFor(true),
+  agents: agentDefs,
+  catalog: async () => (await catalogEntries()).filter((e) => !isScreenFamily(e.family)),
+  skills: skillIndex,
+  facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
+  capture: memoryCapture,
+  // A CLI AGENT AS A CHILD (his order, 2026-10-07): the named CLI runs headless
+  // on this machine with the agent's brief ahead of the task, on the chat's
+  // model slot and in its folder; its printed text is the child's answer.
+  runCliAgent: async (def, task, { model, workdir, signal }) => {
+    const r = await runCliHeadless(def.cli ?? "", `${def.prompt.trim()}\n\n${task}`, { model, cwd: workdir, signal });
+    return { text: r.failed ? r.error || r.text : r.text, failed: r.failed };
+  },
+  warn: (m) => console.warn(m),
+});
 // An agent made or removed anywhere is on the next turn of every open chat.
-onAgentsChanged(() => loop.invalidateTools());
+onAgentsChanged(() => { loop.invalidateTools(); unattendedLoop.invalidateTools(); });
 // THE CONNECTIONS LANE MOVED on the server (the org's Pipedream switch): the
 // next run lends, or withholds, the connector tools accordingly.
 let connectionsLent = connectionsAvailable();
@@ -269,6 +298,7 @@ onModelStateChanged((c) => {
   if (c.connectionsOn === connectionsLent) return;
   connectionsLent = c.connectionsOn;
   loop.invalidateTools();
+  unattendedLoop.invalidateTools();
 });
 
 /** The stored-turn count the engine last seeded from, per chat: a jump of more
@@ -392,7 +422,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   // free-plan models for it, and the gateway refuses any other with a 402 the
   // panel draws as the plan card. Nothing is judged here before the model.
   // Something installed or removed since the last turn: every chat rebuilds its belt.
-  if (libraryChanged()) loop.invalidateTools();
+  if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
   const atts = validAttachments(p.attachments);
   const files = atts.filter((a) => a.kind !== "image");
   const manifest = p.space === "work" ? attachmentInlineText(files) : attachmentPromptBlock(files);
@@ -428,7 +458,7 @@ export async function runGlyphhHeadless(
   let text = "";
   let error = "";
   try {
-    await loop.run({
+    await unattendedLoop.run({
       chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
       // THE TYPE (2026-10-07): the engine's default is Code, and a Code turn
       // with no folder is refused ("This session has no folder") — so every
@@ -441,7 +471,7 @@ export async function runGlyphhHeadless(
       else if (ev.type === "error") error = String((ev as { error?: string }).error ?? "");
     });
   } finally {
-    loop.forget(chatId);
+    unattendedLoop.forget(chatId);
   }
   return error ? { ok: false, text, error } : { ok: true, text };
 }
