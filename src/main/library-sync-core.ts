@@ -83,7 +83,7 @@ export interface SyncContext {
   tombstones: { list(kind: MemberLibraryKind): Tombstone[]; drop(kind: MemberLibraryKind, id: string): void };
   /** When this kind last synced (epoch ms) — the `since` cursor for the tombstone page. */
   lastSyncAt: number | null;
-  fetchImpl: (url: string, init?: { method?: string; body?: Uint8Array }) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
+  fetchImpl: (url: string, init?: { method?: string; headers?: Record<string, string>; body?: Uint8Array }) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
   log?: (msg: string) => void;
 }
 
