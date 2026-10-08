@@ -40,6 +40,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { userZone } from "./user-zone.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
+import { runCliHeadless } from "./cli-agents.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
@@ -422,7 +423,15 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
   }
-  // On the clock, unattended, on the Glyphh loop — the vendor-CLI lane is gone.
+  // On the clock, unattended: a CLI agent runs its CLI headless — no panel,
+  // no terminal opening on a clock (his report, 2026-10-08: a skill schedule
+  // on a CLI agent kept popping the agent's terminal); anything else runs on
+  // the Glyphh loop.
+  if (ctx?.kind === "cli" && ctx.cli) {
+    const r = await runCliHeadless(ctx.cli, prompt, { ...(model ? { model } : {}) });
+    finish(r.failed ? "failed" : "ok", r.failed ? r.error ?? "the run failed" : null, r.text || null);
+    return;
+  }
   const r = await runGlyphhHeadless(prompt, { ...(model ? { model } : {}) });
   finish(r.ok ? "ok" : "failed", r.ok ? null : r.error ?? "the run failed", r.text || null);
 }
