@@ -5090,8 +5090,17 @@ export function wireGlobalDotCommands(): void {
 }
 
 function send(): void {
-  // While thinking the same control is the stop button.
-  if (thinking) { stopThinking(); return; }
+  // While thinking the same control is the stop button, but ONLY with nothing
+  // typed. Text mid-run is a follow-up and queues like Enter does: the
+  // artifact-comment send (__wbSendToAgent clicks this button), panel prompts
+  // and build-and-run all reach send() mid-turn, and each one used to KILL the
+  // live run (the ☮ line) and leave its text in the box. Stopping with words
+  // waiting is the queued note's Interrupt.
+  if (thinking) {
+    if (input()?.value.trim()) queueMidRun();
+    else stopThinking();
+    return;
+  }
   const ta = input();
   if (!ta) return;
   const text = ta.value.trim();
