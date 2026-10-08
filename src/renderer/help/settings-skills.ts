@@ -1025,12 +1025,14 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
+  paintOverviewBody(current.body);
   setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type, slug: d.slug, name: d.name });
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
   paintDetailChrome();
   paintDetailTabs(typeOf(current));
+  tabHasContent("contents", current.files.length);
   collapsedDirs = new Set();
   const sel = el<HTMLSelectElement>("skill-version");
   if (sel) { sel.innerHTML = `<option value="${d.version ?? 1}">${escapeHtml(d.name)} · v${d.version ?? 1}</option>`; sel.disabled = true; sel.title = "The version on the hub"; }
@@ -1401,6 +1403,7 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
   const isTask = typeOf(s) === "task";
 
   if (count) count.textContent = `· ${agents.length}`;
+  tabHasContent("agents", agents.length);
   host.textContent = "";
   if (!agents.length) {
     host.innerHTML = `<div class="crud-empty">No agents.</div>`;
@@ -1527,6 +1530,7 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
   if (!host.isConnected || current?.id !== s.id) return;
   const runs = r.ok ? r.data ?? [] : [];
   if (count) count.textContent = runs.length ? `· ${runs.length}` : "";
+  tabHasContent("runs", runs.length);
   // ONE RENDERER (lib-runs.ts): the schedule's Run history draws the same rows.
   renderRunList(host, runs, {
     empty: r.ok ? "No runs." : (r.error || "Couldn't load runs."),
@@ -1557,6 +1561,7 @@ async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<s
   else if (s.instance) tools = s.instance.tools.map((name) => ({ name }));
   else { try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; } }
   if (count) count.textContent = `· ${tools.length}`;
+  tabHasContent("tools", tools.length);
   if (!tools.length) { host.innerHTML = `<div class="crud-empty">This app exposes no tools.</div>`; return; }
   const slug = s.id.replace(/^[a-z]+:/, "");
   const hiddenPref = `appHiddenTools:${slug}`;
@@ -1577,6 +1582,7 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
     return { path: p, name: fm.name || (p === "SKILL.md" ? s.name : p.split("/")[1]), description: fm.description || "" };
   }));
   if (count) count.textContent = `· ${rows.length}`;
+  tabHasContent("skills", rows.length);
   host.textContent = "";
   for (const r of rows) {
     const row = document.createElement("div");
@@ -1599,6 +1605,7 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
   if (count) count.textContent = `· ${deps.length}`;
+  tabHasContent("connections", deps.length);
   host.textContent = "";
   if (!deps.length) { host.innerHTML = `<div class="crud-empty">No connections.</div>`; return; }
   await renderConnectionTable(host, deps);
@@ -1620,6 +1627,7 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
+  paintOverviewBody(s.body);
   setDetailIcon(s);
   void paintExtras(s, null);
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
@@ -1633,6 +1641,7 @@ async function openDetail(id: string): Promise<void> {
   paintCategories();
   paintDetailChrome();
   paintDetailTabs(typeOf(s));
+  tabHasContent("contents", s.files.length);
   collapsedDirs = new Set();
   paintVersions([]);
   void loadVersions();
@@ -1740,11 +1749,38 @@ function ensureDeskTabs(): void {
     }
   }
 }
+/** THE PAGE IS NEVER BLANK (his order, 2026-10-07): the Overview renders the
+ *  bundle's SKILL.md (an instance's pinned release ships it; a folder's is on
+ *  disk; a hub item's rides its files) under the one-line description. An app
+ *  that ships no SKILL.md gets the synthesized page the detail already carries. */
+function paintOverviewBody(body: string): void {
+  const host = el("skill-overview-body");
+  if (!host) return;
+  const md = (body || "").trim();
+  host.classList.toggle("hidden", !md);
+  host.innerHTML = md ? formatMarkdown(md) : "";
+}
+
 /** Show only the tabs this item earns. */
 function paintDetailTabs(type: BundleType): void {
   const allowed = TABS_FOR[type];
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`)
     .forEach((b) => b.classList.toggle("hidden", !allowed.includes(b.dataset.dtab as DetailTab)));
+}
+
+/** A TAB WITH NOTHING IN IT IS NOT SHOWN (his order, 2026-10-07: "when an app
+ *  shows no content it should not show those tabs"). The painters report what
+ *  they found; an empty one hides its tab, and if it was the open tab the page
+ *  falls back to the Overview. Overview itself never hides. */
+const COUNTED_TABS: ReadonlySet<DetailTab> = new Set<DetailTab>(["contents", "skills", "tools", "agents", "connections", "runs"]);
+function tabHasContent(tab: DetailTab, n: number): void {
+  if (!COUNTED_TABS.has(tab) || !current) return;
+  const earned = TABS_FOR[typeOf(current)].includes(tab);
+  const b = document.querySelector<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab="${tab}"]`);
+  if (!b) return;
+  const hide = !earned || n === 0;
+  b.classList.toggle("hidden", hide);
+  if (hide && b.classList.contains("active")) selectDetailTab("overview");
 }
 function selectDetailTab(t: DetailTab): void {
   if (!TABS_FOR[typeOf(current)].includes(t)) t = "overview";

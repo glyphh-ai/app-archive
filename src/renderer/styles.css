@@ -21236,6 +21236,9 @@ body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 .skill-overview .lib-md-render pre { overflow-x: auto; max-width: 100%; }
 .skill-overview-label { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
 .skill-overview-desc { font-size: 13.5px; color: var(--text); margin-bottom: 18px; }
+/* The bundle's SKILL.md under the description (2026-10-07): the page itself, never blank. */
+.skill-overview-body { margin-bottom: 18px; }
+.skill-overview-body > h1:first-child { display: none; }
 .skill-author-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; height: fit-content; }
 .skill-author { font-size: 13.5px; color: var(--text); }
 .skill-author-meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }

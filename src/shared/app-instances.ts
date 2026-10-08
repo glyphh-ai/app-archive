@@ -51,6 +51,10 @@ export interface AppInstanceSummary {
   /** AN OUTPUT TARGET (his order, 2026-10-07): the manifest said `output: true`,
    *  so the composer's Output chip may point a turn's result at this app. */
   output?: boolean;
+  /** THE APP'S OWN PAGE (his order, 2026-10-07): the SKILL.md its pinned
+   *  release ships, rendered on the Overview so an installed app is never a
+   *  blank page. Empty until a release is pinned. */
+  skill?: string;
   /** `/app-host/<key>/` — the proxy prefix the server answers for it. */
   url: string;
 }
@@ -313,7 +317,11 @@ export function instanceDetailOf(inst: AppInstanceSummary, nowIso?: string): Ins
   const tools = (Array.isArray(inst.manifest?.tools) ? inst.manifest.tools : []) as Array<{ name?: string; description?: string }>;
   const where = inst.kind === "org" ? (inst.access === "restricted" ? "members on its list" : "every member of your organization") : "you";
   const release = releaseOf(inst);
-  const lines = [
+  // THE PAGE IS THE APP'S OWN SKILL.md when its release ships one (his order,
+  // 2026-10-07: "at the very least the .md description of the app"); the
+  // synthesized page below is the fallback for an app that ships none.
+  const skill = String(inst.skill ?? "").trim();
+  const lines = skill ? [skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim()] : [
     `# ${card.name}`,
     "",
     card.description,

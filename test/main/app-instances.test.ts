@@ -185,6 +185,14 @@ describe("the Apps-page card and the tool rows", () => {
     expect(detail.body).toContain("`list_expenses` — Every expense");
     expect(detail.files).toEqual([]);
   });
+  it("the detail's page is the release's SKILL.md when it ships one, frontmatter stripped (his order, 2026-10-07)", () => {
+    const skill = "---\nname: app-expense-desk\ndescription: Expenses.\n---\n\n# Expense Desk\n\nFile and find expenses.\n\n## Tools\n\n- `list_expenses` — every expense.\n";
+    const detail = instanceDetailOf({ ...ORG, release: 2, skill });
+    expect(detail.body.startsWith("# Expense Desk")).toBe(true);
+    expect(detail.body).not.toContain("name: app-expense-desk");
+    expect(detail.body).not.toContain("Installed in the cloud"), "the app's own page, not the synthesized one";
+    expect(instanceDetailOf({ ...ORG, skill: "  " }).body).toContain("Installed in the cloud");
+  });
   it("the card and the detail carry the pinned release", () => {
     const live = { ...ORG, release: 4 };
     expect(instanceCardOf(live).instance.release).toBe(4);
