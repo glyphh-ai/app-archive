@@ -2960,6 +2960,22 @@ function pinThreadToBottom(): void {
   const thread = el<HTMLDivElement>("code-thread");
   if (thread) thread.scrollTop = thread.scrollHeight;
 }
+/** RE-PIN AFTER LAYOUT (his report, 2026-10-08: an agent loading with a prior
+ *  session in a workspace sat at the top of its thread). The synchronous pin
+ *  in renderThread lands before the thread has its height — the card is still
+ *  being seated, the history has just painted — and re-seating the agent into
+ *  a card detaches and re-attaches its scroller, which drops scrollTop to 0.
+ *  So the pin is applied again on the next two frames, ONLY while the thread
+ *  is pinned: a member who scrolled up is never dragged down. */
+function repinThreadSoon(): void {
+  const again = (): void => {
+    if (!threadPinned) return;
+    const thread = el<HTMLDivElement>("code-thread");
+    if (thread) thread.scrollTop = thread.scrollHeight;
+  };
+  requestAnimationFrame(() => { again(); requestAnimationFrame(again); });
+}
+(window as unknown as { __glyphhThreadRepin?: () => void }).__glyphhThreadRepin = repinThreadSoon;
 
 // The Code space's landing: greeting + a two-column body (code prompt
 // suggestions LEFT that seed the composer, a "Waiting on you" session list
@@ -3208,7 +3224,7 @@ function renderThread(): void {
     row.appendChild(spinner.el);
     inner.appendChild(row);
   }
-  if (threadPinned) thread.scrollTop = thread.scrollHeight;
+  if (threadPinned) { thread.scrollTop = thread.scrollHeight; repinThreadSoon(); }
 }
 
 /** Settings → Billing, in the shell (a panel routes up through main). */
