@@ -32,7 +32,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike } from "../shared/member-library.js";
+import { agentKindOf, agentSlug, buildAgentRow, isAgentRow, type AgentKind, type GuardrailsPolicyLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -55,6 +55,12 @@ export interface AgentRow {
   provider: string;
   /** Optional model override; empty = the loop's own model. */
   model: string;
+  /** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define
+   *  cli or glyphh agents with models"): "glyphh" (default; absent on rows
+   *  written before the field) is the Glyphh loop; "cli" is one of the CLI
+   *  agents (cli-agents.ts) run headless, `cli` naming which. */
+  kind?: AgentKind;
+  cli?: string;
   /** Skill slugs this agent may load. */
   skills: string[];
   /** App slugs this agent may drive. */
@@ -130,7 +136,7 @@ export function getAgent(ref: string): AgentRow {
 
 interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; skills?: string[]; apps?: string[];
+  provider?: string; model?: string; kind?: AgentKind; cli?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 
@@ -328,21 +334,29 @@ export function agentTaskRunning(taskId: string): boolean {
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
 /** What this agent brings to a run (see local-library's ScheduleContext): its
- *  standing prompt and its model. The loop is no longer a choice — every
- *  agent runs on the Glyphh loop (his order, 2026-09-28). */
+ *  standing prompt, its model, and WHAT RUNS IT (his order, 2026-10-07): the
+ *  Glyphh loop (2026-09-28's one loop) or, for a `kind: "cli"` agent, the
+ *  named CLI headless. */
 function agentContext(agentId: string): ScheduleContext | null {
   const agent = readAgent(agentId);
   if (!agent) return null;
-  return { prompt: agent.prompt, ...(agent.model ? { model: agent.model } : {}) };
+  const kind = agentKindOf(agent);
+  return { prompt: agent.prompt, ...(agent.model ? { model: agent.model } : {}), kind, ...(kind === "cli" ? { cli: agent.cli ?? "" } : {}) };
 }
 
 /** The roster a TASK SLOT picks from. Paused agents still appear — a slot
- *  binding is authoring, not arming; the live switch is what arms. */
+ *  binding is authoring, not arming; the live switch is what arms. The kind
+ *  and CLI ride along so a slot can show what runs it (2026-10-07). */
 function agentRoster(): SlotAgent[] {
-  return listAgents().map((a) => ({
-    id: a.id,
-    name: a.provider ? `${a.name} — ${a.provider}` : a.name,
-  }));
+  return listAgents().map((a) => {
+    const kind = agentKindOf(a);
+    return {
+      id: a.id,
+      name: a.provider ? `${a.name} — ${a.provider}` : a.name,
+      kind,
+      ...(kind === "cli" ? { cli: a.cli ?? "" } : {}),
+    };
+  });
 }
 
 export function registerLocalAgentsIpc(): void {

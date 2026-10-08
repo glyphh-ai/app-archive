@@ -1144,10 +1144,19 @@
                   <label class="settings-label" for="agents2-desc">When to use it</label>
                   <input type="text" id="agents2-desc" class="settings-input" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
 
+                  <!-- RUNS AS (his order, 2026-10-07: "allow agents and tasks to
+                       define cli or glyphh agents with models"): the Glyphh
+                       loop, or one of the CLI agents run headless. -->
+                  <label class="settings-label" for="agents2-kind">Runs as</label>
+                  <div class="settings-inline">
+                    <select id="agents2-kind" class="settings-input" style="width:auto;"></select>
+                  </div>
+
                   <label class="settings-label" for="agents2-model">Model</label>
                   <div class="settings-inline">
                     <select id="agents2-model" class="settings-input" style="width:auto;"></select>
                   </div>
+                  <div id="agents2-model-hint" class="settings-hint hidden"></div>
 
                   <!-- The brief's head carries the WAND (his order, 2026-09-29): it
                        writes the brief on the member's default model from what

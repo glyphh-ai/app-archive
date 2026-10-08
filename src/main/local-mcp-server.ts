@@ -29,7 +29,7 @@ import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
-import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, scheduleForTask } from "./local-library.js";
+import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, runSkillHeadless, scheduleForTask } from "./local-library.js";
 import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -298,15 +298,18 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "agent_save",
-    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, created, generatedBrief, brief }.",
+    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. `kind` says what runs it: \"glyphh\" (default) is the Glyphh agent loop; \"cli\" runs one of the user's CLI agents headless on this machine, `cli` naming which (claude, codex, gemini, copilot, cursor). Returns { agent, name, description, model, kind, cli, created, generatedBrief, brief }.",
     {
       agent: z.string().optional().describe("The agent to update (its id from agents_list); omit to make a new one"),
       name: z.string().optional().describe("Its name, e.g. \"Researcher\" — required for a new agent"),
       description: z.string().optional().describe("When to use it: what it is for, in a sentence"),
       brief: z.string().optional().describe("Its standing instruction, second person. Omit to have Glyphh write it"),
       model: z.string().optional().describe("Its model slot — one of the user's models; omit for the main agent's"),
+      // WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define cli or glyphh agents with models").
+      kind: z.enum(["glyphh", "cli"]).optional().describe("What runs it: \"glyphh\" (the Glyphh loop, default) or \"cli\" (a CLI agent, headless)"),
+      cli: z.string().optional().describe("For kind \"cli\": which CLI — claude, codex, gemini, copilot or cursor"),
     },
-    async ({ agent, name, description, brief, model }) => via("agents.save", { agent, name, description, brief, model }),
+    async ({ agent, name, description, brief, model, kind, cli }) => via("agents.save", { agent, name, description, brief, model, kind, cli }),
   );
   mcp.tool(
     "agent_delete",
@@ -338,6 +341,22 @@ function buildMcpServer(): McpServer {
     },
     async ({ slug, agent }) => {
       try { void agent; const r = await runTaskAndWait(slug, {}); return text({ status: r.status, runId: r.id, result: r.result, error: r.error }); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  // SKILL_RUN, LOCAL (his order, 2026-10-07: "give apps, agents, skills,
+  // plugins — everything — the ability to call the rpa tooling"): the
+  // gateway's copy runs a skill in the cloud, where no RPA lives; this one
+  // runs it on the Glyphh loop HERE, with this machine's tools.
+  mcp.tool(
+    "skill_run",
+    "Run a Glyphh SKILL now, on this machine, and wait for the answer: its SKILL.md instructions go through the Glyphh agent with this desktop's tools (the RPA tools included). Returns { ok, text, error }.",
+    {
+      slug: z.string().describe("Skill slug from skills_list"),
+      input: z.string().optional().describe("What to run it on — text handed to the skill under its instructions"),
+    },
+    async ({ slug, input }) => {
+      try { return text(await runSkillHeadless(slug, input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );

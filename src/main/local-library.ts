@@ -177,9 +177,17 @@ export function touchSchedule(id: string, at: number = Date.now()): void {
  *
  *  Injected rather than imported: local-agents.ts depends on this module, so
  *  reaching back for agent rows directly would close an import cycle. */
-export interface ScheduleContext { prompt: string; model?: string }
-/** An agent as a slot CHOICE — id, display name, and the loop behind it. */
-export interface SlotAgent { id: string; name: string }
+export interface ScheduleContext {
+  prompt: string;
+  model?: string;
+  /** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define
+   *  cli or glyphh agents with models"): "glyphh" is the loop; "cli" is the
+   *  CLI agent `cli` names, run headless (cli-agents.ts runCliHeadless). */
+  kind?: "glyphh" | "cli";
+  cli?: string;
+}
+/** An agent as a slot CHOICE — id, display name, and what runs it (2026-10-07). */
+export interface SlotAgent { id: string; name: string; kind?: "glyphh" | "cli"; cli?: string }
 
 let agentContext: ((agentId: string) => ScheduleContext | null) | null = null;
 let agentChoices: (() => SlotAgent[]) | null = null;
@@ -339,18 +347,37 @@ export function stopLoopScheduler(): void {
  *  its slot names. Throws with a readable reason the run feed can show. */
 function promptForSchedule(sched: ScheduleRow): { text: string; slotModel?: string } {
   const ref = sched.target || sched.loop_slug;
-  if (sched.kind === "skill") {
-    // A skill is a folder now (skills-fs); the JSON row is the pre-folder shape.
-    try { const folder = getSkillFolder(`glyphh:${ref}`); return { text: folder.body.trim() || folder.description || folder.name }; } catch { /* legacy row below */ }
-    const skill = getSkill(ref);
-    const text = skill.prompt || skill.description || skill.name;
-    return { text, ...(skill.manifest.model ? { slotModel: skill.manifest.model } : {}) };
-  }
+  if (sched.kind === "skill") return promptForSkill(ref);
   const spec = getLoop(ref);
   // The slot whose default IS this loop names the model; else the first slot.
   const slot = (spec.manifest.roles ?? []).find((r) => r.default === sched.agent_id) ?? spec.manifest.roles?.[0];
   const text = spec.code || spec.description || spec.name;
   return { text, ...(slot?.model ? { slotModel: slot.model } : {}) };
+}
+
+/** A skill's own text, and the model its manifest names, if any. */
+function promptForSkill(ref: string): { text: string; slotModel?: string } {
+  // A skill is a folder now (skills-fs); the JSON row is the pre-folder shape.
+  try { const folder = getSkillFolder(`glyphh:${ref}`); return { text: folder.body.trim() || folder.description || folder.name }; } catch { /* legacy row below */ }
+  const skill = getSkill(ref);
+  const text = skill.prompt || skill.description || skill.name;
+  return { text, ...(skill.manifest.model ? { slotModel: skill.manifest.model } : {}) };
+}
+
+/**
+ * A SKILL, RUN HERE (his order, 2026-10-07: "give apps, agents, skills,
+ * plugins — everything — the ability to call the rpa tooling"): the local
+ * MCP server's `skill_run`. The skill's instructions, with what the caller
+ * handed it under them, go through the Glyphh loop on this machine — the
+ * desktop is where the RPA tools live — on the skill's model or the default.
+ */
+export async function runSkillHeadless(slug: string, input?: string): Promise<{ ok: boolean; text: string; error?: string }> {
+  const ref = String(slug ?? "").trim();
+  if (!ref) throw new Error("skill_run needs a slug");
+  const { text, slotModel } = promptForSkill(ref);
+  const given = String(input ?? "").trim();
+  const prompt = given ? `${text}\n\nInput:\n${given}` : text;
+  return runGlyphhHeadless(prompt, { ...(slotModel ? { model: slotModel } : {}) });
 }
 
 /** One run: the target's program, through the AGENT doing the work.
