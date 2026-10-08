@@ -308,9 +308,13 @@ const seenTurns = new Map<string, number>();
 /** Where each chat's frames go — the panel that started the turn, until
  *  another panel adopts the run (agent-live.ts re-points it here). */
 const loopSenders = new Map<string, WebContents>();
-registerRunRebinder((chatId, sender) => {
+registerRunRebinder((chatId, sender, opts) => {
   if (!loop.has(chatId)) return { rebound: false, previous: null };
   const previous = loopSenders.get(chatId) ?? null;
+  // Orphans only: a live holder keeps its run (the panel that shows it is not
+  // robbed by a sibling's ledger retry); a destroyed one (workspace jump
+  // closed the panel) hands the frames to whoever asks.
+  if (opts.orphanOnly && previous && previous !== sender && !previous.isDestroyed()) return { rebound: false, previous };
   loopSenders.set(chatId, sender);
   return { rebound: true, previous };
 });
@@ -343,12 +347,16 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   //   done     → clear (grey), unless the turn failed
   loopSenders.set(p.chatId, sender);
   const clock = { start: Date.now(), ready: 0, first: 0 };
+  // The ledger names the CURRENT holder of the frames, not the panel that
+  // started the turn: after an adoption every delta used to write the old
+  // sender back, so the rail fronted the wrong (or a dead) panel.
+  const holderId = (): number => (loopSenders.get(p.chatId) ?? sender).id;
   const mark = (status: "working" | "waiting" | "error", runId: string): void => {
     if (status === "working" && !agentLive.list().some((r) => r.chatId === p.chatId && r.status !== "error")) {
-      agentLive.start({ chatId: p.chatId, cliSessionId: p.chatId, cli: "glyphh", runId, senderId: sender.id });
+      agentLive.start({ chatId: p.chatId, cliSessionId: p.chatId, cli: "glyphh", runId, senderId: holderId() });
       return;
     }
-    agentLive.update(p.chatId, { status, runId, senderId: sender.id });
+    agentLive.update(p.chatId, { status, runId, senderId: holderId() });
   };
   // The turn's own words, for a done nobody is listening to (below).
   let answer = "";
