@@ -8163,6 +8163,9 @@ async function init(): Promise<void> {
     const aside = document.getElementById("code-workbench");
     if (agent && aside?.parentElement && agent.parentElement !== aside.parentElement) {
       aside.parentElement.insertBefore(agent, aside);
+      // Re-attaching the agent drops its thread's scroll position; pin it back
+      // to the newest message when it was following (his report, 2026-10-08).
+      (window as unknown as { __glyphhThreadRepin?: () => void }).__glyphhThreadRepin?.();
     }
   }
 
@@ -8192,7 +8195,15 @@ async function init(): Promise<void> {
     const ph = activeAgentPlaceholder();
     const seatMic = (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic;
     if (agent && ph && agentHolder) {
-      if (agent.parentElement !== agentHolder) { agentHolder.appendChild(agent); seatMic?.(); }
+      if (agent.parentElement !== agentHolder) {
+        agentHolder.appendChild(agent);
+        seatMic?.();
+        // Seating the agent into a card re-attaches its thread, which drops the
+        // scroll position: an agent loading with a prior session in a workspace
+        // sat at the top (his report, 2026-10-08). Pinned threads re-pin after
+        // layout; a thread the member scrolled up stays where they put it.
+        (window as unknown as { __glyphhThreadRepin?: () => void }).__glyphhThreadRepin?.();
+      }
       const rect = ph.getBoundingClientRect();
       agentHolder.style.display = "";
       agentHolder.style.left = `${Math.round(rect.left)}px`;
