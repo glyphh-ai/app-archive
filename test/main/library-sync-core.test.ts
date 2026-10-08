@@ -245,9 +245,13 @@ describe("the sync loop — folder kinds (skills, tasks)", () => {
     const r3 = await syncKind({ api: srv.api, adapter, tombstones: tombstoneStore(), lastSyncAt: r2.startedAt, fetchImpl: srv.fetchImpl });
     expect(r3.pushed).toEqual(["notes"]);
     expect(srv.rows.get("skill:notes")!.updatedAt).toBe(9_000);
-    const puts = (srv.fetchImpl as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[1]?.method === "PUT").map((c) => c[0]);
+    const putCalls = (srv.fetchImpl as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[1]?.method === "PUT");
+    const puts = putCalls.map((c) => c[0]);
     expect(puts.filter((u) => u.endsWith("/run.sh"))).toHaveLength(2);
     expect(puts.filter((u) => u.endsWith("/SKILL.md"))).toHaveLength(1);
+    // Every upload carries the content type the presigned URL was signed with
+    // (his report, 2026-10-08): R2 refuses the PUT without it.
+    for (const c of putCalls) expect((c[1] as { headers?: Record<string, string> }).headers).toEqual({ "content-type": "application/octet-stream" });
   });
 
   it("PULL: the item is read for its manifest, each file downloaded from its GET url and stamped with the manifest's mtime; unchanged bytes are not re-fetched", async () => {
