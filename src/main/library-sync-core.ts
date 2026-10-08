@@ -245,7 +245,13 @@ async function uploadChanged(ctx: SyncContext, id: string, files: LocalFile[]): 
   for (const f of changed) {
     const url = urls.put[f.path];
     if (!url) throw new Error(`no upload url for ${f.path}`);
-    const res = await ctx.fetchImpl(url, { method: "PUT", body: new Uint8Array(readFileSync(f.abs)) });
+    // THE SIGNED CONTENT TYPE RIDES THE PUT (his report, 2026-10-08: "schedules
+    // configured for tasks never fire" — the worker found no files behind the
+    // task's manifest). The server presigns every upload with
+    // application/octet-stream in the signature, so a PUT without that header
+    // is SignatureDoesNotMatch (403): the row landed, the files never did, and
+    // every task and skill file pushed from the desktop has been missing in R2.
+    const res = await ctx.fetchImpl(url, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: new Uint8Array(readFileSync(f.abs)) });
     if (!res.ok) throw new Error(`upload ${f.path}: HTTP ${res.status}`);
   }
 }
