@@ -439,7 +439,7 @@ function buildMcpServer(): McpServer {
     "skill_save",
     "THE ONE DOOR for making anything in the user's library. Everything there is a SKILL and `type` says which kind, so use the user's own word: "
     + '`type:"skill"` = markdown instructions an agent follows, and it may ship files (scripts, references) — this is the default answer to "make me a skill"; '
-    + '`type:"task"` = a PROGRAM the desktop runs itself (pass `program` = run.js exporting async run(ctx, input), `slots` for the agents it calls), for headless or scheduled work; '
+    + '`type:"task"` = a PROGRAM the desktop runs itself (pass `program` = run.js exporting async run(ctx, input), `slots` for the agents it calls; ctx.decide(state, questions) and ctx.route(state, branches, {minConfidence, fallback}) make deterministic Jev decisions through GlyphhRouter), for headless or scheduled work; '
     + '`type:"app"` = a work panel with a face (pass `files` including ui/index.html) and its own tools. '
     + "Never build an app because you need code: a skill carries files and a task carries a program. The answer says what was made, its folder, and where the user sees it.",
     {
@@ -449,7 +449,7 @@ function buildMcpServer(): McpServer {
       description: z.string().optional().describe("One line: when an agent should reach for this"),
       prompt: z.string().optional().describe("SKILL.md body — the instructions (every type has one)"),
       files: z.record(z.string(), z.string()).optional().describe("Extra files by relative path, e.g. { \"scripts/report.js\": \"…\", \"ui/index.html\": \"…\" }"),
-      program: z.string().optional().describe('type:"task" only — run.js: module.exports = async function run(ctx, input) { … }'),
+      program: z.string().optional().describe('type:"task" only — run.js: module.exports = async function run(ctx, input) { … }. ctx: agents.<slot>.run, connections.<app>.call, data(repo).exec, decide(state, questions, {model?}), route(state, branches, {instructions?, minConfidence?, fallback?}), checkpoint, log'),
       schedule: z.string().optional().describe('type:"task" only — a five-field cron in the machine\'s local time ("0 8 * * 1-5" is weekdays at 8am). Setting it puts the task on the clock and it shows on Settings → Customize → Schedules; change it there afterwards, not here.'),
       connections: z.array(z.string()).optional().describe('The connected accounts it needs, by app slug (e.g. ["gmail","google_calendar"]). REQUIRED whenever the code calls ctx.connections.<app> or the app declares connector tools: a run refuses any account the manifest does not declare.'),
       slots: z.array(z.object({

@@ -37,7 +37,7 @@ Claude Desktop ──OIDC + Messages API──▶ Glyphh bridge (127.0.0.1)
                      ┌────────────────────┼─────────────────────┐
                      ▼                    ▼                     ▼
              gateway lane           account lane           (later) direct lane
-      LiteLLM gateway, member's   headless `claude` on      provider API with
+      GlyphhRouter,    member's   headless `claude` on      provider API with
       Glyphh token; budgets,      the company's Anthropic   the user's own key
       allow-list, pool wall,      login; Anthropic bills
       prompt caching, metering    the seat
@@ -142,7 +142,7 @@ A plain forward, as the memory bridge does for loops today, with two changes:
 the bearer is swapped for the member's gateway credential, and the model is
 rewritten to the row's `target` when one is set. SSE passes through
 unbuffered. Usage, stop reasons and errors are Anthropic's own as relayed by
-LiteLLM. Budgets, the allow-list, the pool wall and per-org prompt caching all
+GlyphhRouter. Budgets, the allow-list, the pool wall and per-org prompt caching all
 apply on the server, unchanged.
 
 ## 6. Account lane
@@ -349,7 +349,7 @@ the front door moved to the server and the engine stayed on the machine
   `/bridge`. The Connect dialog's Claude Desktop card names both.
 - **`POST /bridge/v1/messages`** (server, `glyphh_auth/attach.py`) resolves the
   member from the access token, gates on the plan, decides the lane from the
-  org's routing table. Gateway lane: LiteLLM on the member's key, streamed
+  org's routing table. Gateway lane: GlyphhRouter on the member's key, streamed
   through. Account lane: `bridge.turn` down the member's attach socket; the
   desktop's account-lane engine (`bridge/account-lane.ts`, shared with the
   local listener) runs the headless claude and pushes Messages SSE frames back

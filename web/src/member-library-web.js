@@ -369,7 +369,7 @@ export function buildMemberLibrary(client, deps = {}) {
         : { 'SKILL.md': md };
       if (k === 'task') {
         writes['task.json'] = JSON.stringify({ name, program: 'run.js', slots: { main: { label: 'Main', description: 'The agent this task runs through.', agent: null } }, schedule: null, dependencies: { connections: [] } }, null, 2) + '\n';
-        writes['run.js'] = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
+        writes['run.js'] = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
         writes['package.json'] = JSON.stringify({ type: 'commonjs', private: true }, null, 2) + '\n';
       }
       const item = await putBundleFiles(k, name, null, writes, { enabled: true });

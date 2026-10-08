@@ -99,7 +99,7 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
  * THE LANE IS THE ORG'S SWITCH (his ruling, 2026-09-20: credits are dead).
  *
  * Gateway ON: the loop rides the org's own gateway key — its own dollars in
- * LiteLLM's spend log. Gateway OFF (or a loop with its own key): the CLI talks
+ * GlyphhRouter's spend log. Gateway OFF (or a loop with its own key): the CLI talks
  * straight to the vendor on the member's own account. There is no burn-down,
  * no heavy-model carve-out and no per-request strategy: one org switch, one
  * answer for every turn the loop runs.

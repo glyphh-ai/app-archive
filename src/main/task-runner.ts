@@ -10,7 +10,8 @@
  *
  * Each run is one utility process (task-host.ts). Main answers its ctx calls
  * here: agent turns through the slotted agent's headless CLI, connection
- * tools, app data, checkpoints, logs. Every answer is journaled in loop_runs
+ * tools, app data, Jev decisions (ctx.decide / ctx.route, task-decide.ts),
+ * checkpoints, logs. Every answer is journaled in loop_runs
  * as it lands, so the run has a story and a cursor: a run cut off mid-way
  * resumes on the next boot from the last checkpoint the program chose.
  *
@@ -37,6 +38,8 @@ import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { pickSlotAgent, type SlotKind, type SlotRosterEntry } from "./task-slot-pick.js";
 import { runCliHeadless } from "./cli-agents.js";
+import { mcpCreds } from "./gateway-token.js";
+import { answerDecision } from "./task-decide.js";
 
 /** A slot's lane: the Glyphh loop or a vendor CLI (his order, 2026-10-07:
  *  "allow agents and tasks to define cli or glyphh agents with models"). */
@@ -57,7 +60,7 @@ export interface TaskSpec {
   slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string; kind?: SlotKind; cli?: string }>;
   connections: string[]; schedule: string | null; enabled: boolean; dir: string;
 }
-export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
+export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "decide" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
 export interface RunJournal { checkpoints: Record<string, unknown>; events: RunEvent[] }
 export interface TaskRun {
   id: string; taskSlug: string; scheduleId: string | null; trigger: string; startedAt: string; durationMs: number | null;
@@ -195,7 +198,7 @@ function pinCommonJs(dir: string): void {
 
 /** A program that hands one prompt to one slot: the shape every pre-bundle task had. */
 function promptProgram(prompt: string, slot: string): string {
-  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
+  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
 }
 
 /** Slot → agent (+ its lane and model), written into task.json (the
@@ -402,6 +405,10 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
         return Promise.reject(err);
       }
     }
+    case "decide":
+    case "route":
+      // Jev through GlyphhRouter on the member's credential (task-decide.ts).
+      return answerDecision(kind, args, { creds: mcpCreds, push: (ev) => push(ev) });
     case "checkpoint-get": {
       const [key] = args as [string];
       const hit = Object.prototype.hasOwnProperty.call(l.journal.checkpoints, key);

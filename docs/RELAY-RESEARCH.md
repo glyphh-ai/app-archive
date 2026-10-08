@@ -26,7 +26,7 @@ the CLI's machine host, the desktop's capability registry and its modules
 (fs, pty, panels, RPA, the local MCP server), the renderer's `remote-run.ts`
 transport, and rrotor itself with `ensureLocalHarnessPod`.
 
-What is genuinely missing: the server routes (the server is now the LiteLLM
+What is genuinely missing: the server routes (the server is now GlyphhRouter
 Python fork; the old domain is Express), about 250 lines of desktop glue that
 exist verbatim in git, and two small SDK additions.
 
@@ -198,7 +198,7 @@ engine on the machine:
 - Gateway URL: a server route, `POST /bridge/v1/messages`, bearer = the
   server access token or the member key. The server decides the lane from the
   org's routing table (already on the server). Gateway lane: forward to
-  LiteLLM on the member's key, no machine involved. Account lane: dispatch
+  GlyphhRouter on the member's key, no machine involved. Account lane: dispatch
   `bridge.turn` down the member's attach socket; the desktop runs the headless
   Claude session it already has (`bridge/claude-session.ts`, the SSE adapter,
   the ask protocol) and pushes Messages SSE frames back; the server streams
@@ -228,9 +228,9 @@ engine on the machine:
 - **Two Fly machines.** The socket and the request land on different boxes.
   Replay is the cheap answer; verify it with a streamed response before
   committing to it.
-- **Python WebSocket under uvicorn with LiteLLM's middleware.** LiteLLM's
+- **Python WebSocket under uvicorn with GlyphhRouter's middleware.** GlyphhRouter's
   own realtime routes prove WS works in this app; the attach route must sit
-  outside LiteLLM's key auth (glyphh routes already do).
+  outside GlyphhRouter's key auth (glyphh routes already do).
 - **Sessions.** The old server keyed everything by `userId` from `gy_at_`
   tokens. The new server's `console.resolve` yields the same `user_id`; the
   bridge's server-side access tokens carry `sub`. Keep one identity.

@@ -1,7 +1,7 @@
 /**
  * turn-errors — a failed turn is a CARD with a way forward, never a raw
  * sentence (his report, 2026-09-29: a brand-new user got "Pick a model…", a
- * Solo member got LiteLLM's raw `AuthenticationError … API key is invalid`,
+ * Solo member got GlyphhRouter's raw `AuthenticationError … API key is invalid`,
  * and "still no card i asked for"). This reads the refusal's words and says
  * what kind it is; help/code.ts draws the card. Pure, so the reading is tested.
  */
@@ -20,7 +20,7 @@ export interface TurnError {
 
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-/** The model a LiteLLM error names ("Received Model Group=claude-opus-4-8"). */
+/** The model a GlyphhRouter error names ("Received Model Group=claude-opus-4-8"). */
 function modelNamed(raw: string): string {
   return /Received Model Group=([^\s,]+)/.exec(raw)?.[1] ?? /model[=: ]+["']?([\w.:/-]+)["']?/i.exec(raw)?.[1] ?? "";
 }
