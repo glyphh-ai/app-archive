@@ -192,15 +192,27 @@ const TYPE_LABEL: Record<SessionType, string> = { work: "Work", code: "Code" };
 /** Switch the active type: both lists follow, + New's face follows, and the
  *  choice is remembered. ONE writer, so the rail and the panel's dropdown can
  *  never disagree about which type is showing. */
-function setTypeTab(t: SessionType): void {
-  if (typeTab === t) return;
+function setTypeTab(t: SessionType): void { applyType(t); }
+/** THE ONE TYPE DOOR (his report, 2026-10-08: "switching to a new one still
+ *  requires the user to flip back and forth to get the glyphh code version
+ *  to show"). Every writer lands here — the rail's tab, a workspace's stamp,
+ *  the boot of a panel, another document's change — and the whole face
+ *  repaints from it. `force` repaints even when the type did not move (a
+ *  workspace re-stamping Code onto a panel that already says Code, a fresh
+ *  panel's first paint); `persist` writes the choice for every other document
+ *  (never from a panel echoing the shell, never from the listener). */
+function applyType(t: SessionType, opts: { persist?: boolean; force?: boolean } = {}): void {
+  const changed = typeTab !== t;
+  if (!changed && !opts.force) return;
   typeTab = t;
   // The write is announced to every other document by main (preference-changed),
   // so the rail, each open agent panel and its recents dropdown all move
   // together — one choice, not one per window (his report, 2026-09-29).
-  void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
+  if (opts.persist !== false && changed) void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
   rebirthBlankSession();
   applyTypeTab();
+  paintChips();              // the mode chip: renderHistory's own paint never fires in a panel
+  applySessionFolder(current());   // what a session switch does, so the dev chrome follows
 }
 /** A BLANK session follows the type switch (his report, 2026-10-06: sitting
  *  on New → Code and switching to Work left the Code composer and chip, on
@@ -2180,7 +2192,7 @@ function ensureCodeSection(): void {
    *  is reborn under it; a session with a transcript keeps its birth type. */
   stampType: (t: SessionType): void => {
     if (t !== "work" && t !== "code") return;
-    setTypeTab(t);
+    applyType(t, { force: true });   // a re-stamp of the same type still repaints (2026-10-08)
   },
   /** A LAYOUT's model slots bind to the session it opens with — this session
    *  only; other sessions keep running their own casts untouched. */
@@ -2260,6 +2272,19 @@ function threadFolder(c: CodeChat | null | undefined = current()): string {
 function sourceNeedsNoFolder(src: Source | undefined): boolean {
   return !!src && src.kind !== "local";
 }
+/** THE SHELL FOLLOWS THE THREAD'S FOLDER (his report, 2026-10-08: "the
+ *  folder selector isn't triggering the re-render on the files, diff, etc
+ *  view"). The Files, Diff and Plan cards live in the shell and re-root on
+ *  main's working-dir-changed — which only fires when main is told. The
+ *  recent-folder rows, the folder chip and the run-place pick wrote the
+ *  thread's folder and told nobody; only the OS picker went through main.
+ *  Every thread-folder change now tells main, the stamp suppressed so the
+ *  echo does not re-stamp this session. */
+function rootShellTo(dir: string): void {
+  if (!dir || !dir.startsWith("/")) return;
+  cwdStampSuppressedUntil = Date.now() + 1500;
+  void (window as unknown as { wb?: { setCwd?: (d: string) => Promise<unknown> } }).wb?.setCwd?.(dir)?.catch?.(() => undefined);
+}
 function setThreadFolder(dir: string): void {
   if (!dir) return;
   const c = current();
@@ -2275,6 +2300,7 @@ function setThreadFolder(dir: string): void {
     }
   }
   console.warn("[folder] thread folder set", JSON.stringify({ chatId: c?.id ?? null, dir }));
+  rootShellTo(dir);
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
 }
@@ -3763,9 +3789,11 @@ function pickSource(next: Source): void {
   if (cur && cur.messages.length === 0) {
     cur.source = next;
     cur.workdir = folderAfterPick(next, cur.workdir ?? "") || undefined;
+    if (next.kind === "local" && cur.workdir) rootShellTo(cur.workdir);
     void saveStore();
   } else {
     pendingWorkdir = folderAfterPick(next, pendingWorkdir);
+    if (next.kind === "local" && pendingWorkdir) rootShellTo(pendingWorkdir);
   }
   paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
@@ -7790,8 +7818,16 @@ export function initCode(): void {
   void readSelfDevice();
   window.addEventListener("focus", () => { void readSelfDevice(); });
   void window.glyphh.getPreference?.(TYPE_TAB_PREF, "").then((v) => {
-    typeTab = defaultTypeTab(onWebTarget(), v);
-    applyTypeTab();
+    // AN AGENT PANEL BOOTS ON THE SHELL'S TYPE (his report, 2026-10-08): the
+    // shell hands it over in the panel's URL, because a preference change
+    // only reaches a panel that is already listening, and a panel opened
+    // while the rail already said Code never heard it — so every new panel
+    // and every workspace cell came up Work. The shell itself lands on the
+    // default and writes it, so the pref and the rail never disagree.
+    const fromUrl = IS_AGENT_PANEL ? new URLSearchParams(window.location.search).get("type") : null;
+    const boot: SessionType = fromUrl === "code" || fromUrl === "work" ? fromUrl : defaultTypeTab(onWebTarget(), v);
+    applyType(boot, { persist: !IS_AGENT_PANEL, force: true });
+    if (!IS_AGENT_PANEL && !onWebTarget()) void window.glyphh.setPreference?.(TYPE_TAB_PREF, boot);
     void loadRailSessions();
   }).catch(() => paintTypeTabs());
   // ANOTHER DOCUMENT MOVED THE TAB (the shell's rail, or a panel's own recents
@@ -7804,10 +7840,7 @@ export function initCode(): void {
       if (key === EFFORT_PREF) { if (isEffort(value)) { effort = value; try { paintLevelChip(); } catch { /* */ } } return; }
       if (key !== TYPE_TAB_PREF) return;
       const t: SessionType = value === "work" ? "work" : "code";
-      if (t === typeTab) return;
-      typeTab = t;
-      rebirthBlankSession();
-      applyTypeTab();
+      applyType(t, { persist: false });
     });
   // The sidebar's own header: collapse (persisted) and the Echo launcher.
   const setRailCollapsed = (on: boolean, persist: boolean): void => {
