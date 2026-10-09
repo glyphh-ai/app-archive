@@ -11,13 +11,12 @@ import { describe, it, expect } from "vitest";
 import {
   surfaceCaps, DESKTOP_CAPS, BROWSER_CAPS, surfaceHostsView, surfaceHostsTile, STREAMED_VIEWS,
   surfaceLayoutCells, workspaceOpenLines, LAYOUT_AGENT_CELL, type LayoutApp,
-  webBootSurfaces, bootsSurface, DESKTOP_BOOT_SURFACES,
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, WEB_RAIL_LINKS,
   DESKTOP_TOOL_VIEWS, toolViewsHosted, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
   webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
-  WEB_RAIL_WORDMARK, WEB_RAIL_ECHO_BUTTONS, webRailWordmark, webCloseAllOpensNew,
-  workspaceOpenClosesHosts, RAIL_HEADER_ORDER, webRailHeaderOrder,
+  WEB_RAIL_WORDMARK, webRailWordmark, webCloseAllOpensNew,
+  workspaceOpenClosesHosts,
   CUSTOMIZE_TAB_ORDER, DISCOVER_SUBS, subHasDiscover, GROUP_PAGE_ALIASES, groupPageKey } from "../../src/renderer/help/surface.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
@@ -162,22 +161,6 @@ describe("the tool views — one list through the caps", () => {
   });
 });
 
-describe("webBootSurfaces — what paints at boot", () => {
-  it("on the web only the agent paints at boot; the wall and the dock are built and lifted by the Echo icon", () => {
-    expect([...webBootSurfaces(true)]).toEqual(["agent"]);
-    expect(bootsSurface(true, "agent")).toBe(true);
-    for (const s of ["wall", "dock", "echo"] as const) expect(bootsSurface(true, s)).toBe(false);
-  });
-  it("on the desktop, the whole command center — unchanged", () => {
-    expect(webBootSurfaces(false)).toBe(DESKTOP_BOOT_SURFACES);
-    expect([...webBootSurfaces(false)].sort()).toEqual(["agent", "dock", "echo", "wall"]);
-  });
-  it("the lists are frozen", () => {
-    expect(Object.isFrozen(webBootSurfaces(true))).toBe(true);
-    expect(Object.isFrozen(DESKTOP_BOOT_SURFACES)).toBe(true);
-  });
-});
-
 describe("settings — the one Customize page is the same on both surfaces; only capability rows hide", () => {
   it("the library half: Skills, Agents, Apps, Tasks, plugins (Connections beside them)", () => {
     expect([...WEB_BUILD_SUBS]).toEqual(["skills", "agents", "apps", "tasks", "plugins"]);
@@ -228,7 +211,6 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
     expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", "#rail-apps-head", "#rail-apps-body", "#rail-layouts-head", "#rail-layouts-body"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
-    for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
   });
 });
 
@@ -282,9 +264,6 @@ describe("his explicit orders about the web's page — not world splits", () => 
   });
   it("the rail header's order is the desktop's on both; the wordmark holds the chrome spot on the web only", () => {
     expect(WEB_RAIL_WORDMARK).toBe(".app-rail-logo");
-    expect([...WEB_RAIL_ECHO_BUTTONS]).toEqual(["#rail-echo-btn", "#rail-echo-btn-strip"]);
-    expect([...RAIL_HEADER_ORDER]).toEqual(["chrome", "collapse", "echo"]);
-    expect([...webRailHeaderOrder(true)]).toEqual([...webRailHeaderOrder(false)]);
     expect(webRailWordmark(true)).toBe(true);
     expect(webRailWordmark(false)).toBe(false);
   });

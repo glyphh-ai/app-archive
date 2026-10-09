@@ -458,103 +458,6 @@
                   </button>
                 </div>
 
-                <h3 class="settings-subheading">Dock</h3>
-                <!-- SHOW THE DOCK (his order, 2026-10-04): pref `dockEnabled`,
-                     default OFF (DOCK_ENABLED_DEFAULT in help/dock-band.ts —
-                     the dock is turned on on purpose), shared by desktop and
-                     web. Off removes the dock entirely (not merely hidden while
-                     panels are open); the rows below it govern a dock that is
-                     shown. help/settings.ts + help/dock-band.ts. -->
-                <label class="settings-toggle set-pref-row" id="show-dock-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show the dock</div>
-                    <div class="set-pref-desc">The row of shortcuts at the top of the command center. Off removes it; New session, Settings, the command center and Close all stay in the sidebar and on the keyboard.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-show-dock" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <label class="settings-toggle set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Hide the dock</div>
-                    <div class="set-pref-desc">The dock stays hidden while panels are open. Open the wall with the Echo icon in the sidebar.</div>
-                  </div>
-                  <input type="checkbox" id="settings-autohide-dock" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Dock reveal delay</div>
-                    <div class="set-pref-desc">How long the pointer rests at the top edge before a hidden dock drops down.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-dock-reveal" min="0" max="1500" step="50" />
-                    <span id="settings-dock-reveal-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Dock zoom</div>
-                    <div class="set-pref-desc">How much the dock arches up under the cursor.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-dock-zoom" min="1" max="1.5" step="0.05" />
-                    <span id="settings-dock-zoom-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Icon zoom</div>
-                    <div class="set-pref-desc">How much dock icons magnify on hover.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
-                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
-                  </div>
-                </div>
-
-                <h3 class="settings-subheading">Command center</h3>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Icon size</div>
-                    <div class="set-pref-desc">The size of the app icons on the launcher pages.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-icon-size" min="48" max="104" step="4" />
-                    <span id="settings-echo-icon-size-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Apps per page</div>
-                    <div class="set-pref-desc">How many icons each launcher page holds.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-per-page" min="16" max="96" step="8" />
-                    <span id="settings-echo-per-page-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Tiles per row</div>
-                    <div class="set-pref-desc">How many app tiles each row of a launcher page holds.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-cols" min="3" max="14" step="1" />
-                    <span id="settings-echo-cols-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Wall width</div>
-                    <div class="set-pref-desc">How wide the tile layout runs. 0% is the tightest; 100% fills the page, with a little air at the sides.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-wall-width" min="0" max="100" step="5" />
-                    <span id="settings-echo-wall-width-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                </div>
-
                 <!-- THE SIDEBAR TRAYS (his order, 2026-10-08; on Appearance, his word): Tabs and Workspaces
                      under Recents, each an option — prefs railShowApps /
                      railShowLayouts (help/wall-prefs.ts), on by default. The
@@ -584,6 +487,16 @@
                   <div class="set-pref-value">
                     <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
                     <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Icon zoom</div>
+                    <div class="set-pref-desc">How much dock icons magnify on hover.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
+                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
                   </div>
                 </div>
 

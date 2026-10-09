@@ -28,7 +28,6 @@ import { createCloudWb, createWbRouter, type CloudFsLaneApi } from "./help/wb-cl
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
-import { keepDockKeys } from "./help/dock-items.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 import { hostHas } from "./help/web-surface.js";
@@ -47,18 +46,10 @@ function forgetWorkspaceMemory(name: string): void {
   uiStateRemovePrefix(`workbench:layoutsession:${n}`);
   uiStateRemovePrefix(`echo:layout:${n}`);
 }
-import { maybeStartWallTour } from "./wall-tour.js";
-import { initDockPortal } from "./dock-portal.js";
-import {
-  DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT, DOCK_ENABLED_CHANGED_EVENT, DOCK_OFF_CLASS, dockEnabledFrom, applyDockEnabled,
-  dockBand, searchTopFor, cardBandTop,
-} from "./help/dock-band.js";
-import { DOCK_ITEMS, dockItemFor, wallTilesFor } from "./help/dock-items.js";
-import { bootsSurface, webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines, GROUP_PAGE_ALIASES } from "./help/surface.js";
+import { webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines, GROUP_PAGE_ALIASES } from "./help/surface.js";
 import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
 import { cssColorToHex } from "./help/css-color.js";
-import { swipeStep, wheelSwipeFeed, wheelSwipeState, isSwipePointer, wheelDeltaPx, SWIPE_DRAG_PX, SWIPE_COOLDOWN_MS } from "./help/wall-swipe.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -488,7 +479,6 @@ let cliAgentRows: CliAgentRowLite[] = [];
 
 /** How long the pointer rests on the top edge before a tucked dock drops
  *  down. Settings owns it; 0 is the moment it arrives. */
-let dockRevealMs = 350;
 
 // (THE TERMINAL DOOR IS OPEN TO EVERYONE — his order, 2026-09-29: the org's
 //  Terminal-access switch went with the gateway switches. The Terminal is a
@@ -2434,8 +2424,6 @@ async function init(): Promise<void> {
   /** The Show-the-dock pref's last read in this document (null before the
    *  first): a re-mount of the wall paints with it, the first mount with
    *  DOCK_ENABLED_DEFAULT — never with a guess, so a fresh profile never
-   *  flashes the dock (help/dock-band.ts). */
-  let dockEnabledLast: boolean | null = null;
   /**
    * Echo, phase 1 — EVERYTHING, on one three.js wall.
    *
@@ -2458,26 +2446,13 @@ async function init(): Promise<void> {
     // — a fresh profile paints no dock and a wall led by the dock's tiles
     // (renderPages reads the same class), and a member who saved on sees the
     // dock as soon as the pref arrives. Nothing the pref can say is guessed.
-    applyDockEnabled(document.body, dockEnabledLast ?? DOCK_ENABLED_DEFAULT);
     body.innerHTML = `
-      <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div>
-        <div class="echo-search-wrap">
-          <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="echo-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" aria-label="Search the wall" />
-        </div>
-      </div>
-      <div class="echo-topbar echo-topbar-stacked">
-        <div class="echo-dock">${DOCK_ITEMS.map((d) => `<button class="echo-dock-btn" data-dock="${d.key}" title="${d.title}" type="button">${d.icon}</button>`).join("")}</div>
-      </div>
-      <div class="echo-veil"></div>
+      <div class="echo-stage"></div>
       <div class="echo-layout-bar hidden">
         <span class="echo-layout-bar-name"></span>
         <button class="ws-icon-btn echo-layout-close" type="button" title="Close workspace — close every panel in it">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
           <span>Close workspace</span>
-        </button>
-        <button class="ws-icon-btn echo-layout-cc" type="button" title="Show the command center (hold ⌃⌥)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         </button>
       </div>
       <div class="echo-cards"></div>
@@ -2485,143 +2460,16 @@ async function init(): Promise<void> {
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
     wrap.dataset.view = "echo";
 
-    // ── FLAT LAUNCHER (his rule, 2026-08-18: "this should feel like a damn
-    // iPhone") — no WebGL, no camera. Pages of dock-sized icons in a
-    // scroll-snap CAROUSEL with page dots; a set number of icons per page;
-    // icons drag to reorder and TRADE between the dock and the pages (never
-    // deleted from here). ──
-    const pagesEl = stage.querySelector<HTMLElement>(".echo-pages")!;
-    const dotsEl = stage.querySelector<HTMLElement>(".echo-page-dots")!;
-    // NAV BADGES (his rule, 2026-08-20): red counts on Marketplace (pending
-    // review activity) and Settings (unread support replies). nav-badges.ts
-    // computes + broadcasts; this paints dock slots and page tiles.
-    window.addEventListener("glyphh:nav-badges", (ev) => {
-      const d = (ev as CustomEvent<{ settings: number }>).detail;
-      if (!d) return;
-      const n = d.settings;
-      document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="settings"], .echo-app-btn[data-nav="settings"]`)
-        .forEach((el2) => {
-          if (n > 0) el2.dataset.badge = String(Math.min(99, n));
-          else delete el2.dataset.badge;
-        });
-    });
-    // TINY HOVER TICK (his ask, 2026-08-19): sweeping the cursor over apps on
-    // the command center clicks softly. Delegated on the whole wall body so
-    // page tiles AND dock slots share it; entering a button fires once
-    // (relatedTarget guard), and ui-sounds.ts floors burst rate.
-    document.addEventListener("mouseover", (ev) => {
-      const btn = (ev.target as HTMLElement | null)?.closest?.(".echo-app-btn, .echo-dock-btn");
-      if (!btn) return;
-      const from = (ev as MouseEvent).relatedTarget as HTMLElement | null;
-      if (from && from.closest(".echo-app-btn, .echo-dock-btn") === btn) return;
-      (window as unknown as { __uiSound?: (k: "tick" | "focus") => void }).__uiSound?.("tick");
-    });
-    // Page ARROWS — either side of the icon lists.
-    const mkArrow = (dir: -1 | 1): HTMLButtonElement => {
-      const a = document.createElement("button");
-      a.type = "button";
-      a.className = "echo-page-arrow " + (dir < 0 ? "prev" : "next");
-      a.title = dir < 0 ? "Previous page" : "Next page";
-      a.innerHTML = dir < 0
-        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`
-        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
-      a.addEventListener("click", () => scrollToPage(pageIndex + dir));
-      stage.appendChild(a);
-      return a;
-    };
-    const prevArrow = mkArrow(-1);
-    const nextArrow = mkArrow(1);
-    /** The dock row wherever it lives: in the stage, or parked in the
-     *  body-level portal layer (dock-portal.ts) while panels are up. */
-    const dockRow = (): HTMLElement | null =>
-      body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-dock");
-    /** THE DOCK BAND — one measure for the stage AND the card band (help/
-     *  dock-band.ts; his report, 2026-10-04: on the web the dock drew over the
-     *  tiles, the pill and a panel's header). `band` = px from the stage's top
-     *  to the dock's bottom edge (0 = no dock: off, tucked, absent, unlaid);
-     *  `reach` = how far below that edge the labels and the zoom's dip go (the
-     *  row's own bottom margin, which the stylesheet scales with the zoom). */
-    const measureDock = (stageTop: number): { band: number; reach: number } => {
-      const dock = dockRow();
-      const band = dockBand({
-        enabled: !document.body.classList.contains(DOCK_OFF_CLASS),
-        tucked: document.body.classList.contains("echo-dock-tucked"),
-        rect: dock ? dock.getBoundingClientRect() : null,
-        stageTop,
-      });
-      const reach = band > 0 && dock ? parseFloat(getComputedStyle(dock).marginBottom) || 0 : 0;
-      return { band, reach };
-    };
-    /** The grid's base row gap (styles.css .echo-page-grid), for a grid the
-     *  stylesheet has not laid out yet. */
-    const DOTS_GAP_FALLBACK = 17;
-    /** Dots ride a row gap UNDER the icon grid; arrows center on it. */
-    const positionPageChrome = (): void => {
-      const grid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
-      const pageCount = pagesEl.children.length;
-      if (!grid) { dotsEl.classList.add("hidden"); prevArrow.style.display = "none"; nextArrow.style.display = "none"; return; }
-      const sr = stage.getBoundingClientRect();
-      // THE SEARCH BAR sits centred between the dock and the tiles (his ask,
-      // 2026-10-03), and the tiles start under it: the dock is measured, not
-      // guessed (help/dock-band.ts), so neither ever runs into it; no dock
-      // (off, tucked, absent) → the pill sits high and the tiles follow.
-      stage.style.setProperty("--echo-search-top", `${searchTopFor(measureDock(sr.top).band)}px`);
-      // Measure the LAST ICON, not the grid box — the grid's bottom padding
-      // pushed the dots halfway down the page.
-      const icons = grid.querySelectorAll<HTMLElement>(".echo-app-btn");
-      const lastIcon = icons.length ? icons[icons.length - 1] : null;
-      const g = (lastIcon ?? grid).getBoundingClientRect();
-      const stageH = stage.clientHeight || 1;
-      // THE DOTS sit one ROW GAP under the last tile's label (his order,
-      // 2026-10-04: "move the dots per page down a bit" — they crowded the
-      // labels at 10px): the same spacing the rows keep between each other,
-      // zoom-aware like the grid's own gap (styles.css .echo-page-grid), so
-      // the dots read as the row after the last one, never as part of it.
-      const rowGap = parseFloat(getComputedStyle(grid).rowGap) || DOTS_GAP_FALLBACK;
-      dotsEl.style.top = `${Math.min(Math.round(g.bottom - sr.top + rowGap), stageH - 26)}px`;
-      dotsEl.style.bottom = "auto";
-      const mid = Math.max(60, Math.min(Math.round(g.top - sr.top + g.height / 2 - 17), stageH - 80));
-      prevArrow.style.top = `${mid}px`;
-      nextArrow.style.top = `${mid}px`;
-      const many = pageCount > 1;
-      prevArrow.style.display = many && pageIndex > 0 ? "" : "none";
-      nextArrow.style.display = many && pageIndex < pageCount - 1 ? "" : "none";
-    };
-    // SHELL RESIZE → everything reflows: page chrome repositions, the open
-    // panels re-lay against the fresh band (pixel rects, so nothing tracks
-    // for free), the carousel re-snaps to its page, and transitions pause so
-    // cards track the resize instead of rubber-banding behind it. (The old
-    // 3D wall's ResizeObserver owned this and died with it.)
-    // The cards layer is named HERE, before the first observer can fire: the
-    // init awaits (the library, the prefs) between this block and the open-
-    // panel code below, and a resize or a body-class change in that window
-    // ran repaintStage against a `const` not yet initialized (his report,
-    // 2026-10-06: the web threw "Cannot access 'cardsLayer' before
-    // initialization" on load).
     const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     let resizeAnimT = 0;
     const repaintStage = (): void => {
-      positionPageChrome();
       cardsLayer.classList.add("echo-no-anim");
       window.clearTimeout(resizeAnimT);
       resizeAnimT = window.setTimeout(() => cardsLayer.classList.remove("echo-no-anim"), 180);
       layoutCards();
-      scrollToPage(pageIndex, false);
     };
     const chromeRo = new ResizeObserver(repaintStage);
     chromeRo.observe(stage);
-    // THE DOCK GROWS AFTER THE FIRST PAINT (his report, 2026-10-03: it drew over
-    // the search pill until Settings was opened and closed): the icon-size
-    // preference lands after the wall's first measure, and the stage itself
-    // never changes size for it. The dock is watched too, so its own growth
-    // re-measures the pill.
-    const dockRo = new ResizeObserver(repaintStage);
-    const watchDock = (): void => {
-      dockRo.disconnect();
-      const d = dockRow();
-      if (d) dockRo.observe(d);
-    };
-    watchDock();
     // THE DOCK MOVES WITHOUT RESIZING (the web, 2026-10-04: one document, so
     // the park into the portal layer, the tuck and the peek all change where
     // the dock IS and never its size — no observer above fires). The body
@@ -2637,22 +2485,6 @@ async function init(): Promise<void> {
       const bodyClassMo = new MutationObserver(onBodyClass);
       bodyClassMo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
     }
-    /** A late re-measure after a render: a preference or a web font landing
-     *  after the first paint can move the dock's labels without a resize. */
-    const settlePageChrome = (): void => {
-      for (const ms of [250, 1200]) window.setTimeout(() => { if (body.isConnected) positionPageChrome(); }, ms);
-    };
-    // THE SETTINGS-CLOSE DEAD WALL (his report, 2026-08-28: after settings,
-    // clicks and zoom were dead until a window resize "def fixes it
-    // immediately"). The modal's open/close leaves the stage's geometry
-    // stale, and only a real resize re-fired the observer. This is the SAME
-    // repaint the observer runs, callable by the modal's close (and anything
-    // else that un-hides the wall without changing its size).
-    (window as unknown as { __wbEchoRepaint?: () => void }).__wbEchoRepaint = repaintStage;
-    /** Icons per page — the "set number" (default 8 × 7); the Appearance
-     *  slider (echoIconsPerPage) overrides it, DB-persisted like the rest. */
-    let perPage = 56;
-
         // ── Tile cards: the command center's tiles, verbatim — 56px icon
     // square (r14, --surface-3), 9px icon inset, 6px gap, 11px --text-2
     // label; layout tiles are the CC 2×2 mini-stack of the layout's own
@@ -2700,7 +2532,6 @@ async function init(): Promise<void> {
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-    const iconSig = (t: EchoTile): string => `${t.iconUrl || ""}|${(t.glyphSvg || "").length}|${(t.cells || []).length}|${t.kind === "folder" ? (folders.find((f) => f.id === t.folderId)?.keys.join(",") ?? "") : ""}`;
     const FOLDER_GLYPH = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6a2 2 0 0 1 2-2h4.2a2 2 0 0 1 1.6.8L12 6.4h7a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>`;
     const iconInner = (t: EchoTile): string => {
       if (t.kind === "folder") {
@@ -2772,410 +2603,10 @@ async function init(): Promise<void> {
         }).catch(() => { if (img.isConnected) img.src = src; });
       });
     };
-    /** (Re)paint one icon — the DOM successor of the old canvas drawTile;
-     *  same name so every call site still works. */
-    const drawTile = (e: TileEntry): void => {
-      const el = e.iconEl;
-      if (!el) return;
-      el.classList.toggle("open", !!e.open);
-      const ic = el.querySelector<HTMLElement>(".echo-app-ic");
-      if (ic && ic.dataset.sig !== iconSig(e.tile)) { ic.innerHTML = iconInner(e.tile); ic.dataset.sig = iconSig(e.tile); hydrateIcons(ic); }
-      const nm = el.querySelector<HTMLElement>(".echo-app-name");
-      if (nm && nm.textContent !== e.tile.name) nm.textContent = e.tile.name;
-      // App-health badge: unresolved required connections, red count like nav.
-      if (e.tile.issues) { el.dataset.badge = String(e.tile.issues); el.title = `${e.tile.name} — ${e.tile.issues} issue${e.tile.issues === 1 ? "" : "s"} to resolve`; return; }
-      if (!e.tile.navKey) delete el.dataset.badge;
-      el.title = e.tile.name;
-    };
     /** The key an icon orders/trades under. Tools carry tool:<view>; apps and
      *  layouts their orderKey; nav slots traded out of the dock dock:<key>. */
     const keyOf = (t: EchoTile): string | null => t.orderKey ?? (t.toolView ? `tool:${t.toolView}` : null);
-    const entriesByKey = (): Map<string, TileEntry> => {
-      const m = new Map<string, TileEntry>();
-      for (const e of entries) { const k = keyOf(e.tile); if (k) m.set(k, e); }
-      return m;
-    };
-    /** A nav DOCK slot rendered as a PAGE icon (traded out of the dock). */
-    const navTileFor = (key: string): EchoTile | null => {
-      const item = dockItemFor(key);
-      if (!item) return null;
-      const imgSrc = item.icon.match(/<img[^>]*src="([^"]+)"/)?.[1];
-      return { name: item.title, slug: `dock:${item.key}`, orderKey: `dock:${item.key}`, glyphSvg: item.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, iconUrl: imgSrc || undefined, kind: "tool", navKey: item.key };
-    };
-    /** ONE ordered list backs the pages. wallBands stays as its [single] band
-     *  so the catalog-refresh path needs no rewrite. */
-    let wallBands: TileEntry[][] = [[]];
-    /** The dock's key order (nav keys + traded page-icon keys) — authoritative
-     *  membership; persisted as echoDockOrder. Null until the pref loads. */
-    let dockKeys: string[] = DOCK_ITEMS.map((d) => d.key);
-    let pageIndex = 0;
-    /** The dock's NAV slots as wall entries while the dock is off (his order,
-     *  2026-10-04: the dock's icons lead the wall). One entry per key, kept
-     *  across repaints so the tile's DOM identity is stable; NOT in `entries`
-     *  — a nav slot the dock still owns is not a page icon, so the trade
-     *  paths (entriesByKey) never see it. */
-    const dockNavEntries = new Map<string, TileEntry>();
-    /** The dock's tiles, in the dock's order: `dockKeys` resolved to entries —
-     *  a nav slot from the table, a CLI or a traded app from the wall's own
-     *  entry. A key nothing answers (a CLI that left) paints nowhere. */
-    const dockEntries = (): TileEntry[] => {
-      const byKey = entriesByKey();
-      const out: TileEntry[] = [];
-      for (const k of dockKeys) {
-        if (dockItemFor(k)) {
-          let e = dockNavEntries.get(k);
-          if (!e) { const t = navTileFor(k); if (!t) continue; e = { tile: t, img: null }; dockNavEntries.set(k, e); }
-          out.push(e);
-          continue;
-        }
-        const e = byKey.get(k);
-        if (e) out.push(e);
-      }
-      return out;
-    };
-    const makeTileEntry = (t: EchoTile): TileEntry => {
-      const e: TileEntry = { tile: t, img: null };
-      entries.push(e);
-      return e;
-    };
-    /** Take a tile off the launcher for good (a deleted app/layout). */
-    const dropTileEntry = (entry: TileEntry): void => {
-      const i = entries.indexOf(entry);
-      if (i >= 0) entries.splice(i, 1);
-      for (const band of wallBands) {
-        const j = band.indexOf(entry);
-        if (j >= 0) band.splice(j, 1);
-      }
-      renderPages();
-    };
-    const persistPages = (): void => {
-      const keys = (wallBands[0] ?? []).map((x) => keyOf(x.tile)).filter((k): k is string => !!k);
-      void yoApi?.setPreference?.("ccIconOrder", keys);
-      window.dispatchEvent(new CustomEvent("glyphh:cc-order-changed", { detail: keys }));
-    };
-    const persistDock = (): void => { void yoApi?.setPreference?.("echoDockOrder", dockKeys); };
-    // ── FOLDERS (his rule, 2026-08-20): wall groups holding app + layout
-    // icons. Drag an icon onto a folder tile to file it; the folder opens a
-    // paginated modal (12/page); drag an icon onto the modal's backdrop to
-    // take it back out; an EMPTY folder deletes via the standard confirm. ──
-    interface WallFolder { id: string; name: string; keys: string[] }
-    let folders: WallFolder[] = [];
-    /** Every tile the wall knows, keyed — foldered members live here even
-     *  while they are off the band (the modal renders from this). */
     let wallCatalog = new Map<string, EchoTile>();
-    const persistFolders = (): void => { void yoApi?.setPreference?.("echoFolders", folders); };
-    const folderedKeys = (): Set<string> => new Set(folders.flatMap((f) => f.keys));
-    const folderCells = (f: WallFolder): EchoCell[] =>
-      f.keys.slice(0, 4).map((k) => {
-        const t = wallCatalog.get(k);
-        return {
-          iconUrl: t?.iconUrl || undefined,
-          glyphSvg: t?.glyphSvg || undefined,
-          initial: (t?.name || "?").charAt(0).toUpperCase(),
-          img: null,
-        };
-      });
-    const folderTileOf = (f: WallFolder): EchoTile =>
-      ({ name: f.name, slug: `folder:${f.id}`, orderKey: `folder:${f.id}`, kind: "folder", folderId: f.id, cells: folderCells(f) });
-    /** Repaint every folder tile's mini grid + name after membership changes. */
-    const refreshFolderTiles = (): void => {
-      for (const e of entries) {
-        if (e.tile.kind !== "folder" || !e.tile.folderId) continue;
-        const f = folders.find((x) => x.id === e.tile.folderId);
-        if (!f) continue;
-        e.tile.cells = folderCells(f);
-        e.tile.name = f.name;
-        drawTile(e);
-      }
-    };
-    const addToFolder = (key: string, folderId: string): void => {
-      const f = folders.find((x) => x.id === folderId);
-      if (!f || key.startsWith("folder:") || f.keys.includes(key)) return;
-      // The filed tile leaves the band (its EchoTile stays in the catalog).
-      const entry = entriesByKey().get(key);
-      if (entry) {
-        const t = entry.tile;
-        if (keyOf(t)) wallCatalog.set(keyOf(t)!, t);
-        const band = wallBands[0] ?? [];
-        const i = band.indexOf(entry);
-        if (i >= 0) band.splice(i, 1);
-      }
-      f.keys.push(key);
-      persistFolders();
-      renderPages();
-      persistPages();
-      refreshFolderTiles();
-    };
-    const removeFromFolder = (key: string, folderId: string): void => {
-      const f = folders.find((x) => x.id === folderId);
-      if (!f) return;
-      const i = f.keys.indexOf(key);
-      if (i < 0) return;
-      f.keys.splice(i, 1);
-      persistFolders();
-      moveKeyToPage(key, null);   // back onto the pages (renders + persists)
-      refreshFolderTiles();
-    };
-    const deleteFolder = (folderId: string): void => {
-      const f = folders.find((x) => x.id === folderId);
-      if (!f || f.keys.length) return;   // only empty folders delete
-      folders = folders.filter((x) => x.id !== folderId);
-      persistFolders();
-      const band = wallBands[0] ?? [];
-      const entry = entriesByKey().get(`folder:${folderId}`);
-      if (entry) {
-        const i = band.indexOf(entry);
-        if (i >= 0) band.splice(i, 1);
-      }
-      renderPages();
-      persistPages();
-    };
-    const createFolderWith = (e: TileEntry): void => {
-      const key = keyOf(e.tile);
-      if (!key || key.startsWith("folder:")) return;
-      const f: WallFolder = { id: `f${Date.now().toString(36)}`, name: "Folder", keys: [] };
-      folders.push(f);
-      // The folder tile takes the member's spot on the band.
-      const band = wallBands[0] ?? [];
-      const at = band.indexOf(e);
-      const entry = makeTileEntry(folderTileOf(f));
-      band.splice(at < 0 ? band.length : at, 0, entry);
-      persistFolders();
-      addToFolder(key, f.id);   // renders + persists
-    };
-    // ── EDIT MODE (press-and-hold, iPhone-style): the icons wiggle, apps and
-    // layouts wear a ✕ (delete after the standard confirm); everything else
-    // just moves. Click empty space or Esc to leave. ──
-    let iconEditMode = false;
-    const setIconEdit = (on: boolean): void => {
-      if (iconEditMode === on) return;
-      iconEditMode = on;
-      pagesEl.classList.toggle("echo-edit", on);
-    };
-    document.addEventListener("keydown", (ev) => {
-      if (!body.isConnected) return;
-      if (ev.key === "Escape" && iconEditMode) { ev.stopPropagation(); setIconEdit(false); }
-    }, true);
-    const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || t.houseDefault === true || (t.kind === "layout" && !!t.layoutName);
-    /** The library bundle an app tile stands for, by slug, or null when the
-     *  tile is a layout, a house default or a plain saved app. */
-    const bundleBehindTile = async (t: EchoTile): Promise<string | null> => {
-      if (t.kind !== "app" || t.houseDefault || !t.slug) return null;
-      const lib = (window as unknown as { glyphh?: { skillsList?: (k?: string | string[]) => Promise<{ ok: boolean; data?: Array<{ id: string; name: string }> }> } }).glyphh;
-      const env = await lib?.skillsList?.(["app", "task", "skill"]).catch(() => null);
-      if (!env?.ok) return null;
-      const want = t.slug.toLowerCase();
-      return (env.data || []).find((s) => s.id.slice(s.id.indexOf(":") + 1).toLowerCase() === want)?.id ?? null;
-    };
-
-    /** Delete what an icon stands for — the app or the layout — after the
-     *  standard confirm, then drop it off the launcher (and the saved order). */
-    const deleteTileEntry = (e: TileEntry): void => {
-      const t = e.tile;
-      if (!removableTile(t)) return;
-      void (async () => {
-        // A TILE BACKED BY A BUNDLE ASKS (his order, 2026-09-17): a skill typed
-        // app can be deleted, which takes its files, or disabled, which turns
-        // it off and leaves it in Settings → Build → Skills. Deleting the row
-        // alone used to leave the bundle behind, so the tile came back.
-        const bundleId = await bundleBehindTile(t);
-        if (bundleId) {
-          const choice = await appChoice({
-            title: `Remove "${t.name}"?`,
-            body: "Delete removes the skill and its files for good. Disable turns it off and keeps it in Settings, Build, Skills.",
-            confirmLabel: "Delete",
-            altLabel: "Disable",
-            danger: true,
-          });
-          if (choice === "no") return;
-          const lib = (window as unknown as { glyphh?: { skillDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; skillSetEnabled?: (id: string, on: boolean) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
-          const res = choice === "yes" ? await lib?.skillDelete?.(bundleId) : await lib?.skillSetEnabled?.(bundleId, false);
-          if (res && res.ok === false) {
-            toastErr(`Couldn't ${choice === "yes" ? "remove" : "turn off"} "${t.name}"`, res.error || undefined);
-            return;
-          }
-          if (choice === "yes") toastOk(`${t.name} removed`);
-          else toastOk(`${t.name} turned off`, "It stays in Settings, Build, Skills.");
-          const bk = keyOf(t);
-          if (bk) dockKeys = dockKeys.filter((x) => x !== bk);
-          dropTileEntry(e);
-          persistPages();
-          persistDock();
-          return;
-        }
-        const ok = await appConfirm({
-          title: `Delete "${t.name}"?`,
-          body: t.kind === "layout"
-            ? "The workspace is removed from your library."
-            : t.houseDefault
-              ? "The app is removed from your command center on every device."
-              : "The app is removed from your library on every device.",
-          confirmLabel: "Delete",
-          danger: true,
-        });
-        if (!ok) return;
-        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean>; getPreference?: (k: string, d: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh;
-        try {
-          if (t.houseDefault && t.slug) {
-            // A HOUSE DEFAULT has no user row to delete — hiding is a per-user
-            // pref of hidden slugs the launcher filters on load.
-            const cur = await yo?.getPreference?.("ccHiddenDefaults", []) ?? [];
-            const list = Array.isArray(cur) ? cur.map(String) : [];
-            if (!list.includes(t.slug)) list.push(t.slug);
-            await yo?.setPreference?.("ccHiddenDefaults", list);
-          }
-          else if (t.kind === "layout" && t.layoutName) {
-            await loadUiState();               // memory is server-side; forget it there
-            forgetWorkspaceMemory(t.layoutName);
-            await yo?.layoutsDelete?.(t.layoutName);
-          }
-          else if (t.appId) {
-            const res = await yo?.panelAppsDelete?.(t.appId);
-            if (res && res.ok === false) { toastErr(`Couldn't delete "${t.name}"`, res.error || undefined); return; }
-            toastOk(`${t.name} deleted`);
-          }
-        } catch (err) {
-          toastErr(`Couldn't delete "${t.name}"`, err instanceof Error ? err.message : String(err));
-          return;
-        }
-        const k = keyOf(t);
-        if (k) dockKeys = dockKeys.filter((x) => x !== k);
-        dropTileEntry(e);
-        persistPages();
-        persistDock();
-      })();
-    };
-    // ── Drag: reorder within the pages, and TRADE between dock and pages.
-    // Nothing here deletes by dropping — a drop outside any target snaps back. ──
-    let dragIconKey: string | null = null;
-    /** The keys riding a group drag (a L→R selection dragged by any member). */
-    let dragGroupKeys: string[] | null = null;
-    const wireIconDrag = (el: HTMLElement, key: string | null): void => {
-      if (!key) return;   // the fixed Home tile never moves
-      el.draggable = true;
-      el.addEventListener("dragstart", (ev) => {
-        // ⇧/⌃/⌘ presses belong to multi-select, never a move.
-        if (ev.shiftKey || ev.ctrlKey || ev.metaKey) { ev.preventDefault(); return; }
-        dragIconKey = key;
-        // A DRAG IS IN FLIGHT — announced on the body so code outside this
-        // module (dock-portal's reconcile) leaves the DOM alone. Rebuilding
-        // or re-parenting the dragged node mid-drag destroys the drag: the
-        // pointer is still down, but the element it belonged to is gone.
-        document.body.classList.add("echo-icon-dragging");
-        // Dragging a SELECTED icon moves the whole selection (folder filing).
-        const selKeys = [...multiSel].map((x) => keyOf(x.tile)).filter((k): k is string => !!k);
-        dragGroupKeys = selKeys.includes(key) && selKeys.length > 1 ? selKeys : null;
-        applyDockZoomAt(null);
-        el.classList.add("dock-dragging");
-        ev.dataTransfer?.setData("text/plain", key);
-        if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-      });
-      el.addEventListener("dragend", () => {
-        el.classList.remove("dock-dragging");
-        dragIconKey = null; dragGroupKeys = null;
-        document.body.classList.remove("echo-icon-dragging");
-        // Anything a repaint deferred while the drag was live runs now.
-        if (pendingPagesRender) { pendingPagesRender = false; renderPages(); }
-      });
-    };
-    /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
-    const moveKeyToPage = (key: string, at: TileEntry | null): void => {
-      // Settings + CC + Close-all stay put (his orders) — see the reconcile.
-      if (["settings", "dock:settings", "cc", "dock:cc", "closeall", "dock:closeall"].includes(key)) return;
-      const band = wallBands[0]!;
-      let entry = entriesByKey().get(key) ?? null;
-      if (!entry) {
-        // A key coming OUT OF A FOLDER has no band entry — its tile waited in
-        // the catalog; nav keys materialize as before.
-        const t = wallCatalog.get(key) ?? navTileFor(key) ?? navTileFor(key.replace(/^dock:/, ""));
-        if (!t) return;
-        const existing = entriesByKey().get(keyOf(t) || "");
-        entry = existing ?? makeTileEntry(t);
-      }
-      const k = keyOf(entry.tile);
-      dockKeys = dockKeys.filter((x) => x !== key && x !== k);
-      const cur = band.indexOf(entry);
-      if (cur >= 0) band.splice(cur, 1);
-      const idx = at ? band.indexOf(at) : -1;
-      band.splice(idx < 0 ? band.length : idx, 0, entry);
-      renderPages();
-      persistPages();
-      persistDock();
-    };
-    /** Land a dragged key IN THE DOCK before (optionally) a target key. */
-    const moveKeyToDock = (key: string, beforeKey: string | null): void => {
-      const navKey = key.startsWith("dock:") ? key.slice(5) : key;
-      const dockKey = DOCK_ITEMS.some((d) => d.key === navKey) ? navKey : key;
-      dockKeys = dockKeys.filter((x) => x !== dockKey);
-      const at = beforeKey ? dockKeys.indexOf(beforeKey) : -1;
-      dockKeys.splice(at < 0 ? dockKeys.length : at, 0, dockKey);
-      // a page icon entering the dock leaves the pages
-      const band = wallBands[0] ?? [];
-      const entry = entriesByKey().get(key);
-      if (entry) {
-        const i = band.indexOf(entry);
-        if (i >= 0) band.splice(i, 1);
-      }
-      renderPages();
-      persistPages();
-      persistDock();
-    };
-    /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
-     *  icons render as dock slots. Click routing is delegated (topbar). */
-    const reconcileDock = (): void => {
-      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
-      if (!dockEl) return;
-      const byKey = entriesByKey();
-      const have = new Map<string, HTMLElement>();
-      for (const c of Array.from(dockEl.children) as HTMLElement[]) {
-        const k = c.dataset.dock;
-        if (k) have.set(k, c);
-      }
-      for (const [k, el] of have) if (!dockKeys.includes(k)) el.remove();
-      let prev: HTMLElement | null = null;
-      for (const k of dockKeys) {
-        let el = have.get(k) ?? null;
-        if (!el) {
-          const item = DOCK_ITEMS.find((d) => d.key === k);
-          const entry = item ? null : byKey.get(k);
-          if (!item && !entry) continue;
-          const mk = document.createElement("button");
-          mk.type = "button";
-          el = mk;
-          el.className = "echo-dock-btn";
-          el.dataset.dock = k;
-          el.title = item ? item.title : entry!.tile.name;
-          el.innerHTML = item ? item.icon : iconInner(entry!.tile);
-          hydrateIcons(el);
-          wireIconDrag(el, k);
-          el.addEventListener("contextmenu", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            if (entry) { showTileMenu(ev, tileMenuItems(entry)); return; }
-            // Fixed nav slots (the workpanel defaults): close items only, and
-            // only while the panel they route to is actually open.
-            const items: Array<{ label: string; onPick: () => void; danger?: boolean }> = [];
-            const target = openEntryForNav(k);
-            if (target) {
-              items.push({ label: "Close panel", onPick: () => closeCard(target) });
-              if (openList.some((x) => x.card)) items.push({ label: "Close all panels", onPick: () => closeAllPanels() });
-            }
-            showTileMenu(ev, items);
-          });
-          el.addEventListener("dragover", (ev) => { if (dragIconKey && dragIconKey !== k) ev.preventDefault(); });
-          el.addEventListener("drop", (ev) => {
-            ev.preventDefault(); ev.stopPropagation();
-            if (dragIconKey && dragIconKey !== k) moveKeyToDock(dragIconKey, k);
-          });
-        }
-        if (prev) prev.after(el);
-        else dockEl.prepend(el);
-        prev = el;
-      }
-    };
-    // ── Per-tile context menu (his rule, 2026-08-19): apps get Edit; work-
-    // spaces get Edit + Delete; the close items appear ONLY when that tile's
-    // panel is actually open — a closed tile never offers "Close panel". ──
     const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean; checked?: boolean }>): void => {
       if (!items.length) return;
       document.querySelector(".ws-tab-ctx-menu")?.remove();
@@ -3208,54 +2639,6 @@ async function init(): Promise<void> {
     };
     /** The open panel a NAV key routes to, when it is open: section cards land
      *  as `page:<key>` pseudo-tiles, tasks/preview as tool cards. */
-    const openEntryForNav = (key: string): TileEntry | undefined =>
-      openList.find((x) => x.card && (x.tile.slug === `page:${key}` || (x.tile.kind === "tool" && x.tile.toolView === key)));
-    const tileMenuItems = (e: TileEntry): Array<{ label: string; onPick: () => void; danger?: boolean }> => {
-      const t = e.tile;
-      const items: Array<{ label: string; onPick: () => void; danger?: boolean }> = [];
-      if (t.kind === "folder" && t.folderId) {
-        const f = folders.find((x) => x.id === t.folderId);
-        items.push({ label: "Open folder", onPick: () => openFolderModal(t.folderId!) });
-        if (f && !f.keys.length) {
-          items.push({ label: "Delete folder", danger: true, onPick: () => {
-            void (window as unknown as { __appConfirm?: (o: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean> })
-              .__appConfirm?.({ title: `Delete "${f.name}"?`, body: "The folder is empty — nothing else is removed.", confirmLabel: "Delete", danger: true })
-              .then((ok) => { if (ok) deleteFolder(t.folderId!); });
-          } });
-        }
-        return items;
-      }
-      if (keyOf(t) && !t.sticky && t.kind !== "agent") {
-        items.push({ label: "Move to new folder", onPick: () => createFolderWith(e) });
-      }
-      const w = window as unknown as { __glyphhEditApp?: (id: string) => void; __glyphhEditLayout?: (n: string) => void };
-      if (t.kind === "app" && t.appId && !t.navApp && !t.navKey) {
-        items.push({ label: "Edit", onPick: () => w.__glyphhEditApp?.(t.appId!) });
-      }
-      if (t.kind === "layout" && t.layoutName) {
-        items.push({ label: "Edit", onPick: () => w.__glyphhEditLayout?.(t.layoutName!) });
-        items.push({ label: "Delete", onPick: () => deleteTileEntry(e), danger: true });
-      }
-      if (t.houseDefault) {
-        items.push({ label: "Delete", onPick: () => deleteTileEntry(e), danger: true });
-      }
-      // Open-state close items. A layout tile is "open" when ITS workspace is
-      // the live one; nav tiles resolve to the section/tool card they opened.
-      const layoutOpen = t.kind === "layout" && !!t.layoutName && echoLayoutName === t.layoutName && openList.some((x) => x.layoutId != null);
-      const target = e.card ? e : (t.navKey ? openEntryForNav(t.navKey) : undefined);
-      if (layoutOpen) {
-        items.push({ label: "Close workspace", onPick: () => closeLayoutGroup() });
-      } else if (target) {
-        items.push({ label: "Close panel", onPick: () => closeCard(target) });
-      }
-      if ((layoutOpen || target) && openList.some((x) => x.card)) {
-        items.push({ label: "Close all panels", onPick: () => closeAllPanels() });
-      }
-      return items;
-    };
-    // ── The pages: chunk the list, render icon grids, dots, snap scroll. ──
-    /** A repaint asked for during a drag — replayed on dragend. */
-    let pendingPagesRender = false;
     /** CLOSE ALL PANELS — the one helper the dock's and the tiles' menus
      *  share. Every card closes; ON THE WEB a fresh session then starts in
      *  place in the rail's current type (help/surface.ts webCloseAllOpensNew;
@@ -3272,371 +2655,6 @@ async function init(): Promise<void> {
       }
       for (const x of [...openList]) closeCard(x);
     }
-    const renderPages = (): void => {
-      // NEVER rebuild the wall mid-drag: the dragged button would be replaced
-      // under the pointer and the browser would cancel the drag silently
-      // (his report, 2026-08-28: dragging icons stopped working). The repaint
-      // is not lost — dragend replays it.
-      if (dragIconKey != null) { pendingPagesRender = true; return; }
-      // ONE rule for what the pages show (help/dock-items.ts): the dock's
-      // tiles lead while the dock is OFF (his order, 2026-10-04 — the dock's
-      // icons as the first items from the top-left), and whatever the dock
-      // carries never shows twice.
-      const fromDock = dockEntries();
-      const dockOnWall = new Set(document.body.classList.contains(DOCK_OFF_CLASS) ? fromDock : []);
-      const list = wallTilesFor<TileEntry>({
-        dockEnabled: !document.body.classList.contains(DOCK_OFF_CLASS),
-        dockItems: fromDock,
-        wallItems: wallBands[0] ?? [],
-        keyOf: (e) => keyOf(e.tile),
-      });
-      const pages: TileEntry[][] = [];
-      for (let i = 0; i < list.length; i += perPage) pages.push(list.slice(i, i + perPage));
-      if (!pages.length) pages.push([]);
-      pagesEl.innerHTML = "";
-      pages.forEach((page) => {
-        const p = document.createElement("div");
-        p.className = "echo-page";
-        const grid = document.createElement("div");
-        grid.className = "echo-page-grid";
-        p.appendChild(grid);
-        for (const e of page) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "echo-app-btn" + (removableTile(e.tile) ? " removable" : "");
-          if (e.tile.navKey) btn.dataset.nav = e.tile.navKey;
-          // Stable identity on the DOM node — the wall tour (and tests) target
-          // tiles by key ("tool:design", "layout:dev") instead of label text.
-          const tileKey = keyOf(e.tile);
-          if (tileKey) btn.dataset.key = tileKey;
-          btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
-          if (removableTile(e.tile)) {
-            const del = document.createElement("button");
-            del.type = "button";
-            del.className = "echo-app-del";
-            del.title = `Delete ${e.tile.name}`;
-            del.textContent = "✕";
-            del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteTileEntry(e); });
-            btn.appendChild(del);
-          }
-          e.iconEl = btn;
-          drawTile(e);
-          btn.addEventListener("contextmenu", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            showTileMenu(ev, tileMenuItems(e));
-          });
-          // press-and-hold arms EDIT MODE (the wiggle); a normal click opens.
-          let holdTimer = 0;
-          btn.addEventListener("pointerdown", (ev) => {
-            if (ev.button !== 0 || ev.shiftKey || ev.ctrlKey || ev.metaKey) return;
-            window.clearTimeout(holdTimer);
-            holdTimer = window.setTimeout(() => setIconEdit(true), 520);
-          });
-          for (const evName of ["pointerup", "pointerleave", "pointercancel", "dragstart"] as const) {
-            btn.addEventListener(evName, () => window.clearTimeout(holdTimer));
-          }
-          btn.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            if (suppressNextIconClick) return;   // a band-select just launched
-            if (ev.ctrlKey || ev.metaKey) { toggleSel(e); return; }
-            if (iconEditMode) return;   // edit mode: clicks arrange, never open
-            let entry = e;
-            // Terminal and Browser are MULTI-INSTANCE: every click mints a new
-            // card (a fresh entry keyed off the same icon, so the zoom still
-            // starts from it).
-            if (entry.tile.toolView === "terminal" || entry.tile.toolView === "preview") {
-              entry = { tile: { ...entry.tile }, iconEl: entry.iconEl, img: null };
-            }
-            activateTile(entry);
-          });
-          // A tile the dock carries keeps the DOCK's order — it is arranged
-          // in the dock (shown again), not dragged about on the wall.
-          wireIconDrag(btn, e.tile.sticky || dockOnWall.has(e) ? null : keyOf(e.tile));
-          btn.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
-          btn.addEventListener("drop", (ev) => {
-            ev.preventDefault(); ev.stopPropagation();
-            if (!dragIconKey || dragIconKey === keyOf(e.tile)) return;
-            // Dropping ON a folder files the icon inside it (folders never
-            // nest); every other target is a reorder, exactly as before.
-            if (e.tile.kind === "folder" && e.tile.folderId && !dragIconKey.startsWith("folder:")) {
-              const group = dragGroupKeys ?? [dragIconKey];
-              for (const k of group) if (!k.startsWith("folder:")) addToFolder(k, e.tile.folderId!);
-              clearSel();
-              return;
-            }
-            moveKeyToPage(dragIconKey, e);
-          });
-          grid.appendChild(btn);
-        }
-        p.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
-        p.addEventListener("drop", (ev) => {
-          ev.preventDefault();
-          if (dragIconKey) moveKeyToPage(dragIconKey, null);
-        });
-        p.addEventListener("click", (ev) => {
-          if (iconEditMode && ev.target === p) setIconEdit(false);
-        });
-        pagesEl.appendChild(p);
-      });
-      dotsEl.innerHTML = "";
-      pages.forEach((_pg, i) => {
-        const d = document.createElement("button");
-        d.type = "button";
-        d.className = "echo-page-dot" + (i === pageIndex ? " active" : "");
-        d.title = `Page ${i + 1}`;
-        d.addEventListener("click", () => scrollToPage(i));
-        dotsEl.appendChild(d);
-      });
-      dotsEl.classList.toggle("hidden", pages.length < 2);
-      // Re-arm the observer on the fresh grid: an ICON-SIZE change resizes
-      // the grid, not the stage — without this the chrome never re-measured
-      // ("after resizing the icons the page is not responsive").
-      chromeRo.disconnect();
-      chromeRo.observe(stage);
-      const firstGrid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
-      if (firstGrid) chromeRo.observe(firstGrid);
-      watchDock();
-      requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
-      settlePageChrome();
-      reconcileDock();
-      paintSearch();
-    };
-    // ── SEARCH (restored from the top bar of 2026-08-18, his ask 2026-10-03):
-    // typing dims every tile that does not match its name, Enter opens the
-    // best match wherever its page is, Escape clears. Typing never reaches the
-    // wall's own keys, and the pill never starts a drag. ──
-    const searchWrap = stage.querySelector<HTMLElement>(".echo-search-wrap")!;
-    const searchEl = searchWrap.querySelector<HTMLInputElement>(".echo-search")!;
-    const searchable = (): TileEntry[] => wallBands.flat().filter((x) => !!x.iconEl);
-    const hits = (x: TileEntry, q: string): boolean =>
-      (x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q);
-    const paintSearch = (): void => {
-      const q = searchEl.value.trim().toLowerCase();
-      for (const x of searchable()) x.iconEl!.classList.toggle("echo-search-miss", !!q && !hits(x, q));
-    };
-    for (const evName of ["pointerdown", "mousedown", "click", "dragstart"] as const) {
-      searchWrap.addEventListener(evName, (ev) => ev.stopPropagation());
-    }
-    searchEl.addEventListener("input", paintSearch);
-    searchEl.addEventListener("keydown", (ev) => {
-      ev.stopPropagation();
-      const q = searchEl.value.trim().toLowerCase();
-      if (ev.key === "Escape") {
-        searchEl.value = "";
-        paintSearch();
-        searchEl.blur();
-      } else if (ev.key === "Enter" && q) {
-        const pool = searchable().filter((x) => hits(x, q));
-        const best = pool.find((x) => (x.tile.name || "").toLowerCase().startsWith(q)) ?? pool[0];
-        if (best) {
-          searchEl.value = "";
-          paintSearch();
-          activateTile(best);
-        }
-      }
-    });
-    /** The page transition — the arrows, the dots, the keyboard and both
-     *  swipes all land here. Smooth unless the member asked for reduced
-     *  motion (then the page just appears). */
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
-    const scrollToPage = (i: number, smooth = true): void => {
-      pageIndex = Math.max(0, Math.min(i, Math.max(0, pagesEl.children.length - 1)));
-      pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth && !reducedMotion?.matches ? "smooth" : "auto" });
-      Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
-      positionPageChrome();
-    };
-    pagesEl.addEventListener("scroll", () => {
-      const i = Math.round(pagesEl.scrollLeft / Math.max(1, pagesEl.clientWidth));
-      if (i !== pageIndex) {
-        pageIndex = i;
-        Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
-        positionPageChrome();
-      }
-    });
-    // ── SWIPE BETWEEN PAGES (his order, 2026-10-04), desktop and web, both
-    // landing on scrollToPage. The decider and the ownership rule live in
-    // help/wall-swipe.ts; this is only the wiring.
-    //  - TRACKPAD: wheel events with deltaX dominant accumulate into one page
-    //    per gesture (the inertial tail is swallowed, a pause starts a new
-    //    gesture, the cooldown keeps quick repeats to one page). The native
-    //    horizontal scroll of the carousel is taken over for those events so
-    //    a gesture never half-scrolls or skips a page; vertical wheel stays
-    //    the page's own (a tall page scrolls its grid).
-    //  - TOUCH / PEN: a horizontal drag over the tile area past SWIPE_DRAG_PX
-    //    moves one page and ends the gesture. A tile the native drag picked
-    //    first (dragIconKey set by wireIconDrag's dragstart) keeps its drag —
-    //    the swipe stands down. A mouse never swipes by dragging: its empty-
-    //    space drag is the multi-select band below, its tile drag is the
-    //    tile's. CSS `touch-action: pan-y` on .echo-pages leaves vertical
-    //    pans to the browser and hands horizontal ones here.
-    /** When the wall last paged by a swipe (either kind) — the shared cooldown. */
-    let lastSwipeAt = -Infinity;
-    const wheelState = wheelSwipeState();
-    pagesEl.addEventListener("wheel", (ev) => {
-      if (pagesEl.children.length < 2) return;
-      const dx = wheelDeltaPx(ev.deltaX, ev.deltaMode), dy = wheelDeltaPx(ev.deltaY, ev.deltaMode);
-      if (Math.abs(dx) <= Math.abs(dy)) return;   // vertical: the page's own scroll
-      ev.preventDefault();
-      const now = performance.now();
-      const step = wheelSwipeFeed(wheelState, dx, dy, now);
-      if (step === 0) return;
-      // The shared cooldown with the touch swipe (the feed's own cooldown
-      // covers two trackpad gestures).
-      if (now - lastSwipeAt < SWIPE_COOLDOWN_MS) return;
-      lastSwipeAt = now;
-      scrollToPage(pageIndex + step);
-    }, { passive: false });
-    pagesEl.addEventListener("pointerdown", (ev) => {
-      if (!isSwipePointer(ev.pointerType) || ev.button !== 0) return;
-      if (pagesEl.children.length < 2) return;
-      const id = ev.pointerId, sx = ev.clientX, sy = ev.clientY;
-      let paged = false;
-      const end = (): void => {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        document.removeEventListener("pointercancel", up);
-      };
-      const move = (mv: PointerEvent): void => {
-        if (mv.pointerId !== id) return;
-        // A tile was picked (the native drag began): the tile's gesture.
-        if (dragIconKey != null) { end(); return; }
-        const step = swipeStep({
-          dx: sx - mv.clientX, dy: mv.clientY - sy, threshold: SWIPE_DRAG_PX,
-          sinceLast: Number.isFinite(lastSwipeAt) ? performance.now() - lastSwipeAt : undefined,
-        });
-        if (step === 0) return;
-        lastSwipeAt = performance.now();
-        paged = true;
-        scrollToPage(pageIndex + step);
-        document.removeEventListener("pointermove", move);   // one gesture = one page; the lift still clears the click
-      };
-      const up = (uv: PointerEvent): void => {
-        if (uv.pointerId !== id) return;
-        end();
-        if (!paged) return;
-        // The lift after a swipe is not a tap on whatever tile is under it.
-        suppressNextIconClick = true;
-        setTimeout(() => { suppressNextIconClick = false; }, 0);
-      };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-      document.addEventListener("pointercancel", up);
-    });
-    /** All positionWall callers re-render the pages now. */
-    const positionWall = (): void => renderPages();
-    // ── MULTI-SELECT LAUNCH (his rule, 2026-08-18): ⌃/⌘-click accumulates a
-    // selection (opens when the modifier lifts); dragging empty page space
-    // rubber-bands a SQUARE; ⇧-drag draws a LINE that selects every icon it
-    // touches. Everything selected opens together on release. Layouts and
-    // the Home tile are excluded (a layout open resets the surface). ──
-    const multiSel = new Set<TileEntry>();
-    let suppressNextIconClick = false;
-    const selectable = (e: TileEntry): boolean =>
-      !!e.iconEl?.isConnected && e.tile.kind !== "layout" && e.tile.slug !== "glyphh-home";
-    const paintSel = (): void => {
-      for (const e of entries) e.iconEl?.classList.toggle("selected", multiSel.has(e));
-    };
-    const clearSel = (): void => { multiSel.clear(); paintSel(); };
-    const openSelected = (): void => {
-      const picks = [...multiSel].filter(selectable);
-      clearSel();
-      for (const e of picks) {
-        let entry = e;
-        if (entry.tile.toolView === "terminal" || entry.tile.toolView === "preview") {
-          entry = { tile: { ...entry.tile }, iconEl: entry.iconEl, img: null };
-        }
-        activateTile(entry);
-      }
-    };
-    const toggleSel = (e: TileEntry): void => {
-      if (!selectable(e)) return;
-      if (multiSel.has(e)) multiSel.delete(e); else multiSel.add(e);
-      paintSel();
-    };
-    // Modifier lifted with a selection → launch it.
-    const onSelKeyUp = (ev: KeyboardEvent): void => {
-      if (!body.isConnected) { document.removeEventListener("keyup", onSelKeyUp); return; }
-      if ((ev.key === "Control" || ev.key === "Meta") && multiSel.size) openSelected();
-    };
-    document.addEventListener("keyup", onSelKeyUp);
-    /** Segment ∩ rect via sampling — cheap and plenty for icon-sized boxes. */
-    const segHitsRect = (x1: number, y1: number, x2: number, y2: number, r: DOMRect): boolean => {
-      const steps = Math.max(2, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 6));
-      for (let i = 0; i <= steps; i++) {
-        const x = x1 + ((x2 - x1) * i) / steps, y = y1 + ((y2 - y1) * i) / steps;
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
-      }
-      return false;
-    };
-    let bandEl: HTMLDivElement | null = null;
-    pagesEl.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0 || iconEditMode) return;
-      // A touch or pen drag is the SWIPE's (help/wall-swipe.ts) — the band
-      // and the lasso are mouse gestures (⇧ and the modifier launch are keys).
-      if (isSwipePointer(ev.pointerType)) return;
-      const onIcon = !!(ev.target as HTMLElement).closest(".echo-app-btn");
-      const lineMode = ev.shiftKey;
-      if (onIcon && !lineMode) return;   // plain icon press — click/drag as before
-      const sr = stage.getBoundingClientRect();
-      const sx = ev.clientX, sy = ev.clientY;
-      let live = false;
-      const iconRects = entries.filter(selectable).map((e) => ({ e, r: e.iconEl!.getBoundingClientRect() }));
-      let lastX = sx;
-      const move = (mv: PointerEvent): void => {
-        lastX = mv.clientX;
-        if (!live && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 6) return;
-        if (!live) {
-          live = true;
-          bandEl = document.createElement("div");
-          bandEl.className = lineMode ? "echo-lasso-line" : "echo-marquee";
-          stage.appendChild(bandEl);
-        }
-        multiSel.clear();
-        if (lineMode) {
-          const dx = mv.clientX - sx, dy = mv.clientY - sy;
-          bandEl!.style.left = `${sx - sr.left}px`;
-          bandEl!.style.top = `${sy - sr.top}px`;
-          bandEl!.style.width = `${Math.hypot(dx, dy)}px`;
-          bandEl!.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
-          for (const { e, r } of iconRects) if (segHitsRect(sx, sy, mv.clientX, mv.clientY, r)) multiSel.add(e);
-        } else {
-          const L = Math.min(sx, mv.clientX), T = Math.min(sy, mv.clientY);
-          const W = Math.abs(mv.clientX - sx), H = Math.abs(mv.clientY - sy);
-          bandEl!.style.left = `${L - sr.left}px`;
-          bandEl!.style.top = `${T - sr.top}px`;
-          bandEl!.style.width = `${W}px`;
-          bandEl!.style.height = `${H}px`;
-          for (const { e, r } of iconRects) {
-            if (!(r.right < L || r.left > L + W || r.bottom < T || r.top > T + H)) multiSel.add(e);
-          }
-        }
-        paintSel();
-      };
-      const up = (): void => {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        bandEl?.remove();
-        bandEl = null;
-        if (live) {
-          suppressNextIconClick = true;
-          setTimeout(() => { suppressNextIconClick = false; }, 0);
-          if (!multiSel.size) { clearSel(); return; }
-          // DIRECTION IS THE VERB (his rule, 2026-08-20): sweeping RIGHT→LEFT
-          // opens the selection (the original gesture); LEFT→RIGHT only
-          // SELECTS — the group stays highlighted so it can be dragged into
-          // a folder in one move. Click empty space (or Esc) to clear.
-          if (lastX < sx) openSelected();
-          else paintSel();
-        }
-      };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-    });
-    // An empty-space click (no band) drops a lingering selection.
-    pagesEl.addEventListener("click", (ev) => {
-      if (!(ev.target as HTMLElement).closest(".echo-app-btn") && multiSel.size && !suppressNextIconClick) clearSel();
-    });
         const layoutTileOf = (layoutRow: LayoutRow): EchoTile => {
       const seenIds = new Set<string>();
       const ids = (layoutRow.splits ?? [])
@@ -3716,9 +2734,13 @@ async function init(): Promise<void> {
         orderKey: `app:${slug}`,
       };
     };
-    const buildWall = (bands: EchoTile[][]): void => {
-      wallBands = [bands.flat().map((t) => makeTileEntry(t))];
-      renderPages();
+    /** THE CATALOG (the wall is gone, 2026-10-08): every tile this surface
+     *  can host, as entries the cards resolve against (findTile, a layout's
+     *  cells, getOrOpenTool). Nothing paints; a card paints when it opens. */
+    const buildCatalog = (tiles: EchoTile[]): void => {
+      entries.length = 0;
+      for (const t of tiles) entries.push({ tile: t, img: null });
+      wallCatalog = new Map(tiles.filter((t) => t.orderKey).map((t) => [t.orderKey!, t]));
     };
 
     // ── The wall's content: the command center's APPS, in its order —
@@ -3741,16 +2763,13 @@ async function init(): Promise<void> {
     void Promise.all([
       yoApi?.panelAppsList?.() ?? [],
       yoApi?.layoutsList?.().catch(() => []) ?? [],
-      yoApi?.getPreference?.("ccIconOrder", []) ?? [],
       // Read the saved wall state HERE, atomically at boot, before the agent
       // card or anything else can schedule a save that overwrites it.
       yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
-      yoApi?.getPreference?.("echoDockOrder", null) ?? null,
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
-      yoApi?.getPreference?.("echoFolders", []) ?? [],
       yoApi?.cliAgentsList?.().catch(() => null) ?? null,
-    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref, cliAgentsRes]) => {
+    ]).then(async ([rows, layouts, savedWall, houseDefaults, hiddenPref, cliAgentsRes]) => {
       await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
@@ -3774,11 +2793,7 @@ async function init(): Promise<void> {
         ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
         ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
       ];
-      const byKey = new Map(all.map((e) => [e.key, e]));
-      const orderKeys = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
-      const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
-      const seen = new Set(inOrder.map((e) => e.key));
-      const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
+      const ordered = all;
       const toTile = (e: Entry): EchoTile => (e.layout ? layoutTileOf(e.layout) : appTileOf(e.app!));
       // ONE band: Browser, then the apps, then the layouts — nothing else.
       // Navigation pages and workspace tools live in the LEFT RAIL now.
@@ -3809,85 +2824,10 @@ async function init(): Promise<void> {
       // every saved tab row (it cannot render one). The desktop keeps everything.
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)]
         .filter((t) => surfaceHostsTile(t, surfaceCaps(IS_WEB_TARGET)));
-      // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
-      // right to left as Close all, Command center, Settings, Customize (his
-      // report, 2026-10-07: "The dock needs an icon to get to the new unified
-      // Customize page"), with the two openers ahead of them — but it is only
-      // the DEFAULT. Once the dock has been arranged, that arrangement is law:
-      // nothing here re-sorts it, and the only thing that moves is a slot the
-      // user has never seen (in).
-      const DEFAULT_DOCK = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "customize", "settings", "cc", "closeall"];
-      const liveAgent = new Set(agentTiles.map((t) => t.orderKey!));
-      const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
-      // A key from an older dock (logout, Tabs, Workspaces, Drips) names a
-      // button that no longer exists; it leaves rather than haunting the order.
-      const saved = Array.isArray(dockPref)
-        ? (dockPref as unknown[]).map(legacyKey).filter((k) => !!k && (k.includes(":") || navKeys.has(k)))
-        : null;
-      if (!saved?.length) {
-        dockKeys = DEFAULT_DOCK;
-      } else {
-        // An `agent:*` key is a CLI agent's tile: it stays while that CLI exists —
-        // and stays when the CLI list did not answer (keepDockKeys: an empty
-        // read prunes nothing; his report, 2026-10-07).
-        dockKeys = keepDockKeys(saved, { agents: [...liveAgent] });
-        // A slot that shipped after this dock was saved joins it — unless the
-        // user deliberately parked it on the pages, which the page order says.
-        const parked = new Set((Array.isArray(orderPref) ? (orderPref as unknown[]).map(legacyKey) : []).flatMap((k) => [k, k.replace(/^dock:/, "")]));
-        const joiners = DEFAULT_DOCK.filter((k) => !dockKeys.includes(k) && !parked.has(k) && !parked.has(`dock:${k}`));
-        const firstControl = dockKeys.findIndex((k) => k === "settings" || k === "cc" || k === "closeall");
-        for (const k of joiners) {
-          if (k === "glyphh") dockKeys.unshift(k);
-          else dockKeys.splice(firstControl < 0 ? dockKeys.length : firstControl, 0, k);
-        }
-      }
-      // …and ccIconOrder decides the PAGE order across every keyed tile,
-      // materializing nav slots that were traded onto the pages (dock:*).
-      const byK = new Map<string, EchoTile>();
-      for (const t of canonical) { const k = t.orderKey; if (k) byK.set(k, t); }
-      // FOLDERS: adopt the saved set, catalog EVERY keyed tile (foldered
-      // members render from the catalog, not the band), add folder tiles to
-      // the orderable pool, and keep filed members off the pages.
-      folders = (Array.isArray(folderPref) ? folderPref : [])
-        .filter((f): f is WallFolder => !!f && typeof f === "object" && typeof (f as WallFolder).id === "string")
-        .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(legacyKey) : [] }));
-      // (The dock's order and the folders are the member's SERVER prefs, shared
-      // with the desktop — the web never rewrites them with its filter; it
-      // filters at paint: dockEntries below, and the folder tiles' members
-      // read the filtered catalog. His report, 2026-10-05: the desktop "lost
-      // the default browser icon / tab" after the web saved a filtered dock.)
-      wallCatalog = new Map(byK);
-      const filed = folderedKeys();
-      for (const f of folders) byK.set(`folder:${f.id}`, folderTileOf(f));
-      const savedPageOrder = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
-      const pageTiles: EchoTile[] = [];
-      const seenK = new Set<string>();
-      for (const k of savedPageOrder) {
-        if (k === "dock:settings" || k === "dock:cc" || k === "dock:closeall") continue;  // fixed in the dock — never page tiles
-        if (filed.has(k)) continue;   // lives inside a folder, not on the pages
-        const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
-        if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;
-        seenK.add(t.orderKey);
-        pageTiles.push(t);
-      }
-      const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
-        .concat(canonical.filter((t) => !t.orderKey));
-      // THE SAME WALL ON BOTH SURFACES (his order, 2026-10-06). A folder the
-      // capability filter emptied stays in the pref, unpainted (a folder the
-      // member left empty still paints). The web does not PAINT the wall at
-      // boot (bootsSurface): the agent is the page and the rail's Echo icon
-      // lifts the wall, dock and all; the saved state replays the same way.
-      const emptiedByFilter = (t: EchoTile): boolean =>
-        t.kind === "folder" && (t.cells?.length ?? 0) === 0 && !!folders.find((f) => f.id === t.folderId)?.keys.length;
-      buildWall([[...pageTiles, ...rest].filter((t) => !emptiedByFilter(t))]);
+      buildCatalog(canonical);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
-      // First run: the guided tour points at the live dock + tiles, once per
-      // USER (server pref) — after the wall has painted, never over a restore
-      // that re-opened panels (the tour orients the EMPTY landing). The web
-      // paints no wall at boot, so there is nothing to point at there.
-      if (bootsSurface(IS_WEB_TARGET, "wall")) void maybeStartWallTour();
-    }).catch(() => buildWall([[]]));
+    }).catch(() => buildCatalog([]));
 
     // ── Wall-state persistence (save + restore) ──────────────────────────────
     // Serialize the OPEN arrangement: a layout by name, else the ad-hoc app/tool/
@@ -4030,102 +2970,48 @@ async function init(): Promise<void> {
         yoApi?.panelAppsList?.().catch(() => null) ?? null,
       ]).then(([fresh, rows]) => {
         if (!body.isConnected) return;
-        let shifted = false;
+        const drop = (e: TileEntry): void => { const i = entries.indexOf(e); if (i >= 0) entries.splice(i, 1); };
         if (Array.isArray(fresh)) {
           const live = new Map(fresh.map((l) => [(l.name || "").toLowerCase(), l]));
-          // Existing tiles follow their row; a layout that's gone leaves the wall.
+          // An existing layout follows its row; one that is gone leaves (never an OPEN panel).
           for (const e of [...entries]) {
             if (e.tile.kind !== "layout" || !e.tile.layoutName) continue;
             const row = live.get(e.tile.layoutName.toLowerCase());
-            if (!row) {
-              if (!e.card) { dropTileEntry(e); shifted = true; }   // never yank an OPEN panel
-              continue;
-            }
+            if (!row) { if (!e.card) drop(e); continue; }
             e.tile.layoutRow = row;
-            drawTile(e);
           }
-          // A layout made since the wall was built (a starter card, the Layouts
-          // page) joins it — the wall used to be fixed at mount, so anything
-          // created afterwards simply never appeared.
-          const onWall = new Set(entries.filter((e) => e.tile.kind === "layout" && e.tile.layoutName)
-            .map((e) => e.tile.layoutName!.toLowerCase()));
+          const have = new Set(entries.filter((e) => e.tile.kind === "layout" && e.tile.layoutName).map((e) => e.tile.layoutName!.toLowerCase()));
           for (const row of fresh) {
             const key = (row.name || "").toLowerCase();
-            if (!key || onWall.has(key)) continue;
-            const band = wallBands[wallBands.length - 1];
-            if (!band) break;
-            band.push(makeTileEntry(layoutTileOf(row)));
-            shifted = true;
+            if (!key || have.has(key)) continue;
+            entries.push({ tile: { ...layoutTileOf(row), orderKey: `layout:${key}` }, img: null });
           }
         }
-        // APPS join and leave the wall the same way — an app the user adds
-        // mid-session (the Apps page, the agent's create_app_entry) appears
-        // without a restart; a deleted one leaves (never an OPEN panel).
-        // THE SAME FILTER AS THE FIRST BUILD (his report, 2026-10-07: an edit
-        // on Build or Customize made the web's wall load every saved tab). The
-        // first build drops what this surface cannot host (surfaceHostsTile —
-        // the browser shows no saved tab rows); this refresh did not, so every
-        // tab row the server holds joined the wall as "new".
+        // THE SAME FILTER AS THE FIRST BUILD (his report, 2026-10-07): what this
+        // surface cannot host never joins (surfaceHostsTile).
         const hosted = (a: PanelRowLite): boolean => surfaceHostsTile(appTileOf(a), surfaceCaps(IS_WEB_TARGET));
         if (Array.isArray(rows)) {
           echoRows = rows;   // .dip / layout-cell resolution sees the fresh set too
           const liveApps = new Map(rows.filter(wallAppRow).filter(hosted).map((a) => [(a.slug || a.id).toLowerCase(), a]));
           for (const e of [...entries]) {
             // A TOOL-BACKED app (Drive, Images, Design…) wears a tool tile with
-            // the same slug and appId; it counts as seen too, or every refresh
-            // re-added it (his report, 2026-09-19: Drive and Images, over and over).
-            if ((e.tile.kind !== "app" && e.tile.kind !== "tool") || !e.tile.appId) continue;   // fixed tiles (Home) have no appId
+            // the same slug and appId; it counts as seen too.
+            if ((e.tile.kind !== "app" && e.tile.kind !== "tool") || !e.tile.appId) continue;
             const row = e.tile.slug ? liveApps.get(e.tile.slug) : undefined;
-            if (!row) {
-              if (e.tile.kind === "app" && !e.card) { dropTileEntry(e); shifted = true; }
-              continue;
-            }
+            if (!row) { if (e.tile.kind === "app" && !e.card) drop(e); continue; }
             liveApps.delete(e.tile.slug!);   // seen — the leftovers are NEW
             if (e.tile.kind === "tool") continue;
             // the row is the truth for name/address (a deploy fills in url)
-            if (e.tile.name !== row.name || (e.tile.url || undefined) !== (row.url || undefined)) {
-              e.tile = { ...e.tile, ...appTileOf(row), sticky: e.tile.sticky };
-              drawTile(e);
-            }
+            if (e.tile.name !== row.name || (e.tile.url || undefined) !== (row.url || undefined)) e.tile = { ...e.tile, ...appTileOf(row), sticky: e.tile.sticky };
           }
           const shown = new Set(entries.map((e) => e.tile.slug).filter(Boolean));
           for (const a of liveApps.values()) {
-            if (shown.has((a.slug || a.id).toLowerCase())) continue;
-            const band = wallBands[wallBands.length - 1];
-            if (!band) break;
-            // new apps slot in BEFORE the layout tiles, matching the build order
-            const entry = makeTileEntry(appTileOf(a));
-            const li = band.findIndex((x) => x.tile.kind === "layout");
-            if (li >= 0) band.splice(li, 0, entry);
-            else band.push(entry);
-            shifted = true;
+            const key = (a.slug || a.id).toLowerCase();
+            if (shown.has(key)) continue;
+            entries.push({ tile: { ...appTileOf(a), orderKey: `app:${key}` }, img: null });
           }
         }
-        // THE DOCK FOLLOWS THE CATALOG TOO (his report, 2026-08-29: renaming
-        // a workspace left the OLD one in the dock until a restart). dockKeys
-        // is persisted membership — a renamed layout's key simply stopped
-        // resolving, and reconcileDock keeps any button whose key is still in
-        // the list, so the dead tile sat there forever. Prune keys whose row
-        // is gone; the survivor re-enters from the wall.
-        if (Array.isArray(fresh) || Array.isArray(rows)) {
-          const liveKeys = new Set<string>();
-          if (Array.isArray(fresh)) for (const l of fresh) liveKeys.add(`layout:${(l.name || "").toLowerCase()}`);
-          if (Array.isArray(rows)) for (const a of rows.filter(wallAppRow).filter(hosted)) liveKeys.add(`app:${(a.slug || a.id).toLowerCase()}`);
-          // Only OUR dynamic families are prunable — nav slots, folders and
-          // anything else the dock carries are none of this code's business —
-          // and a read that answered nothing prunes nothing (keepDockKeys).
-          const kept = keepDockKeys(dockKeys, {
-            apps: Array.isArray(rows) ? [...liveKeys].filter((k) => k.startsWith("app:")) : null,
-            layouts: Array.isArray(fresh) ? [...liveKeys].filter((k) => k.startsWith("layout:")) : null,
-          });
-          if (kept.length !== dockKeys.length) {
-            dockKeys = kept;
-            persistDock();
-            reconcileDock();
-            shifted = true;
-          }
-        }
-        if (shifted) positionWall();
+        wallCatalog = new Map(entries.map((e) => e.tile).filter((t) => t.orderKey).map((t) => [t.orderKey!, t]));
       }).catch(() => { /* next visit refetches */ });
     };
     document.addEventListener("glyphh:apps-changed", onCatalogChanged);
@@ -4143,187 +3029,8 @@ async function init(): Promise<void> {
     // tile's spot into a slot row anchored high, so the wall stays visible
     // (and pannable) beneath; close zooms it back to its spot. ──
     const openList: TileEntry[] = [];
-    // ── DOCK AUTO-HIDE (Appearance page, SDK-persisted pref, default ON):
-    // the dock stays hidden until the mouse reaches the top of the page —
-    // macOS-dock style. The hotzone catches the hover; the peek class slides
-    // the dock in OVER whatever is open (no relayout on hover). ──
-    // ── DOCK MAGNIFICATION — a SUBTLE ARCHED zoom rippling under the cursor
-    // (default 20%). Slots are RE-LAID OUT with their scaled widths, so
-    // neighbours push apart and never overlap; a slight downward arc follows
-    // the gaussian. Strength: the Appearance slider (echoDockZoom, 1 = off). ──
-    let dockZoom = 1.2;
-    let dockZoomRaf = 0;
-    const applyDockZoomAt = (clientX: number | null): void => {
-      dockZoomRaf = 0;
-      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
-      if (!dockEl) return;
-      const kids = Array.from(dockEl.children) as HTMLElement[];
-      if (!kids.length) return;
-      if (clientX == null || dockZoom <= 1.001) {
-        for (const c of kids) { if (c.style.transform) c.style.transform = ""; }
-        return;
-      }
-      const dockRect = dockEl.getBoundingClientRect();
-      const gap = parseFloat(getComputedStyle(dockEl).columnGap || "16") || 16;
-      // Base geometry ACCUMULATED from widths (transform-immune) — never from
-      // live rects, which move with the transforms and fed the jitter.
-      const widths0 = kids.map((c) => c.offsetWidth);
-      const lefts0: number[] = [];
-      { let acc = 0; for (const w0 of widths0) { lefts0.push(acc); acc += w0 + gap; } }
-      const sigma = 120;
-      const scales = kids.map((_c, i) => {
-        const center = dockRect.left + lefts0[i]! + widths0[i]! / 2;
-        const d = Math.abs(clientX - center);
-        return 1 + (dockZoom - 1) * Math.exp(-(d * d) / (2 * sigma * sigma));
-      });
-      // Re-layout with the scaled widths, centered against the base row —
-      // this is what keeps the slots from ever overlapping.
-      const widths = widths0.map((w0, i) => w0 * scales[i]!);
-      const total = widths.reduce((a, w) => a + w, 0) + gap * (kids.length - 1);
-      const baseTotal = lefts0[lefts0.length - 1]! + widths0[widths0.length - 1]! - lefts0[0]!;
-      let x = lefts0[0]! + baseTotal / 2 - total / 2;
-      kids.forEach((c, i) => {
-        const cx = x + widths[i]! / 2;
-        const tx = cx - (lefts0[i]! + widths0[i]! / 2);
-        const ty = (scales[i]! - 1) * widths0[i]! * 0.18;   // the arc — a gentle dip
-        const t = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${scales[i]!.toFixed(3)})`;
-        if (c.style.transform !== t) c.style.transform = t;
-        x += widths[i]! + gap;
-      });
-    };
-    const queueDockZoom = (clientX: number | null): void => {
-      if (dockZoomRaf) return;
-      dockZoomRaf = requestAnimationFrame(() => applyDockZoomAt(clientX));
-    };
-    // ONE pointer check drives the dock ZOOM. (The hover-peek is gone —
-    // syncWallVisibility owns dock visibility now: CC showing → dock shows;
-    // covered → hidden unless auto-hide is off.) Drags suspend the zoom.
-    document.addEventListener("mousemove", (ev) => {
-      const dragging = dragIconKey != null
-        || document.body.classList.contains("wb-mouse-drag")
-        || document.body.classList.contains("echo-drag");
-      if (dragging) { queueDockZoom(null); return; }
-      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
-      if (!dockEl) return;
-      if (document.body.classList.contains("echo-dock-tucked")
-        && !document.body.classList.contains("echo-dock-peek")) { queueDockZoom(null); return; }
-      const r = dockEl.getBoundingClientRect();
-      const near = r.width > 0 && r.bottom > 0 && ev.clientY >= r.top - 26 && ev.clientY <= r.bottom + 26;
-      queueDockZoom(near ? ev.clientX : null);
-    });
-    document.addEventListener("mouseleave", () => { queueDockZoom(null); });
-    // The tucked dock's hot zone. Document mousemove can't be the trigger —
-    // a WEBVIEW under the cursor swallows host mouse events, and covered-wall
-    // panels reach the top edge — so a host-level strip (above every panel
-    // layer) catches the hover instead, and leaving the BAR re-tucks.
-    {
-      const strip = document.createElement("div");
-      strip.className = "echo-dock-hotstrip";
-      document.body.appendChild(strip);
-      // Desktop's window drag strip owns the top ~38px and eats mouse events;
-      // the hover zone (and the peeked dock) start below it. Web has no strip.
-      if (!IS_WEB_TARGET) document.body.classList.add("wb-has-dragstrip");
-      // THE DOCK DROPS DOWN AGAIN (his order, 2026-09-18). Resting on the top
-      // edge peeks a tucked dock back over the panels; the delay is the
-      // member's own setting, so a pointer crossing the edge on its way
-      // somewhere else never drags it down.
-      let revealTimer = 0;
-      const peek = (on: boolean): void => {
-        window.clearTimeout(revealTimer);
-        if (!on) { document.body.classList.remove("echo-dock-peek"); return; }
-        if (!document.body.classList.contains("echo-dock-tucked")) return;
-        if (document.body.classList.contains(DOCK_OFF_CLASS)) return;
-        revealTimer = window.setTimeout(() => {
-          if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
-        }, dockRevealMs);
-      };
-      strip.addEventListener("mouseenter", () => peek(true));
-      strip.addEventListener("mouseleave", () => window.clearTimeout(revealTimer));
-      // The deep band, without taking a click from anyone: the host DOM sees
-      // the pointer here, and only a webview under the cursor does not - which
-      // is exactly what the sliver above is for.
-      // Leaving the BAR re-tucks: the strip is hidden while peeked, so the
-      // dock itself owns the exit. Judged on EVERY move, not on mouseover
-      // (his report, 2026-10-07: the dock stayed down until the pointer
-      // reached the left rail — mouseover fires only when the element under
-      // the pointer changes, so a move down inside one big element never
-      // closed it), and on the pointer leaving the window or the window
-      // losing focus.
-      const belowBar = (ev: MouseEvent): boolean => {
-        const t = ev.target as HTMLElement | null;
-        if (t?.closest(".echo-topbar") || t?.closest("#echo-dock-layer")) return false;
-        const bar = document.querySelector<HTMLElement>(".echo-topbar")?.getBoundingClientRect();
-        return !bar || ev.clientY > bar.bottom + 24;
-      };
-      document.addEventListener("mousemove", (ev) => {
-        if (!document.body.classList.contains("echo-dock-tucked")) return;
-        if (document.body.classList.contains("echo-dock-peek")) { if (belowBar(ev)) peek(false); return; }
-        const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--wb-top-inset") || "0", 10) || 0;
-        if (ev.clientY <= top + 40 && ev.clientX >= (document.getElementById("echo-dock-layer")?.getBoundingClientRect().left ?? 0)) peek(true);
-        else window.clearTimeout(revealTimer);
-      });
-      document.addEventListener("mouseover", (ev) => {
-        if (document.body.classList.contains("echo-dock-peek") && belowBar(ev)) peek(false);
-      });
-      document.documentElement.addEventListener("mouseleave", () => { if (document.body.classList.contains("echo-dock-peek")) peek(false); });
-      window.addEventListener("blur", () => { if (document.body.classList.contains("echo-dock-peek")) peek(false); });
-    }
-    const readAutoHide = (): void => {
-      void Promise.all([
-        yoApi?.getPreference?.("echoAutoHideDock", true) ?? true,
-        yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
-        yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
-        yoApi?.getPreference?.("echoDockRevealMs", 350) ?? 350,
-        yoApi?.getPreference?.(DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT) ?? DOCK_ENABLED_DEFAULT,
-      ]).then(([d, z, pp, rv, en]) => {
-        // SHOW THE DOCK (his order, 2026-10-04): off = not rendered at all —
-        // the stylesheet drops the bar, the portal layer and the hover strip
-        // under body.echo-dock-off, and every band measured from the dock
-        // reads zero. The wall, the rail and the menus still open everything
-        // the dock did (New session, Settings, the command center, Close all),
-        // and the wall LEADS with the dock's own tiles (renderPages) — so a
-        // flip of the switch repaints the pages, live, on both surfaces.
-        // OFF unless the member saved on (DOCK_ENABLED_DEFAULT); the value is
-        // kept for the next mount's first paint (see the mount).
-        const dockOn = dockEnabledFrom(en);
-        dockEnabledLast = dockOn;
-        if (applyDockEnabled(document.body, dockOn)) renderPages();
-        const rvn = Number(rv);
-        dockRevealMs = Number.isFinite(rvn) ? Math.max(0, Math.min(1500, rvn)) : 350;
-        document.body.classList.toggle("echo-dock-autohide", d !== false);
-        document.body.classList.remove("echo-dock-peek");
-        const zn = Number(z);
-        // CLAMPED at 1.5 (his rule, 2026-08-20): past that the arc outgrows
-        // any spacing the row can reserve. Old prefs saved up to 2 clamp down.
-        dockZoom = Number.isFinite(zn) ? Math.max(1, Math.min(1.5, zn)) : 1.2;
-        document.documentElement.style.setProperty("--dock-zoom", String(dockZoom));
-        const ppn = Number(pp);
-        const nextPp = Number.isFinite(ppn) ? Math.max(8, Math.min(120, ppn)) : 56;
-        if (nextPp !== perPage) { perPage = nextPp; renderPages(); }
-        syncWallVisibility();
-        // The pill and the card band both follow the dock's presence.
-        repaintStage();
-      });
-    };
-    readAutoHide();
-    const onAutoHideChanged = (): void => {
-      if (!body.isConnected) {
-        document.removeEventListener("glyphh:echo-autohide-changed", onAutoHideChanged);
-        document.removeEventListener(DOCK_ENABLED_CHANGED_EVENT, onAutoHideChanged);
-        return;
-      }
-      readAutoHide();
-    };
-    document.addEventListener("glyphh:echo-autohide-changed", onAutoHideChanged);
-    document.addEventListener(DOCK_ENABLED_CHANGED_EVENT, onAutoHideChanged);
-    // DESKTOP: Settings may live in another document (an agent panel is also
-    // home.html); main's broadcast carries the write here. Web: no broadcast —
-    // one document, the event above.
-    try {
-      yoApi?.onPreferenceChanged?.((key) => {
-        if (key === DOCK_ENABLED_PREF || key === "echoAutoHideDock" || key === "echoDockZoom" || key === "echoDockRevealMs") onAutoHideChanged();
-      });
-    } catch { /* no listener on this host */ }
+    // THE DRAG STRIP (the fixed top bar) is the desktop's.
+    if (!IS_WEB_TARGET) document.body.classList.add("wb-has-dragstrip");
     // A layout opened in Echo pins its GRID: cards sit at the layout's own
     // col/row geometry until a card outside the grid appears (then the flow
     // layout takes back over).
@@ -4675,77 +3382,6 @@ async function init(): Promise<void> {
     // pin survives modifier keyups; opening/closing the last card or Esc
     // clears both. The pin state rides a BODY class so the composer band's
     // button (help/code.ts DOM, a different layer) can mirror it.
-    let shadowPinned = false;
-    // The CC's CLOSE (✕, top right — his rule 2026-08-20): visible whenever
-    // the lifted command center sits over open panels; does exactly what Esc
-    // does there — drop the wall back behind the cards.
-    let ccCloseBtn: HTMLButtonElement | null = null;
-    const syncCcClose = (on: boolean): void => {
-      if (!ccCloseBtn) {
-        ccCloseBtn = document.createElement("button");
-        ccCloseBtn.className = "echo-cc-close hidden";
-        ccCloseBtn.type = "button";
-        ccCloseBtn.title = "Close the command center (Esc)";
-        ccCloseBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-        ccCloseBtn.addEventListener("click", () => setShadow(false, false));
-        stage.appendChild(ccCloseBtn);
-      }
-      ccCloseBtn.classList.toggle("hidden", !(on && openList.length > 0));
-    };
-    const setShadow = (on: boolean, pin: boolean): void => {
-      shadowPinned = on && pin;
-      cardsLayer.classList.toggle("echo-shadow", on);
-      syncCcClose(on);
-      document.body.classList.toggle("echo-cc-pinned", shadowPinned);
-      // Body mirror for layers OUTSIDE the workbench DOM: the layout-docked
-      // agent holder rides a body-level layer (z 118) that would paint OVER
-      // the raised wall — it hides while the wall is lifted (⌘⇧Space).
-      document.body.classList.toggle("echo-wall-lifted", on);
-      // Pull focus out of any app webview so Esc reaches the document —
-      // without this, Esc "didn't work" whenever an app had keyboard focus.
-      if (on) {
-        (document.activeElement as HTMLElement | null)?.blur?.();
-        stage.focus?.();
-      }
-      syncWallVisibility();
-      // The dock's visibility JUST changed the band's top edge — re-measure,
-      // or the layout keeps the lifted-state gap after Esc drops the wall.
-      layoutCards();
-    };
-    // The composer band's command-center button (help/code.ts) is the eye: it
-    // pin-toggles the shadow so the wall shows over the open cards.
-    /** ONE ECHO BUTTON ON BOTH SURFACES (his order, 2026-10-06): the wall
-     *  lifts over the open cards and the same click drops it. A full-screen
-     *  page up at the time closes first (his order, 2026-10-05) — the overlay
-     *  lifts over the agent; the search is cleared and takes the focus so a
-     *  hand can type straight into it. */
-    // THE WALL DROPS ON A DECISION (his order, 2026-10-07): + New, a session
-    // on the rail, any rail click, the command icon, Esc — if the lifted wall
-    // is up, it goes; nothing else looks like nothing happened. The doors
-    // call this; a wall that is not up is left alone.
-    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall = () => {
-      if (!cardsLayer.classList.contains("echo-shadow")) return;
-      setShadow(false, false);
-    };
-    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
-      if (!openList.length) return;
-      const on = !shadowPinned;
-      if (on) closeWebFullPanel();
-      setShadow(on, on);
-      if (on) { searchEl.value = ""; paintSearch(); searchEl.focus(); }
-    };
-    // ESC closes the lifted command center when apps/a layout are open behind
-    // it (his rule, 2026-08-19). Deliberately DEFERS to more local Escapes:
-    // an open peek, menu, or icon-edit mode eats the key first.
-    document.addEventListener("keydown", (ev) => {
-      if (ev.key !== "Escape" || !body.isConnected) return;
-      if (!cardsLayer.classList.contains("echo-shadow") || !openList.length) return;
-      if (document.body.classList.contains("peek-open")) return;
-      if (document.querySelector(".ws-tab-ctx-menu")) return;
-      if (iconEditMode) return;
-      ev.stopPropagation();
-      setShadow(false, false);
-    }, true);
     const EXPAND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const collapseCard = (card: HTMLElement): void => {
@@ -5006,8 +3642,7 @@ async function init(): Promise<void> {
       // reserved (his report, 2026-08-28: panels rode up underneath it); a
       // TUCKED dock is off screen and reserves nothing (same day: a dead strip
       // above every panel); a dock turned OFF reserves nothing either.
-      const dock = measureDock(stageR.top);
-      let top = cardBandTop(dock.band, dock.reach, margin);
+      let top = margin;
       let bottom = h - margin;
       // Anytime the WALL is off screen (cards fully covering it, or a layout
       // without an agent cell) the composer is TUCKED — overlay, no reserved
@@ -5099,142 +3734,32 @@ async function init(): Promise<void> {
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
-    let dockProofTimer = 0;
+    /** The body classes the composer and the full-screen page key off: are
+     *  cards or a layout on the stage, and so is the agent tucked. */
     function syncWallVisibility(): void {
       if (!echoWired) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
-      // ANY open panel retires the launcher pages — the ⌃⌥ / eye peek lifts.
       const cardsUp = openList.some((e) => e.card);
-      // A FULL-SCREEN PAGE (Build / Customize / Artifacts) covers the command
-      // center like a card does (his report, 2026-10-07: "no matter what
-      // setting the dock has the build and customize pages render over it
-      // until it is summoned" — the page sat over the wall's own dock, so a
-      // pinned dock vanished and an auto-hide one never tucked). Counted here,
-      // the dock parks in the body-level layer above the page: pinned = always
-      // on, and the page reserves its band (placeWebFullPanel); auto-hide =
-      // tucked, the top-edge hover peeks it.
       const fullUp = document.body.classList.contains("web-full-open");
-      const shadowOn = cardsLayer.classList.contains("echo-shadow");
-      const hidden = (layoutUp || cardsUp || fullUp) && !shadowOn;
-      pagesEl.style.visibility = hidden ? "hidden" : "";
-      dotsEl.style.visibility = hidden ? "hidden" : "";
-      body.querySelectorAll<HTMLElement>(".echo-page-arrow").forEach((a) => { a.style.visibility = hidden ? "hidden" : ""; });
-      pagesEl.style.pointerEvents = hidden ? "none" : "";
-      // THE DOCK RULE (his rule, 2026-08-18): anytime the COMMAND CENTER is
-      // showing (bare wall, or the shadow peek over open panels) the dock
-      // shows; when the CC is covered it hides — UNLESS auto-hide is OFF,
-      // which pins it always-on.
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      const autoHideOn = document.body.classList.contains("echo-dock-autohide");
-      // TUCK, don't vanish (his spec, 2026-08-28): auto-hide now slides the
-      // dock off the top — fixed and above EVERY layer (the agent panel was
-      // burying it) — leaving the hint sliver; hovering the top edge peeks
-      // the dock back over the panels. Pinned (auto-hide off) it stays put.
-      const dockTucked = hidden && autoHideOn && !document.body.classList.contains(DOCK_OFF_CLASS);
-      if (bar) bar.style.visibility = "";
-      document.body.classList.toggle("echo-dock-tucked", dockTucked);
-      // DOCK PROOF (2026-09-16): one line per visibility change, after layout settles.
-      window.clearTimeout(dockProofTimer);
-      dockProofTimer = window.setTimeout(() => {
-        const live = document.querySelector<HTMLElement>(".echo-topbar");
-        const r = live?.getBoundingClientRect();
-        const layer = document.getElementById("echo-dock-layer")?.getBoundingClientRect();
-        console.warn("[dock] sync", JSON.stringify({ hidden, autoHideOn, tucked: dockTucked, parked: !!live?.closest("#echo-dock-layer"),
-          bar: r ? `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}` : "absent",
-          layer: layer ? `${Math.round(layer.left)},${Math.round(layer.top)} ${Math.round(layer.width)}x${Math.round(layer.height)}` : "absent",
-          stage: `${stage.clientWidth}x${stage.clientHeight}`, cards: openList.filter((e) => e.card).length }));
-      }, 600);
-      if (!dockTucked) document.body.classList.remove("echo-dock-peek");
-      // The CC + reset buttons live in the COMPOSER'S side band now (help/
-      // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
-      // live LAYOUT owns the surface (no dock, no wall reveal) and the layout
-      // bar's own close is the exit there.
+      const hidden = layoutUp || cardsUp || fullUp;
+      // The RESET button rides the composer's side band (help/code.ts): only over loose cards.
       document.body.classList.toggle("echo-cc-needed", cardsUp && !layoutUp);
-      // The composer NEVER hides while the echo panel is showing (his rule,
-      // 2026-08-19) — it tucks to the page bottom ONLY when cards fully cover
-      // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
-      // (The 2026-08-20 lingering tuck was reverted with the flow layout —
-      // "move back to before the changes this morning".)
-      // THE LOCK does NOT change this computation (his correction, 2026-08-20:
-      // "i don't want a space reserved — just leave it floating and open"):
-      // covered proceeds as ever, cards take the FULL band, and the lock's
-      // CSS pin (body.echo-agent-locked, !important) simply overrides the
-      // tuck transform so the agent floats OVER the cards instead of hiding.
       const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
-      // A separate signal for "the WALL is not on screen" regardless of WHY —
-      // covered excludes live layouts on purpose (other consumers key off
-      // that), but chrome that belongs to the command center alone (the
-      // Dashboard | Desktop surface tabs) must hide for layouts too.
-      // The TUCK's CSS keys off echo-wall-hidden, not -covered.
       document.body.classList.toggle("echo-wall-hidden", hidden);
       if (fullUp) placeWebFullPanel();
-      // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
-      // leaves focus inside the agent — :focus-within then pins it up until a
-      // hover cycle releases it ("doesn't hide right away"). The moment the
-      // wall becomes covered, any focus held in the composer drops so the
-      // tuck starts immediately.
+      // Opening a panel FROM the composer leaves focus inside the agent; the
+      // moment the stage is covered, button focus held there drops so the tuck
+      // starts. A TEXTAREA/INPUT is the user TYPING — never taken.
       if (covered && !wasCovered) {
         const active = document.activeElement as HTMLElement | null;
-        // Release BUTTON focus only (the ⋮-menu case). A TEXTAREA/INPUT is the
-        // user TYPING — the agent opening panels mid-run must never steal the
-        // keyboard out of their hands.
         if (active && active.closest(".code-agent")
           && !(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLInputElement)
           && !active.isContentEditable) active.blur();
       }
     }
-    // The lock flipped mid-session: recompute the tuck + card band right away.
     window.addEventListener("glyphh:agent-lock-changed", () => { syncWallVisibility(); layoutCards(); });
-    // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
-    // page). The search bar is gone; drips moved onto the composer card
-    // (help/code.ts wires the picker there, opening upward). ──
-    {
-      // The DOCK — nav slots + any icons TRADED in from the pages. Sections
-      // open as wall cards; Scheduled Tasks and Browser are workbench tools;
-      // Settings is the SETTINGS MODAL (navigation.ts owns it — bridged);
-      // traded icons open exactly like their page selves. Slots can NEVER be
-      // deleted — only MOVED (dock ⇄ pages); membership + order persist
-      // (echoDockOrder, owned by the launcher's reconcileDock).
-      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"))!;
-      for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
-      dockEl.addEventListener("click", (ev) => {
-        const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");
-        if (!b || !dockEl.contains(b)) return;
-        ev.stopPropagation();
-        const key = b.dataset.dock || "";
-        // SHIFT (his order, 2026-09-16): open that thing AGAIN — another tab
-        // form, another card of the tool.
-        //
-        // NOT an agent, for now (his order, 2026-09-17). A second agent panel
-        // has to boot a whole second shell in a webview, because the agent's
-        // view is one node the page moves between hosts rather than clones, and
-        // it reads wrong beside the real one. Shift on an agent falls through
-        // to the ordinary open, which re-fronts the one that is already there.
-        if (ev.shiftKey) {
-          if (key === "newtab") { openNewTabForm(); return; }
-          const again = key === "glyphh" ? null : entriesByKey().get(key);
-          if (again && !again.tile.cliAgent) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
-        }
-        if (dockItemFor(key)) { openDockItem(key); return; }
-        const entry = entriesByKey().get(key);
-        if (entry) activateTile(entry);
-      });
-      dockEl.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => {
-        b.addEventListener("dragover", (ev) => { if (dragIconKey && dragIconKey !== b.dataset.dock) ev.preventDefault(); });
-        b.addEventListener("drop", (ev) => {
-          ev.preventDefault(); ev.stopPropagation();
-          if (dragIconKey && dragIconKey !== b.dataset.dock) moveKeyToDock(dragIconKey, b.dataset.dock || null);
-        });
-      });
-      dockEl.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
-      dockEl.addEventListener("drop", (ev) => {
-        ev.preventDefault();
-        if (dragIconKey) moveKeyToDock(dragIconKey, null);
-      });
-    }
-    // B1: the layout bar — one control that closes the whole layout.    }
     // B1: the layout bar — one control that closes the whole layout. Shown only
     // while a layout's cards are on stage (any open card carries a layoutId).
     // Defined ABOVE layoutCards so there is no forward reference.
@@ -5264,14 +3789,6 @@ async function init(): Promise<void> {
       .addEventListener("click", () => {
         if (openList.some((e) => e.layoutId != null)) closeLayoutGroup();
         else resetEcho();   // loose panels: close everything, back to the CC
-      });
-    // Command center + reset ride the layout bar too (his rule, 2026-08-19):
-    // right of the close — just the CC (lift the wall over the layout). The
-    // RESET moved to the agent panel alone (his rule, 2026-08-20), behind a
-    // confirm — two resets was one too many, and this one fired bare.
-    layoutBar.querySelector<HTMLElement>(".echo-layout-cc")!
-      .addEventListener("click", () => {
-        (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
       });
     let layoutBarIntro = 0;
     function paintLayoutBar(): void {
@@ -5621,7 +4138,6 @@ async function init(): Promise<void> {
       // close click.
       e.streamed?.dispose();
       e.streamed = undefined;
-      drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       scheduleWallSave();   // the open set changed — persist it
@@ -5697,7 +4213,6 @@ async function init(): Promise<void> {
           card.remove();   // NEVER leave a zombie card
         }
       }, 380);
-      if (!openList.length) setShadow(false, false);
       layoutCards();
     };
     /** Hide a card alive: off the stage, out of the lists, its page running. */
@@ -5707,7 +4222,6 @@ async function init(): Promise<void> {
       if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
       e.open = false;
       e.parked = true;
-      drawTile(e);
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       scheduleWallSave();
@@ -5730,7 +4244,6 @@ async function init(): Promise<void> {
         destroyParkedCard(oldest[0]);
       }
       console.warn("[echo] park", JSON.stringify({ key, slug: e.tile.slug, parked: parkedCards.size }));
-      if (!openList.length) setShadow(false, false);
       layoutCards();
     };
     /** A parked card comes back where its open wants it: on the lists, on
@@ -5744,7 +4257,6 @@ async function init(): Promise<void> {
       card.style.pointerEvents = "";
       card.classList.add("placed");
       openList.push(e);
-      drawTile(e);
       const wv = card.querySelector("webview") as WebviewEl | null;
       let wcId: number | undefined;
       try { wcId = wv?.getWebContentsId?.(); } catch { wcId = undefined; }
@@ -5784,7 +4296,6 @@ async function init(): Promise<void> {
         echoLayoutName = null;
         echoActiveLayout = null;
         activeLayoutId = null;
-        setShadow(false, false);
       }
       layoutCards();
     };
@@ -6031,16 +4542,12 @@ async function init(): Promise<void> {
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
       });
-      setShadow(false, false);
       setRect(card, iconRect(e) ?? centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
       e.open = true;
-      drawTile(e);
       openList.push(e);
-      // Retire the wall NOW that the card is registered — setShadow() above ran
-      // before this push, so cardsUp was still false when it computed. Re-run so
-      // the freshly-opened card actually hides (and de-clicks) the wall.
+      // The card is registered: the body classes follow (the composer tucks).
       syncWallVisibility();
       scheduleWallSave();   // the open set changed — persist it
       // (Layout opens assign cells explicitly — never claim during one.)
@@ -6287,7 +4794,6 @@ async function init(): Promise<void> {
       const caps = surfaceCaps(IS_WEB_TARGET);
       const plan = surfaceLayoutCells(layoutIn.splits || [], apps, caps);
       const lines = workspaceOpenLines(layoutIn.name, plan);
-      setShadow(false, false);   // a pick is a decision — the overlay drops
       if (lines.error) { toastErr(lines.error); return; }
       const layout = plan.skipped.length
         ? { ...layoutIn, splits: (layoutIn.splits || []).filter((c) => surfaceLayoutCells([c], apps, caps).keep.length > 0) }
@@ -6884,7 +5390,6 @@ async function init(): Promise<void> {
     const retargetCard = (pinned: TileEntry, t: EchoTile): void => {
       const card = pinned.card;
       if (!card) return;
-      setShadow(false, false);   // the pick lands VISIBLE, not behind the veil
       clearCardContent(pinned, card);
       pinned.tile = { ...t, sticky: true };
       card.querySelector(".echo-card-head span")!.textContent = t.name;
@@ -6977,7 +5482,7 @@ async function init(): Promise<void> {
      * echo page and the one in apps on the rail should both open a new agent.
      * The rail is correct"). This used to bail to focusing the composer when a
      * layout already showed one — which is why the wall mark appeared to do
-     * nothing while the rail's worked: the rail runs openCommandCenter()
+     * nothing while the rail's worked: the rail runs ensureWorkbench()
      * first, so the guard never fired for it.
      * The tile honors the REMEMBERED view (his rule, 2026-09-11: start in
      * terminal is fine, but revert when possible) — chat only when the
@@ -7198,187 +5703,6 @@ async function init(): Promise<void> {
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
      *  (standard confirm). */
-    const FOLDER_PAGE_SIZE = 12;
-    function openFolderModal(folderId: string): void {
-      const f = folders.find((x) => x.id === folderId);
-      if (!f) return;
-      document.querySelector(".echo-folder-overlay")?.remove();
-      const overlay = document.createElement("div");
-      overlay.className = "echo-folder-overlay";
-      const card = document.createElement("div");
-      card.className = "echo-folder-card";
-      overlay.appendChild(card);
-      let page = 0;
-      const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey, true); };
-      const onKey = (ev: KeyboardEvent): void => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
-      document.addEventListener("keydown", onKey, true);
-      overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
-      // Backdrop = OUT: dropping a member here returns it to the pages.
-      overlay.addEventListener("dragover", (ev) => { if (dragIconKey && ev.target === overlay) ev.preventDefault(); });
-      overlay.addEventListener("drop", (ev) => {
-        if (ev.target !== overlay) return;
-        ev.preventDefault();
-        const group = (dragGroupKeys ?? (dragIconKey ? [dragIconKey] : [])).filter((k) => f.keys.includes(k));
-        if (group.length) { for (const k of group) removeFromFolder(k, f.id); paint(); }
-      });
-      const paint = (): void => {
-        const pages = Math.max(1, Math.ceil(f.keys.length / FOLDER_PAGE_SIZE));
-        if (page >= pages) page = pages - 1;
-        const slice = f.keys.slice(page * FOLDER_PAGE_SIZE, (page + 1) * FOLDER_PAGE_SIZE);
-        card.innerHTML = "";
-        const head = document.createElement("div");
-        head.className = "echo-folder-head";
-        const title = document.createElement("input");
-        title.className = "echo-folder-name";
-        title.value = f.name;
-        title.maxLength = 40;
-        title.addEventListener("change", () => {
-          f.name = title.value.trim() || "Folder";
-          title.value = f.name;
-          persistFolders();
-          refreshFolderTiles();
-        });
-        title.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") title.blur(); });
-        head.appendChild(title);
-        if (!f.keys.length) {
-          const del = document.createElement("button");
-          del.className = "echo-folder-delete";
-          del.type = "button";
-          del.textContent = "Delete folder";
-          del.addEventListener("click", () => {
-            void (window as unknown as { __appConfirm?: (o: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean> })
-              .__appConfirm?.({ title: `Delete "${f.name}"?`, body: "The folder is empty — nothing else is removed.", confirmLabel: "Delete", danger: true })
-              .then((ok) => { if (ok) { deleteFolder(f.id); close(); } });
-          });
-          head.appendChild(del);
-        }
-        const x = document.createElement("button");
-        x.className = "echo-folder-close";
-        x.type = "button";
-        x.title = "Close";
-        x.textContent = "✕";
-        x.addEventListener("click", close);
-        head.appendChild(x);
-        card.appendChild(head);
-        const grid = document.createElement("div");
-        grid.className = "echo-folder-grid";
-        card.appendChild(grid);
-        // SAME direction verbs as the wall: sweep LEFT→RIGHT on the grid
-        // background to SELECT a group (drag any member to the backdrop to
-        // move them all out), RIGHT→LEFT to open the selection.
-        const modalSel = new Set<string>();
-        const paintModalSel = (): void => {
-          grid.querySelectorAll<HTMLElement>(".echo-folder-item").forEach((b) => {
-            b.classList.toggle("selected", modalSel.has(b.dataset.key || ""));
-          });
-        };
-        grid.addEventListener("pointerdown", (ev) => {
-          if (ev.button !== 0 || (ev.target as HTMLElement).closest(".echo-folder-item")) return;
-          const sx = ev.clientX, sy = ev.clientY;
-          let lastX = sx;
-          let live = false;
-          let band: HTMLDivElement | null = null;
-          const rects = [...grid.querySelectorAll<HTMLElement>(".echo-folder-item")]
-            .map((b) => ({ key: b.dataset.key || "", r: b.getBoundingClientRect() }));
-          const move = (mv: PointerEvent): void => {
-            lastX = mv.clientX;
-            if (!live && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 6) return;
-            if (!live) {
-              live = true;
-              band = document.createElement("div");
-              band.className = "echo-marquee";
-              band.style.position = "fixed";
-              document.body.appendChild(band);
-            }
-            const L = Math.min(sx, mv.clientX), T = Math.min(sy, mv.clientY);
-            const W = Math.abs(mv.clientX - sx), H = Math.abs(mv.clientY - sy);
-            band!.style.left = `${L}px`; band!.style.top = `${T}px`;
-            band!.style.width = `${W}px`; band!.style.height = `${H}px`;
-            modalSel.clear();
-            for (const { key, r } of rects) {
-              if (key && !(r.right < L || r.left > L + W || r.bottom < T || r.top > T + H)) modalSel.add(key);
-            }
-            paintModalSel();
-          };
-          const up = (): void => {
-            document.removeEventListener("pointermove", move);
-            document.removeEventListener("pointerup", up);
-            band?.remove();
-            if (!live) return;
-            if (!modalSel.size) { paintModalSel(); return; }
-            if (lastX < sx) {
-              // R→L: open every selected member, like the wall.
-              const picks = [...modalSel];
-              modalSel.clear();
-              close();
-              for (const k of picks) { const t = wallCatalog.get(k); if (t) activateTile(makeTileEntry(t)); }
-            } else {
-              paintModalSel();   // L→R: hold the selection for the drag out
-            }
-          };
-          document.addEventListener("pointermove", move);
-          document.addEventListener("pointerup", up);
-        });
-        if (!slice.length) {
-          const empty = document.createElement("div");
-          empty.className = "echo-folder-empty";
-          empty.textContent = "Empty — drag apps or workspaces onto the folder's icon to file them.";
-          grid.appendChild(empty);
-        }
-        for (const key of slice) {
-          const t = wallCatalog.get(key);
-          const btn = document.createElement("button");
-          btn.className = "echo-app-btn echo-folder-item";
-          btn.type = "button";
-          btn.dataset.key = key;
-          btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
-          const ic = btn.querySelector<HTMLElement>(".echo-app-ic");
-          const nm = btn.querySelector<HTMLElement>(".echo-app-name");
-          if (t) {
-            if (ic) { ic.innerHTML = iconInner(t); hydrateIcons(ic); }
-            if (nm) nm.textContent = t.name;
-            btn.title = t.name;
-            btn.addEventListener("click", () => { close(); activateTile(makeTileEntry(t)); });
-          } else {
-            // The member's app/layout no longer exists — show the honest
-            // remains; dragging it out (or clicking) clears the dead key.
-            if (ic) ic.innerHTML = `<span class="echo-app-fallback">?</span>`;
-            if (nm) nm.textContent = key.split(":").slice(1).join(":") || key;
-            btn.addEventListener("click", () => { removeFromFolder(key, f.id); paint(); });
-          }
-          btn.draggable = true;
-          btn.addEventListener("dragstart", (ev) => {
-            dragIconKey = key;
-            // A selected member drags the whole selection out together.
-            dragGroupKeys = modalSel.has(key) && modalSel.size > 1 ? [...modalSel] : null;
-            ev.dataTransfer?.setData("text/plain", key);
-            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-          });
-          btn.addEventListener("dragend", () => { dragIconKey = null; dragGroupKeys = null; });
-          grid.appendChild(btn);
-        }
-        if (pages > 1) {
-          const pager = document.createElement("div");
-          pager.className = "echo-folder-pager";
-          const prev = document.createElement("button");
-          prev.type = "button"; prev.textContent = "‹"; prev.disabled = page === 0;
-          prev.addEventListener("click", () => { page = Math.max(0, page - 1); paint(); });
-          const label = document.createElement("span");
-          label.textContent = `${page + 1} / ${pages}`;
-          const next = document.createElement("button");
-          next.type = "button"; next.textContent = "›"; next.disabled = page >= pages - 1;
-          next.addEventListener("click", () => { page = Math.min(pages - 1, page + 1); paint(); });
-          pager.append(prev, label, next);
-          card.appendChild(pager);
-        }
-      };
-      paint();
-      document.body.appendChild(overlay);
-    }
-    /** The Rail card's collapse affordance — the workspace cell's override
-     *  (hideLeft/hideRight) adds the edge icons LEFT of the expand icon; a
-     *  click narrows this card's grid column to the icon strip (gridRects
-     *  pins it) and flips the rail to icons mode via the placeholder. */
     const wireRailCollapse = (card: HTMLElement, slot: RailPanelSlot, body: HTMLElement): void => {
       const head = card.querySelector<HTMLElement>(".echo-card-head");
       if (!head) return;
@@ -7406,39 +5730,8 @@ async function init(): Promise<void> {
      *  the dock row, a slot traded onto the pages, or the dock's tiles leading
      *  the wall while the dock is off (his order, 2026-10-04: same actions as
      *  the dock). Keys are help/dock-items.ts (DOCK_ITEMS). */
-    const openDockItem = (key: string): void => {
-      const w = window as unknown as { __wbOpenSection?: (s: string) => void; __glyphhOpenSettings?: () => void; __wbEchoShadowPin?: () => void };
-      if (key === "glyphh") {
-        // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
-        // ALWAYS load a new agent with a new session no matter what… for some
-        // reason it is loading a previous state and the ui gets stuck"). No
-        // re-fronting an open panel, no reusing a layout's seat: another
-        // panel, told to start clean the moment it answers. The panel also
-        // refuses the store's pointer on its own (help/code.ts), so a dropped
-        // command cannot leave it on the last thread.
-        if (AGENT_INSTANCED) { openAgentInstance(GLYPHH_LOOP_ID, { type: "new-session" }); return; }
-        openAgentForLoop(GLYPHH_LOOP_ID);
-        return;
-      }
-      // CC and Close all are permanent slots that go INERT with nothing open
-      // (his order, 2026-08-28) — dim in the row, but never acting.
-      if ((key === "cc" || key === "closeall") && !document.body.classList.contains("echo-has-panels")) return;
-      if (key === "cc") { w.__wbEchoShadowPin?.(); return; }
-      if (key === "closeall") {
-        // CLOSE ALL means ALL — the layout group AND any loose panels opened
-        // beside it (his report, 2026-09-10: the layout closed, the strays
-        // stayed). resetEcho saves layout memory + parks terminals, then
-        // clears the whole stage.
-        resetEcho();
-        return;
-      }
-      if (key === "newtab") { openNewTabForm(); return; }
-      if (key === "settings") { w.__glyphhOpenSettings?.(); return; }
-      w.__wbOpenSection?.(key);
-    };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
-      if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
       // APP-WEB: a URL app and the Browser open IN-APP on the web too (his
       // order, 2026-10-04) — a streamed panel behind the `streamedPanels`
       // flag, the "Streamed panels are off" card otherwise (mountAppIntoCard /
@@ -7446,7 +5739,6 @@ async function init(): Promise<void> {
       // A NAV tile — a dock slot traded onto the pages, or the dock's own
       // slot leading the wall while the dock is off — acts exactly like its
       // dock self: ONE table (openDockItem) for both.
-      if (t.navKey) { openDockItem(t.navKey); return; }
       // HOME — the fixed first tile — and the agent tile are ONE identity
       // (Glyphh) with ONE behavior. The wall activates tiles DIRECTLY (this
       // path), not through ctl.openApp, which is why routing it only there
@@ -7487,7 +5779,6 @@ async function init(): Promise<void> {
         const pinnedT = seatHandoff || isCliAgent ? undefined : openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinnedT && !openingLayout) {
           const card = pinnedT.card!;
-          setShadow(false, false);
           clearCardContent(pinnedT, card);
           pinnedT.tile = { ...t, sticky: true };
           card.querySelector(".echo-card-head span")!.textContent = t.name;
@@ -7727,7 +6018,6 @@ async function init(): Promise<void> {
      *  fills the slot behind a veil that never lifts. */
     const flash = (card: HTMLElement | undefined): void => {
       if (!card) return;
-      setShadow(false, false);
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
@@ -7778,9 +6068,7 @@ async function init(): Promise<void> {
       window.cancelAnimationFrame(webFullPlaceTimer);
       webFullPlaceTimer = window.requestAnimationFrame(() => {
         if (!webFullHost) return;
-        const stageTop = stage.getBoundingClientRect().top;
-        const dock = measureDock(stageTop);
-        webFullHost.style.top = dock.band > 0 ? `${cardBandTop(dock.band, dock.reach, 0)}px` : "";
+        webFullHost.style.top = "";
       });
     };
     const closeWebFullPanel = (): void => {
@@ -8070,7 +6358,6 @@ async function init(): Promise<void> {
       echoLayoutName = null;
       echoActiveLayout = null;
       activeLayoutId = null;
-      setShadow(false, false);
       scheduleWallSave();   // the wall was cleared — persist the empty state
     };
     // The composer band's reset button (help/code.ts DOM) — close every
@@ -11047,7 +9334,6 @@ async function init(): Promise<void> {
   // degrades to "dock stays in the stage", never a dead wall. (The click
   // death it was blamed for was the document-scoped dock lookup running
   // against a DETACHED render subtree — fixed with body-first lookups.)
-  initDockPortal();
   // The debounce coalesces a drag into one PATCH; closing mid-debounce would
   // otherwise drop the last arrangement of the session.
   window.addEventListener("pagehide", flushUiState);
@@ -11568,12 +9854,9 @@ async function init(): Promise<void> {
     focusAppSlot(slot.id);
     return true;
   };
-  wbApp.__wbToggleAppSwitcher = () => {
-    openEchoSurface();
-    // With panels open, "open the command center" means SHOW THE WALL over
-    // them (the shadow pin) — and the same chord toggles back out.
-    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
-  };
+  // The wall is gone (his order, 2026-10-08): "open the command center" now
+  // only makes sure the layout surface is mounted.
+  wbApp.__wbToggleAppSwitcher = () => { openEchoSurface(); };
   // BOOT lands here instead (his rule, 2026-08-19): raise the surface, NO
   // shadow toggle — a boot-restored layout must come back seated, never with
   // the launcher lifted over it and no visible way down.

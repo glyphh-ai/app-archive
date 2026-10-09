@@ -104,24 +104,6 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
 
 // ── WHAT THE HOME SHELL BOOTS INTO ─────────────────────────────────────────
 
-/** What the home shell can boot into. */
-export type BootSurface = "agent" | "wall" | "dock" | "echo";
-
-/** The desktop boots the whole command center. */
-export const DESKTOP_BOOT_SURFACES: ReadonlyArray<BootSurface> = Object.freeze(["wall", "dock", "echo", "agent"]);
-
-/** THE WEB'S PAGE IS THE AGENT (his order, 2026-10-05): the wall and the dock
- *  are BUILT on the web — the same wall, the same dock — but do not paint at
- *  boot; the rail's Echo icon lifts them over the seated agent. */
-export function webBootSurfaces(web: boolean): ReadonlyArray<BootSurface> {
-  return web ? Object.freeze(["agent"] as BootSurface[]) : DESKTOP_BOOT_SURFACES;
-}
-
-/** Does this surface paint at boot? */
-export function bootsSurface(web: boolean, surface: BootSurface): boolean {
-  return webBootSurfaces(web).includes(surface);
-}
-
 // ── SETTINGS: THE GROUP PAGES ──────────────────────────────────────────────
 
 /** ONE PAGE (his report, 2026-10-07: "The Build and Customize tabs are
@@ -256,23 +238,9 @@ export function webNewClosesEverything(web: boolean): boolean {
   return web;
 }
 
-/** THE RAIL HEADER ON THE WEB IS THE DESKTOP'S (his order, 2026-10-05:
- *  "the left rail in web should work the same as the app. The icons should
- *  stay with the logo fixed in the same spot… In the web instead of the
- *  traffic lights you keep the logo in that spot."): the wordmark sits where
- *  the desktop's traffic lights sit, then the SAME two icons in the same
- *  order — Collapse, then Echo — at the same x whether the rail is open or
- *  collapsed, so a hand that knows where they are never misses. The
- *  desktop's own Echo buttons (#rail-echo-btn and the collapsed strip's
- *  twin) stay on the web. */
+/** THE WORDMARK holds the chrome spot on the web (the traffic lights' spot on
+ *  the desktop; his order, 2026-10-05). */
 export const WEB_RAIL_WORDMARK = ".app-rail-logo";
-export const WEB_RAIL_ECHO_BUTTONS: ReadonlyArray<string> = Object.freeze(["#rail-echo-btn", "#rail-echo-btn-strip"]);
-/** The rail header's order on both hosts: the chrome spot (traffic lights on
- *  the desktop, the wordmark on the web), then Collapse, then Echo. */
-export const RAIL_HEADER_ORDER: ReadonlyArray<string> = Object.freeze(["chrome", "collapse", "echo"]);
-export function webRailHeaderOrder(web: boolean): ReadonlyArray<string> {
-  return web ? RAIL_HEADER_ORDER : RAIL_HEADER_ORDER;
-}
 /** Does the wordmark hold the chrome spot here? Web only. */
 export function webRailWordmark(web: boolean): boolean {
   return web;

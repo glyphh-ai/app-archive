@@ -1,10 +1,10 @@
 /**
- * wall-prefs.ts — the LAYOUT preferences, as pure clamps plus one applier each.
+ * wall-prefs.ts — the SIDEBAR's layout preferences, as pure clamps plus one
+ * applier each. (The wall's own sliders went with the wall, 2026-10-08.)
  *
- * His ask, 2026-09-25: sliders for the wall's tiles-per-row, the overall width
- * of the tile layout, and the sidebar's tabs-per-row. All three are pure CSS
- * vars — nothing re-chunks, nothing re-renders — so each one applies LIVE while
- * the slider moves and the same applier seeds it at boot.
+ * His ask, 2026-09-25: the sidebar's tabs-per-row is a pure CSS var — nothing
+ * re-renders — so it applies LIVE while the slider moves and the same applier
+ * seeds it at boot.
  *
  * Two callers must agree or the boot frame disagrees with the open Settings
  * panel: help/settings.ts (drag + persist) and help/code.ts (seed at boot).
@@ -12,17 +12,6 @@
  * can be tested without a `window` — the reason session-title.ts moved
  * out of code.ts too.
  */
-
-/** Tiles across one launcher row. */
-export const TILES_PER_ROW_MIN = 3;
-export const TILES_PER_ROW_MAX = 14;
-export const TILES_PER_ROW_DEFAULT = 8;
-
-/** Wall width, 0..100. 0 = the natural cap the wall has always drawn; 100 =
- *  the full page less the grid's own side padding. */
-export const WALL_WIDTH_MIN = 0;
-export const WALL_WIDTH_MAX = 100;
-export const WALL_WIDTH_DEFAULT = 0;
 
 /** THE SIDEBAR TRAYS (his order, 2026-10-08: "add the left rail elements
  *  back as config"): Tabs and Workspaces under Recents, each an option on
@@ -47,18 +36,10 @@ export const RAIL_TABS_DEFAULT = RAIL_TABS_AUTO;
 function clamp(v: unknown, lo: number, hi: number, dflt: number): number {
   // MISSING is not 0. Number(null) and Number("") are both a finite 0, so a
   // plain isFinite guard would clamp an unset pref to the slider's MINIMUM
-  // (3 tiles across, not 8) rather than to its default.
+  // rather than to its default.
   if (v === null || v === undefined || v === "") return dflt;
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : dflt;
-}
-
-export function clampTilesPerRow(v: unknown): number {
-  return clamp(v, TILES_PER_ROW_MIN, TILES_PER_ROW_MAX, TILES_PER_ROW_DEFAULT);
-}
-
-export function clampWallWidth(v: unknown): number {
-  return clamp(v, WALL_WIDTH_MIN, WALL_WIDTH_MAX, WALL_WIDTH_DEFAULT);
 }
 
 export function clampRailTabsPerRow(v: unknown): number {
@@ -86,14 +67,6 @@ export function railTabsLabel(v: unknown): string {
 
 const root = (): HTMLElement | null =>
   typeof document === "undefined" ? null : document.documentElement;
-
-export function applyTilesPerRow(v: unknown): void {
-  root()?.style.setProperty("--echo-cols", String(clampTilesPerRow(v)));
-}
-
-export function applyWallWidth(v: unknown): void {
-  root()?.style.setProperty("--echo-wall-w", String(clampWallWidth(v)));
-}
 
 export function applyRailTabsPerRow(v: unknown): void {
   root()?.style.setProperty("--rail-tabs-cols", railTabsTrack(v));

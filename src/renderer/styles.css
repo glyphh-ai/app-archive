@@ -643,7 +643,6 @@ body {
 }
 
 
-
 /* The triad's gradient beat ("One workspace.") — used by the first-run
    tour's tagline; EXACTLY the web hero's rhero-accent gradient. */
 .intro-accent {
@@ -7575,9 +7574,6 @@ select.settings-input {
    pushing the tab's chrome off screen. */
 
 
-
-
-
 @media (max-width: 720px) {
     }
 
@@ -11073,7 +11069,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 /* ── Wassup admin modal ─────────────────────────────────── */
 
 
-
 /* ════════════════════════════════════════════════════════════════════
    Skills explorer (ported from v4, themed to .yo tokens)
    ════════════════════════════════════════════════════════════════════ */
@@ -14382,7 +14377,6 @@ body.wb-max .ws-right-rails { width: 100%; }
 .tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
 
 
-
 /* While the full-bleed home panel is active, the base titlebar's OS drag
    claim (which bleeds through BrowserViews across the WHOLE top band) shrinks
    to a 6px sliver at the very top edge — window drag survives, and every
@@ -14490,11 +14484,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 }
 
 
-
 /* Slim the leading drop strip inside the rails (between-rail strips keep
    their drop-target width). */
 #code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
-
 
 
 /* ── Glyphh spinner — tumbling wireframe cube + typed working phrase ────── */
@@ -15454,9 +15446,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-split > .lib-split-divider { align-self: stretch; }
 
 
-
-
-
 /* "Create with AI" — a quiet link beside the breadcrumb, NEW pages only:
    an existing object is edited by hand, a blank one is worth delegating. */
 .lib-ai-link {
@@ -16231,7 +16220,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    beside the full-width workbench: nav drives the section PANELS now). ═══ */
 
 
-
 /* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
 /* The update prompt moved from a floating bottom-right badge to a rail button
    (.app-rail-relaunch) — the old .update-badge* rules are gone with it. */
@@ -16496,17 +16484,6 @@ body.code-dragging { cursor: col-resize; user-select: none; }
 body.code-dragging #app-rail { transition: none; }
 
 
-
-
-
-
-
-
-
-
-
-
-
 /* App rail — user area (bottom) */
 /* Org switcher (multi-org members): a compact select at the rail's top-left
    and the Settings nav head. Hidden until initOrgSwitcher() finds 2+ orgs.
@@ -16625,10 +16602,6 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 .app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 
-
-
-
-
 body.code-vdragging { cursor: row-resize; user-select: none; }
 
 .app-rail-search { padding: 0 10px 6px; }
@@ -16647,7 +16620,6 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 
 .app-rail-search input:focus { border-color: var(--accent); }
-
 
 
 /* Empty rail grid: one action, spanning the whole grid so it can't be
@@ -16747,22 +16719,12 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 
 
-
-
-
-
 /* Apps label row — open icon on the far right */
 .app-rail-label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-
-
-
-
-
-
 
 
 /* Below ~620px of rail there isn't room for two lists AND recents — let the
@@ -16825,13 +16787,8 @@ body.code-dragging iframe { pointer-events: none !important; }
 body.code-dragging webview { pointer-events: none !important; }
 
 
-
-
-
-
 /* .code-menu family — the shared dropdown chrome the rail menus ride
    (session-row ⋯, More fly-out, user menu). Missed by the rail restore. */
-
 
 
 /* Session row menu (⋯ → Delete) */
@@ -16856,8 +16813,6 @@ body.code-dragging webview { pointer-events: none !important; }
 /* ═══ v2.4.5 selectors missed by the rail restore — complete sweep:
    session-row ⋯ button + run dot, the authentic session-row menu,
    slot maximize, rail apps-list sizing, layout minis. ═══ */
-
-
 
 
 .ws-rail-slot-header .slot-maximize {
@@ -16930,7 +16885,6 @@ body.code-dragging webview { pointer-events: none !important; }
 .code-chat-menu-btn:hover { color: var(--text); background: var(--hover); }
 
 
-
 /* Session row menu (⋯ → Delete) */
 .code-menu {
   position: fixed;
@@ -16986,15 +16940,14 @@ body.code-dragging webview { pointer-events: none !important; }
      DARKENED so the wall reads as its own room, theme-aware via color-mix. */
   background: color-mix(in srgb, var(--bg) 88%, black);
 }
-.echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; cursor: grab; }
-.echo-stage:active { cursor: grabbing; }
-.echo-stage canvas { display: block; }
+/* The stage is the cards' measure box now — the wall it held is gone (2026-10-08). */
+.echo-stage { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
 
 /* Zoom controls, bottom-right over the scene. */
 /* Keep only the command icon (.echo-shadow-btn = "show the wall"); hide the
    zoom in/out/reset trio. The elements STAY in the DOM so their click handlers
    (bound later via querySelector(...)!.addEventListener) don't null-throw. */
-.echo-z-in, .echo-z-out { display: none; }
+.echo-z-out { display: none; }
 /* the header's command-center eye mirrors the echo eye's pinned state */
 #code-cc-btn.active { color: var(--accent); }
 
@@ -17017,13 +16970,7 @@ body.code-dragging webview { pointer-events: none !important; }
 
 /* The VEIL — with cards open the wall fades back behind a slightly darker
    wash (the old layout-manager feel); ⌘⇧ / the eye lifts it. */
-.echo-veil {
-  position: absolute; inset: 0; z-index: 2; pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  opacity: 0; transition: opacity 0.25s ease;
-}
-.ws-echo-body:has(.echo-card) .echo-veil { opacity: 1; }
-.ws-echo-body:has(.echo-cards.echo-shadow) .echo-veil { opacity: 0; }
+
 
 /* Open panels: LIVE webview cards that zoom up out of their tile and back.
    The layer never blocks the wall — only the cards themselves take input. */
@@ -17089,87 +17036,12 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Dividers — the seams between layout slots (the old rail handles): drag
    to reshape the whole layout. */
 /* ── The FLAT LAUNCHER — iPhone-style pages of icons (no WebGL) ── */
-.echo-pages {
-  position: absolute; inset: 0;
-  display: flex;
-  overflow-x: auto; overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  /* SWIPE (his order, 2026-10-04; help/wall-swipe.ts): a horizontal touch
-     drag is the wall's page swipe, so the browser must not pan the carousel
-     itself — vertical pans (a tall page's grid) and pinches stay native. */
-  touch-action: pan-y pinch-zoom;
-}
-.echo-pages::-webkit-scrollbar { display: none; }
-.echo-page {
-  flex: 0 0 100%; height: 100%;
-  scroll-snap-align: start;
-  display: flex; align-items: flex-start; justify-content: center;
-  /* Big icons × many-per-page can outgrow the band — scroll, never clip. */
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.echo-page::-webkit-scrollbar { display: none; }
-.echo-page-grid {
-  display: grid;
-  /* The NATURAL cap: columns at the 1.45×icon ceiling they have always had,
-     plus the gaps between them, plus this grid's own side padding (the
-     global box-sizing is border-box). Spelled once, read by max-width. */
-  --echo-wall-natural: calc(
-    var(--echo-cols, 8) * var(--echo-icon-size, 76px) * 1.45
-    + (var(--echo-cols, 8) - 1) * (20px + (var(--icon-zoom, 1.08) - 1) * var(--echo-icon-size, 76px) * 0.62)
-    + 68px
-  );
-  /* TILES PER ROW (Appearance → Tiles per row): the column COUNT is the
-     setting. Columns keep their icon-sized floor and take 1fr above it, so
-     the width slider below has something to spend its room on. */
-  grid-template-columns: repeat(var(--echo-cols, 8), minmax(calc(var(--echo-icon-size, 76px) * 0.95), 1fr));
-  /* ZOOM-AWARE SPACING (his rule, 2026-08-20): the hover zoom grows a tile by
-     (zoom-1)·size/2 per side — the gaps grow with the SAME term (plus slack)
-     so no icon-zoom / icon-size pairing can make neighbours overlap. */
-  gap: calc(17px + (var(--icon-zoom, 1.08) - 1) * (var(--echo-icon-size, 76px) + 24px) * 0.62)
-       calc(20px + (var(--icon-zoom, 1.08) - 1) * var(--echo-icon-size, 76px) * 0.62);
-  justify-content: center; align-content: start;
-  /* WALL WIDTH (Appearance → Wall width, --echo-wall-w = 0..100). 0 is the
-     grid's NATURAL cap — columns at their old 1.45×icon ceiling, which is
-     exactly the width the wall has always drawn. 100 opens it to the full
-     page, the 34px padding below being the "just a bit" of side air. The
-     two ends are interpolated, so the slider is continuous between them. */
-  width: 100%;
-  max-width: calc(
-    var(--echo-wall-natural) + (100% - var(--echo-wall-natural)) * var(--echo-wall-w, 0) / 100
-  );
-  margin-inline: auto;
-  /* More air under the dock (labels live there now), and under the search
-     pill between the dock and the tiles (--echo-search-top is measured by
-     positionPageChrome; the pill is 44px tall). */
-  padding: calc(var(--echo-search-top, 98px) + 44px + 26px) 34px 148px;
-}
+
 
 /* THE SEARCH PILL (his ask, 2026-10-03): round, centred, in the theme's own
    surface and border, between the dock and the tiles. Restored from the
    2026-08 top bar; a miss dims, a hit stays. */
-.echo-search-wrap {
-  position: absolute; left: 50%; top: var(--echo-search-top, 98px); transform: translateX(-50%);
-  z-index: 3;
-  display: flex; align-items: center; gap: 10px;
-  width: min(520px, 64vw); height: 44px;
-  padding: 0 18px; box-sizing: border-box;
-  border: 1px solid var(--border); border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
-  cursor: text;
-  transition: border-color 120ms ease;
-}
-.echo-search-wrap:focus-within { border-color: var(--accent); }
-.echo-search-ic { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
-.echo-search {
-  flex: 1; min-width: 0; border: none; background: none; outline: none;
-  color: var(--text); font: inherit; font-size: 15px;
-}
-.echo-search::placeholder { color: var(--text-faint); }
-.echo-app-btn.echo-search-miss { opacity: 0.14; }
+
 
 /* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
    which sits on the agent's top row, right of the caret) */
@@ -17195,14 +17067,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-drip-empty { padding: 12px 16px; color: var(--text-faint); font-size: 12.5px; grid-column: 1 / -1; }
 
 /* ── EDIT MODE (press-and-hold): iPhone wiggle + delete badges ── */
-.echo-pages.echo-edit .echo-app-btn { animation: echo-jiggle 0.30s ease-in-out infinite alternate; }
-.echo-pages.echo-edit .echo-app-btn:nth-child(2n) { animation-duration: 0.26s; animation-delay: -0.1s; }
-.echo-pages.echo-edit .echo-app-btn:nth-child(3n) { animation-duration: 0.34s; animation-delay: -0.18s; }
-@keyframes echo-jiggle {
-  from { transform: rotate(-1.7deg); }
-  to   { transform: rotate(1.7deg); }
-}
-.echo-app-btn { position: relative; }
+
+
 .echo-app-del {
   position: absolute; top: -7px; left: -7px; z-index: 2;
   width: 21px; height: 21px; border-radius: 50%;
@@ -17213,181 +17079,80 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.echo-pages.echo-edit .echo-app-btn.removable .echo-app-del { display: flex; }
+
 
 /* ── DOCK AUTO-HIDE: hidden until the top edge is hovered ── */
 /* MAGNIFICATION — a super smooth follow on every slot (JS sets the scale). */
 /* The command-center (wall) button + the RESET above it — equal peers. */
 
-.echo-dock-btn { transform-origin: top center; transition: transform 0.2s cubic-bezier(0.25, 0.9, 0.3, 1), box-shadow 0.12s ease; will-change: transform; }
-.echo-app-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 7px;
-  border: none; background: none; padding: 0; cursor: pointer;
-}
+
 /* SAME square as the dock slots — one icon language everywhere. */
-.echo-app-ic {
-  display: flex; align-items: center; justify-content: center;
-  width: var(--echo-icon-size, 76px); height: var(--echo-icon-size, 76px);
-  border-radius: 18px;
-  background: var(--surface-3);
-  color: var(--text-2);
-  overflow: hidden;
-  transition: box-shadow 0.12s ease;
-}
+
 /* LIGHT ICON ZOOM (Appearance → Icon zoom, --icon-zoom): every icon in the
    app breathes up a touch on hover. On the launcher the whole tile (icon +
    label) scales — sturdier target than the inner span, and reads more
    iPhone. Edit-mode wiggle (an animation) takes precedence while active. */
-.echo-pages .echo-app-btn { transition: transform 0.15s cubic-bezier(0.25, 0.9, 0.3, 1); will-change: transform; }
-.echo-pages .echo-app-btn:hover { transform: scale(var(--icon-zoom, 1.08)); }
-.echo-app-btn:hover .echo-app-ic { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
-.echo-app-btn.open .echo-app-ic { box-shadow: 0 0 0 1.5px var(--accent); }
-.echo-app-ic svg { width: 62%; height: 62%; }
+
+
 /* The dev workbench tool tiles (Files/Terminal/Editor/Diff/Plan/Releases):
    plain outline glyphs read oversized at 62% — seat them smaller. */
-.echo-app-ic svg.dev-glyph { width: 46%; height: 46%; }
-.echo-dock-btn svg.dev-glyph { width: 46%; height: 46%; }
-.echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }
-.echo-app-ic img[data-mark-src="brand/glyphh-mark.png"] { width: 74%; height: 74%; }   /* the mascot is tall, not a square favicon */   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
+
+
+   /* the mascot is tall, not a square favicon */   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
 /* The SKILLS fallback mark (an app with no icon of its own): same weight as
    an app icon, not the larger tool-glyph size. */
-.echo-app-ic svg.skill-mark { width: 54%; height: 54%; }
+
 .echo-app-fallback { font: 600 20px var(--font-sans); color: var(--text-2); }
-.echo-app-name {
-  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 11.5px; color: var(--text-2);
-}
+
 /* Layout icons — the 2×2 mini stack, DOM edition. */
 .echo-app-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 72%; height: 72%; }
 .echo-app-mini .mini { display: flex; align-items: center; justify-content: center; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
 .echo-app-mini .mini svg { width: 70%; height: 70%; }
 .echo-app-mini .mini img { width: 80%; height: 80%; object-fit: contain; }
 .echo-app-mini .mini i { font-style: normal; font-size: 9px; font-weight: 600; color: var(--text-3); }
-.echo-app-btn.dock-dragging { opacity: 0.4; }
+
 /* Multi-select: picked icons ring in accent; the square + line lassos. */
-.echo-app-btn.selected .echo-app-ic { box-shadow: 0 0 0 2px var(--accent); }
-.echo-marquee {
-  position: absolute; z-index: 4; pointer-events: none;
-  border: 1.5px solid var(--accent); border-radius: 4px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-}
-.echo-lasso-line {
-  position: absolute; z-index: 4; pointer-events: none;
-  height: 3px; border-radius: 2px;
-  background: var(--accent);
-  transform-origin: 0 50%;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
-}
+
+
 /* Page dots — just UNDER the icon grid (code-workbench positions top). */
-.echo-page-dots {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 8px; z-index: 3;
-}
-/* EDGE-DROP hints — glow strips while a card drag holds a band edge. */
-.echo-stage::before, .echo-stage::after {
-  content: "";
-  position: absolute; top: 0; bottom: 0; width: 52px;
-  pointer-events: none; opacity: 0; z-index: 6;
-  transition: opacity 0.15s ease;
-}
-.echo-stage::before { left: 0; background: linear-gradient(to right, color-mix(in srgb, var(--accent) 30%, transparent), transparent); }
-.echo-stage::after { right: 0; background: linear-gradient(to left, color-mix(in srgb, var(--accent) 30%, transparent), transparent); }
-.echo-stage.echo-edge-left::before { opacity: 1; }
-.echo-stage.echo-edge-right::after { opacity: 1; }
+
+
 
 /* Page arrows — either side of the icon lists. */
-.echo-page-arrow {
-  position: absolute; z-index: 3;
-  width: 34px; height: 34px;
-  display: flex; align-items: center; justify-content: center;
-  border: none; border-radius: 50%;
-  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
-  backdrop-filter: blur(12px);
-  color: var(--text-2); cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-.echo-page-arrow:hover { color: var(--text); background: var(--surface-3); transform: scale(var(--icon-zoom, 1.08)); }
-.echo-page-arrow svg { width: 18px; height: 18px; }
-.echo-page-arrow.prev { left: 22px; }
-.echo-page-arrow.next { right: 22px; }
-.echo-page-dots.hidden { display: none; }
-.echo-page-dot {
-  width: 8px; height: 8px; border-radius: 50%; border: none; padding: 0;
-  background: color-mix(in srgb, var(--text) 25%, transparent);
-  cursor: pointer;
-}
-.echo-page-dot.active { background: var(--text-2); }
+
+
 /* Traded-in app icons render as images inside dock slots. */
 /* SAME inner proportions as the page tiles (.echo-app-ic) — one icon
    language: the glyph scales with ITS square, not the viewport. */
-.echo-dock-btn img { width: 54%; height: 54%; object-fit: contain; }
+
 /* TITLES under the dock icons (his ask, 2026-08-20) — pure CSS from the
    button's title attribute, so both builders (nav template + traded icons)
    get labels with zero markup churn. Absolute: the squares keep their size. */
 /* Bottom margin RESERVES the magnification's reach: a zoomed slot grows down
    (scale + the arc's dip) — scaling the gap with the dock-zoom pref keeps it
    off the tiles below at every strength. */
-.echo-dock { margin-bottom: calc(24px + (var(--dock-zoom, 1.2) - 1) * 64px); }
-.echo-dock-btn { position: relative; overflow: visible; }
-.echo-dock-btn::after {
-  content: attr(title);
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 110%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10.5px;
-  line-height: 1;
-  color: var(--text-3);
-  pointer-events: none;
-}
-.echo-dock-btn .echo-app-mini { width: 72%; height: 72%; }   /* = the page tiles' mini */
-.echo-dock-btn .echo-app-fallback { font-size: 20px; }
+
+
+   /* = the page tiles' mini */
+
 
 /* Echo top bar — JUST the dock now, sitting high on the page. Sits over
    the pages, under the cards. (Search is gone; drips live on the composer
    card.) */
-.echo-topbar {
-  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; z-index: 3;
-}
+
 /* The dock — FIXED nav slots above the search box: Apps / Marketplace /
    Connections / Workspaces / Scheduled Tasks / Agents / Browser / Settings.
    Office-icon language (full-bleed object silhouettes, the VIEW_META
    family). NO wrapping chrome — a bare row; each slot is the SAME rounded
    square the wall tiles draw (surface-3 box, hover ring in the tile
    highlight ink). */
-.echo-dock {
-  display: flex; align-items: center;
-  gap: 14px;   /* the same in every space (2026-09-16) */
-  /* The CONTENT side is the room it has, never the whole window — the fixed
-     sidebar owns the left, so measuring the viewport let the row run off both
-     edges of a centered dock (his report, 2026-09-17). */
-  max-width: calc(100vw - var(--rail-w, 0px) - 32px);
-  margin-top: 10px;               /* and a tad more drop below the dock line */
-}
+
 /* Slots SHRINK to fit the page: fluid between 46px and 76px squares (the
    glyphs ride along), so the dock always fits the window on one row. */
-.echo-dock-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  /* The size preference is the MAXIMUM; the row shrinks from there to fit, and
-     stays square while it does (height follows the width, not the setting). */
-  width: var(--echo-icon-size, 76px); height: auto; aspect-ratio: 1 / 1;
-  padding: 0; flex-shrink: 1; min-width: 40px;
-  border: none; border-radius: 18px;
-  background: var(--surface-3);
-  cursor: pointer;
-  transition: box-shadow 0.12s ease;
-}
-.echo-dock-btn:hover { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
+
+
 /* Dock slots pick the hover zoom up too when the arch magnification is off
    (its inline transforms take precedence while active). */
-.echo-dock-btn:hover:not([style*="transform"]) { transform: scale(var(--icon-zoom, 1.08)); }
-.echo-dock-btn.dock-dragging { opacity: 0.4; }
-.echo-dock-btn svg { width: 62%; height: 62%; display: block; }
 
 
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
@@ -17561,10 +17326,10 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    the wall behind is visible and clickable; opening another app, closing
    the last one, toggling again, or Esc exits. */
 .echo-card.placed { opacity: 1; }
-.echo-cards.echo-shadow .echo-card.placed { opacity: 0.07; pointer-events: none; }
+
 /* shadow mode aims every click at the WALL — the layout's divider handles
    behind the veil must not swallow drags */
-.echo-cards.echo-shadow .echo-div { pointer-events: none; }
+
 .echo-card-body { flex: 1; min-height: 0; display: flex; }
 .echo-card-body webview { flex: 1; min-width: 0; min-height: 0; }
 
@@ -18010,7 +17775,7 @@ body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 /* The wall's Chat/Work/Code agent tabs were removed — one session type now. */
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
-.echo-topbar-stacked { max-width: 92%; }
+
 /* ONE ECHO ON BOTH SURFACES (his order, 2026-10-06; help/surface.ts
    surfaceHostsTile): the same dock, search and grid; only the empty line is
    the web's own. */
@@ -18332,8 +18097,7 @@ body[data-session-space="work"] .code-composer > .code-source-slot { display: no
 /* The raised wall (⌘⇧Space over a layout/cards) must never sit UNDER the
    layout-docked agent — the holder rides a body-level layer above the
    workbench, so it hides while the wall is lifted. */
-body.echo-wall-lifted .ws-agent-holder,
-body.echo-wall-lifted .ws-rail-holder { visibility: hidden; pointer-events: none; }
+
 /* A FULLSCREEN card covers every panel — the docked agent included. */
 body.echo-card-fullscreen .ws-agent-holder { visibility: hidden; pointer-events: none; }
 body.echo-card-fullscreen .code-root[data-anchor="center"] > .code-agent { visibility: hidden; pointer-events: none; }
@@ -18585,7 +18349,7 @@ body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-reset-o
 /* on the web the agent is a flow card, never the centre root — the two buttons show as on the desktop (2026-10-05) */
 html.glyphh-web body.echo-cc-needed #code-cc-open,
 html.glyphh-web body.echo-cc-needed #code-reset-open { display: flex; }
-body.echo-cc-pinned #code-cc-open { color: var(--accent); }
+
 
 /* ── Peek ───────────────────────────────────────────────────────────────────
    Repositions the LIVE thread rather than copying it: renderThread() wipes
@@ -19998,29 +19762,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .mq-src-view { margin: 0; padding: 12px 14px; overflow: auto; font-size: 12px; line-height: 1.5; white-space: pre; }
 
 /* ── Nav notification badges (red count, top-right of the icon) ────────── */
-.echo-dock-btn[data-badge]::before,
-.echo-app-btn[data-badge]::before {
-  content: attr(data-badge);
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 9px;
-  background: #e5484d;
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 17px;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,.35);
-  z-index: 2;
-  pointer-events: none;
-}
+
 /* Tiles are column-flex (icon over label): the badge pins to the ICON square's
    top-right — the button's own top-right IS the icon's. */
-.echo-app-btn[data-badge] { overflow: visible; }
+
 
 /* Video thumb in the gallery strip: real poster + play badge. */
 .mkt-thumb-video { position: relative; background: #17141f; }
@@ -20037,65 +19782,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .mkt-dev-row-link:hover b { color: var(--accent-light); text-decoration: underline; }
 
 /* ── Echo FOLDERS (2026-08-20): wall groups for app + layout icons ───────── */
-.echo-folder-glyph svg { width: 26px; height: 26px; opacity: 0.75; }
-.echo-folder-mini { background: color-mix(in srgb, var(--surface-3) 70%, transparent); border-radius: 12px; }
-.echo-folder-overlay {
-  position: fixed; inset: 0; z-index: 9600;
-  /* SAME dialog skeleton as every other modal (his rule, 2026-08-20: the
-     panel matches the rest of the app; themes own these tokens). */
-  background: var(--overlay-bg);
-  display: flex; align-items: center; justify-content: center;
-}
-.echo-folder-card {
-  width: min(560px, 92vw);
-  max-height: 78vh;
-  display: flex; flex-direction: column;
-  /* A shade darker than the standard card (his call, 2026-08-20) — still the
-     theme's surface, mixed down so the open folder reads as its own well. */
-  background: color-mix(in srgb, var(--surface-2) 78%, black); border: 1px solid var(--border-3);
-  border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-  padding: 14px 18px 18px;
-}
-.echo-folder-head { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
-.echo-folder-name {
-  flex: 1; min-width: 0;
-  background: none; border: none; outline: none;
-  color: var(--text); font-size: 15px; font-weight: 600;
-  padding: 4px 6px; border-radius: 8px;
-}
-.echo-folder-name:hover, .echo-folder-name:focus { background: var(--surface-3); }
-.echo-folder-close {
-  width: 26px; height: 26px; border: none; border-radius: 50%;
-  background: var(--surface-3); color: var(--text-2); cursor: pointer;
-}
-.echo-folder-close:hover { background: var(--hover); color: var(--text); }
-.echo-folder-delete {
-  border: none; border-radius: 999px; padding: 5px 12px; cursor: pointer;
-  background: var(--surface-3); color: var(--text-2); font-size: 12px;
-}
-.echo-folder-delete:hover { background: var(--danger, #e5484d); color: #fff; }
-.echo-folder-grid {
-  flex: 1; min-height: 120px; overflow-y: auto;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
-  align-content: start;
-  padding-top: 8px;   /* the top row sits down a tad off the header */
-}
-.echo-folder-item.selected { outline: 2px solid var(--accent, #af5fff); outline-offset: 2px; border-radius: 14px; }
-.echo-folder-item { width: auto; }
-.echo-folder-empty {
-  grid-column: 1 / -1; padding: 28px 12px; text-align: center;
-  color: var(--text-3); font-size: 12.5px;
-}
-.echo-folder-pager {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  margin-top: 10px; color: var(--text-2); font-size: 12px;
-}
-.echo-folder-pager button {
-  width: 26px; height: 26px; border: none; border-radius: 50%;
-  background: var(--surface-3); color: var(--text-2); cursor: pointer;
-}
-.echo-folder-pager button:disabled { opacity: 0.4; cursor: default; }
-.echo-folder-pager button:not(:disabled):hover { background: var(--hover); color: var(--text); }
 
 
 /* ── Echo Agent: independent TEXT fade + lock + CC close (2026-08-20) ────── */
@@ -20105,20 +19791,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   opacity: var(--echo-agent-text-opacity, 1);
 }
 #code-agent-lock.active { color: var(--accent, #af5fff); }
-.echo-cc-close {
-  position: absolute;
-  top: 14px; right: 16px;
-  z-index: 420;
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.echo-cc-close:hover { background: var(--hover); color: var(--text); }
-.echo-cc-close.hidden { display: none; }
 
 
 /* ── THE LOCK IS ABSOLUTE (his bug, 2026-08-20: "still auto-hiding with the
@@ -20689,91 +20361,16 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 
 
 /* ── Wall tour — the first-run guided overlay (wall-tour.ts) ─────────────── */
-.wtour { position: fixed; inset: 0; z-index: 9500; }
-.wtour-svg { position: absolute; inset: 0; pointer-events: none; }
-.wtour-dim { fill: rgba(0, 0, 0, 0.62); pointer-events: auto; }
+
+
 /* Keep the marker readable over both the dimmed page and the live control in
    the hole. The paired light/dark halo prevents a theme accent from sinking
    into either a white light surface or a black dark surface. */
-.wtour-arrow,
-.wtour-ring {
-  fill: none;
-  stroke: var(--accent, #8c3bf2);
-  stroke-width: 3;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #000);
-}
-.wtour-svg marker path {
-  fill: var(--accent, #8c3bf2);
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1.5px #000);
-}
-.wtour-labels { position: absolute; inset: 0; pointer-events: none; }
-.wtour-arrow-label {
-  position: absolute; transform: translateX(-50%);
-  font: 700 12px var(--font-sans); color: var(--bg, #fff);
-  background: var(--text-bright, #000); padding: 4px 10px; border-radius: 999px;
-  white-space: nowrap; border: 2px solid var(--bg, #fff);
-  box-shadow: 0 0 0 1px var(--text-bright, #000), 0 4px 14px rgba(0, 0, 0, 0.45);
-}
-.wtour-card {
-  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
-  width: min(460px, calc(100vw - 48px));
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 16px; padding: 20px 22px 16px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-}
-.wtour-step-num { font: 600 11px var(--font-sans); color: var(--text-3); letter-spacing: 0.04em; }
-.wtour-title { margin: 6px 0 6px; font: 700 19px var(--font-sans); color: var(--text); }
-.wtour-copy { margin: 0 0 14px; font: 400 13.5px/1.5 var(--font-sans); color: var(--text-2); }
-.wtour-visual { margin-bottom: 14px; }
-.wtour-foot { display: flex; align-items: center; gap: 10px; }
-.wtour-dots { display: flex; gap: 6px; margin: 0 auto; }
-.wtour-dot-nav { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); }
-.wtour-dot-nav.active { background: var(--accent, #8c3bf2); }
-.wtour-nav { display: flex; gap: 8px; }
+
+
 /* The mock screenshots — CSS-drawn minis, themed, no bitmaps to go stale. */
-.wtour-mock {
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-  background: var(--surface-3);
-}
-.wtour-mock-bar { display: flex; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.wtour-mock-bar span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-2); }
-.wtour-mock-row {
-  display: flex; align-items: center; gap: 9px; padding: 8px 12px;
-  font: 500 12px var(--font-sans); color: var(--text-2);
-  border-bottom: 1px solid var(--border);
-}
-.wtour-mock-row:last-child { border-bottom: none; }
-.wtour-mock-row b { color: var(--text); font-weight: 600; }
-.wtour-mock-row em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-3); }
-.wtour-mock-row em.on { color: #22c55e; }
-.wtour-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.wtour-mock-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; }
-.wtour-mock-app {
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  font: 500 10.5px var(--font-sans); color: var(--text-2);
-}
-.wtour-mock-app i { width: 30px; height: 30px; border-radius: 8px; }
-.wtour-mock-ghost { justify-content: center; color: var(--text-3); border: 1px dashed var(--border-2); border-radius: 8px; padding: 4px; }
-.wtour-mock-splits { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; padding: 12px; height: 96px; }
-.wtour-mock-splits div { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 7px; }
-.wtour-mock-agent { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
-.wtour-mock-prompt {
-  flex: 1; font: 400 12px var(--font-sans); color: var(--text-2);
-  background: var(--surface-2); border: 1px solid var(--accent, #8c3bf2);
-  border-radius: 999px; padding: 8px 14px;
-}
-.wtour-mock-send { color: var(--text-3); font-size: 13px; }
-.wtour-ring { opacity: 1; }
-.wtour-mock-keys { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 22px 12px; }
-.wtour-key {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 44px; height: 44px; padding: 0 12px;
-  font: 600 16px var(--font-sans); color: var(--text);
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  border-bottom-width: 3px; border-radius: 9px;
-}
-.wtour-key-wide { min-width: 96px; }
+
+
 /* The Dashboard | Desktop surface toggle was removed (his call, 2026-08-29):
    app-web is the Platform only, so both surfaces and the toggle are gone. The
    rail keeps the plain Dashboard row (.dash-plain) on every surface. */
@@ -20823,38 +20420,20 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
    had dragged them. With nothing open they simply go DIM and inert; the
    context menu offers no delete for fixed nav slots, so they can be
    reordered but never removed. */
-.echo-dock-btn[data-dock="cc"],
-.echo-dock-btn[data-dock="closeall"] { display: inline-flex; }
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"],
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"] {
-  opacity: 0.34; cursor: default;
-}
+
+
 /* The same two slots leading the WALL while the dock is off (his order,
    2026-10-04) go inert the same way — they run the dock's own action, which
    does nothing with no panels up. */
-body.echo-dock-off:not(.echo-has-panels) .echo-app-btn[data-nav="cc"],
-body.echo-dock-off:not(.echo-has-panels) .echo-app-btn[data-nav="closeall"] {
-  opacity: 0.34; cursor: default;
-}
-body.echo-dock-off:not(.echo-has-panels) .echo-pages .echo-app-btn[data-nav="cc"]:hover,
-body.echo-dock-off:not(.echo-has-panels) .echo-pages .echo-app-btn[data-nav="closeall"]:hover { transform: none; }
-body.echo-dock-off:not(.echo-has-panels) .echo-app-btn[data-nav="cc"]:hover .echo-app-ic,
-body.echo-dock-off:not(.echo-has-panels) .echo-app-btn[data-nav="closeall"]:hover .echo-app-ic { box-shadow: none; }
+
+
 /* ATTACHED MODE: the CC slot is live from the first summon — over a foreign
    app it is the way to the wall, panels open or not. */
-html[data-home-scope="agent-dock"] body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"] {
-  opacity: 1; cursor: pointer;
-}
+
 /* Dim = inert: no hover ring, no hover zoom (the arc still carries them so
    the row never breaks its rhythm). */
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"]:hover,
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover {
-  box-shadow: none;
-}
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"]:hover:not([style*="transform"]),
-body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style*="transform"]) {
-  transform: none;
-}
+
+
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
 /* The PARKED bar (dock-portal.ts moved it into the body-level layer while
    panels are up). Same icon sizing variables as at rest — the bar must look
@@ -20864,75 +20443,24 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style
    agent panel). 2000 cleared the workbench's own layers but not the cards and
    overlays that climb past it; this sits under the settings modal (999000) and
    the toast stack (1000000) and above everything else. */
-#echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 99000; }
+
 /* The peek SCRIM (his order, 2026-09-14): a theme gradient behind the
    dropped dock — the page's own surface color, darkest at the very top,
    gone within the dock's band — so the bar reads as descending from the
    chrome instead of floating over the panels. */
-body.echo-dock-tucked #echo-dock-layer::before {
-  /* BELOW the drag strip — the traffic lights stay visible no matter what
-     (his order, 2026-09-14). */
-  content: ""; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0;
-  height: 72px;
-  background: linear-gradient(to bottom,
-    var(--bg) 0%,
-    color-mix(in srgb, var(--bg) 72%, transparent) 55%,
-    transparent 100%);
-  opacity: 0; transition: opacity 0.22s ease; pointer-events: none;
-}
-body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
+
+
 /* The wall's "tad more drop" margin is wall-only — zero on the parked bar. */
-#echo-dock-layer .echo-dock { margin-top: 0; }
-#echo-dock-layer .echo-topbar {
-  /* Hug the chrome (his report, 2026-09-14: "drops down way too far") —
-     just under the drag strip, wall margins zeroed on the parked bar. */
-  /* Centered over the CONTENT side, never the whole window: the fixed sidebar owns the left (2026-09-16). */
-  /* ABSOLUTE INSIDE THE LAYER, not the viewport (his report, 2026-09-18: the
-     dock's left end sat under the sidebar). The layer already starts after
-     the rail, so centering within it cannot spill back over the rail however
-     wide the bar gets. */
-  position: absolute; top: calc(var(--wb-top-inset, 0px) + 2px); left: 50%;
-  margin: 0;
-  transform: translate(-50%, 0);
-  transition: transform 0.22s ease;
-  pointer-events: auto;
-  /* TRANSPARENT over the panels (his order) — the icons carry themselves,
-     exactly as they do on the wall, at their stylesheet size (padding here
-     would shift them). */
-  background: transparent; border: none; padding: 0;
-  /* CENTERED MEANS CENTERED (his report, 2026-09-18). A bar wider than the
-     content area overflows both sides and clips at the right, which reads as
-     left-aligned. Capped to the space it actually has, so it centers while it
-     fits and slides within itself when it does not. */
-  /* NEVER a scroll container (his report, 2026-09-18: the dock looked like it
-     was behind something). overflow makes the bar clip anything drawn outside
-     it, and a tile's hover ring and tooltip are both outside it, so the first
-     icon came back sliced. The bar pages its own icons, so it does not need to
-     scroll. */
-  max-width: calc(100% - 24px);
-  overflow: visible;
-}
-body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
-  transform: translate(-50%, calc(-100% - 24px));
-}
-.echo-topbar-home { display: none; }
+
+
 /* The hint sliver at the top center is OFF (his order, 2026-09-15: "when the
    dock is hidden remove this line"). The hover strip below still reveals the
    dock; hidden, not deleted. */
-body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
+
 /* The invisible top strip that catches the peek hover — webviews swallow
    host mouse events, so the strip sits ABOVE the panel layers. Present only
    while the dock is tucked, so it never steals clicks otherwise. */
-.echo-dock-hotstrip { display: none; }
-body.echo-dock-tucked .echo-dock-hotstrip {
-  /* BACK TO A SLIVER (his report, 2026-09-18: at 34px it swallowed the agent
-     panel's own header buttons). The strip exists only for WEBVIEWS, which eat
-     host mouse events; everywhere else a document-level mousemove watches a
-     much deeper band without capturing a single click. */
-  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 12px;
-  z-index: 98999; background: transparent;
-}
-body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
+
 
 /* (Close-all's always-present + dim-when-idle rules live with CC's above.) */
 /* The layout bar RETIRES (his order, 2026-08-28): its pill + tooltip sat in
@@ -20950,9 +20478,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    and every band measured from it (the search pill, the card band, help/
    dock-band.ts) reads zero. Everything the dock opened stays reachable from
    the rail and the keyboard (New session, Settings, ⌘⇧Space, Close all). */
-body.echo-dock-off .echo-topbar,
-body.echo-dock-off #echo-dock-layer,
-body.echo-dock-off .echo-dock-hotstrip { display: none !important; }
 
 
 /* (The standalone Loops PAGE is gone — loops are settings; its card,
@@ -21474,7 +20999,7 @@ body.rail-collapsed .code-agent-head.clears-strip { padding-left: var(--rail-str
 #rail-collapsed-strip.hidden { display: none; }
 #rail-collapsed-strip .app-rail-drag { display: none; }
 body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }
-#echo-dock-layer, .echo-dock-hotstrip { left: var(--rail-w) !important; }
+
 body.rail-resizing, body.rail-resizing * { cursor: col-resize !important; user-select: none; }
 body.rail-resizing #app-rail, body.rail-resizing #help-overlay { transition: none !important; }
 #app-rail-resize { position: fixed; top: 0; left: calc(var(--rail-w) - 3px); bottom: 0; width: 7px; cursor: col-resize; z-index: 201; }
@@ -21513,7 +21038,7 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail #rail-recents-body { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; overflow: visible; }
 #app-rail .app-rail-section-body { flex: 0 0 auto; min-height: 0; overflow: visible; }
 #app-rail .app-rail-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
-#echo-dock-layer { left: var(--rail-w); }
+
 #drag-overlay, #grid-handles { left: var(--rail-w); }
 .wb-session-search { display: flex; align-items: center; gap: 6px; }
 .wb-session-search .repo-drop-search { flex: 1; min-width: 0; width: auto; }
@@ -21674,10 +21199,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    dock, the layout bar and the page dots never show, and the agent's own card
    (chat or CLI) drops its head, border and shadow so the panel's edge is the
    agent's edge. Tool cards opened beside it keep their heads. ── */
-[data-home-scope="solo-tool"] .echo-dock,
-[data-home-scope="solo-tool"] .echo-topbar,
-[data-home-scope="solo-tool"] .echo-pages,
-[data-home-scope="solo-tool"] .echo-page-dots { display: none !important; }
+
 [data-home-scope="solo-tool"] .echo-card.echo-agent-card,
 [data-home-scope="solo-tool"] .echo-card.echo-cli-card { border: 0; border-radius: 0; box-shadow: none; }
 [data-home-scope="solo-tool"] .echo-card.echo-agent-card > .echo-card-head,
@@ -21970,11 +21492,25 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    700, as on the site and the console. Body text stays Geist. A document the
    member is writing (.gdoc-paper) keeps its own faces. ──────────────────── */
 :root { --font-display: var(--font-mono); }
-:is(h1, h2, h3, h4):not(.gdoc-paper *),
-.yo-modal-title, .dash-modal-title, .conn-modal-title, .gdz-modal-title,
-.yo-panel-title, .dash-section-title, .gdrive-section-title, .gmem-sec-title,
-.mem-page-title, .settings-subheading, .ws-tasks-heading, .mkt-banner-title,
-.mkt-console-title, .dash-cowork-title, .lockout-title, .wtour-title {
+:is(h1,
+h2,
+h3,
+h4):not(.gdoc-paper *),
+.yo-modal-title,
+.dash-modal-title,
+.conn-modal-title,
+.gdz-modal-title,
+.yo-panel-title,
+.dash-section-title,
+.gdrive-section-title,
+.gmem-sec-title,
+.mem-page-title,
+.settings-subheading,
+.ws-tasks-heading,
+.mkt-banner-title,
+.mkt-console-title,
+.dash-cowork-title,
+.lockout-title {
   font-family: var(--font-display) !important;
   font-weight: 700 !important;
   letter-spacing: -0.02em;

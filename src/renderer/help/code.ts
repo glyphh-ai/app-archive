@@ -46,7 +46,7 @@ import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBo
 import { pickUtilityModel } from "./utility-model.js";
 import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
-import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow, RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown } from "./wall-prefs.js";
+import { applyRailTabsPerRow, RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
@@ -2481,7 +2481,7 @@ function leaveSessionToLanding(): void {
   // IN A LAYOUT (his report, 2026-09-11): ‹ goes back to the panel's OWN
   // landing IN PLACE — summoning the command center here tore the whole
   // layout down. Outside a layout the wall is the landing, as before.
-  if (!document.body.classList.contains("echo-layout-active")) openCommandCenter();
+  if (!document.body.classList.contains("echo-layout-active")) ensureWorkbench();
 }
 
 /**
@@ -2848,9 +2848,8 @@ function selectChat(c: CodeChat): void {
   // A RAIL SESSION CLICK ON THE WEB dumps whatever screen is open — the
   // full-screen page, every work panel — and shows the session (his order,
   // 2026-10-05). The workbench owns the panels; code-workbench.ts binds the
-  // door and it is a no-op on the desktop. The lifted wall drops too.
+  // door and it is a no-op on the desktop.
   (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly?.();
-  (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
   currentId = c.id;
   lastSession = c.id;
   void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
@@ -7412,7 +7411,7 @@ function paintAppsGrid(host: RailGridHost): void {
     nm.textContent = a.name;
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
-      openCommandCenter();   // rail clicks land in Echo — the layout manager
+      ensureWorkbench();   // rail clicks land on the layout surface
       // The GLYPHH tile opens the glyphh AGENT (the dock mark's exact open),
       // never the app-launch path (his order, 2026-09-10).
       if (a.appArchetype === "glyphh-self" || (a.slug || a.id) === "glyphh") {
@@ -7488,7 +7487,7 @@ function paintLayoutsGrid(host: RailGridHost): void {
     nm.textContent = l.name;
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
-      openCommandCenter();
+      ensureWorkbench();
       void (window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> }).__wbOpenLayoutByName?.(l.name);
     });
     list.appendChild(tile);
@@ -7531,7 +7530,7 @@ function paintAgentsGrid(host: RailGridHost): void {
     nm.textContent = a.name;
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
-      openCommandCenter();
+      ensureWorkbench();
       // ONE SURFACE (his order, 2026-09-14): every door opens the SAME agent
       // chat panel, this loop set; the terminal is the >_ hop, never a door.
       (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(a.id);
@@ -7734,32 +7733,24 @@ export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): vo
   open();
 }
 
-/** Open the command center (app/layout launcher) from ANY section — even before
- *  the Code workbench has ever mounted. Flips to the agent surface, boots the
- *  workbench (idempotent async init), then retries the toggle over rAF because
- *  __wbToggleAppSwitcher isn't assigned until that init() resolves. */
-/** Every launcher entry point (⌘⇧Space, ⌘., the Glyphh rail, boot) opens
- *  ECHO — the command center is gone; Echo is the launcher AND the layout
- *  manager. (opts kept for caller compatibility; there is no overlay mode.) */
-export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean } = {}): void {
-  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __wbOpenEchoHome?: () => void };
+/** Make sure the workbench — the layout surface the agent and every panel
+ *  live on — is mounted, from ANY section, even before it has ever booted
+ *  (idempotent async init, then a retry until its door is assigned). The
+ *  wall it used to raise is gone (his order, 2026-10-08). */
+export function ensureWorkbench(opts: { boot?: boolean } = {}): void {
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenEchoHome?: () => void };
   w.__initCodeWorkbench?.();
   let tries = 0;
   // The workbench's init is ASYNC and, on web, slow — its first awaits are
-  // relay round trips (wb.getCwd → attach status over HTTP), well past the 40
-  // animation frames this used to wait. A boot that gave up left the main
-  // area EMPTY (his report, 2026-10-04: the rail painted, nothing else). The
-  // boot open now waits on a timer for as long as the solo panel's mount does
-  // (home.ts: 600 × 50 ms); a user's chord keeps the short wait.
+  // relay round trips (wb.getCwd → attach status over HTTP). A boot that gave
+  // up left the main area EMPTY (his report, 2026-10-04), so the boot waits
+  // on a timer as long as the solo panel's mount does (home.ts: 600 × 50 ms).
   const limit = opts.boot ? 600 : 40;
   const go = (): void => {
-    // BOOT raises the surface WITHOUT the shadow toggle — a restored layout
-    // must come back seated, not with the launcher lifted over it (the
-    // toggle is for the user's chord/button, where toggling back is obvious).
-    const fn = opts.boot ? (w.__wbOpenEchoHome ?? w.__wbToggleAppSwitcher) : w.__wbToggleAppSwitcher;
+    const fn = w.__wbOpenEchoHome;
     if (fn) fn();
     else if (tries++ < limit) { if (opts.boot) setTimeout(go, 50); else requestAnimationFrame(go); }
-    else console.warn("[code] the workbench never came up — nothing raised the command center");
+    else console.warn("[code] the workbench never came up");
   };
   go();
 }
@@ -7804,14 +7795,6 @@ export function initCode(): void {
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
   document.addEventListener("keydown", (e) => {
-    // ⌘⇧> (the shifted period key) — the command center. NOTE: "." and ">"
-    // share one physical key, so ⌘⇧. and ⌘⇧> are the SAME chord — it can only
-    // carry one action, and it carries the launcher.
-    if (e.code === "Period" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      openCommandCenter();
-      return;
-    }
     // ⌘⇧Esc — reset the open workspace to its saved design.
     if (e.code === "Escape" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -7831,12 +7814,9 @@ export function initCode(): void {
       plusMenu.attachFiles();
       return;
     }
-    if (e.key === "." && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
     // ⌘⇧Space — same launcher (mirrors the OS-wide global shortcut).
-    if (e.code === "Space" && e.shiftKey && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openCommandCenter(); }
   });
   // The OS-wide ⌘⇧Space lands here from main once the window is fronted.
-  (window.glyphh as unknown as { onOpenCommandCenter?: (cb: () => void) => void }).onOpenCommandCenter?.(() => openCommandCenter());
   // ⌘⇧Esc via the app menu (fires even when a panel webview holds the keys).
   (window.glyphh as unknown as { onResetWorkspaceGesture?: (cb: () => void) => void }).onResetWorkspaceGesture?.(() => { void resetWorkspace(); });
   // ⌘⇧N via the app menu (fires even when a panel webview holds the keys).
@@ -7884,7 +7864,7 @@ export function initCode(): void {
     else if (cmd.action === "focus" && cmd.slug) w.__wbFocusApp?.(cmd.slug);
     else if (cmd.action === "clear-panels") (window as unknown as { __wbClearPanels?: () => void }).__wbClearPanels?.();
     else if (cmd.action === "grid-panels") (window as unknown as { __wbGridPanels?: () => boolean }).__wbGridPanels?.();
-    else if (cmd.action === "switcher") openCommandCenter();
+    else if (cmd.action === "switcher") ensureWorkbench();
   });
   // One delegated handler for everything interactive inside the thread —
   // survives every re-render: file cards (→ Monaco), run cards (→ terminal).
@@ -8050,22 +8030,6 @@ export function initCode(): void {
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
   // The content shell sits to the right of the sidebar; inline and !important because the template's own inset rule is !important too.
   { const shellEl = document.getElementById("help-overlay"); if (shellEl) { shellEl.style.setProperty("right", "0px", "important"); shellEl.style.removeProperty("width"); } }
-  const openEcho = (): void => {
-    const w = window as unknown as { __wbEchoShadowPin?: () => void };
-    if (w.__wbEchoShadowPin) w.__wbEchoShadowPin(); else openCommandCenter();
-  };
-  el("rail-echo-btn")?.addEventListener("click", openEcho);
-  // ANY RAIL CLICK DROPS THE LIFTED WALL (his order, 2026-10-07) — the Echo
-  // buttons excepted, which toggle it themselves. Captured, so the row's own
-  // handler runs on a surface that is already down.
-  el("app-rail")?.addEventListener("click", (e) => {
-    const t = e.target as HTMLElement | null;
-    if (t?.closest("#rail-echo-btn, #rail-echo-btn-strip")) return;
-    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
-  }, true);
-  // The sidebar's Echo button leaves with the sidebar; the collapsed strip
-  // carries its own (his report, 2026-09-19).
-  el("rail-echo-btn-strip")?.addEventListener("click", openEcho);
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
    *  selection and shows the space's landing. Both entry points use this:
@@ -8076,9 +8040,6 @@ export function initCode(): void {
    *  panel (its card header carries the title + ✕). The workbench owns the
    *  surface work (__wbNewSessionPanel); this empties the thread state first. */
   const newSessionInPlace = (): void => {
-    // The lifted wall drops first (his report, 2026-10-07: New left the
-    // overlay up and looked like nothing happened).
-    (window as unknown as { __wbDropWall?: () => void }).__wbDropWall?.();
     currentId = "";
     // NEW IS A STATE A RELOAD KEEPS (his report, 2026-10-05: "new isn't
     // resetting the web page state so a reload goes back to the last
@@ -8314,7 +8275,7 @@ export function initCode(): void {
     // presentation and raises the wall. lastSession stays loaded so the
     // history dropdown / enter-space can resume it later.
     void initAnchor();
-    openCommandCenter({ boot: true });
+    ensureWorkbench({ boot: true });
   });
   // (The chrome-cluster command button is GONE — ⌘⇧Space / ⌘. open the
   // command center; the wall's own eye button pins the shadow.)
@@ -8394,25 +8355,16 @@ export function initCode(): void {
     card.classList.toggle("options-open");
     card.classList.remove("auto-open");   // the user took over from auto-grow
   });
-  el("code-cc-open")?.addEventListener("click", () => {
-    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
-  });
   el("code-reset-open")?.addEventListener("click", () => {
     // Destructive-ish (every open panel closes) — the standard confirm first.
     void confirmAction({
       title: "Reset the workspace?",
-      body: "Every open panel closes and you're back at the command center. Sessions and their work are untouched.",
+      body: "Every open panel closes and the agent stands alone. Sessions and their work are untouched.",
       confirmLabel: "Reset",
       danger: true,
     }).then((ok) => {
       if (ok) (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
     });
-  });
-  // Command-center icon size (Appearance slider) — the CSS var the launcher
-  // squares read. Settings applies it live; this seeds it at boot.
-  void window.glyphh.getPreference?.("echoIconSize", 76).then((v) => {
-    const n = Number(v);
-    document.documentElement.style.setProperty("--echo-icon-size", `${Number.isFinite(n) ? Math.max(48, Math.min(104, n)) : 76}px`);
   });
   // Icon hover zoom (Appearance slider) — every icon scales by this on
   // hover. Settings applies it live; this seeds it at boot.
@@ -8420,11 +8372,8 @@ export function initCode(): void {
     const n = Number(v);
     document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
   });
-  // Layout sliders (his ask, 2026-09-25): tiles per launcher row, the wall's
-  // overall width, and tabs per rail row. Pure CSS vars — Settings drags them
-  // live through the SAME appliers; these seed them at boot.
-  void window.glyphh.getPreference?.("echoTilesPerRow", 8).then(applyTilesPerRow);
-  void window.glyphh.getPreference?.("echoWallWidth", 0).then(applyWallWidth);
+  // Tabs per rail row (his ask, 2026-09-25): a CSS var Settings drags live
+  // through the SAME applier; this seeds it at boot.
   void window.glyphh.getPreference?.("railTabsPerRow", 0).then(applyRailTabsPerRow);
   // Echo Agent panel transparency (Appearance slider) — the CSS var the
   // caret panel reads. Settings applies it live; this seeds it at boot.

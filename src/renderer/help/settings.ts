@@ -4,14 +4,13 @@
 
 import { confirmAction } from "./shared.js";
 import {
-  applyRailTabsPerRow, applyTilesPerRow, applyWallWidth,
-  clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
+  applyRailTabsPerRow,
+  clampRailTabsPerRow, railTabsLabel,
   RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown,
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
 import { loadVoiceSection } from "./settings-voice.js";
 import { hostHas, keepIfHost, copyText } from "./web-surface.js";
-import { DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT, DOCK_ENABLED_CHANGED_EVENT, dockEnabledFrom } from "./dock-band.js";
 import {
   STREAMED_PANELS_PREF, STREAMED_PANELS_WARNING, STREAMED_PANELS_CHANGED_EVENT,
   OPEN_STREAMED_PANELS_SETTING_EVENT, nextFlagStep, flagSwitchChecked, flagWarningShown, type FlagStep, type FlagAction,
@@ -426,29 +425,6 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
-  // SHOW THE DOCK (his order, 2026-10-04) — pref `dockEnabled`, default OFF
-  // (DOCK_ENABLED_DEFAULT, help/dock-band.ts: the dock is turned on on
-  // purpose), one store for desktop and web. The wall re-reads on the document event
-  // (this document) and on main's preference-changed broadcast (every other
-  // desktop document, help/dock-band.ts); the write settles before the event
-  // so a re-read never sees the old value.
-  {
-    const t = document.getElementById("toggle-show-dock") as HTMLInputElement | null;
-    t?.addEventListener("change", () => {
-      void Promise.resolve(window.glyphh.setPreference(DOCK_ENABLED_PREF, t.checked)).then(() => {
-        document.dispatchEvent(new CustomEvent(DOCK_ENABLED_CHANGED_EVENT, { detail: { enabled: t.checked } }));
-      });
-    });
-  }
-  // Dock auto-hide (default ON) — the echo surface re-reads on the event.
-  {
-    const t = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
-    t?.addEventListener("change", () => {
-      void Promise.resolve(window.glyphh.setPreference("echoAutoHideDock", t.checked)).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
-    });
-  }
   // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
   // drives the caret panel), persisted on release.
   {
@@ -496,62 +472,6 @@ function initSettings() {
     });
   }
 
-  // Command center: icon size (live CSS var) + apps per page (the launcher
-  // re-reads on the event and re-chunks its pages).
-  {
-    const sz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
-    const szv = document.getElementById("settings-echo-icon-size-val");
-    const paintSz = (): void => {
-      if (!sz) return;
-      document.documentElement.style.setProperty("--echo-icon-size", `${sz.value}px`);
-      if (szv) szv.textContent = `${sz.value}px`;
-    };
-    sz?.addEventListener("input", paintSz);
-    sz?.addEventListener("change", () => {
-      paintSz();
-      void window.glyphh.setPreference("echoIconSize", Number(sz.value));
-    });
-    const pp = document.getElementById("settings-echo-per-page") as HTMLInputElement | null;
-    const ppv = document.getElementById("settings-echo-per-page-val");
-    const paintPp = (): void => { if (pp && ppv) ppv.textContent = pp.value; };
-    pp?.addEventListener("input", paintPp);
-    pp?.addEventListener("change", () => {
-      paintPp();
-      void Promise.resolve(window.glyphh.setPreference("echoIconsPerPage", Number(pp.value))).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
-    });
-
-    // Tiles per row + wall width — pure CSS vars on the launcher grid, so
-    // both apply LIVE while dragging (no re-chunk, no re-render). The wall's
-    // own ResizeObserver repositions the dots + arrows off the size change.
-    const cols = document.getElementById("settings-echo-cols") as HTMLInputElement | null;
-    const colsV = document.getElementById("settings-echo-cols-val");
-    const paintCols = (): void => {
-      if (!cols) return;
-      applyTilesPerRow(cols.value);
-      if (colsV) colsV.textContent = cols.value;
-    };
-    cols?.addEventListener("input", paintCols);
-    cols?.addEventListener("change", () => {
-      paintCols();
-      void window.glyphh.setPreference("echoTilesPerRow", Number(cols.value));
-    });
-
-    const ww = document.getElementById("settings-echo-wall-width") as HTMLInputElement | null;
-    const wwv = document.getElementById("settings-echo-wall-width-val");
-    const paintWw = (): void => {
-      if (!ww) return;
-      applyWallWidth(ww.value);
-      if (wwv) wwv.textContent = `${ww.value}%`;
-    };
-    ww?.addEventListener("input", paintWw);
-    ww?.addEventListener("change", () => {
-      paintWw();
-      void window.glyphh.setPreference("echoWallWidth", Number(ww.value));
-    });
-  }
-
   // Tabs per row — the sidebar's Tabs tray. Its grid reads --rail-tabs-cols;
   // the icon-rail collapse still overrides to one per row, as it always has.
   // 0 = Auto, which restores the auto-fill this grid shipped with: a fixed
@@ -596,35 +516,6 @@ function initSettings() {
     z?.addEventListener("change", () => {
       paint();
       void window.glyphh.setPreference("iconHoverZoom", Number(z.value));
-    });
-  }
-
-  // Dock reveal delay (his order, 2026-09-18): how long the pointer rests on
-  // the top edge before a tucked dock drops down. 0 = the moment it arrives.
-  {
-    const d = document.getElementById("settings-dock-reveal") as HTMLInputElement | null;
-    const dv = document.getElementById("settings-dock-reveal-val");
-    const paint = (): void => { if (d && dv) dv.textContent = Number(d.value) <= 0 ? "Instant" : `${(Number(d.value) / 1000).toFixed(2).replace(/0$/, "")}s`; };
-    d?.addEventListener("input", paint);
-    d?.addEventListener("change", () => {
-      paint();
-      void Promise.resolve(window.glyphh.setPreference("echoDockRevealMs", Number(d.value))).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
-    });
-  }
-
-  // Dock zoom (magnification strength; 1 = off) — same live re-read event.
-  {
-    const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
-    const zv = document.getElementById("settings-dock-zoom-val");
-    const paint = (): void => { if (z && zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`; };
-    z?.addEventListener("input", paint);
-    z?.addEventListener("change", () => {
-      paint();
-      void Promise.resolve(window.glyphh.setPreference("echoDockZoom", Number(z.value))).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
     });
   }
 
@@ -762,13 +653,6 @@ async function loadSettings() {
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 
-  // Show the dock — defaults OFF (DOCK_ENABLED_DEFAULT, help/dock-band.ts); an
-  // explicit on saved earlier is kept.
-  const showDock = document.getElementById("toggle-show-dock") as HTMLInputElement | null;
-  if (showDock) showDock.checked = dockEnabledFrom(await window.glyphh.getPreference(DOCK_ENABLED_PREF, DOCK_ENABLED_DEFAULT));
-  // Dock auto-hide — defaults ON; zoom defaults 20%.
-  const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
-  if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
   const agTx = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
   if (agTx) {
     const raw = Number(await window.glyphh.getPreference("echoAgentTextOpacity", 1));
@@ -789,32 +673,6 @@ async function loadSettings() {
     agOp.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 0.92);
     const ov = document.getElementById("settings-echo-agent-opacity-val");
     if (ov) ov.textContent = `${Math.round(Number(agOp.value) * 100)}%`;
-  }
-  const echoSz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
-  if (echoSz) {
-    const raw = Number(await window.glyphh.getPreference("echoIconSize", 76));
-    echoSz.value = String(Number.isFinite(raw) ? Math.max(48, Math.min(104, raw)) : 76);
-    const szv = document.getElementById("settings-echo-icon-size-val");
-    if (szv) szv.textContent = `${echoSz.value}px`;
-  }
-  const echoPp = document.getElementById("settings-echo-per-page") as HTMLInputElement | null;
-  if (echoPp) {
-    const raw = Number(await window.glyphh.getPreference("echoIconsPerPage", 56));
-    echoPp.value = String(Number.isFinite(raw) ? Math.max(16, Math.min(96, raw)) : 56);
-    const ppv = document.getElementById("settings-echo-per-page-val");
-    if (ppv) ppv.textContent = echoPp.value;
-  }
-  const echoCols = document.getElementById("settings-echo-cols") as HTMLInputElement | null;
-  if (echoCols) {
-    echoCols.value = String(clampTilesPerRow(await window.glyphh.getPreference("echoTilesPerRow", 8)));
-    const v = document.getElementById("settings-echo-cols-val");
-    if (v) v.textContent = echoCols.value;
-  }
-  const echoWw = document.getElementById("settings-echo-wall-width") as HTMLInputElement | null;
-  if (echoWw) {
-    echoWw.value = String(clampWallWidth(await window.glyphh.getPreference("echoWallWidth", 0)));
-    const v = document.getElementById("settings-echo-wall-width-val");
-    if (v) v.textContent = `${echoWw.value}%`;
   }
   for (const [id, pref] of [["settings-rail-apps", RAIL_SHOW_APPS_PREF], ["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
     const t = document.getElementById(id) as HTMLInputElement | null;
@@ -840,22 +698,6 @@ async function loadSettings() {
     snd.value = String(Math.round(v * 100));
     const zv = document.getElementById("general-ui-sound-val");
     if (zv) zv.textContent = v <= 0 ? "Off" : `${Math.round(v * 100)}%`;
-  }
-  const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
-  if (zoom) {
-  {
-    const d = document.getElementById("settings-dock-reveal") as HTMLInputElement | null;
-    const dv = document.getElementById("settings-dock-reveal-val");
-    const raw = Number(await window.glyphh.getPreference("echoDockRevealMs", 350));
-    if (d) {
-      d.value = String(Number.isFinite(raw) ? Math.max(0, Math.min(1500, raw)) : 350);
-      if (dv) dv.textContent = Number(d.value) <= 0 ? "Instant" : `${(Number(d.value) / 1000).toFixed(2).replace(/0$/, "")}s`;
-    }
-  }
-    const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
-    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(1.5, zRaw)) : 1.2);
-    const zv = document.getElementById("settings-dock-zoom-val");
-    if (zv) zv.textContent = Number(zoom.value) <= 1 ? "Off" : `${Math.round((Number(zoom.value) - 1) * 100)}%`;
   }
 }
 

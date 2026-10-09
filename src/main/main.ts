@@ -504,8 +504,7 @@ async function boot() {
     }
   });
 
-  // ⌘⇧Space anywhere on the system: front Glyphh and open the command
-  // center (the renderer's opener applies the desktop-overlay preference).
+  // ⌘⇧Space anywhere on the system: front Glyphh.
   globalShortcut.register("CommandOrControl+Shift+Space", () => {
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -513,7 +512,6 @@ async function boot() {
         mainWindow.show();
         mainWindow.focus();
       }
-      sendToHomeShell("home:open-cc");
     } catch { /* window mid-teardown */ }
   });
 
@@ -905,15 +903,6 @@ async function boot() {
           // MENU accelerators, not renderer keydowns: with focus inside a
           // panel <webview> the host document never sees the chord — the
           // application menu fires regardless of which guest holds the keys.
-          {
-            label: "Command Center",
-            accelerator: "CmdOrCtrl+Shift+.",
-            click: () => {
-              for (const wc of webContents.getAllWebContents()) {
-                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:open-cc"); } catch { /* mid-teardown */ }
-              }
-            },
-          },
           {
             label: "New Session",
             accelerator: "CmdOrCtrl+Shift+N",

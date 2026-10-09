@@ -12,39 +12,6 @@ import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
 import { planGates } from "./plan-gate.js";
 import { HOUSE_VIEW_OF_APP, HOUSE_TOOL_VIEWS } from "./house-relay.js";
 
-/** Rewrite a workspace's launcher/dock tile key across the persisted order
- *  prefs (the command center owns these: ccIconOrder = page order,
- *  echoDockOrder = the dock, echoFolders[].keys = filed tiles). Workspace tiles
- *  are keyed `layout:<name>`, so a rename orphaned the tile out of all three
- *  and it vanished from the dock. Writing the prefs directly (not via the live
- *  Echo state) makes the fix hold even when the command center isn't mounted —
- *  its next open reads the corrected order. */
-async function remapLayoutTileKey(from: string, to: string): Promise<void> {
-  const g = window.glyphh as unknown as {
-    getPreference?: (k: string, d: unknown) => Promise<unknown>;
-    setPreference?: (k: string, v: unknown) => void;
-  };
-  if (!g.getPreference || !g.setPreference) return;
-  try {
-    for (const pref of ["ccIconOrder", "echoDockOrder"]) {
-      const cur = await g.getPreference(pref, []);
-      if (Array.isArray(cur) && cur.includes(from)) {
-        g.setPreference(pref, cur.map((k) => (k === from ? to : k)));
-      }
-    }
-    const folders = await g.getPreference("echoFolders", []);
-    if (Array.isArray(folders)) {
-      let hit = false;
-      const next = folders.map((f) => {
-        const rec = (f ?? {}) as { keys?: unknown };
-        const keys = Array.isArray(rec.keys) ? (rec.keys as string[]) : null;
-        if (keys && keys.includes(from)) { hit = true; return { ...rec, keys: keys.map((k) => (k === from ? to : k)) }; }
-        return f;
-      });
-      if (hit) g.setPreference("echoFolders", next);
-    }
-  } catch { /* best effort — the workspace still opens, just off the dock */ }
-}
 
 /** The Workspaces page's hosts, closed before a workspace opens (the rule
  *  is surface.ts workspaceOpenClosesHosts; each door is a no-op when that
@@ -1335,7 +1302,6 @@ async function saveLayout() {
     // Dock/launcher tiles are keyed `layout:<name>`, so a rename orphaned the
     // workspace out of the dock, its page slot, and any folder (his report).
     // Rewrite the key in the persisted order prefs so placement survives.
-    await remapLayoutTileKey(`layout:${oldName}`, `layout:${editedName}`);
   }
   // The Model/Session rows only bind when the grid hosts the agent panel.
   const hasAgentSeat = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");

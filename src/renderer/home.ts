@@ -409,29 +409,18 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // Every restart lands on the COMMAND CENTER — the bare wall, no agent (his
-  // rule, 2026-08-18). initCode's boot raises it (openCommandCenter); calling
-  // gotoSection("agent") here would open the agent card via
-  // openSectionInWorkbench("agent") → openChat, which is exactly the
-  // agent-on-boot he keeps seeing. (?section / ?solo panels above are system
-  // windows, not normal boots.)
-  // Lift the boot veil only once the WALL is actually up — its bare first
+  // Every restart lands on the AGENT (the wall is gone, his order 2026-10-08):
+  // initCode's boot mounts the workbench (ensureWorkbench) and the saved
+  // state replays — a workspace, loose panels, or the agent alone.
+  // Lift the boot veil only once the agent is actually up — its bare first
   // paint was the flash between splash and Home.
   let veilTries = 0;
   let settled = 0;
   const lift = (): void => {
-    // The launcher is UP when a page grid has rendered its icons. Wait until
-    // it is present AND stable for ~10 frames so the first visible frame is
-    // the settled command center, then lift.
-    // THE WEB CUT (his order, 2026-10-05): the web boots no wall — its first
-    // settled frame is the AGENT on screen (the card placed, its composer
-    // visible), the same tell the solo panel's reveal waits for.
-    const web = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-    // (The agent itself rides in the body-level holder over the card, so the
-    // card and the composer are checked separately.)
-    const wall = web
-      ? (document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null)
-      : document.querySelector(".echo-pages .echo-page-grid");
+    // The agent is UP when its card is placed and its composer is visible
+    // (the agent rides in the body-level holder over the card, so both are
+    // checked). Wait until that holds for ~10 frames, then lift.
+    const wall = document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null;
     const up = !!wall && wall.getClientRects().length > 0;
     settled = up ? settled + 1 : 0;
     if (settled >= 10 || veilTries++ > 360) {
