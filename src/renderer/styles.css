@@ -21963,9 +21963,15 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    panels. They should all fit snug now"): no seams, no band inset (the
    workbench's gap/margin are 0), so the cards lose their float — square
    corners, no shadow; a 1px rule still parts neighbours. */
-.echo-card.placed:not(.expanded) { border-radius: 0; border: none; box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border); }
-/* One 1px seam between neighbours (each card draws its right and bottom
-   rule; the outer edges clip) — nothing framing the surface itself: the
+.echo-card.placed:not(.expanded) {
+  border-radius: 0; box-shadow: none; box-sizing: border-box;
+  border: none; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.echo-card.placed.edge-right:not(.expanded) { border-right: none; }
+.echo-card.placed.edge-bottom:not(.expanded) { border-bottom: none; }
+/* One 1px seam between neighbours (each card draws a real right and bottom
+   border, dropped on a side touching the stage's edge — setRect marks
+   .edge-right / .edge-bottom) — nothing framing the surface itself: the
    column that hosts it drops its own side borders (his report, 2026-10-09:
    "there is still a border to the right of the left-rail and the left of
    the right edge of the app"). */

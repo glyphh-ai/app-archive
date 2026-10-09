@@ -3543,6 +3543,14 @@ async function init(): Promise<void> {
       el.style.top = `${Math.round(r.top)}px`;
       el.style.width = `${Math.round(r.width)}px`;
       el.style.height = `${Math.round(r.height)}px`;
+      // THE SEAMS ARE REAL BORDERS (his report, 2026-10-09: two agents side
+      // by side had no line between them — a seam drawn outside a card is
+      // painted over by its neighbour). Every card draws its right and
+      // bottom border, except on the side that touches the stage's edge.
+      if (el.classList.contains("echo-card")) {
+        el.classList.toggle("edge-right", Math.round(r.left + r.width) >= stage.clientWidth - 1);
+        el.classList.toggle("edge-bottom", Math.round(r.top + r.height) >= stage.clientHeight - 1);
+      }
     };
     /** The icon's CURRENT on-screen rect (stage-relative) — the zoom origin. */
     const iconRect = (e: TileEntry): { left: number; top: number; width: number; height: number } | null => {
