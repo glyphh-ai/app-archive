@@ -46,7 +46,7 @@ import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBo
 import { pickUtilityModel } from "./utility-model.js";
 import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
-import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown, RAIL_LAYOUTS_H_PREF, clampRailLayoutsH } from "./wall-prefs.js";
+import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown, RAIL_LAYOUTS_H_PREF, RAIL_LAYOUTS_MIN_H, clampRailLayoutsH } from "./wall-prefs.js";
 import { openCreateWorkspaceModal } from "./workspace-create.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
@@ -5839,7 +5839,14 @@ function initWorkspacesVsplit(): void {
   const rail = el("app-rail-scroll");
   if (!vs || !body) return;
   const apply = (h: number): void => { if (h > 0) body.style.flex = `0 0 ${h}px`; };
-  void window.glyphh.getPreference?.(RAIL_LAYOUTS_H_PREF, 0).then((v) => apply(clampRailLayoutsH(v, rail?.clientHeight || window.innerHeight)));
+  // REMEMBERED THROUGH A RESTART (his report, 2026-10-09): the saved height
+  // is applied as it was dragged. Clamping it against the rail at boot cut it
+  // down while the rail was still laying out; the CSS cap (max-height 75%)
+  // keeps it inside the rail at any window size instead.
+  void window.glyphh.getPreference?.(RAIL_LAYOUTS_H_PREF, 0).then((v) => {
+    const n = Math.round(Number(v));
+    if (Number.isFinite(n) && n > 0) apply(Math.max(RAIL_LAYOUTS_MIN_H, n));
+  });
   vs.addEventListener("mousedown", (e) => {
     if (body.classList.contains("hidden")) return;   // collapsed: nothing to size
     e.preventDefault();

@@ -16298,7 +16298,7 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
 .rail-layouts-vsplit:hover::before { background: var(--accent); height: 2px; top: 3.5px; }
 .rail-layouts-vsplit.closed { cursor: default; }
 .rail-layouts-vsplit.closed:hover::before { background: var(--border-2); height: 1px; top: 4px; }
-#rail-layouts-body { flex: 0 0 220px; min-height: 80px; }
+#rail-layouts-body { flex: 0 0 220px; min-height: 80px; max-height: 75%; }
 
 /* Apps grid (rail) — Apps-page icons in tiles */
 .app-rail-grid {
