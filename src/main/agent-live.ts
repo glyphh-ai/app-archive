@@ -106,12 +106,8 @@ export function registerAgentLiveIpc(): void {
     sendToHomeShell("agent-panel:open-layout", { name });
     return true;
   });
-  // A PANEL'S ROW IS ITS CARD'S HEAD (his order, 2026-10-09): its ⤢ and its
-  // drag act on the panel's card in the shell, found by this webContents id.
-  ipcMain.handle("agent-panel-expand", (e) => {
-    sendToHomeShell("agent-panel:expand", { wcId: e.sender.id });
-    return true;
-  });
+  // A PANEL'S ROW IS ITS CARD'S HEAD (his order, 2026-10-09): its drag acts
+  // on the panel's card in the shell, found by this webContents id.
   ipcMain.on("agent-panel-drag", (e, p: { phase?: string; cx?: number; cy?: number; sx?: number; sy?: number } | undefined) => {
     const phase = p?.phase === "down" || p?.phase === "up" ? p.phase : "move";
     const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);

@@ -1185,11 +1185,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onAgentPanelClearStrip: (callback: (p: { px: number }) => void) => {
     ipcRenderer.on("agent-panel:clear-strip", (_event, p) => callback(p ?? { px: 0 }));
   },
-  /** The panel's ⤢ and its row's drag act on ITS card in the shell (2026-10-09). */
-  agentPanelExpand: () => ipcRenderer.invoke("agent-panel-expand") as Promise<boolean>,
-  onAgentPanelExpand: (callback: (p: { wcId: number }) => void) => {
-    ipcRenderer.on("agent-panel:expand", (_event, p) => callback(p ?? { wcId: -1 }));
-  },
+  /** The panel's row drag acts on ITS card in the shell (2026-10-09). */
   agentPanelDrag: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => ipcRenderer.send("agent-panel-drag", p),
   onAgentPanelDrag: (callback: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => {
     ipcRenderer.on("agent-panel:drag", (_event, p) => callback(p));

@@ -3394,11 +3394,6 @@ async function init(): Promise<void> {
       new MutationObserver(measure).observe(head, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["style", "class"] });
       requestAnimationFrame(measure);
     };
-    /** Expand or restore a card (the head's ⤢, and the agent row's). */
-    const toggleCardExpand = (card: HTMLElement): void => {
-      if (card.classList.contains("expanded")) collapseCard(card); else expandCard(card);
-      layoutCards();
-    };
     /** The card hosting an agent panel's webview, by its webContents id. */
     const entryForWebContents = (wcId: number): TileEntry | null => {
       for (const x of openList) {
@@ -3417,23 +3412,17 @@ async function init(): Promise<void> {
     };
     const inDocAgentCard = (): HTMLElement | null =>
       openList.find((x) => !!x.card?.isConnected && x.tile.kind === "agent")?.card ?? null;
-    (window as unknown as { __wbToggleAgentExpand?: () => void }).__wbToggleAgentExpand = () => {
-      const card = inDocAgentCard();
-      if (card) toggleCardExpand(card);
-    };
     (window as unknown as { __wbAgentHeadDrag?: (x: number, y: number) => void }).__wbAgentHeadDrag = (x, y) => {
       const card = inDocAgentCard();
       if (card) startCardDragAt(card, x, y);
     };
-    // An agent PANEL (its own webview) asks through main: expand, and the
-    // drag it forwards — the press, then every move in screen points, mapped
-    // onto this document from where the press landed.
+    // An agent PANEL (its own webview) forwards its row's drag through main —
+    // the press, then every move in screen points, mapped onto this document
+    // from where the press landed.
     {
       const g = (window as unknown as { glyphh?: {
-        onAgentPanelExpand?: (cb: (p: { wcId: number }) => void) => void;
         onAgentPanelDrag?: (cb: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => void;
       } }).glyphh;
-      g?.onAgentPanelExpand?.((p) => { const x = entryForWebContents(p.wcId); if (x?.card) toggleCardExpand(x.card); });
       let fwd: { x0: number; y0: number; sx0: number; sy0: number } | null = null;
       g?.onAgentPanelDrag?.((p) => {
         if (p.phase === "down") {
@@ -4322,7 +4311,7 @@ async function init(): Promise<void> {
       // the agent panel. They can't be removed") — its card has no ✕.
       const agentCard = e.tile.kind === "agent" || /^agent(-panel)?:/.test(e.tile.slug || "");
       card.innerHTML = `<div class="echo-card-head"><span></span>
-          <button class="ws-icon-btn echo-card-expand" title="Expand">${EXPAND_SVG}</button>
+          ${agentCard ? "" : `<button class="ws-icon-btn echo-card-expand" title="Expand">${EXPAND_SVG}</button>`}
           ${agentCard ? "" : `<button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>`}
         </div><div class="echo-card-body"></div>`;
       card.querySelector("span")!.textContent = e.tile.name;
@@ -4339,8 +4328,7 @@ async function init(): Promise<void> {
         requestAnimationFrame(() => card.querySelector("webview")?.addEventListener("dom-ready", () => reclearStripFor(card)));
       }
       else trackHeadPads(card);
-      const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
-      expandBtn.addEventListener("click", () => {
+      card.querySelector<HTMLElement>(".echo-card-expand")?.addEventListener("click", () => {
         if (card.classList.contains("expanded")) { collapseCard(card); layoutCards(); return; }
         expandCard(card);
         layoutCards();

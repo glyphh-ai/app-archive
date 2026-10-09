@@ -22022,7 +22022,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 /* The agent's card has no shell head: its own session row is the head. */
 .echo-card.echo-agent-host > .echo-card-head { display: none; }
 .code-agent-head { user-select: none; }
-.code-card-expand { flex: none; }
 
 /* ── ONE TOP ROW ON EVERY PANEL (his order, 2026-10-09: "all workpanel and
    app headers have to share the same padding and the lines must extend to

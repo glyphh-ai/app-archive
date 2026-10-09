@@ -8158,13 +8158,13 @@ export function initCode(): void {
     void home;
   }
   // THE AGENT'S ROW IS ITS CARD'S HEAD (his order, 2026-10-09: "remove the
-  // headers off all work panels"): ⤢ expands the card, and pressing the row
-  // drags it. A panel (its own document) asks the shell through main; the
-  // in-document agent calls the workbench directly.
+  // headers off all work panels"): pressing the row drags the card. The
+  // agent carries NO expand and NO close (his order the same day). A panel
+  // (its own document) asks the shell through main; the in-document agent
+  // calls the workbench directly.
   {
     const solo = (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
     const g = window.glyphh as unknown as {
-      agentPanelExpand?: () => Promise<boolean>;
       agentPanelDrag?: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void;
     };
     // THE WINDOW CONTROLS (his report, 2026-10-09): a panel at the top left
@@ -8176,11 +8176,6 @@ export function initCode(): void {
         document.documentElement.style.setProperty("--panel-strip-clear", `${px}px`);
         document.querySelector(".code-agent-head")?.classList.toggle("panel-clears-strip", px > 0);
       });
-    el("code-card-expand")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      if (solo) void g.agentPanelExpand?.();
-      else (window as unknown as { __wbToggleAgentExpand?: () => void }).__wbToggleAgentExpand?.();
-    });
     const row = document.querySelector<HTMLElement>(".code-agent-head");
     row?.addEventListener("mousedown", (ev) => {
       if (ev.button !== 0) return;
