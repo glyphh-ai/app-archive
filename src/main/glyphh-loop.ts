@@ -94,7 +94,7 @@ function taggedFetch(input: string, init: RequestInit): Promise<Response> {
  */
 // ONE BELT (his order, 2026-10-08: "just code"): the one type's belt is the
 // union of what the two carried.
-const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get", "hand_off"]);
+const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get", "hand_off", "board_add", "board_update", "board_list"]);
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));

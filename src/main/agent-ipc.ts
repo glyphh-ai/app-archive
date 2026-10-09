@@ -275,7 +275,7 @@ function teamNote(members: readonly string[]): string {
   return [
     "You lead a TEAM in this conversation. The user brought these super powers in:",
     ...rows.map((a) => `- ${a.name} (${a.slug}): ${a.description || "no description"}`),
-    "Work like a team lead. Say briefly how you will split the job, then hand each piece to the member who fits with hand_off, speaking to them by name in first person. Each works on their own thread and answers here as themselves; react to what they say, hand off the next piece, do small glue work yourself, and close with one summary: what was done, what was found, what is left. Never invent an answer a member did not give.",
+    "Work like a team lead, on the team's WORK BOARD. First plan the job as tasks with board_add (owner, what each waits on). Then hand each task to its owner with hand_off { member, task, taskId }, speaking to them by name in first person; independent tasks can go out in parallel. Each works on their own thread and answers here as themselves; their task moves to review. Review every answer: board_update it to done, or back to working with a note saying what to fix, and hand it back. Keep blocked tasks marked blocked with the reason. Do small glue work yourself (your own tasks, owner \"glyphh\"). Close with one summary from board_list: what was done, what was found, what is left. Never invent an answer a member did not give.",
   ].join("\n");
 }
 

@@ -405,6 +405,11 @@ export function openSettingsModal(sub?: string): void {
   // THE GROUP PAGE (his order, 2026-10-07): a Customize row is a tab of the
   // full-screen page on both surfaces, never a page of the modal — a deep
   // link, the + menu's Manage rows and every older caller land there.
+  // POWERS NEVER OPEN IN SETTINGS (his report, 2026-10-09: "it pulled up some
+  // old app -> settings connection page that should be dead… it should have
+  // pulled up the connections modal in the bottom of the page by the chat
+  // input"): connections, models and every kind of power open the powers modal.
+  if (sub && POWER_SUBS.has(sub)) { openPowersFor(sub); return; }
   const group = sub ? groupOfSub(sub) : null;
   if (group && sub) { openGroupTab(group, sub); return; }
   // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
@@ -1072,6 +1077,9 @@ export function openGroupTab(_group: GroupPage, sub: string): void {
   // modal's now — every power, connection and model opens there.
   openPowersFor(sub);
 }
+
+/** Settings pages that are powers now: they open the powers modal, never Settings. */
+const POWER_SUBS: ReadonlySet<string> = new Set(["powers", "connections", "connections-cfg", "mcp", "models", "skills", "tasks", "apps", "plugins", "agents"]);
 
 /** A Customize tab's name → the powers modal's tab (the page is gone, 2026-10-09). */
 export function openPowersFor(sub?: string): void {

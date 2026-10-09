@@ -249,12 +249,57 @@ function registerTools(mcp: ToolRegistrar): void {
     {
       member: z.string().describe("The super power's slug or name, from agents_list"),
       task: z.string().describe("What you need from them, first person, complete and self-contained — they see only this"),
+      taskId: z.string().optional().describe("The board task this hand-off works on (from board_add / board_list): it moves to working, then to review when they answer"),
     },
-    async ({ member, task }) => {
+    async ({ member, task, taskId }) => {
       const { handOff } = await import("./swarm.js");
-      const r = await handOff({ member, task });
+      const r = await handOff({ member, task, ...(taskId ? { taskId } : {}) });
       if (!r.ok) return text(`Error: ${r.error ?? "the hand-off failed"}`);
       return text(`${member} answered (shown in the thread as their message):\n\n${r.text}`);
+    },
+  );
+  // THE WORK BOARD (phase 2 of swarm mode, his order 2026-10-09: "the task and
+  // work management needs to be fucking stellar"): a team thread's tasks.
+  mcp.tool(
+    "board_add",
+    "TEAM THREADS: put tasks on the team's work board — plan the job as tasks before handing it out. Each task: a short title, the detail the owner needs, its owner (a member's slug, or \"glyphh\" for you), and waits_on (titles or ids of tasks it can't start before). A member at work on a task adds SUB-TASKS of it the same way. Returns the board.",
+    {
+      tasks: z.array(z.object({
+        title: z.string().describe("Short, imperative: \"Build the upload page\""),
+        detail: z.string().optional().describe("What done looks like; what the owner needs to know"),
+        owner: z.string().optional().describe("A member's slug, or \"glyphh\"; omit to decide later"),
+        waits_on: z.array(z.string()).optional().describe("Titles or ids of tasks that must be done first"),
+      })).min(1).max(30),
+    },
+    async ({ tasks }) => {
+      const { boardOp } = await import("./swarm.js");
+      const r = await boardOp("add", { tasks });
+      return text(r.ok ? r.text : `Error: ${r.error}`);
+    },
+  );
+  mcp.tool(
+    "board_update",
+    "TEAM THREADS: change one task on the work board — its status (queued, working, review, blocked, done), its owner, or add a note (what was decided, what's missing, why it's blocked). Review a member's answer, then move its task to done, or back to working with a note saying what to fix. Returns the board.",
+    {
+      task: z.string().describe("The task's id or title"),
+      status: z.enum(["queued", "working", "review", "blocked", "done"]).optional(),
+      owner: z.string().optional().describe("A member's slug, or \"glyphh\""),
+      note: z.string().optional().describe("A line for the task's timeline"),
+    },
+    async (args) => {
+      const { boardOp } = await import("./swarm.js");
+      const r = await boardOp("update", args);
+      return text(r.ok ? r.text : `Error: ${r.error}`);
+    },
+  );
+  mcp.tool(
+    "board_list",
+    "TEAM THREADS: the team's work board — every task with its id, status, owner, what it waits on, its sub-tasks and its latest note.",
+    {},
+    async () => {
+      const { boardOp } = await import("./swarm.js");
+      const r = await boardOp("list", {});
+      return text(r.ok ? r.text : `Error: ${r.error}`);
     },
   );
   mcp.tool(
@@ -359,8 +404,8 @@ function registerTools(mcp: ToolRegistrar): void {
   );
   mcp.tool(
     "settings_open",
-    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, models, members, billing, general, appearance, mcp.",
-    { page: z.string().describe("Which page: skills | connections | plugins | tasks | general | appearance | mcp | models | members | billing") },
+    "Put a page in front of the user so they can see or change something themselves. `connections`, `models` and `powers` open the POWERS MODAL by the chat input (where they connect an account, pick models, and see their powers) — use `connections` when a super power needs an account connected. Everything else is Settings: general, appearance, memory, privacy, devices, billing.",
+    { page: z.string().describe("connections | models | powers (the powers modal) · general | appearance | memory | privacy | devices | billing (Settings)") },
     async ({ page }) => via("settings.open", { page }),
   );
 

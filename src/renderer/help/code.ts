@@ -27,6 +27,8 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC 
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openPowersModal } from "./powers-modal.js";
 import { openNewSuperPowerModal } from "./super-power-new.js";
+import { addTasks, boardCounts, boardText, emptyBoard, findTask, updateTask, type Board, type NewTask, type TaskStatus } from "./team-board.js";
+import { openBoardPanel, refreshBoard } from "./board-panel.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -86,6 +88,8 @@ interface TeamHandoff { id: string; member: string; name: string; ask: string; s
 interface CodeChat {
   /** A TEAM THREAD (his order, 2026-10-09: swarm mode): the super powers on it. */
   members?: string[];
+  /** Its WORK BOARD (phase 2): tasks, owners, statuses, the timeline (help/team-board.ts). */
+  board?: Board;
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
    *  made while it was current. Absent → the global workspace folder. */
@@ -6661,6 +6665,17 @@ function paintTeamBar(): void {
     chip.append(face, name, x);
     host.appendChild(chip);
   }
+  // THE BOARD: what the team is doing, at a glance; a click opens it.
+  if (c.board?.tasks.length) {
+    const n = boardCounts(c.board);
+    const board = document.createElement("button");
+    board.type = "button";
+    board.className = "team-board-btn";
+    board.title = "Open the work board";
+    board.innerHTML = `<span class="team-board-label">Board</span>${n.working ? `<span class="tb-n st-working">${n.working} working</span>` : ""}${n.review ? `<span class="tb-n st-review">${n.review} to review</span>` : ""}${n.blocked ? `<span class="tb-n st-blocked">${n.blocked} blocked</span>` : ""}<span class="tb-n st-done">${n.done}/${c.board.tasks.length} done</span>`;
+    board.addEventListener("click", () => openTeamBoard(c));
+    host.appendChild(board);
+  }
   const add = document.createElement("button");
   add.type = "button";
   add.className = "team-add";
@@ -6700,15 +6715,81 @@ function openTeamPicker(anchor: HTMLElement, chat: CodeChat): void {
   sessMenuEl = m;
 }
 
+/** A team member's name for the board: a super power's, or Glyphh's own. */
+function teamName(slug: string): string {
+  if (slug === "glyphh") return document.getElementById("rail-glyphh-name")?.textContent?.trim() || "Glyphh";
+  return railBots.find((b) => b.slug === slug)?.name ?? slug;
+}
+/** A face for the board: a super power's cat, or Glyphh's mark. */
+function teamFace(slug: string): string {
+  if (slug === "glyphh") return `<img src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
+  return botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 20 });
+}
+/** Who may own a task on this team: Glyphh and its members. */
+const teamOwners = (chat: CodeChat): Set<string> => new Set(["glyphh", ...(chat.members ?? [])]);
+
+/** A BOARD CHANGE (swarm.ts: board_add / board_update / board_list from the
+ *  lead, or a member at work): applied to the team thread this panel owns,
+ *  saved, repainted, and answered with the board as the model reads it. */
+function applyBoardOp(req: { team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }): { ok: boolean; text: string; error?: string } {
+  const team = chats.find((x) => x.id === req.team);
+  if (!team) return { ok: false, text: "", error: "the team thread isn't open in this panel" };
+  team.board ??= emptyBoard();
+  const owners = teamOwners(team);
+  if (req.by !== "glyphh") owners.add(req.by);
+  try {
+    if (req.op === "add") addTasks(team.board, (Array.isArray(req.args.tasks) ? req.args.tasks : []) as NewTask[], req.by, req.parent, owners, Date.now());
+    else if (req.op === "update") updateTask(team.board, req.args.task, req.args, req.by, owners, Date.now());
+  } catch (err) {
+    return { ok: false, text: "", error: err instanceof Error ? err.message : String(err) };
+  }
+  if (req.op !== "list") { void saveStore(); if (current()?.id === team.id) paintTeamBar(); refreshBoard(); }
+  return { ok: true, text: boardText(team.board, teamName) };
+}
+
+/** THE WORK BOARD for a team thread, on screen (help/board-panel.ts). */
+function openTeamBoard(chat: CodeChat): void {
+  openBoardPanel({
+    title: `${chat.title || "Team"} · work board`,
+    board: () => chat.board ?? emptyBoard(),
+    nameOf: teamName,
+    faceOf: teamFace,
+    openThread: (slug) => {
+      if (slug === "glyphh") { sessOpen({ id: chat.id, cli: GLYPHH_LOOP, title: chat.title, cwd: "", mtime: 0 }); return; }
+      railPickedKey = slug;
+      renderRailSessions();
+      sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: teamName(slug), cwd: "", mtime: 0, bot: slug });
+    },
+    update: (taskId, patch) => {
+      chat.board ??= emptyBoard();
+      try { updateTask(chat.board, taskId, patch, "you", teamOwners(chat), Date.now()); }
+      catch (err) { return err instanceof Error ? err.message : String(err); }
+      void saveStore();
+      paintTeamBar();
+      refreshBoard();
+      return null;
+    },
+  });
+}
+
 /** A HAND-OFF, RUN HERE (swarm.ts asks the panel holding the team thread): the
  *  member's own thread gets the lead's words and runs like any send; its card
  *  in the team thread is live; its answer lands back as its own message. */
-async function runTeamTurn(req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }): Promise<void> {
+async function runTeamTurn(req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }): Promise<void> {
   const g = window.glyphh as unknown as { teamHandoffDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> };
   const reply = (r: { ok: boolean; text: string; error?: string }): void => { void g.teamHandoffDone?.(req.id, r); };
   const team = chats.find((x) => x.id === req.team);
   if (!team) { reply({ ok: false, text: "", error: "the team thread isn't open in this panel" }); return; }
   if (req.joins) addTeamMember(team, req.member);
+  // THE TASK IT WORKS ON (phase 2): working, owned by the member, from now.
+  team.board ??= emptyBoard();
+  const task = req.taskId ? findTask(team.board, req.taskId) : undefined;
+  const boardMove = (patch: { status?: TaskStatus; owner?: string; note?: string }): void => {
+    if (!task) return;
+    try { updateTask(team.board!, task.id, patch, req.from ?? "glyphh", new Set([...teamOwners(team), req.member]), Date.now()); } catch { /* the board refused: leave it */ }
+    refreshBoard();
+  };
+  boardMove({ status: "working", owner: req.member, note: `Handed to ${req.name}` });
   const card: TeamHandoff = { id: req.id, member: req.member, name: req.name, ask: req.ask, status: "working", startedAt: Date.now() };
   team.messages.push({ role: "assistant", kind: "handoff", text: req.ask, at: Date.now(), handoff: card });
   const memberId = `bots/${req.member}`;
@@ -6717,7 +6798,9 @@ async function runTeamTurn(req: { id: string; team: string; member: string; name
     member = { id: memberId, title: req.name, createdAt: Date.now(), messages: [], mode: SESSION_MODE, bot: req.member, permission: defaultMode } as CodeChat;
     chats.push(member);
   }
-  member.messages.push({ role: "user", text: `${req.lead}: ${req.ask}`, at: Date.now(), speaker: "glyphh" });
+  // A MEMBER AT WORK ON A TEAM TASK can split it and hand parts to the super powers it holds.
+  const taskLine = task ? `\n\n(Team task ${task.id} "${task.title}". To split it, add sub-tasks with board_add; hand parts to the super powers you hold with hand_off.)` : "";
+  member.messages.push({ role: "user", text: `${req.lead}: ${req.ask}${taskLine}`, at: Date.now(), speaker: req.from ?? "glyphh" });
   liveRuns.set(memberId, { runId: null, text: "", bubble: null, startAt: Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
   ensureRunTicker();
   teamRuns.set(req.id, memberId);
@@ -6754,6 +6837,9 @@ async function runTeamTurn(req: { id: string; team: string; member: string; name
   const refused = !!done.text.trim() && !!turnError(done.text);
   card.status = done.stopped ? "stopped" : refused || !done.text.trim() ? "failed" : "done";
   card.endedAt = Date.now();
+  // The task waits on the lead's review — or is blocked, with why.
+  if (card.status === "done") boardMove({ status: "review", note: `${req.name} answered` });
+  else boardMove({ status: "blocked", note: card.status === "stopped" ? `${req.name} was stopped` : `${req.name} couldn't finish` });
   // THEIR ANSWER, AS THEMSELVES, in the team thread — and aloud, in their own
   // voice, after whoever is speaking (voice mode on in this team's thread only).
   if (card.status === "done") {
@@ -7352,10 +7438,17 @@ function initRailApps(): void {
   // THE TEAM (swarm.ts): main asks this panel to run a member's turn.
   {
     const g = window.glyphh as unknown as {
-      onTeamHandoff?: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }) => void) => unknown;
+      onTeamHandoff?: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }) => void) => unknown;
       onTeamHandoffStop?: (cb: (req: { id: string }) => void) => unknown;
     };
     g.onTeamHandoff?.((req) => { void runTeamTurn(req); });
+    (window.glyphh as unknown as {
+      onTeamBoard?: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => unknown;
+      teamBoardDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean>;
+    }).onTeamBoard?.((req) => {
+      const r = applyBoardOp(req);
+      void (window.glyphh as unknown as { teamBoardDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> }).teamBoardDone?.(req.id, r);
+    });
     g.onTeamHandoffStop?.((req) => { const id = teamRuns.get(req.id); if (id) void window.glyphh.glyphhStop?.(id); });
     // DRAG A SUPER POWER INTO THE CHAT (his order, 2026-10-09): drop on the agent.
     const zone = document.querySelector<HTMLElement>(".code-agent");
