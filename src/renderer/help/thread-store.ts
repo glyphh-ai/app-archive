@@ -254,8 +254,16 @@ export function hydrate(): Promise<{ chats: ThreadChat[]; currentId: string }> {
       const cached = await cacheLoad();
       chatsRef = cached.chats;
       currentIdRef = cached.currentId;
-      await reconcile();
+      // THE CACHE ANSWERS AT ONCE; the server reconciles BEHIND it (his
+      // report, 2026-10-08: "clicking any recent doesn't work at all", and the
+      // agent "takes for fucking ever to load" at startup). Every open path —
+      // the rail click in the shell, the command inside an agent panel —
+      // awaits this, and it used to await a full server reconcile first: a
+      // slow or silent server at a cold start left every click waiting
+      // forever. The reconcile's changes land through onRemoteChange, as the
+      // 60s pass's always have.
       wireLifecycle();
+      void safeReconcile();
       return { chats: chatsRef, currentId: currentIdRef };
     })();
   }
