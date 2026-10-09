@@ -32,6 +32,18 @@ vi.mock("../../src/main/agent-brief", () => ({
 vi.mock("../../src/main/loop-models", () => ({
   listLoopModels: async () => ({ ok: true, models: [{ id: "claude-opus-5", name: "claude-opus-5", providerSlug: "anthropic" }, { id: "gemini-3.8-flash", name: "gemini-3.8-flash", providerSlug: "google" }] }),
 }));
+// The connector catalog: what connections.apps answers for a search.
+const CATALOG = [
+  { id: "youtube_data_api", name: "YouTube Data API" },
+  { id: "youtube", name: "YouTube" },
+  { id: "linkedin", name: "LinkedIn" },
+  { id: "slack", name: "Slack" },
+];
+vi.mock("../../src/main/glyphh-client", () => ({
+  getClient: () => ({ connections: { apps: async ({ search }: { search: string }) => ({
+    apps: CATALOG.filter((a) => `${a.id} ${a.name}`.toLowerCase().includes(search.toLowerCase().split(" ")[0]!)),
+  }) } }),
+}));
 vi.mock("../../src/main/skills-fs", () => ({
   listSkills: () => [{ id: "glyphh:ui-ux-code", name: "UI/UX code" }, { id: "glyphh:video-clips", name: "Video clips" }],
 }));
@@ -133,5 +145,20 @@ describe("a super power is the agent plus its powers (his order, 2026-10-09)", (
     await call("agents.save", { name: "Y", brief: "b", powers: ["video-clips"] });
     await call("agents.save", { agent: "y", description: "new" });
     expect(rows.get("y")!.skills).toEqual(["glyphh:video-clips"]);
+  });
+});
+
+describe("connections are looked up, never guessed (his report, 2026-10-09)", () => {
+  beforeEach(() => { rows.clear(); });
+
+  it("an exact connector slug is kept; an exact connector NAME maps to its slug", async () => {
+    await call("agents.save", { name: "Clips", brief: "b", connections: ["youtube_data_api", "LinkedIn"] });
+    expect(rows.get("clips")!.connections).toEqual(["youtube_data_api", "linkedin"]);
+  });
+
+  it("a guessed slug is refused with the real ones, and nothing is saved", async () => {
+    await expect(call("agents.save", { name: "Clips", brief: "b", connections: ["youtube_api"] }))
+      .rejects.toThrow(/not a connector slug: "youtube_api" — did you mean: youtube_data_api \(YouTube Data API\).*connector_tools/);
+    expect(rows.size).toBe(0);
   });
 });

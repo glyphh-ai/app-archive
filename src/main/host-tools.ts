@@ -209,7 +209,7 @@ function registerTools(mcp: ToolRegistrar): void {
       role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the super powers: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
       // ITS POWERS (his order, 2026-10-09): what the Edit page sets, so one built in a chat is whole.
       powers: z.array(z.string()).optional().describe("The powers it holds, by slug from skills_list (build missing ones first with skill_save)"),
-      connections: z.array(z.string()).optional().describe("Connected-account app slugs it uses, e.g. [\"youtube_data_api\", \"slack\"]"),
+      connections: z.array(z.string()).optional().describe("Connected-account app slugs it uses — the EXACT slug connector_tools { query } returns, never a guess (the save checks each against the catalog and refuses one that isn't there)"),
       models: z.array(z.string()).optional().describe("Models it may use beside its own, from models_available"),
       folders: z.array(z.string()).optional().describe("Absolute folder paths; the first is its working folder, the rest it can read"),
       personality: z.number().int().min(1).max(5).optional().describe("1 serious … 3 balanced … 5 playful"),

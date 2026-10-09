@@ -32,6 +32,7 @@ import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
 import { listSkills } from "./skills-fs.js";
+import { getClient } from "./glyphh-client.js";
 import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, type AgentRole } from "../shared/member-library.js";
 
 interface SaveParams {
@@ -47,6 +48,32 @@ function summary(a: ReturnType<typeof getAgent>) {
     powers: (a.skills ?? []).map((id) => id.slice(id.indexOf(":") + 1)), connections: a.connections ?? [], models: a.models ?? [],
     folders: a.folders ?? [], personality: a.personality ?? null, effort: a.effort ?? null,
   };
+}
+
+/** CONNECTIONS ARE LOOKED UP, NEVER GUESSED (his report, 2026-10-09: "the
+ *  agent got the connector name wrong, it shouldn't guess… so the link can
+ *  be used to map it"). Each name is checked against the connector catalog:
+ *  an exact app id is kept; an exact match on a connector's NAME maps to its
+ *  id; anything else is refused with the nearest real connectors, so the
+ *  caller looks it up and saves again. A catalog that can't be read keeps
+ *  the names as given (the rail's badge and the Connect door still show them). */
+export async function checkedConnections(raw: unknown): Promise<string[]> {
+  const want = cleanNames(raw);
+  const out: string[] = [];
+  const wrong: string[] = [];
+  for (const name of want) {
+    const words = name.replace(/[_-]+/g, " ").trim();
+    let apps: Array<{ id: string; name: string }>;
+    try { apps = (await getClient().connections.apps({ search: words, limit: 10 })).apps.map((a) => ({ id: a.id, name: a.name })); }
+    catch { out.push(name); continue; }
+    const hit = apps.find((a) => a.id === name)
+      ?? apps.find((a) => a.name.toLowerCase() === words.toLowerCase());
+    if (hit) { if (!out.includes(hit.id)) out.push(hit.id); continue; }
+    const near = apps.slice(0, 5).map((a) => `${a.id} (${a.name})`).join(", ");
+    wrong.push(`"${name}"${near ? ` — did you mean: ${near}` : " — no connector matches"}`);
+  }
+  if (wrong.length) throw new Error(`not a connector slug: ${wrong.join("; ")}. Look it up with connector_tools { query } and use the exact app slug it returns.`);
+  return out;
 }
 
 /** Power slugs (or ids) → the library ids a super power holds; an unknown one is refused by name. */
@@ -116,6 +143,7 @@ export function installAgentRelayHandlers(): void {
     }
     // ITS POWERS (2026-10-09): each field left out keeps what it has.
     const powers = p.powers === undefined ? undefined : checkedPowers(p.powers);
+    const connections = p.connections === undefined ? undefined : await checkedConnections(p.connections);
     const models = p.models === undefined ? undefined : await Promise.all(cleanNames(p.models).map((m) => checkedModel(m)));
     const personality = p.personality === undefined ? undefined : cleanPersonality(p.personality);
     if (p.personality !== undefined && personality === undefined) throw new Error("personality is 1 (serious) to 5 (playful)");
@@ -124,7 +152,7 @@ export function installAgentRelayHandlers(): void {
     const row = saveAgent({
       ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role,
       ...(powers ? { skills: powers } : {}),
-      ...(p.connections !== undefined ? { connections: cleanNames(p.connections) } : {}),
+      ...(connections !== undefined ? { connections } : {}),
       ...(models ? { models: models.filter(Boolean) } : {}),
       ...(p.folders !== undefined ? { folders: cleanNames(p.folders) } : {}),
       ...(personality !== undefined ? { personality } : {}),

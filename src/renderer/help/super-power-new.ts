@@ -124,6 +124,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     closed = true;
     clearTimers();
     clearTimeout(cometTimer);
+    clearTimeout(hopTimer);
     offBeat?.();
     document.removeEventListener("keydown", onKey, true);
     guardWebviewsForModal(false);
@@ -201,6 +202,18 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     void face.offsetWidth;
     face.classList.add("spn-face-in");
   };
+  // A TINY RANDOM BOUNCE (his order, 2026-10-09): every 4-9s the cat hops.
+  let hopTimer = 0;
+  const hop = (): void => {
+    hopTimer = window.setTimeout(() => {
+      if (closed) return;
+      ring.classList.remove("spn-hop");
+      void ring.offsetWidth;
+      ring.classList.add("spn-hop");
+      hop();
+    }, 4000 + Math.random() * 5000);
+  };
+  hop();
 
   // ── ASK ──
   function paintAsk(): void {
