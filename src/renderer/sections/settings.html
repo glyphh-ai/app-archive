@@ -115,37 +115,6 @@
                   <span class="toggle-switch"></span>
                 </label>
 
-                <!-- THE SIDEBAR TRAYS (his order, 2026-10-08; on General, his order the same night): Tabs and Workspaces
-                     under Recents, each an option — prefs railShowApps /
-                     railShowLayouts (help/wall-prefs.ts), on by default. The
-                     rail re-reads on glyphh:rail-sections-changed. -->
-                <h3 class="settings-subheading">Sidebar</h3>
-                <label class="settings-toggle set-pref-row" id="rail-apps-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show Tabs in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Tabs tray under Recents — search and click to open a tab, without the command center.</div>
-                  </div>
-                  <input type="checkbox" id="settings-rail-apps" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <label class="settings-toggle set-pref-row" id="rail-layouts-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show Workspaces in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Workspaces tray under Recents — click a workspace to open it.</div>
-                  </div>
-                  <input type="checkbox" id="settings-rail-layouts" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Tabs per row</div>
-                    <div class="set-pref-desc">How many tabs each row of the sidebar's Tabs tray holds. Auto fits as many as the rail's width allows.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
-                    <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
-                  </div>
-                </div>
 
                 <h3 class="settings-subheading">App</h3>
 
@@ -584,6 +553,38 @@
                     <span id="settings-echo-wall-width-val" class="settings-hint"></span>
                   </div>
                 </div>
+                </div>
+
+                <!-- THE SIDEBAR TRAYS (his order, 2026-10-08; on Appearance, his word): Tabs and Workspaces
+                     under Recents, each an option — prefs railShowApps /
+                     railShowLayouts (help/wall-prefs.ts), on by default. The
+                     rail re-reads on glyphh:rail-sections-changed. -->
+                <h3 class="settings-subheading">Sidebar</h3>
+                <label class="settings-toggle set-pref-row" id="rail-apps-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Show Tabs in the sidebar</div>
+                    <div class="set-pref-desc">A collapsible Tabs tray under Recents — search and click to open a tab, without the command center.</div>
+                  </div>
+                  <input type="checkbox" id="settings-rail-apps" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row" id="rail-layouts-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Show Workspaces in the sidebar</div>
+                    <div class="set-pref-desc">A collapsible Workspaces tray under Recents — click a workspace to open it.</div>
+                  </div>
+                  <input type="checkbox" id="settings-rail-layouts" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Tabs per row</div>
+                    <div class="set-pref-desc">How many tabs each row of the sidebar's Tabs tray holds. Auto fits as many as the rail's width allows.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
+                    <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
+                  </div>
                 </div>
 
                 <!-- Echo Agent sliders — OFF the surface (his order, 2026-09-14: "remove the echo agent configs");
