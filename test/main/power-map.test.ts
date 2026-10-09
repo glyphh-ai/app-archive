@@ -62,3 +62,21 @@ describe("the super power map's layout", () => {
     expect(edgePath(100, 0, 0, 50).startsWith("M100,0 C50,0")).toBe(true);
   });
 });
+
+describe("the member's own arrangement (his order, 2026-10-09)", () => {
+  it("cards carry a key from what they stand for, not their place in a list", () => {
+    const L = layoutPowerMap(model({ skills: [n("clips", { flow: [{ name: "9am", sub: "", icon: "" }] })], models: [n("gemini")] }));
+    expect(L.nodes.map((x) => x.key).sort()).toEqual(["models:gemini", "skills:clips", "skills:clips:flow:0"]);
+  });
+  it("saved positions win, card by card, and the canvas grows to hold them", async () => {
+    const { applyLayout, CENTER_KEY } = await import("../../src/renderer/help/power-map");
+    const L = layoutPowerMap(model({ skills: [n("clips")], models: [n("gemini")] }));
+    const moved = applyLayout(L, { "skills:clips": { x: 2000, y: 900 }, [CENTER_KEY]: { x: 300, y: 200 } });
+    expect(moved.nodes.find((x) => x.key === "skills:clips")).toMatchObject({ x: 2000, y: 900 });
+    expect(moved.nodes.find((x) => x.key === "models:gemini")).toMatchObject({ x: L.nodes.find((x) => x.key === "models:gemini")!.x });
+    expect(moved.center).toMatchObject({ x: 300, y: 200 });
+    expect(moved.width).toBeGreaterThan(2000);
+    expect(moved.height).toBeGreaterThan(900);
+    expect(applyLayout(L, {})).toBe(L);
+  });
+});

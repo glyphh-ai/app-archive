@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appRowKind,
-  agentClock, buildAgentRow, checkSuperPowers, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
+  agentClock, buildAgentRow, checkSuperPowers, cleanMapLayout, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
   filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
   normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
   workspaceClock, workspaceId, workspaceSurfaceOf, type GridLayoutLike, type TabRowLike,
@@ -92,7 +92,7 @@ describe("app tabs", () => {
 describe("agents", () => {
   it("buildAgentRow is local-agents' saveAgent row — the same on both surfaces", () => {
     const made = buildAgentRow({ name: "Ada Lovelace", prompt: "p", guardrails: { maxInputTokens: "12" as unknown as number, windowCalls: 0 } }, null, "2026-10-04T00:00:00.000Z");
-    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", role: "worker", avatar: null, skills: [], apps: [], folders: [], connections: [], models: [], superPowers: [], voice: null, modelCaps: {}, live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
+    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", role: "worker", avatar: null, skills: [], apps: [], folders: [], connections: [], models: [], mapLayout: {}, superPowers: [], voice: null, modelCaps: {}, live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
     const edited = buildAgentRow({ live: false, guardrails: {} }, made, "2026-10-05T00:00:00.000Z");
     expect(edited).toMatchObject({ slug: "ada-lovelace", name: "Ada Lovelace", prompt: "p", live: false, guardrails: null, createdAt: "2026-10-04T00:00:00.000Z" });
     expect(agentClock(edited)).toBe(Date.parse("2026-10-05T00:00:00.000Z"));
@@ -220,5 +220,12 @@ describe("a super power holds super powers, never itself, never a loop (his orde
   it("the row never lists itself", () => {
     const row = buildAgentRow({ name: "A", slug: "a", superPowers: ["a", "d"] }, null, "2026-10-09T00:00:00.000Z");
     expect(row.superPowers).toEqual(["d"]);
+  });
+});
+
+describe("a map layout is stored clean (2026-10-09)", () => {
+  it("keeps finite positions, rounds them, drops the rest", () => {
+    expect(cleanMapLayout({ a: { x: 1.6, y: 2 }, b: { x: "x", y: 1 }, "": { x: 1, y: 1 } })).toEqual({ a: { x: 2, y: 2 } });
+    expect(cleanMapLayout(null)).toEqual({});
   });
 });

@@ -67,6 +67,8 @@ export interface AgentRow {
   models?: string[];
   /** The super powers it holds and may hand work to (2026-10-09). */
   superPowers?: string[];
+  /** Where its map's cards sit (2026-10-09). */
+  mapLayout?: Record<string, { x: number; y: number }>;
   /** Directness 1 gentle … 5 blunt; temperament 1 kind … 5 spicy (2026-10-09). */
   directness?: number;
   temperament?: number;
@@ -155,6 +157,7 @@ interface AgentInput {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
+  mapLayout?: Record<string, { x: number; y: number }> | null;
   personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;

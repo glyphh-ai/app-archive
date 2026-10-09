@@ -36,6 +36,8 @@ export interface BotRow {
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
   /** The other super powers it holds (2026-10-09). */
   superPowers?: string[];
+  /** Where its map's cards sit (2026-10-09); absent = the automatic layout. */
+  mapLayout?: Record<string, { x: number; y: number }>;
 }
 type PowerTabName = "folders" | "connections" | "models" | "skills" | "superPowers";
 interface Envelope { ok: boolean; data?: unknown; error?: string }
@@ -216,9 +218,27 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   // node opens in the powers modal; the circle adds a power.
   const mapHost = el("div", "botp-map");
   root.appendChild(mapHost);
+  // A super power on the map opens ITS Edit page (his order, 2026-10-09:
+  // "clicking on another super power should open the edit for that super
+  // power"); everything else opens in the powers modal.
+  let layoutTimer = 0;
   const map = mountPowerMap(mapHost, {
-    onOpen: (kind, stored) => openModal(kind, stored),
+    onOpen: (kind, stored) => {
+      if (kind === "superPowers") { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(stored); return; }
+      openModal(kind, stored);
+    },
     onAdd: () => openModal(),
+    // DRAGGED CARDS STAY WHERE THEY WERE PUT (his order, 2026-10-09): saved on
+    // the super power's record, a moment after the last move; Reset saves {}.
+    onLayout: (layout) => {
+      if (!bot) return;
+      bot = { ...bot, mapLayout: layout };
+      clearTimeout(layoutTimer);
+      const slug = bot.slug;
+      layoutTimer = window.setTimeout(() => {
+        void api().libraryAgentUpdate?.(slug, { mapLayout: layout }).catch(() => { /* the next move saves again */ });
+      }, 500);
+    },
   });
   const grid = el("div", "botp-grid");
   root.appendChild(grid);
@@ -914,7 +934,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       center: { name: nameIn.value.trim() || bot.name, face: isGlyphh ? `<img src="brand/glyphh-mark.png" alt="" width="84" height="84" draggable="false" />` : botAvatarSvg(picked, "idle", { size: 84 }) },
       groups: [group("connections", "Connections"), group("folders", "Folders"), group("superPowers", "Super powers"), group("skills", "Powers"), group("models", "Models")],
     };
-    map.update(model);
+    map.update(model, bot.mapLayout ?? {});
   }
 
   /** Remove one power from the list, saved at once. */

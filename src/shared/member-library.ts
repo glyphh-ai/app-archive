@@ -394,6 +394,9 @@ export interface AgentRowLike {
    *  hold other super powers… agree"): the slugs of the other super powers it
    *  may hand work to — and the only ones. Never itself, never a loop. */
   superPowers?: string[];
+  /** WHERE ITS MAP'S CARDS SIT (his order, 2026-10-09: "drag things around and
+   *  have it save"): card key → canvas position. Absent = the automatic layout. */
+  mapLayout?: Record<string, { x: number; y: number }>;
   /** THE SLIDERS AND THE VOICE (his order, 2026-10-09: "sliders on the super
    *  power.. personality, thinking effort or speed, and add voice… Each super
    *  power will and can have its own voice"). Personality 1 (serious) … 5
@@ -434,6 +437,7 @@ export interface AgentInputLike {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
+  mapLayout?: Record<string, { x: number; y: number }> | null;
   personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
@@ -555,6 +559,7 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     folders: Array.isArray(input.folders) ? cleanNames(input.folders) : cleanNames(existing?.folders),
     connections: Array.isArray(input.connections) ? cleanNames(input.connections) : cleanNames(existing?.connections),
     models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
+    mapLayout: input.mapLayout === undefined ? cleanMapLayout(existing?.mapLayout) : cleanMapLayout(input.mapLayout),
     superPowers: (Array.isArray(input.superPowers) ? cleanNames(input.superPowers) : cleanNames(existing?.superPowers)).filter((s) => s !== slug),
     ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
     ...optional("directness", input.directness === undefined ? cleanPersonality(existing?.directness) : cleanPersonality(input.directness)),
@@ -567,6 +572,18 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     createdAt: existing?.createdAt ?? nowIso,
     updatedAt: nowIso,
   };
+}
+
+/** A map layout as stored: up to 300 cards, each a finite x and y. */
+export function cleanMapLayout(v: unknown): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  if (!v || typeof v !== "object") return out;
+  for (const [k, p] of Object.entries(v as Record<string, unknown>).slice(0, 300)) {
+    const x = Number((p as { x?: unknown })?.x);
+    const y = Number((p as { y?: unknown })?.y);
+    if (k && k.length <= 300 && Number.isFinite(x) && Number.isFinite(y)) out[k] = { x: Math.round(x), y: Math.round(y) };
+  }
+  return out;
 }
 
 /** WHO A SUPER POWER MAY HOLD (his order, 2026-10-09: "a super power can't
