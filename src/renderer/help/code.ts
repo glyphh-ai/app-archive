@@ -6649,6 +6649,7 @@ const MENU_CHECK_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="no
  *  name, a check on each that is on. Many may be on. */
 function openSuperPowerFilterMenu(anchor: HTMLElement, shown: Set<string>, changed: () => void): void {
   document.querySelector(".sp-filter-menu")?.remove();
+  if (!anchor.isConnected) return;
   const m = document.createElement("div");
   m.className = "code-menu loop-filter-menu sp-filter-menu";
   const row = (key: string, name: string, mark: HTMLElement): void => {
@@ -6801,8 +6802,16 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   // and type switch (his report, 2026-10-05: the recents ran past the
   // menu's bottom clipped, and the menu re-sized with its content).
   placeDropup(anchor, menu, { width: SESSION_MENU_WIDTH, scrollEl: listHost });
+  // The super power filter's menu is the dropdown's own (his report,
+  // 2026-10-09: "selecting a filter jumped it to the other side of the
+  // page" — a click in it closed the dropdown under it and the menu
+  // re-placed against a gone button). Closing the dropdown closes it too.
   const dismiss = (e: MouseEvent): void => {
-    if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+    const t = e.target as HTMLElement | null;
+    if (menu.contains(t) || t?.closest?.(".sp-filter-menu")) return;
+    menu.remove();
+    document.querySelector(".sp-filter-menu")?.remove();
+    document.removeEventListener("mousedown", dismiss, true);
   };
   document.addEventListener("mousedown", dismiss, true);
 }
