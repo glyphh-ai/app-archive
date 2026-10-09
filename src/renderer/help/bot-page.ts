@@ -95,7 +95,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   // ── The title row: Customize's (46px, the rule, the ✕). ──
   const titlebar = el("div", "settings-group-titlebar");
-  const title = el("h1", "settings-group-title", "Edit bot");
+  // "Edit", the size of the agent header's title (his order, 2026-10-09).
+  const title = el("h1", "settings-group-title botp-title", "Edit");
   const x = el("button", "ws-icon-btn settings-group-close");
   x.type = "button"; x.title = "Close"; x.innerHTML = CLOSE_SVG;
   x.addEventListener("click", () => opts.onClose());
@@ -173,7 +174,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   }
   function fillForm(): void {
     if (!bot) return;
-    title.textContent = `Edit ${bot.name}`;
     nameIn.value = bot.name;
     descIn.value = bot.description ?? "";
     briefIn.value = bot.prompt ?? "";
@@ -236,7 +236,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   q(".botp-delete").addEventListener("click", () => { void remove(); });
   wand.addEventListener("click", () => { void writeBrief(); });
 
-  // ── RIGHT: the powers ──
+  // ── RIGHT: the powers — one collapsible section per kind, each with its
+  //    own + and its own search (his order, 2026-10-09: "the right rail should
+  //    be more pronounced… collapsable sections for each Power with a + by
+  //    each also and a search under each section header"). ──
   const sideHead = el("div", "botp-powers-head");
   sideHead.appendChild(el("h2", "botp-powers-title", "Powers"));
   const addBtn = el("button", "action-btn primary botp-add", "+ Add a power");
@@ -247,71 +250,109 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const sideList = el("div", "botp-power-list");
   side.append(sideHead, sideErr, sideList);
 
-  /** One power as a row: icon, name, a quiet second line, and a remove when
-   *  it has one (`stored` = the name it is saved under). */
-  function powerRow(icon: string, name: string, sub: string, remove: { kind: PowerKind; stored: string } | null, tag?: string): HTMLElement {
+  const SEARCH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
+  const CHEVRON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+  const PLUS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+  const EMPTY_TEXT: Record<PowerKind, string> = {
+    folders: "No folders yet.",
+    connections: "No connections yet.",
+    models: "No models yet. It runs on the main agent's.",
+    skills: "None yet.",
+  };
+  interface PowerItem { icon: string; name: string; sub: string; tag?: string; stored?: string }
+  const collapsed = new Set<PowerKind>();
+  const sections = new Map<PowerKind, { root: HTMLElement; count: HTMLElement; list: HTMLElement; search: HTMLInputElement }>();
+
+  function connOf(slug: string): PlusConnectorRow | undefined { return conns.find((c) => c.slug === slug); }
+  function skillOf(id: string): { id: string; name: string; type?: string } | undefined { return skills.find((s) => s.id === id); }
+
+  /** What one section lists for the bot as saved. */
+  function itemsOf(kind: PowerKind): PowerItem[] {
+    if (!bot) return [];
+    if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 ? { tag: "Works here" } : {}) }));
+    if (kind === "connections") return powersOf(bot, "connections").map((c) => { const k = connOf(c); return { icon: k?.icon ?? PLUS_ICONS.connectors, name: k?.name ?? c, sub: k?.on ? "Connected" : "Not connected", stored: c }; });
+    if (kind === "models") {
+      const main = String(bot.model ?? "").trim();
+      const out: PowerItem[] = main ? [{ icon: MODEL_SVG, name: modelName(main), sub: "Change it in the form", tag: "Runs on" }] : [];
+      for (const m of powersOf(bot, "models").filter((m) => m !== main)) out.push({ icon: MODEL_SVG, name: modelName(m), sub: "", stored: m });
+      return out;
+    }
+    return powersOf(bot, "skills").map((s) => { const k = skillOf(s); return { icon: POWER_SVG, name: k?.name ?? s, sub: k?.type === "task" ? "Task" : "Skill", stored: s }; });
+  }
+
+  function powerRow(kind: PowerKind, it: PowerItem): HTMLElement {
     const row = el("div", "botp-power");
     const ic = el("div", "botp-power-icon");
-    ic.innerHTML = icon;
+    ic.innerHTML = it.icon;
     const main = el("div", "botp-power-main");
-    main.appendChild(el("div", "botp-power-name", name));
-    if (sub) main.appendChild(el("div", "botp-power-sub", sub));
+    main.appendChild(el("div", "botp-power-name", it.name));
+    if (it.sub) main.appendChild(el("div", "botp-power-sub", it.sub));
     row.append(ic, main);
-    if (tag) row.appendChild(el("span", "botp-power-tag", tag));
-    if (remove) {
+    if (it.tag) row.appendChild(el("span", "botp-power-tag", it.tag));
+    if (it.stored !== undefined) {
+      const stored = it.stored;
       const rm = el("button", "ws-icon-btn botp-power-remove");
-      rm.type = "button"; rm.title = "Remove"; rm.setAttribute("aria-label", `Remove ${name}`);
+      rm.type = "button"; rm.title = "Remove"; rm.setAttribute("aria-label", `Remove ${it.name}`);
       rm.innerHTML = CLOSE_SVG;
-      rm.addEventListener("click", () => { void setPower(remove.kind, remove.stored, false); });
+      rm.addEventListener("click", () => { void setPower(kind, stored, false); });
       row.appendChild(rm);
     }
     return row;
   }
 
-  function connOf(slug: string): PlusConnectorRow | undefined { return conns.find((c) => c.slug === slug); }
-  function skillOf(id: string): { id: string; name: string; type?: string } | undefined { return skills.find((s) => s.id === id); }
-
-  function paintPowers(): void {
-    sideList.textContent = "";
-    if (!bot) return;
-    let any = false;
+  /** The sections are built once; a repaint fills their lists (a search keeps its focus). */
+  function buildSections(): void {
     for (const { kind, label } of POWER_KINDS) {
-      const items: HTMLElement[] = [];
-      if (kind === "folders") {
-        powersOf(bot, "folders").forEach((f, i) => {
-          items.push(powerRow(PLUS_ICONS.folder, baseName(f), f, { kind, stored: f }, i === 0 ? "Works here" : undefined));
-        });
-      } else if (kind === "connections") {
-        for (const c of powersOf(bot, "connections")) {
-          const known = connOf(c);
-          items.push(powerRow(known?.icon ?? PLUS_ICONS.connectors, known?.name ?? c, known?.on ? "Connected" : "Not connected", { kind, stored: c }));
-        }
-      } else if (kind === "models") {
-        const main = String(bot.model ?? "").trim();
-        if (main) items.push(powerRow(MODEL_SVG, modelName(main), "Change it in the form", null, "Runs on"));
-        for (const m of powersOf(bot, "models").filter((m) => m !== main)) {
-          items.push(powerRow(MODEL_SVG, modelName(m), "", { kind, stored: m }));
-        }
-      } else {
-        for (const s of powersOf(bot, "skills")) {
-          const known = skillOf(s);
-          items.push(powerRow(POWER_SVG, known?.name ?? s, known?.type === "task" ? "Task" : "Skill", { kind, stored: s }));
-        }
-      }
-      if (!items.length) continue;
-      any = true;
-      const grp = el("div", "botp-group");
-      grp.dataset.kind = kind;
-      const gh = el("div", "botp-group-head");
-      gh.append(el("span", "", label), el("span", "botp-group-count", String(items.length)));
-      grp.appendChild(gh);
-      for (const it of items) grp.appendChild(it);
-      sideList.appendChild(grp);
+      const sec = el("section", "botp-sec");
+      sec.dataset.kind = kind;
+      const head = el("div", "botp-sec-head");
+      const toggle = el("button", "botp-sec-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", "true");
+      toggle.innerHTML = `<span class="botp-sec-chev">${CHEVRON_SVG}</span>`;
+      toggle.appendChild(el("span", "botp-sec-label", label));
+      const count = el("span", "tab-count botp-sec-count", "");
+      toggle.appendChild(count);
+      toggle.addEventListener("click", () => {
+        if (collapsed.has(kind)) collapsed.delete(kind); else collapsed.add(kind);
+        sec.classList.toggle("collapsed", collapsed.has(kind));
+        toggle.setAttribute("aria-expanded", String(!collapsed.has(kind)));
+      });
+      const plus = el("button", "ws-icon-btn botp-sec-add");
+      plus.type = "button"; plus.title = `Add to ${label}`; plus.setAttribute("aria-label", `Add to ${label}`);
+      plus.innerHTML = PLUS_SVG;
+      plus.addEventListener("click", () => openModal(kind));
+      head.append(toggle, plus);
+      const body = el("div", "botp-sec-body");
+      const search = el("div", "skills-search botp-sec-search", SEARCH_SVG);
+      const input = el("input");
+      input.type = "text"; input.placeholder = `Search ${label.toLowerCase()}`; input.spellcheck = false; input.autocomplete = "off";
+      input.addEventListener("input", () => paintSection(kind));
+      search.appendChild(input);
+      const list = el("div", "botp-sec-list");
+      body.append(search, list);
+      sec.append(head, body);
+      sideList.appendChild(sec);
+      sections.set(kind, { root: sec, count, list, search: input });
     }
-    if (!any) sideList.appendChild(el("div", "crud-empty botp-empty", "No powers yet. Add a folder, a connection or a model."));
+  }
+  function paintSection(kind: PowerKind): void {
+    const s = sections.get(kind);
+    if (!s) return;
+    const all = itemsOf(kind);
+    s.count.textContent = all.length ? String(all.length) : "";
+    const needle = s.search.value.trim().toLowerCase();
+    const shown = needle ? all.filter((it) => `${it.name} ${it.sub}`.toLowerCase().includes(needle)) : all;
+    s.list.textContent = "";
+    if (!shown.length) { s.list.appendChild(el("div", "botp-empty", all.length ? "Nothing matches." : EMPTY_TEXT[kind])); return; }
+    for (const it of shown) s.list.appendChild(powerRow(kind, it));
+  }
+  function paintPowers(): void {
+    if (!sections.size) buildSections();
+    for (const { kind } of POWER_KINDS) paintSection(kind);
   }
 
-  /** Add or remove one power, saved at once. */
+  /** Remove one power from the list, saved at once. */
   async function setPower(kind: PowerKind, name: string, on: boolean): Promise<void> {
     if (!bot) return;
     const patch = powerPatch(bot, kind, name, on);
@@ -319,49 +360,92 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!r?.ok) { showErr(sideErr, r?.error || "The power could not be saved."); return; }
     showErr(sideErr, "");
     bot = { ...bot, ...(patch as Partial<BotRow>) };
-    // The form's model follows a model that became the one it runs on.
     if ("model" in patch) fillModels(String(patch.model));
     paintPowers();
-    paintModal();
   }
 
-  // ── THE MODAL: + Add a power ──
+  // ── THE MODAL: + Add a power. One fixed size whatever the tab; picks are a
+  //    draft until Save, and Cancel, ✕ or Escape drop them. ──
   let modalKind: PowerKind = "folders";
   let recents: string[] = [];
+  let draft: Pick<BotRow, PowerKind | "model"> | null = null;
   function closeModal(): void {
     if (!modal) return;
     modal.remove();
     modal = null;
+    draft = null;
     guardWebviewsForModal(false);
     document.removeEventListener("keydown", onModalKey, true);
   }
   function onModalKey(e: KeyboardEvent): void {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeModal(); }
   }
-  function openModal(): void {
-    if (modal) return;
+  function openModal(kind?: PowerKind): void {
+    if (!bot) return;
+    if (kind) modalKind = kind;
+    if (modal) { paintModal(); return; }
+    draft = {
+      model: bot.model ?? "",
+      folders: powersOf(bot, "folders"), connections: powersOf(bot, "connections"),
+      models: powersOf(bot, "models"), skills: powersOf(bot, "skills"),
+    };
     modal = el("div", "confirm-overlay botp-modal");
     modal.innerHTML = `
       <div class="confirm-box botp-modal-box" role="dialog" aria-modal="true" aria-label="Add a power">
-        <div class="confirm-head"><h3>Add a power</h3></div>
+        <div class="confirm-head botp-modal-head"><h3>Add a power</h3>
+          <button class="ws-icon-btn botp-modal-x" type="button" title="Close" aria-label="Close">${CLOSE_SVG}</button></div>
         <div class="skills-tabs botp-modal-tabs" role="tablist"></div>
         <div class="confirm-body botp-modal-body"></div>
-        <div class="confirm-foot"><button class="action-btn primary botp-modal-done" type="button">Done</button></div>
+        <div class="crud-form-error botp-error botp-modal-error hidden"></div>
+        <div class="confirm-foot">
+          <button class="action-btn secondary botp-modal-cancel" type="button">Cancel</button>
+          <button class="action-btn primary botp-modal-save" type="button">Save</button>
+        </div>
       </div>`;
     const tabs = modal.querySelector<HTMLElement>(".botp-modal-tabs")!;
-    for (const { kind, label } of POWER_KINDS) {
+    for (const { kind: k, label } of POWER_KINDS) {
       const b = el("button", "skills-tab", label);
-      b.type = "button"; b.dataset.kind = kind; b.setAttribute("role", "tab");
-      b.addEventListener("click", () => { modalKind = kind; paintModal(); });
+      b.type = "button"; b.dataset.kind = k; b.setAttribute("role", "tab");
+      b.addEventListener("click", () => { modalKind = k; paintModal(); });
       tabs.appendChild(b);
     }
-    modal.querySelector(".botp-modal-done")!.addEventListener("click", closeModal);
+    modal.querySelector(".botp-modal-x")!.addEventListener("click", closeModal);
+    modal.querySelector(".botp-modal-cancel")!.addEventListener("click", closeModal);
+    modal.querySelector(".botp-modal-save")!.addEventListener("click", () => { void saveModal(); });
     modal.addEventListener("mousedown", (e) => { if (e.target === modal) closeModal(); });
     document.addEventListener("keydown", onModalKey, true);
     guardWebviewsForModal(true);
     document.body.appendChild(modal);
     paintModal();
     if (!onWeb()) void api().getWorkingDirRecents?.().then((r) => { recents = Array.isArray(r) ? r.map(String) : []; paintModal(); }).catch(() => {});
+  }
+  /** Flip one pick in the draft. A model picked for a bot with none becomes the one it runs on. */
+  function toggleDraft(kind: PowerKind, name: string): void {
+    if (!draft) return;
+    if (kind === "models" && !draft.model) { draft.model = name; paintModal(); return; }
+    const cur = powersOf(draft, kind);
+    draft[kind] = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
+    paintModal();
+  }
+  async function saveModal(): Promise<void> {
+    if (!modal || !draft || !bot) return;
+    const patch: Record<string, unknown> = {};
+    for (const { kind } of POWER_KINDS) {
+      if (JSON.stringify(powersOf(draft, kind)) !== JSON.stringify(powersOf(bot, kind))) patch[kind] = powersOf(draft, kind);
+    }
+    if ((draft.model ?? "") !== (bot.model ?? "")) patch.model = draft.model;
+    if (!Object.keys(patch).length) { closeModal(); return; }
+    const save = modal.querySelector<HTMLButtonElement>(".botp-modal-save")!;
+    save.disabled = true;
+    const r = await api().libraryAgentUpdate?.(bot.slug, patch).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    if (!modal) return;
+    save.disabled = false;
+    if (!r?.ok) { showErr(modal.querySelector<HTMLElement>(".botp-modal-error")!, r?.error || "The powers could not be saved."); return; }
+    bot = { ...bot, ...(patch as Partial<BotRow>) };
+    if ("model" in patch) fillModels(String(patch.model));
+    showErr(sideErr, "");
+    paintPowers();
+    closeModal();
   }
   /** One choice in the modal: Add, or Added (a click takes it back off). */
   function choice(icon: string, name: string, sub: string, has: boolean, onToggle: () => void, fixed?: string): HTMLElement {
@@ -380,50 +464,46 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     return row;
   }
   function paintModal(): void {
-    if (!modal || !bot) return;
+    if (!modal || !draft) return;
     modal.querySelectorAll<HTMLElement>(".botp-modal-tabs .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.kind === modalKind));
     const body = modal.querySelector<HTMLElement>(".botp-modal-body")!;
     body.textContent = "";
-    const empty = (t: string): void => { body.appendChild(el("div", "crud-empty botp-empty", t)); };
-    const b = bot;
+    const empty = (t: string): void => { body.appendChild(el("div", "botp-empty", t)); };
+    const d = draft;
     if (modalKind === "folders") {
       if (onWeb()) { empty("Folders live on your computer. Open Glyphh on your desktop to give this bot a folder."); }
       else {
         const pick = el("button", "action-btn secondary botp-pick", "Choose a folder…");
         pick.type = "button";
-        pick.addEventListener("click", () => { void api().pickDirectory?.().then((dir) => { if (dir) void setPower("folders", dir, true); }); });
+        pick.addEventListener("click", () => {
+          void api().pickDirectory?.().then((dir) => {
+            if (!dir || !draft) return;
+            if (!powersOf(draft, "folders").includes(dir)) toggleDraft("folders", dir);
+          });
+        });
         body.appendChild(pick);
       }
-      const have = powersOf(b, "folders");
-      const list = [...have, ...recents.filter((r) => !have.includes(r))];
-      for (const f of list) {
-        const on = have.includes(f);
-        body.appendChild(choice(PLUS_ICONS.folder, baseName(f), f, on, () => { void setPower("folders", f, !on); }));
+      const have = powersOf(d, "folders");
+      for (const f of [...have, ...recents.filter((r) => !have.includes(r))]) {
+        body.appendChild(choice(PLUS_ICONS.folder, baseName(f), f, have.includes(f), () => toggleDraft("folders", f)));
       }
     } else if (modalKind === "connections") {
-      const have = powersOf(b, "connections");
+      const have = powersOf(d, "connections");
       const live = conns.filter((c) => c.on || have.includes(c.slug));
       if (!live.length) empty("No connections yet. Connect an account on the Connections page first.");
-      for (const c of live) {
-        const on = have.includes(c.slug);
-        body.appendChild(choice(c.icon, c.name, c.org ? "Your organization's" : "", on, () => { void setPower("connections", c.slug, !on); }));
-      }
+      for (const c of live) body.appendChild(choice(c.icon, c.name, c.org ? "Your organization's" : "", have.includes(c.slug), () => toggleDraft("connections", c.slug)));
     } else if (modalKind === "models") {
-      const main = String(b.model ?? "").trim();
-      const have = powersOf(b, "models");
+      const main = String(d.model ?? "").trim();
+      const have = powersOf(d, "models");
       if (!models.length) empty("Your team's models couldn't be read.");
       for (const m of models) {
         if (m.id === main) { body.appendChild(choice(MODEL_SVG, m.name, "", true, () => {}, "Runs on")); continue; }
-        const on = have.includes(m.id);
-        body.appendChild(choice(MODEL_SVG, m.name, "", on, () => { void setPower("models", m.id, !on); }));
+        body.appendChild(choice(MODEL_SVG, m.name, "", have.includes(m.id), () => toggleDraft("models", m.id)));
       }
     } else {
-      const have = powersOf(b, "skills");
+      const have = powersOf(d, "skills");
       if (!skills.length) empty("No powers of your own yet. Ask Glyphh to make one.");
-      for (const s of skills) {
-        const on = have.includes(s.id);
-        body.appendChild(choice(POWER_SVG, s.name, s.type === "task" ? "Task" : "Skill", on, () => { void setPower("skills", s.id, !on); }));
-      }
+      for (const s of skills) body.appendChild(choice(POWER_SVG, s.name, s.type === "task" ? "Task" : "Skill", have.includes(s.id), () => toggleDraft("skills", s.id)));
     }
   }
 

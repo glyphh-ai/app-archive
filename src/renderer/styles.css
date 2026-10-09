@@ -22156,6 +22156,8 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
 .botp-host { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
 .botp { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; color: var(--text); }
 .botp > .settings-group-titlebar { flex: none; margin-bottom: 0; }
+/* "Edit" wears the agent header's title (#code-session-title): 12.5px, 600, the text face. */
+.botp .settings-group-title.botp-title { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); }
 .botp-grid {
   flex: 1; min-height: 0; overflow: auto;
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 400px); gap: 40px;
@@ -22164,10 +22166,31 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
 .botp-form { min-width: 0; max-width: 680px; display: flex; flex-direction: column; }
 .botp-form .settings-label { margin-top: 14px; }
 .botp-form .edit-head { margin-bottom: 4px; }
-.botp-powers { min-width: 0; position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; }
+.botp-powers {
+  min-width: 0; position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px;
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 12px; padding: 16px;
+}
 .botp-powers-head { display: flex; align-items: center; gap: 8px; }
 .botp-powers-title { margin: 0; flex: 1; font: 600 16px var(--font-display, inherit); color: var(--text); }
-.botp-power-list { display: flex; flex-direction: column; gap: 16px; }
+.botp-power-list { display: flex; flex-direction: column; gap: 10px; }
+.botp-sec { border-top: 1px solid var(--border); padding-top: 10px; }
+.botp-sec:first-child { border-top: none; padding-top: 0; }
+.botp-sec-head { display: flex; align-items: center; gap: 6px; }
+.botp-sec-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 2px;
+  background: none; border: none; color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.botp-sec-chev { display: inline-flex; color: var(--text-3); transition: transform .15s; }
+.botp-sec-chev svg { width: 14px; height: 14px; }
+.botp-sec.collapsed .botp-sec-chev { transform: rotate(-90deg); }
+.botp-sec-count { margin-left: 2px; }
+.botp-sec-add { width: 26px; height: 26px; flex: none; }
+.botp-sec-add svg { width: 15px; height: 15px; }
+.botp-sec-body { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+.botp-sec.collapsed .botp-sec-body { display: none; }
+.botp-sec-search { position: static; transform: none; width: 100%; box-sizing: border-box; background: var(--surface); }
+.botp-sec-list { display: flex; flex-direction: column; gap: 4px; }
+.botp-sec-list .botp-power { background: var(--surface); }
 .botp-group { display: flex; flex-direction: column; gap: 4px; }
 .botp-group-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px 2px; }
 .botp-group-count { color: var(--text-3, var(--text-2)); font-weight: 500; }
@@ -22185,9 +22208,16 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
 .botp-power-remove { width: 26px; height: 26px; flex: none; opacity: .6; }
 .botp-power-remove:hover { opacity: 1; color: var(--danger); }
 .botp-power-remove svg { width: 13px; height: 13px; }
-.botp-empty { padding: 14px 2px; }
+.botp-empty { padding: 8px 2px; font-size: 12.5px; color: var(--text-3); }
 /* The modal: four tabs, one list, Done. */
-.botp-modal-box { width: min(560px, calc(100vw - 48px)); max-height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column; }
+/* One size whatever the tab (his order, 2026-10-09: "make this modal stay the same height and width"). */
+.botp-modal-box { width: min(560px, calc(100vw - 48px)); height: min(600px, calc(100vh - 80px)); display: flex; flex-direction: column; }
+.botp-modal-head { display: flex; align-items: center; gap: 8px; flex: none; }
+.botp-modal-head h3 { flex: 1; }
+.botp-modal-x { width: 28px; height: 28px; flex: none; }
+.botp-modal-x svg { width: 15px; height: 15px; }
+.botp-modal-error { margin: 0 18px 8px; flex: none; }
+.botp-modal-box > .confirm-foot { flex: none; }
 .botp-modal-tabs { padding: 0 18px; margin: 0; flex: none; }
 .botp-modal-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .botp-pick { align-self: flex-start; margin-bottom: 6px; }

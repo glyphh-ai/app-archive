@@ -159,10 +159,13 @@ function announceAgents(): void {
 }
 
 export function saveAgent(input: AgentInput): AgentRow {
-  const name = String(input.name ?? "").trim();
+  // An update may carry only what changed (the bot page's powers save alone,
+  // 2026-10-09): the name then is the one already stored.
+  const known = input.slug ? readAgent(slugify(String(input.slug))) : null;
+  const name = String(input.name ?? known?.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
   const slug = slugify(String(input.slug || name));
-  const existing = readAgent(slug);
+  const existing = known ?? readAgent(slug);
   const row = buildAgentRow({ ...input, slug }, existing, new Date().toISOString());
   writeAgent(row);
   // Live flips park or arm every one of its tasks at once.
