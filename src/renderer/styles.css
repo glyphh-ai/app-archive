@@ -22379,3 +22379,13 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .botp-voice-test:hover, .botp-voice-test.on { color: var(--text); border-color: var(--accent); }
 .botp-voice-test svg { width: 10px; height: 10px; }
 .botp-voice-test.busy { animation: botp-pulse 1.2s ease-in-out infinite; }
+
+/* The powers modal's Connecting overlay (his order, 2026-10-09): the Glyphh
+   mark and spinner over the modal until the tools page has painted. */
+.powm-box { position: relative; }
+.powm-busy {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border-radius: inherit;
+}
+.powm-busy.hidden { display: none; }

@@ -29,6 +29,7 @@ import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } fr
 import { renderToolGroups } from "./settings-connections.js";
 import { planGates } from "./plan-gate.js";
 import { hideAppOverlay } from "../app-overlay.js";
+import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 
 export type PowerTab = "folders" | "connections" | "models" | "skills";
 export const POWER_TABS: ReadonlyArray<{ tab: PowerTab; label: string }> = Object.freeze([
@@ -58,6 +59,7 @@ interface Api extends PlusApi {
   connectorsGetApps?: (search?: string, after?: string, category?: string) => Promise<{ apps: CatalogApp[]; hasMore: boolean; next?: string }>;
   connectorsConnect?: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;
   onConnectorsChanged?: (cb: () => void) => void;
+  onConnectorsConnectProgress?: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
   connectionToolsList?: (id: string) => Promise<{ ok: boolean; tools?: Array<{ name: string; description?: string; hidden?: boolean }>; error?: string }>;
   connectionToolsSet?: (id: string, hidden: string[]) => Promise<unknown>;
 }
@@ -98,10 +100,14 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
 });
 
 let openModal: { close: () => void } | null = null;
+/** The open modal's ear on the connect flow (the bridge has no unsubscribe, so one listener forwards). */
+let onProgress: ((p: { phase: "verifying" | "done"; appSlug: string }) => void) | null = null;
+let progressWired = false;
 
 export function openPowersModal(opts: PowersModalOptions = {}): void {
   openModal?.close();
   if (!wakeWired) { wakeWired = true; api().onConnectorsChanged?.(() => wake?.()); }
+  if (!progressWired) { progressWired = true; api().onConnectorsConnectProgress?.((p) => onProgress?.(p)); }
   let tab: PowerTab = opts.tab ?? "folders";
   const sel: PowerSelection | null = opts.selection
     ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills] }
@@ -132,6 +138,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       <div class="confirm-body powm-body"></div>
       <div class="crud-form-error powm-error hidden"></div>
       <div class="confirm-foot powm-foot"></div>
+      <div class="powm-busy hidden" role="status" aria-live="polite"><img class="app-overlay-mascot" src="brand/glyphh-mark.png" alt="" /></div>
     </div>`;
   const q = <T extends HTMLElement>(s: string): T => overlay.querySelector<T>(s)!;
   q<HTMLElement>(".powm-head h3").textContent = opts.title ?? "Add a power";
@@ -142,6 +149,32 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   const errEl = q<HTMLElement>(".powm-error");
   const foot = q<HTMLElement>(".powm-foot");
   const showErr = (msg: string): void => { errEl.textContent = msg; errEl.classList.toggle("hidden", !msg); };
+
+  // ── CONNECTING (his order, 2026-10-09: "the modal should have a Connecting
+  //    overlay with the glyphh logo over it… the user gets lost waiting for
+  //    the connection to finish and the redirect to the tools page"): from the
+  //    moment the sign-in window closes until the tools page has painted. ──
+  const busyEl = q<HTMLElement>(".powm-busy");
+  let busySpin: GlyphhSpinner | null = null;
+  function showBusy(meta: string): void {
+    if (!busySpin) { busySpin = createGlyphhSpinner({ size: 56 }); busyEl.appendChild(busySpin.el); }
+    busySpin.setMeta(meta);
+    busyEl.classList.remove("hidden");
+    // One overlay, this one: the app-wide one steps aside (it drops at "done", before the redirect).
+    hideAppOverlay();
+    setTimeout(hideAppOverlay, 0);
+  }
+  function hideBusy(): void {
+    busySpin?.destroy();
+    busySpin = null;
+    busyEl.classList.add("hidden");
+  }
+  /** The app the open connect flow is for (the progress events name it). */
+  let connectingApp: CatalogApp | null = null;
+  onProgress = (p) => {
+    if (closed || !connectingApp || p.appSlug !== connectingApp.id) return;
+    if (p.phase === "verifying") showBusy(`Connecting ${connectingApp.name}`);
+  };
 
   for (const t of POWER_TABS) {
     const b = el("button", "skills-tab", t.label);
@@ -154,6 +187,8 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    hideBusy();
+    onProgress = null;
     overlay.remove();
     guardWebviewsForModal(false);
     document.removeEventListener("keydown", onKey, true);
@@ -380,8 +415,11 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     btn.disabled = true;
     btn.textContent = "…";
     const before = new Set(conns.filter((c) => c.connected !== false).map((c) => c.id));
+    connectingApp = a;
     const r = await api().connectorsConnect!(a.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-    if (!r.ok) { connecting.delete(a.id); hideAppOverlay(); if (!closed) { showErr(r.error || "Couldn't connect."); repaintBody(); } return; }
+    if (!r.ok) { connecting.delete(a.id); connectingApp = null; hideBusy(); hideAppOverlay(); if (!closed) { showErr(r.error || "Couldn't connect."); repaintBody(); } return; }
+    // The sign-in is done: the wait for the account and the tools is ours to show.
+    if (!closed) showBusy(`Connecting ${a.name}`);
     let fresh: Conn | undefined;
     for (let i = 0; !closed; i++) {
       await reloadConnections();
@@ -390,9 +428,11 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       await sleep(CONNECT_WAITS_MS[i]!);
     }
     connecting.delete(a.id);
+    connectingApp = null;
     hideAppOverlay();
     if (closed) return;
-    if (!fresh) { showErr(`${a.name} hasn't shown up yet. It will be under Connections once it lands.`); repaintBody(); return; }
+    if (!fresh) { hideBusy(); showErr(`${a.name} hasn't shown up yet. It will be under Connections once it lands.`); repaintBody(); return; }
+    if (busySpin) busySpin.setMeta(`Loading ${a.name}'s tools`);
     // A connection made while picking for a super power is one of its powers.
     if (sel && !sel.connections.includes(a.id)) sel.connections = [...sel.connections, a.id];
     connView = { kind: "perms", conn: fresh, app: a };
@@ -402,6 +442,9 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   /** The connection's tools and permissions (Customize → Connections → the
    *  connection), under ‹ Connections back to the list. */
   async function paintPerms(conn: Conn, app?: CatalogApp): Promise<void> {
+    try { await paintPermsBody(conn, app); } finally { hideBusy(); }
+  }
+  async function paintPermsBody(conn: Conn, app?: CatalogApp): Promise<void> {
     bar.appendChild(backButton("Connections", () => { connView = { kind: "list" }; paint(); }));
     const name = conn.label || conn.appName || app?.name || conn.appSlug;
     const head = el("div", "conn2-phead powm-phead");
