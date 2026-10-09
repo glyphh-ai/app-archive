@@ -6463,7 +6463,7 @@ function renderRailSessions(): void {
   for (const b of shown) {
     const mark = document.createElement("span");
     mark.className = "code-sess-mark rail-bot-mark";
-    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 28 });
+    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 56 });
     const id = `bots/${b.slug}`;
     row({ key: b.slug, name: b.name, mark, liveId: id,
       onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }),
