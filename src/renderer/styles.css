@@ -22696,3 +22696,11 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   position: fixed; inset: 18px; z-index: 99000; height: auto; border-radius: 16px;
   box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 62%, transparent), 0 24px 80px -20px #000;
 }
+
+/* The Edit page's loading screen (his order, 2026-10-09). */
+.botp { position: relative; }
+.botp-loading {
+  position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); transition: opacity .2s ease;
+}
+.botp-loading.gone { opacity: 0; pointer-events: none; }

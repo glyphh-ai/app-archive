@@ -24,6 +24,7 @@ import { primeConnectedIcons } from "./app-icon.js";
 import { openPowersModal } from "./powers-modal.js";
 import { mountPowerMap, type MapGroup, type PowerMapModel } from "./power-map.js";
 import { cronToWords } from "./schedules.js";
+import { createGlyphhSpinner } from "../glyphh-spinner.js";
 
 export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
@@ -202,6 +203,19 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   });
   const grid = el("div", "botp-grid");
   root.appendChild(grid);
+  // THE LOADING SCREEN (his order, 2026-10-09: "the edit super power needs to
+  // use a loading screen"): the app's Glyphh loader over the page until the
+  // super power, its powers and their logos are read.
+  const loading = el("div", "botp-loading");
+  const spin = createGlyphhSpinner({ size: 64 });
+  spin.setMeta("Loading your super power");
+  loading.appendChild(spin.el);
+  root.appendChild(loading);
+  const doneLoading = (): void => {
+    if (!loading.isConnected) return;
+    loading.classList.add("gone");
+    window.setTimeout(() => { spin.destroy(); loading.remove(); }, 220);
+  };
   const form = el("div", "botp-form");
   const side = el("div", "botp-powers");
   grid.append(form, side);
@@ -913,13 +927,14 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       if (m && typeof m.name === "string" && m.iconUrl) modelIcons.set(m.name, m.iconUrl);
     }
     if (destroyed) return;
-    if (!got?.ok || !got.data) { showErr(errEl, got?.error || "This super power could not be read."); return; }
+    if (!got?.ok || !got.data) { doneLoading(); showErr(errEl, got?.error || "This super power could not be read."); return; }
     bot = got.data as BotRow;
     models = ms?.ok ? ms.models.filter((m) => !m.utility) : [];
     conns = cs;
     skills = sk?.ok && Array.isArray(sk.data) ? (sk.data as Array<{ id: string; name: string; type?: string }>) : [];
     fillForm();
     paintPowers();
+    doneLoading();
     void primeConnectedIcons(conns.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
       if (destroyed) return;
       void readConnectorRows(api()).then((rows) => { conns = rows; paintPowers(); }).catch(() => {});
@@ -929,6 +944,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   return {
     back: () => false,
-    destroy: () => { destroyed = true; stopPreview(); map.destroy(); root.remove(); host.classList.remove("botp-host"); },
+    destroy: () => { destroyed = true; stopPreview(); spin.destroy(); map.destroy(); root.remove(); host.classList.remove("botp-host"); },
   };
 }
