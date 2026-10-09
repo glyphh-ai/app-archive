@@ -61,6 +61,8 @@ export interface PowersModalOptions {
 }
 
 type Conn = { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; accountId?: string; org?: boolean; shared?: boolean };
+/** What Glyphh built for + Add on Your powers (main power-build-ipc.ts). */
+interface BuiltPower { id: string; slug: string; type: "skill" | "task"; name: string; description: string; connections: string[] }
 type CatalogApp = { id: string; name: string; description: string; icon?: string; categories?: string[] };
 interface Api extends PlusApi {
   modelsCatalog?: () => Promise<{ ok: boolean; data: unknown[]; error?: string }>;
@@ -72,6 +74,7 @@ interface Api extends PlusApi {
   onConnectorsConnectProgress?: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
   connectionToolsList?: (id: string) => Promise<{ ok: boolean; tools?: Array<{ name: string; description?: string; hidden?: boolean }>; error?: string }>;
   connectionToolsSet?: (id: string, hidden: string[]) => Promise<unknown>;
+  powerBuild?: (ask: string) => Promise<{ ok: true; data: BuiltPower } | { ok: false; error: string }>;
 }
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
 
@@ -192,7 +195,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   for (const t of POWER_TABS) {
     const b = el("button", "skills-tab", t.label);
     b.type = "button"; b.dataset.tab = t.tab; b.setAttribute("role", "tab");
-    b.addEventListener("click", () => { tab = t.tab; if (t.tab === "connections") connView = { kind: "list" }; if (t.tab === "models") modelView = { kind: "list" }; showErr(""); paint(); });
+    b.addEventListener("click", () => { tab = t.tab; if (t.tab === "connections") connView = { kind: "list" }; if (t.tab === "models") modelView = { kind: "list" }; if (t.tab === "skills") skillView = { kind: "panel" }; showErr(""); paint(); });
     tabsEl.appendChild(b);
   }
 
@@ -303,7 +306,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (closed) return;
     // The borrowed Skills panel goes home before the body is cleared (it is re-borrowed below for its tab).
     returnSkillsPanel();
-    bar.style.display = tab === "skills" ? "none" : "";
+    bar.style.display = tab === "skills" && skillView.kind === "panel" ? "none" : "";
     tabsEl.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     bar.textContent = "";
     body.textContent = "";
@@ -314,7 +317,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   }
   function repaintBody(): void {
     // Your powers is the borrowed Skills panel: it repaints itself, and clearing would drop it.
-    if (tab === "skills") return;
+    if (tab === "skills") return;   // every Your powers screen paints itself
     body.textContent = "";
     if (tab === "folders") paintFolders(true);
     else if (tab === "connections") paintConnections(true);
@@ -365,14 +368,14 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     `<span class="${cls}">${appIconInner({ iconUrl: a.icon ?? null, connection: { pipedreamSlug: a.id } }, a.name, "conn2-icon-initial")}</span>`;
   /** THE DISCOVER CARD'S + (his order, 2026-10-09): + to connect, … while
    *  connecting, ✓ once connected — settings-connections.ts connectAppButton. */
-  function connectButton(a: CatalogApp, done: boolean, busy: boolean): HTMLButtonElement {
+  function connectButton(a: CatalogApp, done: boolean, busy: boolean, after?: () => void): HTMLButtonElement {
     const b = el("button", "action-btn conn2-plus powm-connect" + (done ? " done" : ""));
     b.type = "button";
     b.innerHTML = done ? CHECK_SVG : busy ? "…" : PLUS_BTN_SVG;
     b.disabled = done || busy || !connectAllowed;
     b.title = done ? "Connected" : busy ? "Connecting…" : connectAllowed ? `Connect ${a.name}` : "Connections aren't on your plan.";
     b.setAttribute("aria-label", b.title);
-    b.addEventListener("click", (e) => { e.stopPropagation(); void connect(a, b); });
+    b.addEventListener("click", (e) => { e.stopPropagation(); void connect(a, b, after); });
     return b;
   }
   /** A directory app's details, under ‹ Connections — CUSTOMIZE'S OWN PAGE
@@ -488,7 +491,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   }
 
   /** CONNECT: the OAuth flow, then the account's permissions page here. */
-  async function connect(a: CatalogApp, btn: HTMLButtonElement): Promise<void> {
+  async function connect(a: CatalogApp, btn: HTMLButtonElement, after?: () => void): Promise<void> {
     if (connecting.has(a.id) || !api().connectorsConnect) return;
     showErr("");
     connecting.add(a.id);
@@ -515,6 +518,8 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (busySpin) busySpin.setMeta(`Loading ${a.name}'s tools`);
     // A connection made while picking for a super power is one of its powers.
     if (sel && !sel.connections.includes(a.id)) sel.connections = [...sel.connections, a.id];
+    // Connected from a new power's checklist: stay on the checklist.
+    if (after) { hideBusy(); after(); return; }
     connView = { kind: "perms", conn: fresh, app: a };
     paint();
   }
@@ -674,6 +679,9 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   //    gives it back when the tab or the modal closes. Picking for a super
   //    power hangs a + / ✓ on each of your rows and on a details page. ──
   let borrowed: { panel: HTMLElement; parent: HTMLElement; next: Node | null; wasActive: boolean } | null = null;
+  /** Your powers' screens: the Skills panel, a new power's prompt, what Glyphh built. */
+  let skillView: { kind: "panel" } | { kind: "new" } | { kind: "built"; power: BuiltPower } = { kind: "panel" };
+  let newAsk = "";
   let libObserver: MutationObserver | null = null;
   let pendingSkill: string | null = null;
   function pickFor(id: string, name: string): HTMLButtonElement {
@@ -718,11 +726,104 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     libObserver = null;
     const { panel, parent, next, wasActive } = borrowed;
     borrowed = null;
-    panel.querySelectorAll(".powm-skill-pick").forEach((x) => x.remove());
+    panel.querySelectorAll(".powm-skill-pick, .powm-lib-add").forEach((x) => x.remove());
     try { parent.insertBefore(panel, next && next.parentNode === parent ? next : null); } catch { /* its home is gone; leave it */ }
     if (!wasActive) panel.classList.remove("active");
   }
+  /** A NEW POWER: say what it should do; Glyphh builds it. */
+  function paintNewPower(): void {
+    bar.style.display = "";
+    bar.appendChild(backButton("Your powers", () => { skillView = { kind: "panel" }; paint(); }));
+    const wrap = el("div", "powm-new");
+    wrap.appendChild(el("div", "powm-detail-name", "New power"));
+    wrap.appendChild(el("p", "powm-detail-desc", "Say what it should do. Glyphh builds it for you: the instructions, or a program when it has to run on its own. Nothing to write by hand."));
+    const ask = el("textarea", "settings-input powm-new-ask");
+    ask.rows = 6;
+    ask.maxLength = 2000;
+    ask.placeholder = "Every weekday at 8am, read my unread Gmail and today's calendar and write me a short briefing.";
+    ask.value = newAsk;
+    ask.addEventListener("input", () => { newAsk = ask.value; });
+    wrap.appendChild(ask);
+    const go = el("button", "action-btn primary powm-new-go", "Build it");
+    go.type = "button";
+    const build = api().powerBuild;
+    if (!build) { go.disabled = true; wrap.appendChild(el("div", "powm-note", "Building powers needs the Glyphh desktop app.")); }
+    go.addEventListener("click", async () => {
+      const text = ask.value.trim();
+      if (!text) { showErr("Say what the power should do."); ask.focus(); return; }
+      if (!build) return;
+      showErr("");
+      go.disabled = true;
+      showBusy("Building your power");
+      const r = await build(text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      hideBusy();
+      go.disabled = false;
+      if (closed) return;
+      if (!r.ok) { showErr(r.error); return; }
+      newAsk = "";
+      // Built for a super power: it is one of its powers already.
+      if (sel && !sel.skills.includes(r.data.id)) sel.skills = [...sel.skills, r.data.id];
+      // …and the connections it needs are the super power's too.
+      if (sel) for (const c of r.data.connections) if (!sel.connections.includes(c)) sel.connections = [...sel.connections, c];
+      skillView = { kind: "built", power: r.data };
+      paint();
+    });
+    wrap.appendChild(go);
+    body.appendChild(wrap);
+    ask.focus();
+  }
+  /** WHAT GLYPHH BUILT, and the connections it needs: any not connected yet
+   *  is offered right here (his order, 2026-10-09: "the user should be
+   *  prompted to add those connections if they don't exist already"). */
+  function paintBuilt(p: BuiltPower): void {
+    bar.style.display = "";
+    bar.appendChild(backButton("Your powers", () => { skillView = { kind: "panel" }; paint(); }));
+    const head = el("div", "powm-detail-head");
+    const ic = el("div", "botp-power-icon powm-detail-icon");
+    ic.innerHTML = POWER_SVG;
+    const titles = el("div", "powm-detail-titles");
+    titles.append(el("div", "powm-detail-name", p.name), el("div", "powm-detail-sub", `${p.type === "task" ? "Task" : "Skill"} · built by Glyphh${sel ? " · added" : ""}`));
+    head.append(ic, titles);
+    body.appendChild(head);
+    body.appendChild(el("p", "powm-detail-desc", p.description || ""));
+    const need = p.connections;
+    body.appendChild(el("div", "conn2-h3 powm-section", "Connections it needs"));
+    if (!need.length) { body.appendChild(el("div", "powm-note", "None. It's ready to use.")); }
+    const list = el("div", "powm-need");
+    body.appendChild(list);
+    const repaintNeeds = async (): Promise<void> => {
+      list.textContent = "";
+      const have = new Set(conns.filter((c) => c.connected !== false).map((c) => c.appSlug));
+      let missing = 0;
+      for (const slug of need) {
+        const app = (await api().connectorsGetApps?.(slug).catch(() => null))?.apps.find((a) => a.id === slug)
+          ?? { id: slug, name: slug.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()), description: "" };
+        if (closed) return;
+        const done = have.has(slug);
+        if (!done) missing++;
+        // A connect from here stays here: the checklist repaints with it ticked.
+        const b = connectButton(app, done, connecting.has(slug), () => { void reloadConnections().then(repaintNeeds); });
+        list.appendChild(row({ icon: appIcon(app), name: app.name, sub: done ? "Connected" : "Not connected yet: connect it so this power can work", action: b }));
+      }
+      status.textContent = !need.length ? "" : missing ? `Connect ${missing === 1 ? "it" : `these ${missing}`} and it's ready.` : "All connected. It's ready to use.";
+    };
+    const status = el("div", "powm-note");
+    body.appendChild(status);
+    void repaintNeeds();
+    const actions = el("div", "powm-built-actions");
+    const open = el("button", "action-btn secondary", "Open it");
+    open.type = "button";
+    open.addEventListener("click", () => { pendingSkill = p.id; skillView = { kind: "panel" }; paint(); });
+    const more = el("button", "action-btn secondary", "Build another");
+    more.type = "button";
+    more.addEventListener("click", () => { skillView = { kind: "new" }; paint(); });
+    actions.append(open, more);
+    body.appendChild(actions);
+  }
+
   function paintSkills(): void {
+    if (skillView.kind === "new") { paintNewPower(); return; }
+    if (skillView.kind === "built") { paintBuilt(skillView.power); return; }
     const panel = document.querySelector<HTMLElement>('.settings-panel[data-sub="skills"]');
     if (!panel?.parentElement) { empty("Your powers live in Customize › Skills."); return; }
     // A Customize page behind us may have lent the panel's search and Add to its own head.
@@ -732,6 +833,12 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     host.appendChild(panel);
     body.appendChild(host);
     panel.classList.add("active");
+    // + ADD IS GLYPHH'S (his order, 2026-10-09: "adding a power right there
+    // too with ai, nothing by hand"): the panel's own Add steps aside.
+    const add = el("button", "action-btn primary powm-add powm-lib-add", "+ Add");
+    add.type = "button";
+    add.addEventListener("click", () => { skillView = { kind: "new" }; paint(); });
+    panel.querySelector(".skills-head")?.appendChild(add);
     (window as unknown as { __glyphhLoadSettingsSub?: (sub: string) => void }).__glyphhLoadSettingsSub?.("skills");
     libObserver = new MutationObserver(() => decorate());
     libObserver.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-skill-id"] });

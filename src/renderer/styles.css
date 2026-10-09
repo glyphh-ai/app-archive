@@ -22434,3 +22434,15 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .powm-lib-host .skills-head { margin-top: 0; }
 .powm-lib-host .skill-row-right .powm-skill-pick { margin-right: 4px; }
 .powm-lib-host .skill-detail-head .powm-skill-pick { margin-left: 8px; }
+
+/* Your powers: + Add is Glyphh's; the panel's own Add steps aside in the modal. */
+.powm-lib-host #skills-add { display: none; }
+/* The head reads like every other tab's bar: the search fills the left, + Add on the right. */
+.powm-lib-host .skills-head { justify-content: flex-start; gap: 8px; min-height: 34px; margin-bottom: 10px; }
+.powm-lib-host .skills-head > .skills-search { position: static; transform: none; flex: 1; min-width: 0; width: auto; box-sizing: border-box; }
+.powm-lib-host .skills-head > .powm-lib-add { flex: none; }
+.powm-new { display: flex; flex-direction: column; gap: 10px; }
+.powm-new-ask { resize: vertical; min-height: 120px; }
+.powm-new-go { align-self: flex-end; }
+.powm-need { display: flex; flex-direction: column; gap: 6px; }
+.powm-built-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }

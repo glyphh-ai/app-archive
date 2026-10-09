@@ -1050,6 +1050,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
   /** The team's models, every type, with description and rates (main loop-models.ts). */
   modelsCatalog: () => ipcRenderer.invoke("models-catalog") as Promise<{ ok: boolean; data: unknown[]; error?: string }>,
+  /** + Add on Your powers: Glyphh builds the power headless (main power-build-ipc.ts). */
+  powerBuild: (ask: string) => ipcRenderer.invoke("power-build", ask) as Promise<{ ok: true; data: { id: string; slug: string; type: "skill" | "task"; name: string; description: string; connections: string[] } } | { ok: false; error: string }>,
   /** A super power's avatar from the Images power (main/powers.ts generateAvatar). */
   avatarGenerate: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
     ipcRenderer.invoke("avatar-generate", input) as Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>,
