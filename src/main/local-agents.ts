@@ -32,7 +32,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentKindOf, agentSlug, buildAgentRow, isAgentRow, type AgentKind, type GuardrailsPolicyLike } from "../shared/member-library.js";
+import { agentKindOf, agentSlug, buildAgentRow, isAgentRow, type AgentKind, type GuardrailsPolicyLike, type AgentRole, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -61,6 +61,9 @@ export interface AgentRow {
    *  agents (cli-agents.ts) run headless, `cli` naming which. */
   kind?: AgentKind;
   cli?: string;
+  /** THE BOTS PANEL (his order, 2026-10-08): orchestrator or worker; the cat it wears. */
+  role?: AgentRole;
+  avatar?: BotAvatarLike | null;
   /** Skill slugs this agent may load. */
   skills: string[];
   /** App slugs this agent may drive. */
@@ -136,7 +139,8 @@ export function getAgent(ref: string): AgentRow {
 
 interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; kind?: AgentKind; cli?: string; skills?: string[]; apps?: string[];
+  provider?: string; model?: string; kind?: AgentKind; cli?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
+  skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 

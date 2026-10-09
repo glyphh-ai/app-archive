@@ -16,6 +16,23 @@ import {
 const GRID: GridLayoutLike = { name: "Research Desk", version: 2, cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], cells: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], loop: "glyphh", sessionMode: "new", updatedAt: 1_700_000 };
 const TAB: TabRowLike = { id: "crm", kind: "web", slug: "crm", name: "CRM", prodUrl: "https://crm", nativeRef: null, config: { iconUrl: "https://i", env: { TOKEN: "s3cret" }, apiKey: "k", vars: { A: 1 } }, description: "", access: "members", owned: true, latestVersion: null, version: "0.1.0", secretNames: ["TOKEN"], requiredConnections: [{ slug: "gmail", actAs: "me", connected: true }], listing: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-04T10:00:00.123Z" };
 
+describe("agents — role and avatar (the Bots panel, his order 2026-10-08)", () => {
+  it("a row without the fields is a worker with no avatar; an input sets both; a broken avatar is none", () => {
+    const base = buildAgentRow({ name: "Scout" }, null, "2026-10-08T00:00:00.000Z");
+    expect(base.role).toBe("worker");
+    expect(base.avatar).toBeNull();
+    const boss = buildAgentRow({ role: "orchestrator", avatar: { variant: 8, color: "#af5fff" } }, base, "2026-10-08T00:00:01.000Z");
+    expect(boss.role).toBe("orchestrator");
+    expect(boss.avatar).toEqual({ variant: 8, color: "#af5fff" });
+    // fields left out are kept
+    const kept = buildAgentRow({ description: "plans" }, boss, "2026-10-08T00:00:02.000Z");
+    expect(kept.role).toBe("orchestrator");
+    expect(kept.avatar).toEqual({ variant: 8, color: "#af5fff" });
+    expect(buildAgentRow({ avatar: { variant: 13, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
+    expect(buildAgentRow({ avatar: null }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
+  });
+});
+
 describe("workspaces", () => {
   it("the folder id is the name, slugged; the row is layout-manager's layouts-list shape with the clock", () => {
     expect(workspaceId(" Research Desk ")).toBe("research-desk");
@@ -78,7 +95,7 @@ describe("app tabs", () => {
 describe("agents", () => {
   it("buildAgentRow is local-agents' saveAgent row — the same on both surfaces", () => {
     const made = buildAgentRow({ name: "Ada Lovelace", prompt: "p", guardrails: { maxInputTokens: "12" as unknown as number, windowCalls: 0 } }, null, "2026-10-04T00:00:00.000Z");
-    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", kind: "glyphh", cli: "", skills: [], apps: [], live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
+    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", kind: "glyphh", cli: "", role: "worker", avatar: null, skills: [], apps: [], live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
     const edited = buildAgentRow({ live: false, guardrails: {} }, made, "2026-10-05T00:00:00.000Z");
     expect(edited).toMatchObject({ slug: "ada-lovelace", name: "Ada Lovelace", prompt: "p", live: false, guardrails: null, createdAt: "2026-10-04T00:00:00.000Z" });
     expect(agentClock(edited)).toBe(Date.parse("2026-10-05T00:00:00.000Z"));

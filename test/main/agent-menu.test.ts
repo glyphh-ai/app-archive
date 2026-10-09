@@ -56,7 +56,7 @@ describe("ONE MENU ON BOTH SURFACES (his order, 2026-10-06) — one frozen list"
     const desk = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
     const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
     const labels = (m: { sections: MenuSection[] }): string[] => m.sections.flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "name" in r ? r.name : "")));
-    expect(labels(desk)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Artifacts", "Rename", "Pin", "New agent panel", "Delete", "CRM", ...CLIS.map((c) => c.name), "Dev", "Writing"]);
+    expect(labels(desk)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Bots", "Artifacts", "Rename", "Pin", "New agent panel", "Delete", "CRM", ...CLIS.map((c) => c.name), "Dev", "Writing"]);
     expect(labels(web)).toEqual(labels(desk).filter((l) => l !== "Browser"));
   });
 });
@@ -241,7 +241,7 @@ describe("the session's type decides the panels — one list through the caps", 
     expect([...CODE_TOOL_VIEWS]).toEqual([...DESKTOP_TOOL_VIEWS, "artifacts"]);
     expect([...toolViewsFor("desktop", "code")]).toEqual([...CODE_TOOL_VIEWS]);
     expect([...toolViewsFor("web", "code")]).toEqual([...WEB_TOOL_VIEWS, "artifacts"]);
-    expect(toolRowsFor("desktop", "code").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Agents", "Artifacts"]);
+    expect(toolRowsFor("desktop", "code").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Bots", "Artifacts"]);
   });
   it("Work never lists Files / Terminal / Editor / Diff — on either surface", () => {
     expect([...WORK_TOOL_VIEWS]).toEqual(["preview", "agents", "artifacts"]);

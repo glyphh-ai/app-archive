@@ -115,6 +115,7 @@ import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerCliAgentsIpc } from "./cli-agents.js";
 import { startCliSessionWatch } from "./cli-session-watch.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
+import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -474,6 +475,7 @@ async function boot() {
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
     registerNotifyIpc();
     registerAgentLiveIpc();
+    installBotsIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
     registerCloudFsIpc();
