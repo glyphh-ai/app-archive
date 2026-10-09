@@ -72,12 +72,15 @@ export function moodOf(status: "working" | "waiting" | "done" | "failed" | "idle
   }
 }
 
-/** A stable pick for a bot with no avatar of its own: body and colour from
- *  the slug, so the same bot wears the same cat everywhere. */
+/** The face a bot wears until it picks one (his order, 2026-10-09: "Default
+ *  to look"): Side-eye. */
+export const DEFAULT_VARIANT = 2;
+/** A stable pick for a bot with no avatar of its own: Side-eye, in a colour
+ *  from the slug, so the same bot wears the same face everywhere. */
 export function defaultAvatar(slug: string): BotAvatar {
   let h = 0;
   for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
-  return { variant: (h % AVATAR_VARIANTS.length) + 1, color: AVATAR_COLORS[(h >>> 4) % AVATAR_COLORS.length]! };
+  return { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[(h >>> 4) % AVATAR_COLORS.length]! };
 }
 
 /** The avatar a record carries, or the slug's default. */

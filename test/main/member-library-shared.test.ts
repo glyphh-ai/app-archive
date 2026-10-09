@@ -28,7 +28,9 @@ describe("agents — role and avatar (the Bots panel, his order 2026-10-08)", ()
     const kept = buildAgentRow({ description: "plans" }, boss, "2026-10-08T00:00:02.000Z");
     expect(kept.role).toBe("orchestrator");
     expect(kept.avatar).toEqual({ variant: 8, color: "#af5fff" });
-    expect(buildAgentRow({ avatar: { variant: 13, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
+    // Sixteen faces since 2026-10-09: 16 is a face, 17 is not.
+    expect(buildAgentRow({ avatar: { variant: 16, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toEqual({ variant: 16, color: "#fff" });
+    expect(buildAgentRow({ avatar: { variant: 17, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
     expect(buildAgentRow({ avatar: null }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
   });
 });

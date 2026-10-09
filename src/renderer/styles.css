@@ -22136,3 +22136,13 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .rail-glyphh-row.active { background: var(--hover); color: var(--text); }
 .rail-sp-body > .rail-sp-head { padding: 14px 16px 6px; }
 .rail-sp-body > .app-rail-search { padding: 0 10px 6px; }
+
+/* ── THE AGENTS' MASCOT ICONS (his order, 2026-10-09) ── */
+.agents2-avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; }
+.agents2-faces { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; max-width: 520px; margin: 2px 0 10px; }
+.agents2-face { display: inline-flex; align-items: center; justify-content: center; height: 54px; border: 1px solid var(--border); border-radius: 10px; background: none; cursor: pointer; padding: 0; }
+.agents2-face:hover { background: var(--hover); }
+.agents2-face.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.agents2-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.agents2-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-2); cursor: pointer; padding: 0; }
+.agents2-swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg); }

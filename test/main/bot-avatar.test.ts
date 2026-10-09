@@ -24,8 +24,7 @@ describe("bot-avatar — the super powers' faces are the Glyphh mascot (his orde
   it("a bot with no avatar wears the same face every time, from its slug", () => {
     const a = defaultAvatar("research-specialist");
     expect(a).toEqual(defaultAvatar("research-specialist"));
-    expect(a.variant).toBeGreaterThanOrEqual(1);
-    expect(a.variant).toBeLessThanOrEqual(AVATAR_VARIANTS.length);
+    expect(a.variant).toBe(2);   // "Default to look" (his order, 2026-10-09): Side-eye
     expect(AVATAR_COLORS).toContain(a.color);
     expect(defaultAvatar("code-builder")).not.toEqual(a);
   });

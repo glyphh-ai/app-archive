@@ -19,8 +19,9 @@
  */
 
 import { clearInvalid, confirmAction } from "./shared.js";
+import { AVATAR_COLORS, AVATAR_VARIANTS, DEFAULT_VARIANT, avatarOf, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
 
-interface AgentRow { slug: string; name: string; description: string; prompt: string; model: string }
+interface AgentRow { slug: string; name: string; description: string; prompt: string; model: string; avatar: BotAvatar | null }
 interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; providerSlug: string }
 
@@ -52,21 +53,23 @@ const asRows = (raw: unknown): AgentRow[] =>
     .filter((r): r is AgentRow => !!r && typeof r === "object" && typeof (r as AgentRow).slug === "string")
     .map((r) => ({
       slug: r.slug, name: r.name || r.slug, description: r.description || "", prompt: r.prompt || "", model: r.model || "",
+      avatar: r.avatar && typeof r.avatar === "object" ? r.avatar : null,
     }));
+/** THE MASCOT ICON (his order, 2026-10-09: "use these on the agents page… to
+ *  set the icons. Default to look"): the agent's face, its own pick or Side-eye. */
+function agentIcon(r: { slug: string; avatar?: BotAvatar | null }, size: number): HTMLElement {
+  const i = document.createElement("span");
+  i.className = "agents2-avatar";
+  i.innerHTML = botAvatarSvg(avatarOf({ slug: r.slug || "new-agent", avatar: r.avatar ?? null }), "idle", { size });
+  return i;
+}
+/** The icon the editor holds — the agent's, or Side-eye for a new one. */
+let pickedAvatar: BotAvatar = { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[0]! };
 
 const modelName = (id: string): string => (!id ? "Same as the main agent" : models.find((m) => m.id === id)?.name ?? id);
 /** The list's Model column: the slot. */
 const runsAs = (r: AgentRow): string => modelName(r.model);
 
-function initialIcon(name: string, size: "" | "lg" = ""): HTMLElement {
-  const i = document.createElement("span");
-  i.className = `conn2-icon${size ? ` ${size}` : ""}`;
-  const t = document.createElement("span");
-  t.className = "conn2-icon-initial";
-  t.textContent = (name.trim()[0] || "A").toUpperCase();
-  i.appendChild(t);
-  return i;
-}
 
 let editing: AgentRow | null = null;
 
@@ -107,7 +110,7 @@ function renderList(): void {
   for (const r of shown) {
     const tr = document.createElement("div");
     tr.className = "conn2-tr openable";
-    tr.appendChild(initialIcon(r.name));
+    tr.appendChild(agentIcon(r, 30));
     const main = document.createElement("span");
     main.className = "agents2-main";
     const name = document.createElement("span");
@@ -147,14 +150,43 @@ function briefError(msg: string): void {
   e.classList.toggle("hidden", !msg);
 }
 
-/** The edit head: the agent's initial and its name, live as the name is typed. */
+/** THE ICON PICKER: the sixteen faces in the picked colour, then the colours. */
+function paintIconPicker(): void {
+  const faces = el("agents2-icon-faces");
+  const colors = el("agents2-icon-colors");
+  if (!faces || !colors) return;
+  faces.textContent = "";
+  colors.textContent = "";
+  for (const v of AVATAR_VARIANTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "agents2-face" + (v.id === pickedAvatar.variant ? " on" : "");
+    b.title = v.name;
+    b.setAttribute("aria-label", v.name);
+    b.innerHTML = botAvatarSvg({ variant: v.id, color: pickedAvatar.color }, "idle", { size: 40 });
+    b.addEventListener("click", () => { pickedAvatar = { ...pickedAvatar, variant: v.id }; paintIconPicker(); paintHead(el<HTMLInputElement>("agents2-name")?.value ?? ""); });
+    faces.appendChild(b);
+  }
+  for (const c of AVATAR_COLORS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "agents2-swatch" + (c === pickedAvatar.color ? " on" : "");
+    b.style.background = c;
+    b.title = c;
+    b.setAttribute("aria-label", `Colour ${c}`);
+    b.addEventListener("click", () => { pickedAvatar = { ...pickedAvatar, color: c }; paintIconPicker(); paintHead(el<HTMLInputElement>("agents2-name")?.value ?? ""); });
+    colors.appendChild(b);
+  }
+}
+
+/** The edit head: the agent's face and its name, live as the name is typed. */
 function paintHead(name: string): void {
   const head = el("agents2-detail-head");
   if (!head) return;
   head.textContent = "";
   const icons = document.createElement("div");
   icons.className = "edit-head-icons";
-  icons.appendChild(initialIcon(name || "New agent", "lg"));
+  icons.appendChild(agentIcon({ slug: editing?.slug ?? "", avatar: pickedAvatar }, 44));
   const n = document.createElement("div");
   n.className = "edit-head-name";
   n.textContent = name.trim() || "New agent";
@@ -189,6 +221,8 @@ function openEditor(row: AgentRow | null): void {
   desc.value = row?.description ?? "";
   brief.value = row?.prompt ?? "";
   fillModels(model, row?.model ?? SAME_AS_MAIN);
+  pickedAvatar = row ? avatarOf({ slug: row.slug, avatar: row.avatar }) : { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[0]! };
+  paintIconPicker();
   model.title = models.length ? "" : "Your team's models couldn't be read; this agent runs on the main agent's model.";
   const del = el("agents2-delete-btn");
   if (del) del.style.display = row ? "" : "none";
@@ -209,6 +243,7 @@ async function saveAgent(): Promise<void> {
   if (!name || !desc || !model || !brief) return;
   const input = {
     name: name.value.trim(), description: desc.value.trim(), prompt: brief.value.trim(), model: model.value,
+    avatar: pickedAvatar,
   };
   if (!input.name) {
     name.classList.add("invalid");

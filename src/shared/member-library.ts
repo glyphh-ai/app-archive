@@ -407,7 +407,8 @@ export function cleanAvatar(v: unknown): BotAvatarLike | null {
   if (!a || typeof a !== "object") return null;
   const variant = Math.round(Number(a.variant));
   const color = String(a.color ?? "").trim();
-  if (!Number.isFinite(variant) || variant < 1 || variant > 12 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
+  // Sixteen faces since 2026-10-09 (help/bot-avatar.ts AVATAR_VARIANTS).
+  if (!Number.isFinite(variant) || variant < 1 || variant > 16 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
   return { variant, color };
 }
 
