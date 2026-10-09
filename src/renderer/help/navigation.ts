@@ -20,6 +20,8 @@ import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
+import { openPowersModal } from "./powers-modal.js";
+import { toastInfo } from "./toast.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
@@ -186,6 +188,8 @@ export function gotoSection(section: string, sub?: string): void {
     openSettingsModal(sub);
     return;
   }
+  // The Customize page is gone (2026-10-09): its name opens the powers modal.
+  if (section === "customize" || section === "build") { openPowersFor(sub); return; }
   // "Customize" — the rail's app-settings entry. Opens the modal on the app-
   // config anchor ("app" → appearance via SETTINGS_SUB_ALIAS).
   if (section === "app") {
@@ -1063,11 +1067,17 @@ export function loadSettingsGroup(group: string): void {
  *  already-open page just switches. Whether the page was painted is read
  *  BEFORE the open (his report, 2026-10-07: a fresh mount painted the tab
  *  through loadSettingsGroup and then showed it a second time). */
-export function openGroupTab(group: GroupPage, sub: string): void {
-  groupLastSub[group] = sub;
-  const painted = !!document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"] .settings-group-tabs > .skills-tab[data-sub="${sub}"]`);
-  (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(group);
-  if (painted) showGroupTab(group, sub);
+export function openGroupTab(_group: GroupPage, sub: string): void {
+  // THE CUSTOMIZE PAGE IS GONE (his order, 2026-10-09): its tabs are the powers
+  // modal's now — every power, connection and model opens there.
+  openPowersFor(sub);
+}
+
+/** A Customize tab's name → the powers modal's tab (the page is gone, 2026-10-09). */
+export function openPowersFor(sub?: string): void {
+  const s = String(sub ?? "");
+  if (s === "agents") { toastInfo("Super powers live in the left rail: open one's ⋮ to edit it."); return; }
+  openPowersModal({ tab: s === "connections-cfg" || s === "connections" ? "connections" : s === "models" ? "models" : "skills" });
 }
 
 /** THE PAGE'S ONE TOOLBAR (his order, 2026-10-09: "make the header of the

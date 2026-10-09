@@ -25,6 +25,7 @@ import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./sha
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
+import { openPowersModal } from "./powers-modal.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -4227,10 +4228,7 @@ function wireComposerAttachments(): void {
   // as shortcuts to the same attach tray.
   const plusWrap = el("code-plus-wrap");
   if (plusWrap) {
-    const toTarget = (t: ManageTarget): void => {
-      if (t.kind === "group") openGroupTab(t.group, t.sub);
-      else openSettingsModal(t.sub);
-    };
+    const toTarget = (t: ManageTarget): void => { openSettingsModal(t.sub); };
     plusMenu = mountComposerPlus(plusWrap, el("code-plus-chip") as HTMLButtonElement | null, {
       surface: onWeb() ? "web" : "desktop",
       has: hostHas,
@@ -4243,30 +4241,12 @@ function wireComposerAttachments(): void {
       workingFolder: async () => { const d = await wb()?.getCwdExplicit?.(); return d ? String(d) : null; },
       pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
       openTarget: toTarget,
-      openConnector: (slug) => { openConnectionOnLoad(slug); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
-      // ADD CONNECTOR LANDS ON DISCOVER (his report, 2026-10-07): the page's
-      // one Yours | Discover switch flips to Discover before the tab opens.
-      addConnector: () => { setGroupScope("discover"); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      // EVERY POWER OPENS IN THE ONE MODAL (his order, 2026-10-09: "the + at the
+      // bottom of the page by the agent input launches every power add etc.
+      // into the same modal as edit super power does").
+      openPowers: (tab) => openPowersModal({ tab }),
       toast: toastOk,
       place: openChipDropUp,
-      // THE POWERS BOX (his order, 2026-10-09): the enabled models with their
-      // price, the session's own wearing the check; a pick switches it.
-      models: async () => {
-        await refreshModelList();
-        const sel = effectiveModelId() || "";
-        return modelsForLoop().map((m) => ({ id: m.id, name: m.name, price: modelPriceLine(m), selected: !!sel && bareModelId(m.id) === bareModelId(sel) }));
-      },
-      useModel: (id) => { void chooseSessionModel(id); },
-      // "Make a power": Glyphh builds it — the composer gets the start of the ask.
-      makePower: () => {
-        const ta = input();
-        if (!ta) return;
-        ta.value = "Make me a power that ";
-        ta.dispatchEvent(new Event("input", { bubbles: true }));
-        ta.focus();
-        ta.setSelectionRange(ta.value.length, ta.value.length);
-      },
-      browsePowers: () => toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "skills")),
       deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
       toggleDevice: (id, attached) => {
         const c = current();
@@ -7111,6 +7091,9 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   initAnchorEvents();
+  // THE POWERS MODAL, for the documents that cannot import it (the workbench bundle).
+  (window as unknown as { __glyphhOpenPowers?: (tab: string) => void }).__glyphhOpenPowers = (tab) =>
+    openPowersModal({ tab: tab === "connections" || tab === "models" || tab === "folders" ? tab : "skills" });
   // A SUPER POWER'S NEW FACE SHOWS AT ONCE (his order, 2026-10-09): the rail
   // repaints from the roster whenever it moves — main announces every save,
   // delete and server pull; the web's library shim fires the window event.

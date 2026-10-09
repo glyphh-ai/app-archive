@@ -1878,6 +1878,10 @@ async function init(): Promise<void> {
   function openSectionInWorkbench(rawSection: string): void {
     // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
     const section = legacyKey(rawSection);
+    // THE CUSTOMIZE PAGE IS GONE (his order, 2026-10-09: "Remove the Customize
+    // page, build page, etc."): anything that still asks for it — a saved
+    // dock slot, an old deep link — opens the powers modal instead.
+    if (section === "customize") { (window as unknown as { __glyphhOpenPowers?: (tab: string) => void }).__glyphhOpenPowers?.("skills"); return; }
     // A panel the user just asked for must be VISIBLE: the boot veil's
     // wall-settle loop never lifts when the wall boots covered (the landing
     // composer), and a veiled workbench renders an open section invisible.

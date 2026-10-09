@@ -30,7 +30,7 @@
  * runs it bare; mountComposerPlus paints it into the composer's drop-up.
  */
 
-import { appIconInner, primeConnectedIcons } from "./app-icon.js";
+import { appIconInner } from "./app-icon.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 export type PlusSurface = "desktop" | "web";
@@ -106,10 +106,6 @@ export const ATTACH_LABEL = "Add files or photos";
 // THE POWERS BOX (his order, 2026-10-09): the + is where a member sees and
 // controls Glyphh's powers — Connections, Models, Your powers — and opens the
 // whole catalog. Skills and tasks are just "powers you built".
-export const MANAGE_SKILLS_LABEL = "Manage your powers";
-export const MAKE_POWER_LABEL = "Make a power";
-export const ADD_CONNECTOR_LABEL = "Add connection";
-export const MANAGE_CONNECTORS_LABEL = "Manage connections";
 export const BROWSE_POWERS_LABEL = "Browse all powers…";
 export const POWERS_LABELS = { connectors: "Connections", models: "Models", skills: "Your powers" } as const;
 export const MANAGE_DEVICES_LABEL = "Manage devices";
@@ -130,9 +126,11 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.attach) rows.push({ id: "attach", label: ATTACH_LABEL, icon: PLUS_ICONS.attach, kind: "action", shortcut: ATTACH_SHORTCUT, hint: "Images and documents ride the next message" });
   // THE POWERS (his order, 2026-10-09): Connections, Models, Your powers, then the whole catalog.
   const powersFrom = rows.length;
-  if (caps.connectors) rows.push({ id: "connectors", label: POWERS_LABELS.connectors, icon: PLUS_ICONS.connectors, kind: "submenu", sepBefore: rows.length > 0 });
-  if (caps.models) rows.push({ id: "models", label: POWERS_LABELS.models, icon: PLUS_ICONS.models, kind: "submenu", sepBefore: rows.length > 0 && rows.length === powersFrom });
-  if (caps.skills) rows.push({ id: "skills", label: POWERS_LABELS.skills, icon: PLUS_ICONS.powers, kind: "submenu", sepBefore: rows.length > 0 && rows.length === powersFrom });
+  // Each opens THE POWERS MODAL on its tab (his order, 2026-10-09: "the + …
+  // launches every power add etc. into the same modal as edit super power does").
+  if (caps.connectors) rows.push({ id: "connectors", label: POWERS_LABELS.connectors, icon: PLUS_ICONS.connectors, kind: "action", sepBefore: rows.length > 0, hint: "Connect accounts and choose what their tools may do" });
+  if (caps.models) rows.push({ id: "models", label: POWERS_LABELS.models, icon: PLUS_ICONS.models, kind: "action", sepBefore: rows.length > 0 && rows.length === powersFrom, hint: "Your team's models, their rates and details" });
+  if (caps.skills) rows.push({ id: "skills", label: POWERS_LABELS.skills, icon: PLUS_ICONS.powers, kind: "action", sepBefore: rows.length > 0 && rows.length === powersFrom, hint: "What you built with Glyphh, and a new one" });
   if (caps.skills || caps.connectors) rows.push({ id: "browse", label: BROWSE_POWERS_LABEL, icon: PLUS_ICONS.chest, kind: "action", hint: "Every power: connections, models, the ones you and your team built" });
   if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu", sepBefore: rows.length > 0 });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
@@ -163,23 +161,6 @@ export interface PlusApi {
   attachDevicesList?: () => Promise<DevicesAnswer>;
   getPreference?: (key: string, defaultVal?: unknown) => Promise<unknown>;
   setPreference?: (key: string, value: unknown) => unknown;
-}
-
-/** YOUR POWERS — what the member built: their skills and tasks (his order,
- *  2026-10-09: no separate word for them), by name. A door that fails lists nothing. */
-export const YOUR_POWER_KINDS: ReadonlyArray<string> = Object.freeze(["skill", "task"]);
-export async function readSkillRows(api: PlusApi): Promise<PlusSkill[]> {
-  try {
-    const r = await api.skillsList?.([...YOUR_POWER_KINDS]);
-    const rows = r?.ok ? r.data ?? [] : [];
-    return rows.map((s) => ({ id: s.id, name: s.name, enabled: s.enabled !== false, type: s.type })).sort((a, b) => a.name.localeCompare(b.name));
-  } catch { return []; }
-}
-
-export async function toggleSkill(api: PlusApi, id: string, on: boolean): Promise<Env<PlusSkill>> {
-  if (!api.skillSetEnabled) return { ok: false, error: "This host cannot change a skill." };
-  try { return await api.skillSetEnabled(id, on); }
-  catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
 }
 
 /** One connector row of the submenu, from either lane (the Connections page's
@@ -224,16 +205,6 @@ export function connectorIcon(app: { iconUrl: string | null; connection?: { acco
   return appIconInner(app, name, "drop-icon-initial");
 }
 
-/** A custom MCP server's switch — the same door the Connections page's
- *  "Turn on/off" calls. An account row has no switch: the caller opens it. */
-export async function toggleConnector(api: PlusApi, row: PlusConnectorRow, on: boolean): Promise<{ ok: boolean; error?: string }> {
-  if (row.kind !== "mcp") return { ok: false, error: "An account has no switch — open it to disconnect." };
-  if (row.org) return { ok: false, error: "An organization server is the admin's to switch." };
-  if (!api.mcpConnectionsUpdate) return { ok: false, error: "This host cannot switch a server." };
-  try { return await api.mcpConnectionsUpdate(row.slug, { enabled: on }); }
-  catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
-}
-
 export interface PlusDeviceRow { machineId: string; name: string; app: string; state: "attached" | "disconnected" }
 /** The member's machines — attached ones first, then the ones disconnected
  *  from the web (the Devices page's one row shape). */
@@ -273,18 +244,12 @@ export function toggleMemory(api: PlusApi, st: MemoryState): "on" | "off" | "nee
 }
 
 // ── Where "Manage …" goes, per surface ───────────────────────────────────
-export type ManageKind = "skills" | "connectors" | "devices" | "memory";
-export type ManageTarget = { kind: "settings"; sub: string } | { kind: "group"; group: "customize"; sub: string };
-/** Skills + Connectors are the Customize page's tabs on BOTH surfaces (his
- *  order, 2026-10-07: the desktop renders the group page too, and the
- *  Settings modal no longer lists them; his report the same day: "The Build
- *  and Customize tabs are confusing. It should just be one tab"). Devices and
- *  Memory are plain settings pages on both. `surface` stays in the signature
- *  for the rows that do differ by host. */
+export type ManageKind = "devices" | "memory";
+export type ManageTarget = { kind: "settings"; sub: string };
+/** Devices and Memory are plain settings pages on both surfaces; every power
+ *  opens in the powers modal instead (the Customize page is gone, 2026-10-09). */
 export function manageTargetOf(_surface: PlusSurface, kind: ManageKind): ManageTarget {
-  const sub = kind === "skills" ? "skills" : kind === "connectors" ? "connections-cfg" : kind === "devices" ? "devices" : "memory";
-  if (kind === "skills" || kind === "connectors") return { kind: "group", group: "customize", sub };
-  return { kind: "settings", sub };
+  return { kind: "settings", sub: kind === "devices" ? "devices" : "memory" };
 }
 
 // ── The DOM: the drop-up, its panes and rows ─────────────────────────────
@@ -299,21 +264,11 @@ export interface PlusDoors {
   pickWorkingFolder: () => void;
   /** Opens a Manage target (navigation.ts on the live renderer). */
   openTarget: (t: ManageTarget) => void;
-  /** Opens one account's page in Connections. */
-  openConnector: (slug: string) => void;
-  /** Opens Connections at the directory (Add connector). */
-  addConnector: () => void;
+  /** THE POWERS MODAL on a tab (help/powers-modal.ts). */
+  openPowers: (tab: "folders" | "connections" | "models" | "skills") => void;
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
-  /** THE MODELS POWER (his order, 2026-10-09): the enabled models with their
-   *  price; the one this session runs on wears the check; a pick switches it. */
-  models?: () => Promise<Array<{ id: string; name: string; price: string; selected: boolean }>>;
-  useModel?: (id: string) => void;
-  /** "Make a power": hands the composer to Glyphh with the start of the ask. */
-  makePower?: () => void;
-  /** "Browse all powers…": the whole catalog. */
-  browsePowers?: () => void;
   /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): an attached
    *  desktop is on by default; a click flips it for this session. */
   deviceOn?: (machineId: string) => boolean;
@@ -426,10 +381,10 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
           case "attach": close(); doors.attachFiles(); break;
           case "add-folder": close(); doors.attachFolder(); break;
           case "working-folder": case "choose-folder": close(); doors.pickWorkingFolder(); break;
-          case "skills": void openSkills(); break;
-          case "connectors": void openConnectors(); break;
-          case "models": void openModels(); break;
-          case "browse": close(); doors.browsePowers?.(); break;
+          case "skills": close(); doors.openPowers("skills"); break;
+          case "connectors": close(); doors.openPowers("connections"); break;
+          case "models": close(); doors.openPowers("models"); break;
+          case "browse": close(); doors.openPowers("skills"); break;
           case "devices": void openDevices(); break;
           case "memory": {
             const verdict = toggleMemory(doors.api, memory);
@@ -499,106 +454,6 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     d.className = "code-drop-head plus-empty";
     d.textContent = text;
     pane.appendChild(d);
-  };
-
-  const openSkills = async (): Promise<void> => {
-    const pane = subPane(POWERS_LABELS.skills);
-    const loading = loadingRow(pane, "Loading your powers…");
-    const skills = await readSkillRows(doors.api);
-    loading.remove();
-    if (!pane.isConnected) return;
-    if (!skills.length) emptyRow(pane, "None yet — ask Glyphh to make one.");
-    for (const s of skills) {
-      const b = rowEl({ label: s.name, icon: PLUS_ICONS.powers, kind: "check", checked: s.enabled, hint: s.enabled ? "On — click to turn off" : "Off — click to turn on" });
-      b.dataset.skillId = s.id;
-      b.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const on = b.getAttribute("aria-checked") !== "true";
-        const r = await toggleSkill(doors.api, s.id, on);
-        if (!r.ok) { doors.toast(r.error || "Couldn't change that."); return; }
-        b.setAttribute("aria-checked", on ? "true" : "false");
-        b.classList.toggle("selected", on);
-        const slot = b.querySelector<HTMLElement>(".drop-check-slot");
-        if (slot) slot.innerHTML = on ? PLUS_CHECK : "";
-        b.title = on ? "On — click to turn off" : "Off — click to turn on";
-      });
-      pane.appendChild(b);
-    }
-    pane.appendChild(sepEl());
-    if (doors.makePower) {
-      const make = rowEl({ label: MAKE_POWER_LABEL, icon: PLUS_ICONS.plus, kind: "action", hint: "Tell Glyphh what it should be able to do" });
-      make.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.makePower!(); });
-      pane.appendChild(make);
-    }
-    const manage = rowEl({ label: MANAGE_SKILLS_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
-    manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "skills")); });
-    pane.appendChild(manage);
-    doors.place(menu);
-    focusFirst(pane);
-  };
-
-  const openConnectors = async (): Promise<void> => {
-    const pane = subPane(POWERS_LABELS.connectors);
-    const loading = loadingRow(pane, "Loading your connections…");
-    const rows = await readConnectorRows(doors.api);
-    loading.remove();
-    if (!pane.isConnected) return;
-    if (!rows.length) emptyRow(pane, "Nothing connected yet.");
-    // The accounts' logos land once the icon cache warms (the Connections
-    // page does the same): repaint each row's icon then.
-    void primeConnectedIcons(rows.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
-      if (!pane.isConnected) return;
-      for (const r of rows) {
-        const ic = pane.querySelector<HTMLElement>(`[data-conn-key="${CSS.escape(r.key)}"] .drop-icon`);
-        if (ic && r.prime) ic.innerHTML = connectorIcon({ iconUrl: null, connection: r.prime }, r.name);
-      }
-    });
-    for (const r of rows) {
-      const switchable = r.kind === "mcp" && !r.org;
-      const b = rowEl({
-        label: r.name, icon: r.icon, kind: "check", checked: r.on,
-        sub: r.kind === "mcp" ? (r.org ? "Org server" : "MCP server") : (r.org ? "Org account" : undefined),
-        hint: switchable ? (r.on ? "On — click to turn off" : "Off — click to turn on") : (r.on ? "Connected — click to open" : "Not connected — click to open"),
-      });
-      b.dataset.connKey = r.key;
-      b.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!switchable) { close(); doors.openConnector(r.slug); return; }
-        const on = b.getAttribute("aria-checked") !== "true";
-        const res = await toggleConnector(doors.api, r, on);
-        if (!res.ok) { doors.toast(res.error || "Couldn't change that."); return; }
-        b.setAttribute("aria-checked", on ? "true" : "false");
-        b.classList.toggle("selected", on);
-        const slot = b.querySelector<HTMLElement>(".drop-check-slot");
-        if (slot) slot.innerHTML = on ? PLUS_CHECK : "";
-      });
-      pane.appendChild(b);
-    }
-    pane.appendChild(sepEl());
-    const add = rowEl({ label: ADD_CONNECTOR_LABEL, icon: PLUS_ICONS.plus, kind: "action" });
-    add.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.addConnector(); });
-    const manage = rowEl({ label: MANAGE_CONNECTORS_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
-    manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "connectors")); });
-    pane.append(add, manage);
-    doors.place(menu);
-    focusFirst(pane);
-  };
-
-  const openModels = async (): Promise<void> => {
-    const pane = subPane(POWERS_LABELS.models);
-    const loading = loadingRow(pane, "Loading your models…");
-    const rows = (await doors.models?.().catch(() => [])) ?? [];
-    loading.remove();
-    if (!pane.isConnected) return;
-    if (!rows.length) emptyRow(pane, "No models on your plan yet.");
-    for (const m of rows) {
-      const b = rowEl({ label: m.name, icon: PLUS_ICONS.models, kind: "check", checked: m.selected, sub: m.price || undefined, hint: m.selected ? "This session runs on it" : "Use it for this session" });
-      b.dataset.modelId = m.id;
-      b.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.useModel?.(m.id); });
-      pane.appendChild(b);
-    }
-    doors.place(menu);
-    focusFirst(pane);
   };
 
   const openDevices = async (): Promise<void> => {

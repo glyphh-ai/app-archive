@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
-  plusCapsOf, plusMenuRows, manageTargetOf, readSkillRows, toggleSkill, readConnectorRows, toggleConnector,
+  plusCapsOf, plusMenuRows, manageTargetOf, readConnectorRows,
   readDeviceRows, readMemoryState, toggleMemory, MEMORY_PREFS, ATTACH_LABEL, ATTACH_SHORTCUT, PLUS_ICONS,
   type PlusApi, type PlusState,
 } from "../../src/renderer/help/composer-plus.js";
@@ -20,12 +20,13 @@ const web = plusCapsOf((n) => WEB_HAS.has(n));
 const st = (over: Partial<PlusState> = {}): PlusState => ({ surface: "desktop", space: "code", memoryOn: true, ...over });
 
 describe("the rows, per surface", () => {
-  it("desktop: attach ⌘U, then THE POWERS — Connections › Models › Your powers › Browse all — then Devices ›, Memory ✓ (his order, 2026-10-09)", () => {
+  it("desktop: attach ⌘U, then THE POWERS — Connections, Models, Your powers, Browse all, each opening the powers modal — then Devices ›, Memory ✓ (his order, 2026-10-09)", () => {
     const rows = plusMenuRows(desktop, st());
     expect(rows.slice(0, 7).map((r) => r.id)).toEqual(["attach", "connectors", "models", "skills", "browse", "devices", "memory"]);
     for (const r of rows) expect(r.icon).toMatch(/^<svg/);
     expect(rows[0]).toMatchObject({ label: ATTACH_LABEL, shortcut: ATTACH_SHORTCUT, kind: "action" });
-    expect(rows.filter((r) => r.kind === "submenu").map((r) => r.label)).toEqual(["Connections", "Models", "Your powers", "Devices"]);
+    expect(rows.filter((r) => r.kind === "submenu").map((r) => r.label)).toEqual(["Devices"]);
+    for (const id of ["connectors", "models", "skills"]) expect(rows.find((r) => r.id === id)?.kind).toBe("action");
     expect(rows.find((r) => r.id === "browse")).toMatchObject({ label: "Browse all powers…", kind: "action" });
     expect(rows.find((r) => r.id === "memory")).toMatchObject({ kind: "check", checked: true });
   });
@@ -53,39 +54,11 @@ describe("the rows, per surface", () => {
 });
 
 describe("where Manage goes", () => {
-  it("desktop: Skills + Connectors are the Build page's tabs too (his order, 2026-10-07); Devices + Memory stay settings pages", () => {
-    expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
-    expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
-    expect(manageTargetOf("desktop", "devices")).toEqual({ kind: "settings", sub: "devices" });
-    expect(manageTargetOf("desktop", "memory")).toEqual({ kind: "settings", sub: "memory" });
-  });
-  it("web: Skills + Connectors are the Build page's tabs; Devices + Memory stay settings pages", () => {
-    expect(manageTargetOf("web", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
-    expect(manageTargetOf("web", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
-    expect(manageTargetOf("web", "devices")).toEqual({ kind: "settings", sub: "devices" });
-    expect(manageTargetOf("web", "memory")).toEqual({ kind: "settings", sub: "memory" });
-  });
-});
-
-describe("Skills › — the member's skills, toggled through skillSetEnabled", () => {
-  it("YOUR POWERS lists the skills and tasks the member built, by name, and toggles through the library door", async () => {
-    const api: PlusApi = {
-      skillsList: vi.fn(async () => ({ ok: true, data: [
-        { id: "skill:zeta", name: "Zeta", enabled: true },
-        { id: "skill:alpha", name: "Alpha", enabled: false },
-      ] })),
-      skillSetEnabled: vi.fn(async (id: string, on: boolean) => ({ ok: true, data: { id, name: "x", enabled: on } })),
-    };
-    const rows = await readSkillRows(api);
-    expect(api.skillsList).toHaveBeenCalledWith(["skill", "task"]);
-    expect(rows.map((r) => [r.name, r.enabled])).toEqual([["Alpha", false], ["Zeta", true]]);
-    const r = await toggleSkill(api, "skill:alpha", true);
-    expect(r.ok).toBe(true);
-    expect(api.skillSetEnabled).toHaveBeenCalledWith("skill:alpha", true);
-  });
-  it("a host without the door refuses, a failing door reads empty", async () => {
-    expect((await toggleSkill({}, "skill:a", true)).ok).toBe(false);
-    expect(await readSkillRows({ skillsList: async () => { throw new Error("down"); } })).toEqual([]);
+  it("Devices and Memory are settings pages on both surfaces; every power opens in the powers modal instead (2026-10-09)", () => {
+    for (const surface of ["desktop", "web"] as const) {
+      expect(manageTargetOf(surface, "devices")).toEqual({ kind: "settings", sub: "devices" });
+      expect(manageTargetOf(surface, "memory")).toEqual({ kind: "settings", sub: "memory" });
+    }
   });
 });
 
@@ -107,15 +80,6 @@ describe("Connectors › — the Connections page's two reads, one switch", () =
     expect(rows.map((r) => [r.name, r.kind, r.on])).toEqual([
       ["Acme Slack", "account", false], ["Gmail", "account", true], ["Linear", "mcp", true], ["Org tools", "mcp", true],
     ]);
-  });
-  it("a custom server toggles through mcpConnectionsUpdate; an account or an org server does not", async () => {
-    const rows = await readConnectorRows(api);
-    const linear = rows.find((r) => r.slug === "linear-mcp")!;
-    expect((await toggleConnector(api, linear, false)).ok).toBe(true);
-    expect(api.mcpConnectionsUpdate).toHaveBeenCalledWith("linear-mcp", { enabled: false });
-    expect((await toggleConnector(api, rows.find((r) => r.slug === "gmail")!, false)).ok).toBe(false);
-    expect((await toggleConnector(api, rows.find((r) => r.slug === "org-tools")!, false)).ok).toBe(false);
-    expect(api.mcpConnectionsUpdate).toHaveBeenCalledTimes(1);
   });
   it("a host with neither read lists nothing", async () => {
     expect(await readConnectorRows({})).toEqual([]);

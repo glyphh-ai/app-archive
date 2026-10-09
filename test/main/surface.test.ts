@@ -209,17 +209,16 @@ describe("settings — the one Customize page is the same on both surfaces; only
 });
 
 describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
-  it("exactly the rail's two open full screen on the web", () => {
-    expect([...webFullScreenPanels]).toEqual(["artifacts", "customize", "schedules", "bot"]);
+  it("Artifacts, Schedules and a super power's Edit open full screen — Customize is gone (his order, 2026-10-09)", () => {
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "schedules", "bot"]);
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {
     for (const k of ["files", "agents", "terminal", "settings", "gmail", "", "preview"]) expect(webPanelOpensFullScreen(k)).toBe(false);
   });
-  it("the desktop opens Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
+  it("Customize no longer opens anywhere: its name is routed to the powers modal (his order, 2026-10-09)", () => {
     expect([...GROUP_PAGES]).toEqual(["customize"]);
-    // Full screen on BOTH surfaces, Customize and Artifacts alike (his order, 2026-10-09).
-    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
+    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
     expect(panelOpensFullScreen("artifacts", false)).toBe(true);
     expect(panelOpensFullScreen("artifacts", true)).toBe(true);
     for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
@@ -232,13 +231,12 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Custo
     expect(GROUP_PAGE_ALIASES).toEqual({ build: "customize" });
     expect(groupPageKey("build")).toBe("customize");
     for (const k of ["customize", "artifacts", "apps", "layouts", ""]) expect(groupPageKey(k)).toBe(k);
-    expect(panelOpensFullScreen(groupPageKey("build"), true)).toBe(true);   // the web's full screen, through the alias
-    expect(panelOpensFullScreen("build", true)).toBe(false);   // only through the alias
+    expect(panelOpensFullScreen(groupPageKey("build"), true)).toBe(false);   // gone with Customize
+    expect(panelOpensFullScreen("build", true)).toBe(false);
   });
-  it("the header reads '‹ Artifacts' / '‹ Customize'; a dead key gets no title of its own", () => {
+  it("the header reads '‹ Artifacts'; a key with no page of its own gets no title", () => {
     expect(webFullScreenTitle("artifacts")).toBe("Artifacts");
-    expect(webFullScreenTitle("customize")).toBe("Customize");
-    expect(webFullScreenTitle(groupPageKey("build"))).toBe("Customize");
+    expect(webFullScreenTitle("customize")).toBe("customize");
     expect(Object.keys(WEB_FULL_SCREEN_TITLES).sort()).toEqual([...webFullScreenPanels].sort());
     expect(webFullScreenTitle("wat")).toBe("wat");
   });
