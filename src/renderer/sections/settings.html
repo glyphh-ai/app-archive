@@ -134,7 +134,10 @@
                      streamed to the tab. Experimental, so OFF by default and a
                      two-click switch: on asks first (the warning below + "Turn on"),
                      off is immediate. help/settings.ts + help/streamed-panels-flag.ts. -->
-                <label class="settings-toggle set-pref-row" id="streamed-panels-row">
+                <!-- GONE FROM SETTINGS (his order, 2026-10-09: "these all go from app ->
+                     settings"): Streamed web panels, Default workspace and
+                     Interface sounds — hidden, their prefs stay as they are. -->
+                <label class="settings-toggle set-pref-row hidden" id="streamed-panels-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Streamed web panels</div>
                     <div class="set-pref-desc">On the web, URL apps and the Browser open as a page streamed from a worker. Off, those panels show a card instead.</div>
@@ -153,7 +156,7 @@
                 <!-- The row grammar (his spec, 2026-08-24): title left with its
                      description UNDER it, the value control aligned to the
                      page's right edge. -->
-                <div class="set-pref-row">
+                <div class="set-pref-row hidden">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Default workspace</div>
                     <div class="set-pref-desc">The workspace that opens on a fresh start (when no previous arrangement is being restored). &ldquo;None&rdquo; boots to the bare landing.</div>
@@ -163,7 +166,7 @@
                   </div>
                 </div>
 
-                <div class="set-pref-row">
+                <div class="set-pref-row hidden">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></div>
                     <div class="set-pref-desc">The tiny hover and click sounds. Zero turns them off.</div>
