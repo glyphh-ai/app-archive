@@ -22127,3 +22127,12 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
    2026-10-09: the Schedules page showed no close). */
 .settings-group-titlebar .settings-group-close { width: 28px; height: 28px; flex: none; }
 .settings-group-titlebar .settings-group-close svg { width: 15px; height: 15px; }
+
+/* ── THE RAIL'S BOT ROWS (his order, 2026-10-09): the mascot, the name, the ⋮
+   at the far right; the row opened last wears the active state. ── */
+.rail-bot-row { gap: 8px; padding-left: 8px; }
+.rail-bot-row .rail-bot-mark { display: inline-flex; width: 20px; height: 20px; flex: none; align-items: center; justify-content: center; }
+.rail-bot-row .rail-bot-mark img { width: 18px; height: 18px; }
+.rail-bot-row .code-history-title { flex: 1 1 auto; min-width: 0; color: var(--text-2); font-size: 13px; }
+.rail-bot-row.active { background: var(--hover); }
+.rail-bot-row.active .code-history-title { color: var(--text); }

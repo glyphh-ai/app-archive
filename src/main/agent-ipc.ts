@@ -27,6 +27,8 @@ import path from "node:path";
 import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer } from "./local-mcp-server.js";
+import { getAgent, type AgentRow } from "./local-agents.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
 // here publishes the index + the new messages (thread-publish.ts).
@@ -266,13 +268,25 @@ export interface RunPayload {
 
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
  *  executor's fake WebContents that forwards frames up the socket (attach-run.ts). */
+/** The bot a `bots/<slug>` thread is with, or null (any other thread, or a bot since deleted). */
+function botOfChat(chatId: string): AgentRow | null {
+  if (!chatId.startsWith("bots/")) return null;
+  try { return getAgent(chatId.slice(5)); } catch { return null; }
+}
+
 export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<{ runId: string }> {
   // A TURN RUNS IN ITS THREAD'S FOLDER OR NOT AT ALL (his rule, 2026-09-29:
   // "The agent should work from the selected folder period!!! that is a hard
   // hard constraint, it is sandboxed to that folder"). There is no fallback:
   // NO_WORKDIR is the composer's cue to ask. One type since 2026-10-08: every
   // turn is this kind of turn.
-  const folder = String(p.workdir ?? "").trim();
+  // A BOT'S THREAD (his order, 2026-10-09: "the user can click a bot and its
+  // Glyphh chat history opens. Same ui same everything"): `bots/<slug>` runs
+  // in the same chat as any Glyphh thread, carrying the bot's brief (its
+  // personality) and its model. With no folder picked it works in the
+  // member's working folder, as the bot's own runs always have.
+  const bot = botOfChat(p.chatId);
+  const folder = String(p.workdir ?? "").trim() || (bot ? getWorkingDirectory() : "");
   if (!folder) throw new Error("NO_WORKDIR: this session has no folder yet");
   if (folder) {
     let ok = false;
@@ -286,13 +300,15 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   const chat = storedChat(p.chatId);
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
-  const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
+  const brief = String(bot?.prompt ?? "").trim();
+  const text = [brief, steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
+  const model = String(bot?.model ?? "").trim() || p.model;
   return runGlyphhLoopTurn(sender, {
     chatId: p.chatId,
     ...(p.permission ? { permission: p.permission } : {}),
-    ...(p.model ? { model: p.model } : {}),
+    ...(model ? { model } : {}),
     ...(p.effort ? { effort: p.effort } : {}),
-    ...(p.workdir ? { workdir: p.workdir } : {}),
+    workdir: folder,
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.attachments?.length ? { attachments: p.attachments } : {}),
     history: chat?.messages ?? [],

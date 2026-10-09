@@ -25,7 +25,6 @@ import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./sha
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
-import { openBotsPanel } from "./bots-events.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -5919,7 +5918,6 @@ function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
 }
 /** Both lists re-render on either change: the rail here, the dropdown off the event. */
 function filtersChanged(): void {
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
   renderRailSessions();
   document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
 }
@@ -5973,7 +5971,6 @@ function openPlaceFilterMenu(anchor: HTMLElement): void {
 }
 void (window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve("")).then((place) => {
   locusFilter = locusFilterOf(place);
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
   renderRailSessions();
 }).catch(() => {});
 
@@ -6032,14 +6029,22 @@ interface RailSession {
 let railSessions: RailSession[] = [];
 /** The bots' avatars by slug (their agent records), for the rail's bot rows. */
 const railBotAvatars = new Map<string, { variant: number; color: string } | null>();
+/** THE RAIL IS THE BOTS (his order, 2026-10-09: "the left rail is bot avatar
+ *  … and name —> far right of same row the three dots"): the roster, in the
+ *  order the library keeps it. */
+let railBots: Array<{ slug: string; name: string }> = [];
 async function primeBotAvatars(): Promise<void> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
   if (!env?.ok || !Array.isArray(env.data)) return;
   railBotAvatars.clear();
-  for (const a of env.data as Array<{ slug?: string; avatar?: { variant: number; color: string } | null }>) {
-    if (a && typeof a.slug === "string") railBotAvatars.set(a.slug, a.avatar ?? null);
+  const bots: Array<{ slug: string; name: string }> = [];
+  for (const a of env.data as Array<{ slug?: string; name?: string; avatar?: { variant: number; color: string } | null }>) {
+    if (!a || typeof a.slug !== "string") continue;
+    railBotAvatars.set(a.slug, a.avatar ?? null);
+    bots.push({ slug: a.slug, name: String(a.name || a.slug) });
   }
+  railBots = bots;
 }
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
@@ -6195,7 +6200,7 @@ async function loadRailSessions(): Promise<void> {
     .sort((a, b) => b.mtime - a.mtime);
   reconcileWebDefaultFolder();
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
-  if (railSessions.some((s) => s.bot)) await primeBotAvatars();
+  await primeBotAvatars();   // the rail's rows ARE the bots
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -6291,13 +6296,20 @@ function agentForSess(_sess: RailSession): RailCliAgent | undefined { return rai
  * It never fails quietly — that silence is what made this look like a dead
  * click.
  */
-async function openGlyphhSession(id: string): Promise<void> {
+async function openGlyphhSession(id: string, title?: string): Promise<void> {
   await loadStore().catch(() => { /* the cache still answers below */ });
   let chat = chats.find((x) => x.id === id);
   if (!chat) {
     const snap = await (window.glyphh.glyphhSessionsLoad?.().catch(() => null) ?? Promise.resolve(null));
     const row = ((snap?.chats as CodeChat[]) ?? []).find((c) => c.id === id);
     if (row) { chats.push(row); chat = row; }
+  }
+  // A BOT'S LIFELONG THREAD (his order, 2026-10-09): one per bot, `bots/<slug>`,
+  // born the first time the member opens it — then it is a thread like any.
+  if (!chat && id.startsWith("bots/")) {
+    chat = { id, title: title || id.slice(5), createdAt: Date.now(), messages: [], mode: SESSION_MODE, bot: id.slice(5), permission: defaultMode } as CodeChat;
+    chats.push(chat);
+    void saveStore();
   }
   if (!chat) {
     console.warn("[sess] open failed — no such thread in the store or the shared file", JSON.stringify({ id, chats: chats.length }));
@@ -6349,7 +6361,6 @@ function sessGrantCard(sess: RailSession): void {
 function sessOpen(sess: RailSession): void {
   if (sess.locked) { sessGrantCard(sess); return; }
   // A BOT'S THREAD opens the Bots panel on that bot (his order, 2026-10-08).
-  if (sess.bot) { openBotsPanel(sess.bot); return; }
   // AGENT PANELS ARE INSTANCES in the shell (his ruling, 2026-09-26): a
   // running session fronts the panel that runs it; any other lands in the
   // panel the user touched last, else in a fresh one. The shell's own
@@ -6384,7 +6395,7 @@ function sessOpen(sess: RailSession): void {
   }
   // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
   // (select first — seating a different loop stamps the CURRENT chat).
-  if (sess.cli === "glyphh") { void openGlyphhSession(sess.id); return; }
+  if (sess.cli === "glyphh") { void openGlyphhSession(sess.id, sess.title); return; }
   // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
   // recent opens in the agent CHAT panel, adopted with its transcript and
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
@@ -6436,68 +6447,90 @@ document.addEventListener("mousedown", (ev) => {
 function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
   if (!host) return;
-  const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
-  // THE TAB IS THE FILTER HERE TOO (his report, 2026-09-29: "changing the tabs
-  // doesn't change the left rail's recents list in any way"). The panel's own
-  // list and the dropdown were filtered; this one, the one he was looking at,
-  // was not.
-  // ONE FILTER with the dropdown (his order, 2026-10-04): type, loop, place, search.
-  const railFilter = sessFilter({ query: q });
-  const items = railSessions.filter((x) => sessFilterKeeps(x, railFilter));
-  const painted = JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null });
-  if (painted !== railPaintedLog) { railPaintedLog = painted; console.warn("[rail] painted", painted); }
+  // THE RAIL IS THE BOTS (his order, 2026-10-09): Glyphh first, then every bot
+  // — the mascot, the name, the ⋮ at the far right. A click opens that one's
+  // chat in the same Glyphh UI; the threads themselves live in the recents
+  // dropdown at the agent's top right, which reads railSessions as before.
   host.textContent = "";
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "wb-session-empty";
-    empty.textContent = q ? "No sessions match." : "No sessions yet.";
-    host.appendChild(empty);
-    return;
-  }
-  for (const sec of sessSections(items)) {
-    host.appendChild(sessSectionHead(sec.label, sec.title));
-    for (const sess of sec.rows) {
-      const row = document.createElement("div");
-      row.className = "code-history-item";
-      // Leading slot: the RUNNING pulse while the session has a live turn —
-      // here, in another agent panel, or in the CLI — else the locus icon.
-      // Either way it toggles the pin.
-      // Leading slot: the state dot while a turn is live, else WHERE the session
-      // runs — the desktop's Glyphh agent or a CLI (his order, 2026-09-30).
-      const idle = sessDotState(sess.id) === "idle";
-      const dot = idle ? document.createElement("span") : sessDot(sess.id);
-      if (idle) {
-        dot.className = "code-sess-ic";
-        // The one place glyph a row wears: the cloud, or this desktop.
-        const cloud = (sess.locus ?? "local") === "cloud";
-        dot.innerHTML = cloud ? LOCUS_SVG.cloud : SESS_LOCAL_SVG;
-        dot.title = cloud ? LOCUS_TITLE.cloud : "Desktop";
-      }
-      dot.classList.toggle("pinned", sessPinned(sess.id));
-      dot.title = `${dot.title} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
-      dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
-      const markEl = sessMarkEl(sess);
-      const label = document.createElement("span");
-      label.className = "code-history-title";
-      label.textContent = sessDisplayTitle(sess.title);
-      label.title = sess.title;   // the FULL name stays one hover away
+  const row = (o: { key: string; name: string; mark: HTMLElement; liveId?: string; onOpen: () => void; menu?: (btn: HTMLElement) => void }): void => {
+    const r = document.createElement("div");
+    r.className = "code-history-item rail-bot-row";
+    r.dataset.bot = o.key;
+    r.classList.toggle("active", railPickedKey === o.key);
+    const label = document.createElement("span");
+    label.className = "code-history-title";
+    label.textContent = o.name;
+    label.title = o.name;
+    r.append(o.mark, label);
+    if (o.liveId && sessDotState(o.liveId) !== "idle") r.appendChild(sessDot(o.liveId));
+    if (o.menu) {
       const menuBtn = document.createElement("button");
       menuBtn.className = "code-chat-menu-btn";
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-      menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      // WHERE IT RUNS (his rule, 2026-10-04): the rail lists the desktop's
-      // threads and the cloud's side by side, each wearing its locus — the
-      // same element the recents dropdown wears (sessLocusEl).
-      // The leading glyph already says where it runs; a trailing one only
-      // when the row is locked (the lock and its grant card).
-      if (sess.locked) row.append(dot, markEl, label, sessLocusEl(sess), menuBtn);
-      else row.append(dot, markEl, label, menuBtn);
-      if (sess.locked) row.classList.add("locked");
-      row.addEventListener("click", () => sessOpen(sess));
-      host.appendChild(row);
+      menuBtn.addEventListener("click", (e) => { e.stopPropagation(); o.menu!(menuBtn); });
+      r.appendChild(menuBtn);
     }
+    r.addEventListener("click", () => { railPickedKey = o.key; renderRailSessions(); o.onOpen(); });
+    host.appendChild(r);
+  };
+  // Glyphh: its newest thread (the rest are in the recents dropdown), else a new one.
+  const glyphhMark = document.createElement("span");
+  glyphhMark.className = "code-sess-mark rail-bot-mark";
+  glyphhMark.innerHTML = `<img src="brand/glyphh-mark.png" alt="" draggable="false" />`;
+  const newest = railSessions.find((x) => !x.bot);
+  row({ key: "glyphh", name: "Glyphh", mark: glyphhMark, ...(newest ? { liveId: newest.id } : {}), onOpen: () => {
+    if (newest) sessOpen(newest);
+    else el<HTMLButtonElement>("code-new-chat")?.click();
+  } });
+  for (const b of railBots) {
+    const mark = document.createElement("span");
+    mark.className = "code-sess-mark rail-bot-mark";
+    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 20 });
+    const id = `bots/${b.slug}`;
+    row({ key: b.slug, name: b.name, mark, liveId: id,
+      onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }),
+      menu: (btn) => openRailBotMenu(btn, b) });
   }
+}
+
+/** Which rail row the member opened last — it wears the active state. */
+let railPickedKey = "glyphh";
+
+/** A bot row's ⋮: edit it (Customize › Agents), or delete it (the standard confirm). */
+function openRailBotMenu(anchor: HTMLElement, b: { slug: string; name: string }): void {
+  closeSessMenu();
+  const m = document.createElement("div");
+  m.className = "code-menu";
+  const item = (label: string, danger: boolean, run: () => void): void => {
+    const x = document.createElement("button");
+    x.className = "code-menu-item" + (danger ? " danger" : "");
+    x.textContent = label;
+    x.addEventListener("click", () => { closeSessMenu(); run(); });
+    m.appendChild(x);
+  };
+  item("Edit bot", false, () => (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("agents"));
+  item("Delete bot", true, () => {
+    void confirmAction({ title: `Delete ${b.name}?`, body: "The bot goes. Its conversation stays in your recents.", confirmLabel: "Delete", danger: true }).then(async (ok) => {
+      if (!ok) return;
+      await (window.glyphh as unknown as { libraryAgentDelete?: (ref: string) => Promise<unknown> }).libraryAgentDelete?.(b.slug);
+      if (railPickedKey === b.slug) railPickedKey = "glyphh";
+      await primeBotAvatars();
+      renderRailSessions();
+    });
+  });
+  const r = anchor.getBoundingClientRect();
+  m.style.position = "fixed";
+  m.style.top = `${Math.round(r.bottom + 4)}px`;
+  m.style.left = `${Math.round(Math.max(8, r.right - 180))}px`;
+  m.style.zIndex = "10040";
+  document.body.appendChild(m);
+  sessMenuEl = m;
+  window.setTimeout(() => document.addEventListener("mousedown", function off(ev) {
+    if (m.contains(ev.target as Node)) return;
+    closeSessMenu();
+    document.removeEventListener("mousedown", off, true);
+  }, true), 0);
 }
 
 /** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
@@ -6881,9 +6914,6 @@ function initRailApps(): void {
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
-  el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
-  el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openPlaceFilterMenu(e.currentTarget as HTMLElement); });
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initWorkspacesVsplit();
