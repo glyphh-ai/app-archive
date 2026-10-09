@@ -362,7 +362,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   // The turn's own words, for a done nobody is listening to (below).
   let answer = "";
   let ringStarted = false;
-  const emit = (ev: LoopEvent & { runId: string; agent?: { childId: string; slug: string; name: string; model: string } }): void => {
+  const emit = (ev: LoopFrame): void => {
     const { type, ...payload } = ev;
     // A SUB-AGENT'S WORDS ARE NOT THE ANSWER (his order, 2026-09-29): a child's
     // deltas are its own feed, so they must never join the parent's reply or
@@ -370,23 +370,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     // spliced into one answer. They still reach the panel, tagged, and the
     // Agents panel renders them under the child that said them.
     const child = !!ev.agent;
-    // THE AGENTS PANEL'S FEED (his order, 2026-09-29): every sub-agent frame is
-    // written to main's ledger as well as sent on, because the panel that shows
-    // the swarm is not the panel that started the turn.
-    if (ev.agent) {
-      if (type === "agent") {
-        const a = ev as unknown as { phase: "start" | "done"; task?: string; failed?: boolean; summary?: string };
-        if (a.phase === "start") subagents.start(ev.agent, p.chatId, ev.runId, String(a.task ?? ""));
-        else subagents.finish(ev.agent, !!a.failed, String(a.summary ?? ""));
-      } else if (type === "delta") {
-        subagents.text(ev.agent, String((payload as { delta?: string }).delta ?? ""));
-      } else if (type === "tool") {
-        const t = payload as { phase: "start" | "done"; name?: string; title?: string; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string };
-        subagents.tool(ev.agent, t.phase, String(t.name ?? ""), String(t.title ?? t.name ?? ""), t.failed, t.preview, { detail: t.detail, input: t.input, output: t.output });
-      } else if (type === "approval") {
-        subagents.approval(ev.agent, String((payload as { title?: string }).title ?? ""));
-      }
-    }
+    recordSwarmFrame(p.chatId, ev);
     if (type === "setup") { mark("working", ev.runId); clock.ready ||= Date.now(); }
     else if (type === "approval") mark("waiting", ev.runId);
     else if (type === "error" && !child) mark("error", ev.runId);
@@ -394,9 +378,6 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
       const now = Date.now();
       console.warn(`[loop] turn ${p.chatId}: ready=${clock.ready ? clock.ready - clock.start : -1}ms first=${clock.first ? clock.first - clock.start : -1}ms total=${now - clock.start}ms facts=${lastFactsMs}ms`);
       agentLive.done(p.chatId, ev.runId);
-      // The Agents panel shows a swarm while its parent works (his order,
-      // 2026-09-29): the parent's turn is over, so its sub-agents go.
-      if (!child) subagents.endRun(ev.runId);
     }
     else if (type === "delta" && !child) {
       const d = String((payload as { delta?: string }).delta ?? "");
@@ -458,6 +439,65 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   }, emit);
   return started;
 }
+
+/** One engine event as the host sees it: the run it belongs to, and the
+ *  sub-agent it came from when it is a child's. */
+export type LoopFrame = LoopEvent & { runId: string; agent?: { childId: string; slug: string; name: string; model: string } };
+
+/** THE SWARM'S FEED (his order, 2026-09-29): every sub-agent frame is written
+ *  to main's ledger as well as sent on, because the panel that shows the
+ *  swarm is not the panel that started the turn. The parent's `done` ends its
+ *  swarm. One tap for the agent panel's turns and the Bots panel's. */
+function recordSwarmFrame(chatId: string, ev: LoopFrame): void {
+  const { type, ...payload } = ev;
+  if (ev.agent) {
+    if (type === "agent") {
+      const a = ev as unknown as { phase: "start" | "done"; task?: string; failed?: boolean; summary?: string };
+      if (a.phase === "start") subagents.start(ev.agent, chatId, ev.runId, String(a.task ?? ""));
+      else subagents.finish(ev.agent, !!a.failed, String(a.summary ?? ""));
+    } else if (type === "delta") {
+      subagents.text(ev.agent, String((payload as { delta?: string }).delta ?? ""));
+    } else if (type === "tool") {
+      const t = payload as { phase: "start" | "done"; name?: string; title?: string; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string };
+      subagents.tool(ev.agent, t.phase, String(t.name ?? ""), String(t.title ?? t.name ?? ""), t.failed, t.preview, { detail: t.detail, input: t.input, output: t.output });
+    } else if (type === "approval") {
+      subagents.approval(ev.agent, String((payload as { title?: string }).title ?? ""));
+    }
+    return;
+  }
+  if (type === "done") subagents.endRun(ev.runId);
+}
+
+/**
+ * A BOT'S TURN (his order, 2026-10-08: "use the glyphh agent loop as the
+ * orchestrator and run it in the Bot ui. The orchestrator is just a set of
+ * personality and instructions we feed into the loop"). The same interactive
+ * engine as the agent panel, on the bot's own thread (`bots/<slug>`), so the
+ * bot's conversation keeps its history and the swarm it spawns is ledgered
+ * under it. The brief leads the first message of the thread; the frames go
+ * to whoever asked (the Bots panel), never to an agent panel.
+ */
+export async function runBotTurn(
+  p: { chatId: string; text: string; model?: string; workdir?: string; history?: SeedTurn[] },
+  onFrame: (ev: LoopFrame) => void,
+): Promise<{ runId: string }> {
+  const picked = bareModel(p.model ?? "");
+  if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
+  const model = picked || orgRequiredModel();
+  if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
+  return loop.run({
+    chatId: p.chatId, text: p.text, model, permission: "auto",
+    space: p.workdir ? "code" : "work",
+    ...(p.workdir ? { workdir: p.workdir } : {}),
+    ...(p.history?.length ? { history: p.history } : {}),
+  }, (ev) => {
+    const frame = ev as LoopFrame;
+    recordSwarmFrame(p.chatId, frame);
+    onFrame(frame);
+  });
+}
+
+export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId); }
 
 /**
  * A TURN WITH NO PANEL — a schedule firing, a skill run, a task's slot (his

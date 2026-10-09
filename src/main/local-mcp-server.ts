@@ -311,8 +311,10 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
       // WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define cli or glyphh agents with models").
       kind: z.enum(["glyphh", "cli"]).optional().describe("What runs it: \"glyphh\" (the Glyphh loop, default) or \"cli\" (a CLI agent, headless)"),
       cli: z.string().optional().describe("For kind \"cli\": which CLI — claude, codex, gemini, copilot or cursor"),
+      // THE BOTS PANEL (his order, 2026-10-08): an orchestrator plans the work and hands it to the other bots.
+      role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the bots: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
     },
-    async ({ agent, name, description, brief, model, kind, cli }) => via("agents.save", { agent, name, description, brief, model, kind, cli }),
+    async ({ agent, name, description, brief, model, kind, cli, role }) => via("agents.save", { agent, name, description, brief, model, kind, cli, role }),
   );
   mcp.tool(
     "agent_delete",

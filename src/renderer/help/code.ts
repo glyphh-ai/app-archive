@@ -24,6 +24,8 @@ import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
+import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
+import { openBotsPanel } from "./bots-events.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -89,6 +91,8 @@ interface CodeChat {
   workdir?: string;
   /** Pinned sessions float to the top of the history dropdown. */
   pinned?: boolean;
+  /** A BOT'S THREAD (main/bots.ts): the slug of the bot this conversation is with. */
+  bot?: string;
   /** LEGACY flag (pre-mode) — kept for back-compat with old stored sessions. */
   chat?: boolean;
   /** THIS SESSION'S TYPE (his order, 2026-09-29: "bring the two types back…
@@ -5032,10 +5036,10 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
     return true;
   }
-  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor",
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
     "gpoint", "slides", "gdrive", "drive", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", slides: "gpoint", drive: "gdrive", design: "gdesign",
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", drive: "gdrive", design: "gdesign",
       image: "gimage", video: "gvideo", sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
@@ -6514,6 +6518,13 @@ void Promise.all([
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
   const mark = document.createElement("span");
   mark.className = "code-sess-mark";
+  if (sess.bot) {
+    // A bot's thread wears the bot's cat (help/bot-avatar.ts) — the record's
+    // own pick when the rail has read it, else the slug's default.
+    mark.innerHTML = botAvatarSvg(avatarOf({ slug: sess.bot, avatar: railBotAvatars.get(sess.bot) ?? null }), "idle", { size: 18 });
+    mark.title = "Bot";
+    return mark;
+  }
   if (sess.origin === "cli" && sess.cli === GLYPHH_LOOP) {
     // The Glyphh CLI's own icon (his order, 2026-09-30: "make a proper icon out
     // of the little glyphh cli cat") — Sage on a tile, sized like every other mark.
@@ -6561,6 +6572,9 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession {
   id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli";
+  /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
+   *  bot's cat and opens the Bots panel on it, never the agent panel. */
+  bot?: string;
   /** Where the thread runs (his rule, 2026-10-04): the desktop, or the cloud. */
   locus?: Locus;
   /** WEB ONLY: a desktop session whose folder the attached desktop has not
@@ -6568,6 +6582,17 @@ interface RailSession {
   locked?: boolean;
 }
 let railSessions: RailSession[] = [];
+/** The bots' avatars by slug (their agent records), for the rail's bot rows. */
+const railBotAvatars = new Map<string, { variant: number; color: string } | null>();
+async function primeBotAvatars(): Promise<void> {
+  const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
+  const env = await api.libraryAgentsList?.().catch(() => null);
+  if (!env?.ok || !Array.isArray(env.data)) return;
+  railBotAvatars.clear();
+  for (const a of env.data as Array<{ slug?: string; avatar?: { variant: number; color: string } | null }>) {
+    if (a && typeof a.slug === "string") railBotAvatars.set(a.slug, a.avatar ?? null);
+  }
+}
 /** The CLI agents' sessions, from each CLI's own store — the RAIL's and the CLI
  *  window's, never the Glyphh agent's dropdown (his order, 2026-09-30). */
 let railCliSessions: RailSession[] = [];
@@ -6719,6 +6744,7 @@ async function loadRailSessions(): Promise<void> {
         // worth reading.
         mode: modeOf(c),
         locus,
+        ...(c.bot ? { bot: c.bot } : {}),
         ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
       };
     })
@@ -6727,6 +6753,7 @@ async function loadRailSessions(): Promise<void> {
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   railCliSessions = await loadCliSessions();
   primeVendorMarks();
+  if (railSessions.some((s) => s.bot)) await primeBotAvatars();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -6912,6 +6939,8 @@ function sessGrantCard(sess: RailSession): void {
 
 function sessOpen(sess: RailSession): void {
   if (sess.locked) { sessGrantCard(sess); return; }
+  // A BOT'S THREAD opens the Bots panel on that bot (his order, 2026-10-08).
+  if (sess.bot) { openBotsPanel(sess.bot); return; }
   // A CLI's session opens in ITS CLI window, resuming that conversation — never
   // in the Glyphh agent (his order, 2026-09-30: CLI agents "only ever open in cli mode").
   if (sess.origin === "cli") {

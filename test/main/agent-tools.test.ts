@@ -7,7 +7,7 @@ vi.mock("../../src/main/relay-client", () => ({
   registerRelayHandler: (name: string, fn: (p: unknown) => unknown) => { handlers.set(name, fn); },
 }));
 
-interface Row { id: string; slug: string; name: string; description: string; prompt: string; model: string; kind?: "glyphh" | "cli"; cli?: string }
+interface Row { id: string; slug: string; name: string; description: string; prompt: string; model: string; kind?: "glyphh" | "cli"; cli?: string; role?: "orchestrator" | "worker" }
 const rows = new Map<string, Row>();
 const slugify = (n: string): string => n.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 vi.mock("../../src/main/local-agents", () => ({
@@ -16,7 +16,7 @@ vi.mock("../../src/main/local-agents", () => ({
   getAgent: (ref: string) => { const r = rows.get(ref); if (!r) throw new Error(`agent "${ref}" not found`); return r; },
   saveAgent: (i: Partial<Row> & { slug?: string }) => {
     const slug = slugify(i.slug || i.name || "");
-    const r = { id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", kind: i.kind ?? "glyphh", cli: i.cli ?? "" };
+    const r = { id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", kind: i.kind ?? "glyphh", cli: i.cli ?? "", role: i.role ?? "worker" };
     rows.set(slug, r);
     return r;
   },
@@ -64,7 +64,7 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
 
   it("lists, reads and deletes by id — and says so when there is no such agent", async () => {
     await call("agents.save", { name: "Writer", brief: "You write." });
-    expect(await call("agents.list", {})).toEqual([{ agent: "writer", name: "Writer", description: "", model: null, kind: "glyphh", cli: null, hasBrief: true }]);
+    expect(await call("agents.list", {})).toEqual([{ agent: "writer", name: "Writer", description: "", model: null, kind: "glyphh", cli: null, role: "worker", hasBrief: true }]);
     expect(await call("agents.get", { agent: "writer" })).toMatchObject({ brief: "You write." });
     expect(await call("agents.delete", { agent: "writer" })).toEqual({ agent: "writer", deleted: true });
     expect(() => handlers.get("agents.delete")!({ agent: "writer" })).toThrow(/not found/);
@@ -96,5 +96,20 @@ describe("agent tools — what runs it (his order, 2026-10-07: cli or glyphh age
     expect(await call("agents.save", { agent: "coder", description: "writes code" })).toMatchObject({ kind: "cli", cli: "codex" });
     expect(await call("agents.save", { agent: "coder", kind: "glyphh" })).toMatchObject({ kind: "glyphh", cli: null });
     expect(rows.get("coder")).toMatchObject({ kind: "glyphh", cli: "" });
+  });
+});
+
+describe("agent tools — the Bots panel's role (his order, 2026-10-08)", () => {
+  beforeEach(() => { rows.clear(); briefCalls.length = 0; });
+  it("a new agent is a worker; role orchestrator is kept, listed and refused when junk", async () => {
+    const made = await call("agents.save", { name: "Scout", brief: "You scout." }) as { role: string };
+    expect(made.role).toBe("worker");
+    const boss = await call("agents.save", { name: "Boss", brief: "You plan.", role: "orchestrator" }) as { role: string; agent: string };
+    expect(boss.role).toBe("orchestrator");
+    const listed = await call("agents.list", {}) as Array<{ agent: string; role: string }>;
+    expect(listed.find((a) => a.agent === "boss")?.role).toBe("orchestrator");
+    const kept = await call("agents.save", { agent: "boss", description: "plans the work" }) as { role: string };
+    expect(kept.role).toBe("orchestrator");
+    await expect(call("agents.save", { agent: "boss", role: "manager" })).rejects.toThrow(/role must be/);
   });
 });

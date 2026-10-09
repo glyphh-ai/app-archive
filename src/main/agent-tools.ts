@@ -26,15 +26,21 @@ import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
 import { AGENT_CLI_IDS, CLI_NAMES, isCliId } from "./cli-ids.js";
-import { agentKindOf, type AgentKind } from "../shared/member-library.js";
+import { agentKindOf, agentRoleOf, type AgentKind, type AgentRole } from "../shared/member-library.js";
 
-interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; kind?: unknown; cli?: unknown }
+interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; kind?: unknown; cli?: unknown; role?: unknown }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; kind: AgentKind; cli: string | null; hasBrief: boolean } {
+function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; kind: AgentKind; cli: string | null; role: AgentRole; hasBrief: boolean } {
   const kind = agentKindOf(a);
-  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, kind, cli: kind === "cli" ? a.cli || null : null, hasBrief: !!a.prompt.trim() };
+  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, kind, cli: kind === "cli" ? a.cli || null : null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
+}
+/** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
+function checkedRole(raw: unknown): AgentRole {
+  const r = str(raw);
+  if (r === "orchestrator" || r === "worker") return r;
+  throw new Error(`role must be "orchestrator" or "worker", not "${r}"`);
 }
 
 /** WHAT RUNS IT (his order, 2026-10-07): "glyphh" or "cli"; a CLI agent names
@@ -87,6 +93,7 @@ export function installAgentRelayHandlers(): void {
     const kind = p.kind === undefined ? agentKindOf(existing) : checkedKind(p.kind);
     const cli = kind !== "cli" ? "" : p.cli === undefined ? (existing?.cli || "") : checkedCli(p.cli);
     if (kind === "cli" && !cli) throw new Error(`a CLI agent needs a cli — one of: ${AGENT_CLI_IDS.join(", ")}`);
+    const role = p.role === undefined ? agentRoleOf(existing) : checkedRole(p.role);
     let brief = p.brief === undefined ? existing?.prompt ?? "" : str(p.brief);
     let generated = false;
     // NO BRIEF, THE APP WRITES ONE — the same generator as the page's wand, on
@@ -97,7 +104,7 @@ export function installAgentRelayHandlers(): void {
       brief = g.brief;
       generated = true;
     }
-    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, kind, cli });
+    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, kind, cli, role });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });
 
