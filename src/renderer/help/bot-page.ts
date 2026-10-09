@@ -22,6 +22,8 @@ import { AVATAR_COLORS, AVATAR_VARIANTS, DEFAULT_VARIANT, avatarOf, botAvatarSvg
 import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } from "./composer-plus.js";
 import { primeConnectedIcons } from "./app-icon.js";
 import { openPowersModal } from "./powers-modal.js";
+import { mountPowerMap, type MapGroup, type PowerMapModel } from "./power-map.js";
+import { cronToWords } from "./schedules.js";
 
 export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
@@ -53,6 +55,8 @@ interface Api extends PlusApi {
     Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>;
   getWorkingDirRecents?: () => Promise<string[]>;
   modelsCatalog?: () => Promise<{ ok: boolean; data: unknown[]; error?: string }>;
+  /** A power that runs on its own: its schedule and slots (task-runner.ts getTaskSpec). */
+  taskSpec?: (slug: string) => Promise<Envelope>;
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
 export type PowerKind = "folders" | "connections" | "models" | "skills";
@@ -88,6 +92,9 @@ const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const WAND_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M12.2 6.2 11 5"/><path d="m15 9-12 12"/></svg>`;
 const MODEL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>`;
 const POWER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`;
+/** A program's flow on the map: its clock, and each slot it hands work to. */
+const CLOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const SLOT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h11"/><path d="m12 7 5 5-5 5"/><circle cx="20" cy="12" r="1.5"/></svg>`;
 
 /** The kinds, in the order the page and the modal show them. */
 export const POWER_KINDS: ReadonlyArray<{ kind: PowerKind; label: string }> = Object.freeze([
@@ -184,6 +191,15 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const img = e.target as HTMLElement | null;
     if (img instanceof HTMLImageElement && img.classList.contains("powm-model-img")) img.outerHTML = MODEL_SVG;
   }, true);
+  // THE MAP (his order, 2026-10-09: "the top portion of the page needs a new
+  // sick sick react flow esc view of a super power"): help/power-map.ts. A
+  // node opens in the powers modal; the circle adds a power.
+  const mapHost = el("div", "botp-map");
+  root.appendChild(mapHost);
+  const map = mountPowerMap(mapHost, {
+    onOpen: (kind, stored) => openModal(kind, stored),
+    onAdd: () => openModal(),
+  });
   const grid = el("div", "botp-grid");
   root.appendChild(grid);
   const form = el("div", "botp-form");
@@ -639,7 +655,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     briefIn.setSelectionRange(0, 0);
     briefIn.scrollTop = 0;
   }
-  nameIn.addEventListener("input", () => { paintHead(); showErr(briefErr, ""); });
+  nameIn.addEventListener("input", () => { paintHead(); paintMap(); showErr(briefErr, ""); });
   descIn.addEventListener("input", () => showErr(briefErr, ""));
   q(".botp-cancel").addEventListener("click", () => opts.onClose());
   saveBtn.addEventListener("click", () => { void save(); });
@@ -794,6 +810,46 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   function paintPowers(): void {
     if (!sections.size) buildSections();
     for (const { kind } of POWER_KINDS) paintSection(kind);
+    paintMap();
+  }
+
+  /** A power that runs on its own: its flow (schedule, then each slot), read once. */
+  const flows = new Map<string, Array<{ name: string; sub: string; icon: string }>>();
+  const flowAsked = new Set<string>();
+  function flowOf(id: string): Array<{ name: string; sub: string; icon: string }> | undefined {
+    const k = skillOf(id);
+    if (k?.type !== "task") return undefined;
+    if (!flowAsked.has(id)) {
+      flowAsked.add(id);
+      void api().taskSpec?.(id.slice(id.indexOf(":") + 1)).then((r) => {
+        const spec = r?.ok ? r.data as { schedule?: string | null; slots?: Array<{ name: string; label?: string; agent: string | null }> } : null;
+        if (!spec || destroyed) return;
+        const steps: Array<{ name: string; sub: string; icon: string }> = [];
+        if (spec.schedule) steps.push({ name: cronToWords(spec.schedule) || spec.schedule, sub: "On a clock", icon: CLOCK_SVG });
+        for (const sl of spec.slots ?? []) steps.push({ name: sl.label || sl.name, sub: sl.agent ? `Hands it to ${sl.agent}` : "Hands it to Glyphh", icon: SLOT_SVG });
+        flows.set(id, steps.length ? steps : [{ name: "Runs on its own", sub: "When it's called", icon: CLOCK_SVG }]);
+        paintMap();
+      }).catch(() => { /* no flow drawn */ });
+    }
+    return flows.get(id);
+  }
+
+  /** The map's model: what the bot holds, in the same words the sections use. */
+  function paintMap(): void {
+    if (!bot) return;
+    const group = (kind: PowerKind, label: string): MapGroup => ({
+      kind, label,
+      nodes: itemsOf(kind).map((it) => ({
+        stored: it.stored ?? it.name, name: it.name, sub: it.tag ?? it.sub, icon: it.icon,
+        ...(kind === "connections" && it.sub === "Not connected" ? { muted: true } : {}),
+        ...(kind === "skills" && it.stored ? { flow: flowOf(it.stored) } : {}),
+      })),
+    });
+    const model: PowerMapModel = {
+      center: { name: nameIn.value.trim() || bot.name, face: botAvatarSvg(picked, "idle", { size: 84 }) },
+      groups: [group("connections", "Connections"), group("folders", "Folders"), group("skills", "Powers"), group("models", "Models")],
+    };
+    map.update(model);
   }
 
   /** Remove one power from the list, saved at once. */
@@ -873,6 +929,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   return {
     back: () => false,
-    destroy: () => { destroyed = true; stopPreview(); root.remove(); host.classList.remove("botp-host"); },
+    destroy: () => { destroyed = true; stopPreview(); map.destroy(); root.remove(); host.classList.remove("botp-host"); },
   };
 }

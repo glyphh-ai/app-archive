@@ -22563,3 +22563,88 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 }
 .rail-sp-new:hover { background: var(--hover); color: var(--text); }
 .rail-sp-new svg { width: 14px; height: 14px; }
+
+/* ── THE SUPER POWER MAP (his order, 2026-10-09: "a new sick sick react flow
+   esc view of a super power… the super power icon in the center with a white
+   or theme aligned border circle"): help/power-map.ts, the top of the Edit
+   page. A dotted canvas, node cards with handles, animated curved edges. ── */
+.botp-map { flex: none; padding: 0 24px; }
+.pmap {
+  --pmap-grid: 18px;
+  position: relative; height: 340px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  background-color: var(--surface);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 18%, transparent) 1px, transparent 1.2px);
+  background-size: var(--pmap-grid) var(--pmap-grid);
+}
+.pmap-viewport { position: absolute; inset: 0; cursor: grab; touch-action: none; }
+.pmap-viewport.grabbing { cursor: grabbing; }
+.pmap-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.pmap-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.pmap-edge {
+  fill: none; stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-width: 1.6;
+  stroke-dasharray: 6 5; animation: pmap-flow 1.1s linear infinite;
+}
+.pmap-edge-connections { stroke: color-mix(in srgb, #22c55e 75%, transparent); }
+.pmap-edge-folders { stroke: color-mix(in srgb, #f59e0b 75%, transparent); }
+.pmap-edge-models { stroke: color-mix(in srgb, #60a5fa 75%, transparent); }
+.pmap-edge-flow { stroke: color-mix(in srgb, var(--text) 45%, transparent); stroke-dasharray: 3 4; }
+.pmap-nodes { position: absolute; inset: 0; }
+.pmap-label {
+  position: absolute; display: inline-flex; align-items: center; gap: 6px; height: 18px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3);
+}
+.pmap-label-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.pmap-k-connections .pmap-label-dot { background: #22c55e; }
+.pmap-k-folders .pmap-label-dot { background: #f59e0b; }
+.pmap-k-models .pmap-label-dot { background: #60a5fa; }
+.pmap-label-count { font-weight: 600; color: var(--text-3); opacity: .7; }
+.pmap-node {
+  position: absolute; box-sizing: border-box; display: flex; align-items: center; gap: 9px; padding: 0 12px 0 10px;
+  font: inherit; text-align: left; color: var(--text); cursor: pointer;
+  background: var(--bg-raised, var(--surface-2)); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 1px 0 color-mix(in srgb, #000 20%, transparent), 0 4px 14px -8px color-mix(in srgb, #000 60%, transparent);
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.pmap-node:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.pmap-k-connections.pmap-node { border-left: 3px solid #22c55e; }
+.pmap-k-folders.pmap-node { border-left: 3px solid #f59e0b; }
+.pmap-k-skills.pmap-node { border-left: 3px solid var(--accent); }
+.pmap-k-models.pmap-node { border-left: 3px solid #60a5fa; }
+.pmap-k-flow.pmap-node { cursor: default; border-style: dashed; background: var(--surface); }
+.pmap-k-flow.pmap-node:hover { transform: none; border-color: var(--border); box-shadow: none; }
+.pmap-node.muted { opacity: .55; border-style: dashed; }
+.pmap-node-icon { width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); border-radius: 6px; overflow: hidden; }
+.pmap-node-icon svg { width: 17px; height: 17px; }
+.pmap-node-icon img { width: 20px; height: 20px; object-fit: contain; }
+.pmap-node-text { min-width: 0; display: flex; flex-direction: column; }
+.pmap-node-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmap-node-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmap-handle { position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text-3); }
+.pmap-handle-in { left: -4.5px; }
+.pmap-handle-out { right: -4.5px; }
+.pmap-center {
+  position: absolute; box-sizing: border-box; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 20%, var(--surface)) 0%, var(--surface) 70%);
+  box-shadow: 0 0 0 2.5px var(--text), 0 0 0 7px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 38px -6px color-mix(in srgb, var(--accent) 80%, transparent);
+  transition: box-shadow .2s, transform .2s;
+}
+.pmap-center:hover { transform: scale(1.04); box-shadow: 0 0 0 2.5px var(--text), 0 0 0 9px color-mix(in srgb, var(--accent) 30%, transparent), 0 0 46px -4px color-mix(in srgb, var(--accent) 90%, transparent); }
+.pmap-center-face { width: 84px; height: 84px; display: flex; align-items: center; justify-content: center; }
+.pmap-center-face svg, .pmap-center-face img { width: 84px; height: 84px; object-fit: contain; }
+.pmap-center-name {
+  position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); white-space: nowrap;
+  font-family: var(--font-display); font-size: 13px; font-weight: 700; color: var(--text);
+}
+.pmap-empty { position: absolute; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.pmap-controls {
+  position: absolute; left: 10px; bottom: 10px; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised, var(--surface-2));
+}
+.pmap-ctl { width: 26px; height: 26px; padding: 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-2); font: 600 15px/1 var(--font-sans); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.pmap-ctl:last-child { border-bottom: 0; }
+.pmap-ctl:hover { background: var(--hover); color: var(--text); }
+.pmap-ctl svg { width: 14px; height: 14px; }
+.pmap-hint { position: absolute; right: 12px; bottom: 9px; font-size: 11px; color: var(--text-3); pointer-events: none; }
+@keyframes pmap-flow { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .pmap-edge { animation: none; } }
