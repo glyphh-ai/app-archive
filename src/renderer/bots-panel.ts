@@ -328,7 +328,7 @@ export function mountBotsPanel(body: HTMLElement): () => void {
     return head;
   };
 
-  /** THE CAT PICKER: the twelve bodies in the bot's colour, the colours under them. */
+  /** THE FACE PICKER: the sixteen mascot faces (black for now), and Surprise me. */
   const pickerEl = (b: Bot): HTMLElement => {
     const cur = avatarOf(b);
     const box = el("div", "bots-picker");
@@ -342,24 +342,15 @@ export function mountBotsPanel(body: HTMLElement): () => void {
       btn.addEventListener("click", () => void saveBot(b.slug, { avatar: { variant: v.id, color: cur.color } }));
       bodies.appendChild(btn);
     }
+    // No colour choice for now — every face is black (2026-10-09).
     const colors = el("div", "bots-picker-colors");
-    for (const c of AVATAR_COLORS) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `bots-picker-color${c === cur.color ? " on" : ""}`;
-      btn.style.background = c;
-      btn.title = c;
-      btn.addEventListener("click", () => void saveBot(b.slug, { avatar: { variant: cur.variant, color: c } }));
-      colors.appendChild(btn);
-    }
     const shuffle = document.createElement("button");
     shuffle.type = "button";
     shuffle.className = "agp-make";
     shuffle.textContent = "Surprise me";
     shuffle.addEventListener("click", () => {
       const variant = AVATAR_VARIANTS[Math.floor(Math.random() * AVATAR_VARIANTS.length)]!.id;
-      const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!;
-      void saveBot(b.slug, { avatar: { variant, color } });
+      void saveBot(b.slug, { avatar: { variant, color: cur.color } });
     });
     colors.appendChild(shuffle);
     box.append(bodies, colors);

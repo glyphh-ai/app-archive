@@ -18,11 +18,12 @@ export interface BotAvatar { variant: number; color: string }
 
 export type BotMood = "idle" | "thinking" | "generating" | "done" | "listening" | "error" | "curious" | "sleepy" | "playful" | "dizzy";
 
-/** The house colours a bot can wear — the accent, then the mascots' cast,
- *  then Glyphh's own black. */
-export const AVATAR_COLORS: ReadonlyArray<string> = Object.freeze([
-  "#af5fff", "#2dd4bf", "#fbbf24", "#fb7185", "#60a5fa", "#4ade80", "#f97316", "#e879f9", "#0b0a0f",
-]);
+/** THE INK: every face is Glyphh black for now (his order, 2026-10-09:
+ *  "drop the color selections they are all just black for now"). A colour
+ *  stored on a record is kept, never drawn — colour can come back without
+ *  anyone losing their pick. */
+export const AVATAR_INK = "#0b0a0f";
+export const AVATAR_COLORS: ReadonlyArray<string> = Object.freeze([AVATAR_INK]);
 
 type Ear = "classic" | "tall" | "folded" | "round" | "spiky";
 type Eye = "classic" | "look" | "up" | "big" | "sleepy" | "wink" | "star";
@@ -99,7 +100,7 @@ export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { 
   const def = AVATAR_VARIANTS.find((x) => x.id === avatar.variant) ?? AVATAR_VARIANTS[0]!;
   const v: MascotParts = { ...BASE, ...def.o };
   const eye: Eye = MOOD_EYE[mood] ?? v.eye;
-  const fill = avatar.color;
+  const fill = AVATAR_INK;   // black for now; avatar.color is kept, not drawn
   const white = "#fff";
   const ears: Record<Ear, { right: string; left: string }> = {
     classic: { right: "L131 20 L123 57", left: "M33 22 L62 42 L39 54 Z" },

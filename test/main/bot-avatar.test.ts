@@ -15,7 +15,8 @@ describe("bot-avatar — the super powers' faces are the Glyphh mascot (his orde
       expect(svg.startsWith('<svg class="bot-cat generating" viewBox="0 0 165 200"')).toBe(true);
       expect(svg).toContain(`data-variant="${v.id}"`);
       expect(svg).toContain('stroke-width="16"');                 // the sticker border
-      expect(svg).toContain('fill="#af5fff"');                     // the body
+      expect(svg).toContain('fill="#0b0a0f"');                     // the body: Glyphh black for now
+      expect(svg).not.toContain("#af5fff");                         // a stored colour is kept, not drawn
       expect(svg).toContain('d="M61 138 L99 150 L100 172 L51 171 Z"');   // the leg gap
       expect(svg.endsWith("</svg>")).toBe(true);
     }
@@ -26,7 +27,8 @@ describe("bot-avatar — the super powers' faces are the Glyphh mascot (his orde
     expect(a).toEqual(defaultAvatar("research-specialist"));
     expect(a.variant).toBe(2);   // "Default to look" (his order, 2026-10-09): Side-eye
     expect(AVATAR_COLORS).toContain(a.color);
-    expect(defaultAvatar("code-builder")).not.toEqual(a);
+    // Black for now (2026-10-09): every bot without a pick wears the same Side-eye.
+    expect(defaultAvatar("code-builder")).toEqual({ variant: 2, color: "#0b0a0f" });
   });
 
   it("a record's avatar wins when it is whole; a broken one falls back to the slug's", () => {
@@ -42,10 +44,10 @@ describe("bot-avatar — the super powers' faces are the Glyphh mascot (his orde
     expect(moodOf("done")).toBe("done");
     expect(moodOf("failed")).toBe("error");
     expect(moodOf(undefined)).toBe("idle");
-    const idle = botAvatarSvg({ variant: 1, color: "#000" }, "idle");
-    const done = botAvatarSvg({ variant: 1, color: "#000" }, "done");
+    const idle = botAvatarSvg({ variant: 1, color: "#0b0a0f" }, "idle");
+    const done = botAvatarSvg({ variant: 1, color: "#0b0a0f" }, "done");
     expect(idle).not.toEqual(done);
-    const silhouette = (s: string): string => s.match(/<path d="M40 62 [^"]*" fill="#000"/)?.[0] ?? "";
+    const silhouette = (s: string): string => s.match(/<path d="M40 62 [^"]*" fill="#0b0a0f"/)?.[0] ?? "";
     expect(silhouette(idle)).not.toBe("");
     expect(silhouette(idle)).toEqual(silhouette(done));
   });

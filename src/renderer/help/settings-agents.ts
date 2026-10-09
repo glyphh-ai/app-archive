@@ -150,13 +150,11 @@ function briefError(msg: string): void {
   e.classList.toggle("hidden", !msg);
 }
 
-/** THE ICON PICKER: the sixteen faces in the picked colour, then the colours. */
+/** THE ICON PICKER: the sixteen faces (all black for now — no colour choice, 2026-10-09). */
 function paintIconPicker(): void {
   const faces = el("agents2-icon-faces");
-  const colors = el("agents2-icon-colors");
-  if (!faces || !colors) return;
+  if (!faces) return;
   faces.textContent = "";
-  colors.textContent = "";
   for (const v of AVATAR_VARIANTS) {
     const b = document.createElement("button");
     b.type = "button";
@@ -167,16 +165,7 @@ function paintIconPicker(): void {
     b.addEventListener("click", () => { pickedAvatar = { ...pickedAvatar, variant: v.id }; paintIconPicker(); paintHead(el<HTMLInputElement>("agents2-name")?.value ?? ""); });
     faces.appendChild(b);
   }
-  for (const c of AVATAR_COLORS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "agents2-swatch" + (c === pickedAvatar.color ? " on" : "");
-    b.style.background = c;
-    b.title = c;
-    b.setAttribute("aria-label", `Colour ${c}`);
-    b.addEventListener("click", () => { pickedAvatar = { ...pickedAvatar, color: c }; paintIconPicker(); paintHead(el<HTMLInputElement>("agents2-name")?.value ?? ""); });
-    colors.appendChild(b);
-  }
+
 }
 
 /** The edit head: the agent's face and its name, live as the name is typed. */
