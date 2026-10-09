@@ -22339,3 +22339,19 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .botp-voice-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .botp-voice-cat { flex: none; font-size: 11px; color: var(--text-3); }
 .botp-face-menu { max-height: calc(100vh - 24px); overflow: auto; }
+
+/* ── THE EDIT PAGE BREATHES (his report, 2026-10-09: "a little too crowded"):
+   one rhythm — 24px between groups, 8px from a label to its field — the
+   sliders as their own band, the brief's wand on the label's line. ── */
+.botp-form .settings-label { margin: 24px 0 8px; }
+.botp-form .edit-head { margin: 8px 0 0; }
+.botp-form .edit-head-name { font-size: 18px; font-weight: 600; }
+.botp-form .botp-sliders { gap: 40px; margin-top: 24px; }
+.botp-form .botp-slider .settings-label { margin: 0; }
+.botp-form .botp-slider-head { align-items: center; }
+.botp-form .botp-range { margin: 14px 0 8px; }
+.botp-form .botp-slider-ends { font-size: 11px; }
+.botp-form .agents2-brief-head { align-items: center; margin-top: 24px; margin-bottom: 8px; }
+.botp-form .agents2-brief-head .settings-label { margin: 0; }
+.botp-form .agents2-brief-head .agents2-wand { margin-bottom: 0; }
+.botp-form .settings-actions { margin-top: 32px !important; }
