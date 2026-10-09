@@ -40,6 +40,8 @@ interface Api extends PlusApi {
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
 export type PowerKind = "folders" | "connections" | "models" | "skills";
+/** Shut on first open: everything but Folders. */
+export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["connections", "models", "skills"]);
 
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
 const SAME_AS_MAIN = "";
@@ -260,7 +262,24 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     skills: "None yet.",
   };
   interface PowerItem { icon: string; name: string; sub: string; tag?: string; stored?: string }
-  const collapsed = new Set<PowerKind>();
+  // OPEN OR SHUT, REMEMBERED (his order, 2026-10-09: "collapse all these on
+  // load, except for folders as a default. Remember the state the user left
+  // it in"): one preference, the kinds that are shut.
+  const COLLAPSED_PREF = "botPowersCollapsed";
+  const collapsed = new Set<PowerKind>(DEFAULT_COLLAPSED);
+  const applyCollapsed = (): void => {
+    for (const [kind, s] of sections) {
+      s.root.classList.toggle("collapsed", collapsed.has(kind));
+      s.root.querySelector(".botp-sec-toggle")?.setAttribute("aria-expanded", String(!collapsed.has(kind)));
+    }
+  };
+  void (async () => {
+    const saved = await (api() as { getPreference?: (k: string, d?: unknown) => Promise<unknown> }).getPreference?.(COLLAPSED_PREF, null)?.catch(() => null);
+    if (!Array.isArray(saved) || destroyed) return;
+    collapsed.clear();
+    for (const k of saved) if (POWER_KINDS.some((p) => p.kind === k)) collapsed.add(k as PowerKind);
+    applyCollapsed();
+  })();
   const sections = new Map<PowerKind, { root: HTMLElement; count: HTMLElement; list: HTMLElement; search: HTMLInputElement }>();
 
   function connOf(slug: string): PlusConnectorRow | undefined { return conns.find((c) => c.slug === slug); }
@@ -315,8 +334,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       toggle.appendChild(count);
       toggle.addEventListener("click", () => {
         if (collapsed.has(kind)) collapsed.delete(kind); else collapsed.add(kind);
-        sec.classList.toggle("collapsed", collapsed.has(kind));
-        toggle.setAttribute("aria-expanded", String(!collapsed.has(kind)));
+        applyCollapsed();
+        (api() as { setPreference?: (k: string, v: unknown) => void }).setPreference?.(COLLAPSED_PREF, [...collapsed]);
       });
       const plus = el("button", "ws-icon-btn botp-sec-add");
       plus.type = "button"; plus.title = `Add to ${label}`; plus.setAttribute("aria-label", `Add to ${label}`);
@@ -324,7 +343,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       plus.addEventListener("click", () => openModal(kind));
       head.append(toggle, plus);
       const body = el("div", "botp-sec-body");
-      const search = el("div", "skills-search botp-sec-search", SEARCH_SVG);
+      const search = el("div", "skills-search botp-sec-search");
+      search.innerHTML = SEARCH_SVG;
       const input = el("input");
       input.type = "text"; input.placeholder = `Search ${label.toLowerCase()}`; input.spellcheck = false; input.autocomplete = "off";
       input.addEventListener("input", () => paintSection(kind));
@@ -335,6 +355,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       sideList.appendChild(sec);
       sections.set(kind, { root: sec, count, list, search: input });
     }
+    applyCollapsed();
   }
   function paintSection(kind: PowerKind): void {
     const s = sections.get(kind);
