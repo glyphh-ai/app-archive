@@ -21,15 +21,6 @@
  *   Session        the open session's own actions — Rename, Pin / Unpin, New
  *                  agent panel, Delete. Absent on a fresh landing (nothing to
  *                  rename or delete), so the menu is never a dead click.
- *   Apps           COLLAPSED on every open (his review: "dropdowns or
- *                  expandable sections that are collapsed on load") — the
- *                  member's INSTALLED GLYPHH APPS: the cloud instances (the
- *                  one list, his order 2026-10-04: apps live in the cloud),
- *                  one row per slug. A HOUSE row — an app whose launchConfig
- *                  .tool names a built-in work panel (Design, Slides, Images,
- *                  Video, Audio, Drive) — opens that panel; every other row
- *                  opens as a panel of its own (the instance proxy). "Apps · 0"
- *                  says it when nothing is installed.
  *   Agents / CLIs  COLLAPSED on every open — the CLI agents as built, on both
  *                  surfaces. A click opens the CLI ON THE SESSION'S FOLDER:
  *                  the attached desktop over remote control, or the cloud
@@ -49,24 +40,20 @@
  * pins the behaviours.
  */
 import { surfaceCaps, surfaceHostsView, DESKTOP_TOOL_VIEWS } from "./surface.js";
-import { houseViewOf } from "./house-relay.js";
 
 export type MenuSurface = "web" | "desktop";
-export type MenuSectionKind = "tools" | "session" | "apps" | "workspaces";
+export type MenuSectionKind = "tools" | "session" | "workspaces";
 
-export const CONNECT_DESKTOP_LINE = "Connect your desktop to open apps";
-export const CONNECT_DESKTOP_LINK = "Settings → Devices";
-export const APPS_SECTION_LABEL = "Apps";
 export const WORKSPACES_SECTION_LABEL = "Workspaces";
 export const TOOLS_SECTION_LABEL = "Panels";
 export const SESSION_SECTION_LABEL = "Session";
-export const NO_APPS_LINE = "No Glyphh apps installed yet";
 
-/** THE FROZEN ORDER — one list, both surfaces. */
-export const MENU_SECTION_ORDER: ReadonlyArray<MenuSectionKind> = Object.freeze(["tools", "session", "apps", "workspaces"] as MenuSectionKind[]);
+/** THE FROZEN ORDER — one list, both surfaces. No Apps section (his order,
+ *  2026-10-09: "remove apps from this menu"): an app is a power, in the + box. */
+export const MENU_SECTION_ORDER: ReadonlyArray<MenuSectionKind> = Object.freeze(["tools", "session", "workspaces"] as MenuSectionKind[]);
 
 /** The sections that open as expandable heads, collapsed on every open. */
-export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "workspaces"]);
+export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["workspaces"]);
 
 /** THE ARTIFACTS PANEL (his order, 2026-10-05) lists in the Panels section
  *  on both surfaces and for both types — last, after the type's own views.
@@ -79,31 +66,8 @@ const TOOL_LABELS: Record<string, string> = {
   files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Bots", preview: "Browser", artifacts: "Artifacts",
 };
 
-/** The one app kind the Apps section lists: an installed Glyphh app
- *  (apps-store.ts LocalAppRow.kind "glyphh" — org-apps.ts toRow projects it
- *  as appArchetype "glyphh-app"; web-contract.js desktopAppRow carries it
- *  back as `kind`). */
-export const GLYPHH_APP_KIND = "glyphh";
-
 /** One attached desktop (attach.status's machines, name = the member's label for it). */
 export interface MenuMachine { id: string; name: string }
-
-/** An installed app's row, tagged with where it lives. */
-export interface MenuAppRow {
-  slug: string;
-  name: string;
-  /** The row's kind: "glyphh" (a Glyphh app), "web" (a URL tab), "native". */
-  kind?: string;
-  /** The art to show: a data URL, the marketplace icon, a proxied favicon, or nothing. */
-  icon?: string | null;
-  /** A house app's built-in work panel (the tab's launchConfig.tool: "gdesign", "gimage", …); absent otherwise. */
-  tool?: string | null;
-  machineId: string;
-  machineName: string;
-  /** An app INSTALLED IN THE CLOUD (an instance): opens as a panel on either
-   *  surface, no desktop needed. */
-  cloud?: boolean;
-}
 
 /** Where the session's folder is (his order, 2026-10-05: the ⋮ menu is
  *  keyed off it): a desktop path, or the cloud. */
@@ -123,35 +87,19 @@ export interface AgentMenuInput {
   /** attach.status's machines — is a desktop attached, and which. The
    *  desktop itself is always its own machine. */
   machines?: ReadonlyArray<MenuMachine>;
-  /** The member's INSTALLED apps — the cloud instances, the one list. */
-  installed?: ReadonlyArray<MenuAppRow>;
   /** The session's locus. */
   locus?: MenuLocus;
   /** The member's workspaces (`layoutsList`); none → no section. */
   workspaces?: ReadonlyArray<MenuWorkspaceRow>;
 }
 
-export interface MenuAppsSection {
-  kind: "apps";
-  label: string;
-  /** Expandable head, collapsed on open (COLLAPSIBLE_SECTIONS). */
-  collapsible: true;
-  /** The rows behind the head — the number on it ("Apps · 3"). */
-  count: number;
-  enabled: boolean;
-  rows: MenuAppRow[];
-  /** The one line under the rows, or null. */
-  note: string | null;
-  /** A link beside the note, or null. */
-  link: { label: string; settingsSub: string } | null;
-}
 export interface MenuWorkspacesSection { kind: "workspaces"; label: string; collapsible: true; count: number; rows: MenuWorkspaceRow[] }
 export interface MenuToolRow { view: string; label: string }
 export interface MenuToolsSection { kind: "tools"; label: string; rows: MenuToolRow[] }
 export type SessionAction = "rename" | "pin" | "new-panel" | "delete";
 export interface MenuSessionRow { action: SessionAction; label: string; danger: boolean }
 export interface MenuSessionSection { kind: "session"; label: string; rows: MenuSessionRow[] }
-export type MenuSection = MenuAppsSection | MenuToolsSection | MenuSessionSection | MenuWorkspacesSection;
+export type MenuSection = MenuToolsSection | MenuSessionSection | MenuWorkspacesSection;
 
 export interface AgentMenu {
   surface: MenuSurface;
@@ -183,36 +131,6 @@ export function sessionRowsFor(session: MenuSession | null): MenuSessionRow[] {
     { action: "new-panel", label: "New agent panel", danger: false },
     { action: "delete", label: "Delete", danger: true },
   ];
-}
-
-/** THE APPS FILTER: only Glyphh apps (kind "glyphh") with a slug, one row
- *  per slug (two sources with the same app show it once). */
-export function glyphhAppsOnly(rows: ReadonlyArray<MenuAppRow>): MenuAppRow[] {
-  const seen = new Set<string>();
-  const out: MenuAppRow[] = [];
-  for (const r of rows) {
-    if (!r.slug || r.kind !== GLYPHH_APP_KIND) continue;
-    const k = r.slug.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(r);
-  }
-  return out;
-}
-
-/** WHERE AN APPS ROW OPENS — the same on both surfaces: a house row (a
- *  Glyphh app whose tool names a house panel) opens that panel
- *  (__wbOpenTool(view)); a cloud instance — and on the desktop every row —
- *  opens as a panel of its own (__wbOpenApp); only a row that lives on an
- *  attached desktop, asked from the web, opens THERE (`panels.open {app}`). */
-export type AppRowOpen = { open: "house-panel"; view: string } | { open: "panel" };
-/** Where an apps row opens: a house row in its house panel, every other
- *  installed app as a panel on THIS surface (his order, 2026-10-06: nothing
- *  opens on a desktop from the web). */
-export function appRowOpen(row: Pick<MenuAppRow, "kind" | "tool" | "cloud">, _surface?: MenuSurface): AppRowOpen {
-  const view = row.kind === GLYPHH_APP_KIND ? houseViewOf(row.tool) : null;
-  if (view) return { open: "house-panel", view };
-  return { open: "panel" };
 }
 
 /** The locus the ⋮ menu keys off, read from a session source: a local
@@ -256,23 +174,9 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   if (tools.length) byKind.set("tools", { kind: "tools", label: TOOLS_SECTION_LABEL, rows: tools });
   const session = sessionRowsFor(i.session);
   if (session.length) byKind.set("session", { kind: "session", label: SESSION_SECTION_LABEL, rows: session });
-  // APPS = THE INSTALLED APPS, PERIOD (his order, 2026-10-05: "Only
-  // installed apps show period. not tied to desktop or not"): the member's
-  // instances, the one list on every surface (his order, 2026-10-06) —
-  // nothing read off a desktop joins it.
-  const appRows = glyphhAppsOnly(i.installed ?? []);
-  byKind.set("apps", {
-    kind: "apps",
-    label: APPS_SECTION_LABEL,
-    collapsible: true,
-    count: appRows.length,
-    enabled: true,
-    rows: appRows,
-    // "Apps · 0" says it (his order, 2026-10-05): no line under an empty fold.
-    note: null,
-    link: null,
-  });
-
+  // NO APPS SECTION (his order, 2026-10-09: "remove apps from this menu in
+  // the top right of the agent page"): an app is a power now, found in the
+  // + box's Your powers.
   // WORKSPACES, LAST (his order, 2026-10-05): the member's workspaces by
   // name, one row each. Always present since 2026-10-08 — "Create
   // workspace…" lives at its head (his order: "agent -> dropdown -> Create
