@@ -167,10 +167,10 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect(WEB_BUILD_SUBS).not.toContain("connections-cfg");
   });
   it("the shape half: Tabs, Workspaces, Drips, Schedules", () => {
-    expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["tabs", "layouts", "drips", "schedules"]);
+    expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["drips", "schedules"]);
   });
   it("ONE page's tab order (his report, 2026-10-07): Skills, Agents, Apps, Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks last, a hidden row", () => {
-    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "tabs", "layouts", "drips", "schedules", "tasks"]);
+    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "drips", "schedules", "tasks"]);
     expect([...CUSTOMIZE_TAB_ORDER].sort()).toEqual([...WEB_GROUP_ROWS].sort());   // every row of the page, once
     expect(Object.isFrozen(CUSTOMIZE_TAB_ORDER)).toBe(true);
   });

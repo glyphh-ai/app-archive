@@ -25,7 +25,7 @@
  * behind its own chevron.
  */
 import { hostHas, onWeb } from "./web-surface.js";
-import { toolViewIcon } from "./layouts.js";
+import { toolViewIcon } from "./tool-icons.js";
 import { toast } from "./toast.js";
 import {
   agentMenuModel, appRowOpen, menuFoldState, isExpanded, toggleFold, sectionHeadLabel,

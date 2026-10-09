@@ -10,9 +10,7 @@ import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
-import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
-import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
@@ -164,9 +162,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "customize") loadSettingsGroup(sec);
   else if (sec === "drips") loadDrips();
   else if (sec === "connections") void loadConnections();
-  else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
-  else if (sec === "apps") loadApps();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
   else if (sec === "support") loadSupport();
@@ -178,9 +174,6 @@ export function loadActiveSection(explicit?: string) {
  * truth. (The old #help-nav sidebar — hidden but load-bearing — is deleted.)
  */
 export function gotoSection(section: string, sub?: string): void {
-  // "workspaces" IS the layouts section (the product word) — .dip workspaces
-  // and .dip layouts land in the same place (his rule, 2026-08-19).
-  if (section === "workspaces") section = "layouts";
   const moved = SECTION_ALIAS[section];
   if (moved) { section = moved.section; sub = sub || moved.sub; }
   // Settings is a MODAL now — intercept before the workbench section swap so
@@ -212,7 +205,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "connections"].includes(section)) {
+  if (["drips", "connections"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -925,9 +918,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "remote") void loadRemoteControl();
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
-  else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
-  else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
@@ -1150,8 +1141,6 @@ function rehostOpenGroups(): void {
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
-  tabs: { host: "settings-tabs-host", section: "apps" },
-  layouts: { host: "settings-layouts-host" },
   drips: { host: "settings-drips-host" },
   schedules: { host: "settings-schedules-host" },
   files: { host: "settings-files-host" },
@@ -1235,7 +1224,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", customize: "customize" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
@@ -1388,8 +1377,6 @@ export function initHelp() {
   boot("dashboard", initDashboardEvents);
   boot("org", initOrgPanel);
   boot("settings", initSettings);
-  boot("apps", initApps);
-  boot("layouts", initLayoutsEvents);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);

@@ -388,24 +388,6 @@ function streamsOffCard(): HTMLElement {
   });
   return el;
 }
-/** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
-function openNewTabForm(): void {
-  // NEW TAB IN A BROWSER IS A BROWSER TAB (his order, 2026-10-06; help/
-  // surface.ts): the desktop's form adds a URL tab to the library; a browser
-  // opens the one kind of tab it has. The dock's row and its shift-click
-  // share this door.
-  if (IS_WEB_TARGET) { window.open("about:blank", "_blank", "noopener"); return; }
-  (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
-  let tries = 0;
-  const tick = (): void => {
-    const btn = document.getElementById("apps-add-btn");
-    if (btn) { btn.click(); return; }
-    if (++tries < 20) window.setTimeout(tick, 60);
-  };
-  window.setTimeout(tick, 60);
-}
-
-
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
 // cards — is saved to a server-backed pref (window.glyphh.setPreference →

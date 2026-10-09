@@ -18,7 +18,7 @@ import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
-import { toolViewIcon } from "./layouts.js";
+import { toolViewIcon } from "./tool-icons.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { cronToWords, openScheduleOnLoad } from "./schedules.js";
@@ -2531,7 +2531,7 @@ function setScope(scope: "mine" | "discover", force = false): void {
 }
 
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", kinds: ["skill", "app", "task"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
+  kind: "skill", kinds: ["skill", "task"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
 });
 const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",

@@ -111,14 +111,15 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
  *  plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
-/** The shape half: Tabs, Workspaces, Drips, Schedules. */
-export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["tabs", "layouts", "drips", "schedules"]);
+/** The shape half: Drips, Schedules. (Tabs and Workspaces left the page,
+ *  his order 2026-10-09: workspaces live in the rail's tray and its +.) */
+export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["drips", "schedules"]);
 
 /** THE ONE PAGE'S TAB ORDER (his report, 2026-10-07): Skills, Agents, Apps,
  *  Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks stays a
  *  hidden row (2026-09-17) and so never paints a tab. The Settings nav lists
  *  its rows in this order under the one Customize header. */
-export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tabs", "layouts", "drips", "schedules", "tasks"]);
+export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "drips", "schedules", "tasks"]);
 
 /** The tabs with a Discover half (a hub / a directory). The page's one
  *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead

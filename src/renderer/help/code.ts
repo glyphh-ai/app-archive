@@ -6929,6 +6929,37 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
   list.appendChild(btn);
 }
 
+/** A workspace tile's menu: Delete (the standard confirm). */
+function openWorkspaceTileMenu(x: number, y: number, name: string): void {
+  document.querySelector(".ws-tile-menu")?.remove();
+  const m = document.createElement("div");
+  m.className = "code-menu ws-tile-menu";
+  m.style.position = "fixed";
+  m.style.left = `${x}px`;
+  m.style.top = `${y}px`;
+  m.style.zIndex = "10040";
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "code-menu-item danger";
+  del.textContent = "Delete workspace";
+  del.addEventListener("click", () => {
+    m.remove();
+    void confirmAction({ title: `Delete "${name}"?`, body: "The workspace goes; the apps and files in it stay.", confirmLabel: "Delete" }).then(async (ok) => {
+      if (!ok) return;
+      await (window.glyphh as unknown as { layoutsDelete?: (n: string) => Promise<boolean> }).layoutsDelete?.(name);
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+    });
+  });
+  m.appendChild(del);
+  document.body.appendChild(m);
+  const off = (ev: Event): void => {
+    if (m.contains(ev.target as Node)) return;
+    m.remove();
+    document.removeEventListener("mousedown", off, true);
+  };
+  window.setTimeout(() => document.addEventListener("mousedown", off, true), 0);
+}
+
 function renderRailLayouts(): void {
   for (const host of [...railLayoutsHosts]) {
     if (!host.list.isConnected) { railLayoutsHosts.delete(host); continue; }
@@ -6979,10 +7010,29 @@ function paintLayoutsGrid(host: RailGridHost): void {
       ensureWorkbench();
       void (window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> }).__wbOpenLayoutByName?.(l.name);
     });
+    // DELETE lives on the tile now (the Workspaces page left Customize, his
+    // order 2026-10-09): right-click → Delete, confirmed.
+    tile.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openWorkspaceTileMenu(e.clientX, e.clientY, l.name);
+    });
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { host.page = pg; paintLayoutsGrid(host); }));
-  if (!layouts.length) railEmpty(list, q, "Workspace", "layouts");
+  if (!layouts.length) {
+    if (q) railEmpty(list, q, "Workspace", "layouts");
+    else {
+      // No workspaces yet: the one action is the same + as the head's.
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "app-rail-empty-btn";
+      btn.textContent = "+ Workspace";
+      btn.title = "Create workspace — save what is on screen";
+      btn.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
+      list.appendChild(btn);
+    }
+  }
 }
 
 function renderRailAgents(): void {
