@@ -395,6 +395,8 @@ function arrangeAppSettingsNav(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
+  // Settings is another thing opened: Customize and Artifacts step aside (his order, 2026-10-09).
+  (window as unknown as { __wbClosePagePanels?: () => void }).__wbClosePagePanels?.();
   // THE GROUP PAGE (his order, 2026-10-07): a Customize row is a tab of the
   // full-screen page on both surfaces, never a page of the modal — a deep
   // link, the + menu's Manage rows and every older caller land there.

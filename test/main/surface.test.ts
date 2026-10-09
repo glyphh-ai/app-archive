@@ -225,7 +225,8 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Custo
   });
   it("the desktop opens Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
     expect([...GROUP_PAGES]).toEqual(["customize"]);
-    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
+    // Full screen on the web; a work panel on the desktop, like Artifacts (2026-10-09).
+    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(true); }
     expect(panelOpensFullScreen("artifacts", false)).toBe(false);
     expect(panelOpensFullScreen("artifacts", true)).toBe(true);
     for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
@@ -238,8 +239,8 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Custo
     expect(GROUP_PAGE_ALIASES).toEqual({ build: "customize" });
     expect(groupPageKey("build")).toBe("customize");
     for (const k of ["customize", "artifacts", "apps", "layouts", ""]) expect(groupPageKey(k)).toBe(k);
-    expect(panelOpensFullScreen(groupPageKey("build"), false)).toBe(true);
-    expect(panelOpensFullScreen("build", false)).toBe(false);   // only through the alias
+    expect(panelOpensFullScreen(groupPageKey("build"), true)).toBe(true);   // the web's full screen, through the alias
+    expect(panelOpensFullScreen("build", true)).toBe(false);   // only through the alias
   });
   it("the header reads '‹ Artifacts' / '‹ Customize'; a dead key gets no title of its own", () => {
     expect(webFullScreenTitle("artifacts")).toBe("Artifacts");

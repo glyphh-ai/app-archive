@@ -172,17 +172,15 @@ export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifa
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
-/** THE GROUP PAGE IS A PAGE ON BOTH SURFACES (his order, 2026-10-07: "the
- *  desktop app should handle the Build and customize pages the same as they
- *  are handled in the web: they render as pages and remove the like pages
- *  from settings to make it more manageable"). ONE page since his report the
- *  same day ("it should just be one tab"): Customize opens full screen on the
- *  desktop as on the web; Artifacts is the web's alone (a work panel on the
- *  desktop). */
+/** THE GROUP PAGE (his order, 2026-10-07): ONE Customize page. Full screen on
+ *  the WEB only; on the desktop it is a work panel exactly like Artifacts
+ *  (his order, 2026-10-09: "customize should be the same color etc as
+ *  artifacts with the expand and close buttons on the far right. Just match
+ *  artifacts"). */
 export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["customize"]);
 export type GroupPage = "customize";
 export function panelOpensFullScreen(key: string, web: boolean): boolean {
-  return web ? webPanelOpensFullScreen(key) : GROUP_PAGES.includes(key);
+  return web ? webPanelOpensFullScreen(key) : false;
 }
 /** A DEAD PAGE KEY RESOLVES TO THE ONE PAGE (his report, 2026-10-07): a saved
  *  dock slot, a wall card, a remembered rail section or an older caller

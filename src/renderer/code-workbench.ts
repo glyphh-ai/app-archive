@@ -4286,6 +4286,7 @@ async function init(): Promise<void> {
      *  folder button. Picking another folder restarts the CLI in it, with the
      *  same model, gateway and session choice the card was opened with. */
     const openShell = (e: TileEntry): HTMLElement | null => {
+      closePagePanelsFor(e);
       if (e.card) {
         if (e.parked) unparkCard(e);   // its page is alive and untouched (2026-10-08)
         else flash(e.card);
@@ -5830,6 +5831,8 @@ async function init(): Promise<void> {
      *  fills the slot behind a veil that never lifts. */
     const flash = (card: HTMLElement | undefined): void => {
       if (!card) return;
+      const owner = openList.find((x) => x.card === card);
+      if (owner) closePagePanelsFor(owner);
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
@@ -5883,6 +5886,28 @@ async function init(): Promise<void> {
         webFullHost.style.top = "";
       });
     };
+    /** CUSTOMIZE AND ARTIFACTS STEP ASIDE (his order, 2026-10-09: "when
+     *  customize or artifacts are up and the user clicks to open any other
+     *  thing they should close"). Any other panel opened or brought forward —
+     *  a tool, an app, an agent, a rail session landing in one — closes them,
+     *  as a card on the desktop or full screen on the web. A workspace open
+     *  replaces every card anyway; its own cells are left alone here. */
+    function isPagePanel(x: TileEntry): boolean {
+      return x.tile.slug === "page:customize" || x.tile.toolView === "artifacts";
+    }
+    function closePagePanelsFor(opening: TileEntry): void {
+      // openingLayout is declared further down this scope: a card opened
+      // before init reaches it must not throw (the TDZ class of bug).
+      let busy = false;
+      try { busy = openingLayout; } catch { busy = false; }
+      if (busy || isPagePanel(opening)) return;
+      for (const x of [...openList]) if (x !== opening && x.card && isPagePanel(x)) closeCard(x);
+      (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen?.();
+    }
+    (window as unknown as { __wbClosePagePanels?: () => void }).__wbClosePagePanels = () => {
+      for (const x of [...openList]) if (x.card && isPagePanel(x)) closeCard(x);
+      (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen?.();
+    };
     const closeWebFullPanel = (): void => {
       if (!webFullHost) return;
       const pen = document.getElementById("page-body");
@@ -5900,6 +5925,7 @@ async function init(): Promise<void> {
       syncWallVisibility();
       scheduleAgentSync();
     };
+    (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen = () => { if (webFullHost) closeWebFullPanel(); };
     const openWebFullPanel = (rawKey: string): void => {
       // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
       const key = legacyKey(rawKey);
