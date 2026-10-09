@@ -47,6 +47,13 @@ export async function loadMemorySettings(): Promise<void> {
   }
 
   el("memory-accept-note")?.classList.toggle("hidden", accepted);
+  // The banner's link: the Privacy page, the same nav row a click would use.
+  const open = el("memory-privacy-open");
+  if (open) open.onclick = () => {
+    const nav = document.querySelector<HTMLElement>('.settings-nav-item[data-sub="privacy"]');
+    if (nav) nav.click();
+    else (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("privacy");
+  };
   const note = el("memory-org-note");
   const forced = (Object.entries(policy) as Array<[keyof typeof PREFS, Rule]>).filter(([, r]) => r === "on" || r === "off");
   if (note) {

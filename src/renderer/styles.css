@@ -21188,7 +21188,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .code-money-card.plan { border-color: var(--accent); }
 .code-money-card.warn { border-color: var(--warning); }
 .code-money-card.out { border-color: var(--danger); }
-.code-money-text { min-width: 0; }
+/* The text takes the slack, so the button sits at the far right by the × (his report, 2026-10-09: "a large gap today"). */
+.code-money-text { flex: 1; min-width: 0; }
 .code-money-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .code-money-body { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 .code-money-card .action-btn { flex: none; }
@@ -22704,3 +22705,9 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   background: var(--bg); transition: opacity .2s ease;
 }
 .botp-loading.gone { opacity: 0; pointer-events: none; }
+
+/* Settings › Memory: privacy consent is required (his order, 2026-10-09). */
+.memory-privacy-banner { gap: 10px; }
+.memory-privacy-icon { width: 18px; height: 18px; flex: none; color: var(--accent-text, var(--accent)); }
+.memory-privacy-text { flex: 1; min-width: 0; }
+.memory-privacy-link { flex: none; margin-left: auto; }

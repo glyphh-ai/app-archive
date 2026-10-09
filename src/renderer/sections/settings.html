@@ -315,7 +315,14 @@
                 <h2>Memory</h2>
                 <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
 
-                <p class="set-pref-desc hidden" id="memory-accept-note">Memory is off until you accept the memory policy under <strong>Privacy</strong>.</p>
+                <!-- PRIVACY IS REQUIRED (his order, 2026-10-09: "the memory page… needs a
+                     banner about privacy being required and a link to it"): shown
+                     until the memory policy is accepted (help/settings-memory.ts). -->
+                <div class="settings-callout memory-privacy-banner hidden" id="memory-accept-note" role="note">
+                  <svg class="memory-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6 20 6v6c0 5-3.4 8.2-8 9.4C7.4 20.2 4 17 4 12V6z"/><path d="m9 12 2 2 4-4"/></svg>
+                  <span class="memory-privacy-text"><strong>Privacy consent is required.</strong> Memory stays off until you accept the memory policy on the Privacy page.</span>
+                  <button type="button" class="action-btn secondary memory-privacy-link" id="memory-privacy-open">Open Privacy</button>
+                </div>
                 <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
                 <p class="set-pref-desc hidden" id="memory-org-note"></p>
                 <label class="settings-toggle set-pref-row">
