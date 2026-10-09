@@ -5570,7 +5570,7 @@ async function init(): Promise<void> {
       if (echoGrid) echoGrid.defCols = echoGrid.colWidths.length;
       echoLayoutSig = arrangementSig(a);
     };
-    const saveWorkspace = async (o: { name: string; model?: string; session: "last" | "new"; folder?: string }): Promise<{ ok: boolean; error?: string }> => {
+    const saveWorkspace = async (o: { name: string; model?: string; session: "keep" | "new" | "last"; folder?: string }): Promise<{ ok: boolean; error?: string }> => {
       const a = currentArrangement();
       if (!a) return { ok: false, error: "Nothing is open to save." };
       const yo = (window as unknown as { glyphh?: { layoutsSaveGrid?: (g: unknown) => Promise<unknown> } }).glyphh;

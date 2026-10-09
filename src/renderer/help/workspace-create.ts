@@ -1,7 +1,7 @@
 /**
  * workspace-create.ts — THE CREATE WORKSPACE MODAL (his order, 2026-10-08:
  * "a + to the far right next to workspaces then open a modal with name, and
- * the desired agent state… model, session re: start new, continue… and
+ * the desired agent state… model, session re: start new, continue aka what we had before, and
  * directory. and of course name. No layout or overrides or any of that. very
  * simple modal. same with the agent -> dropdown -> Create Workspace").
  *
@@ -15,7 +15,7 @@
 import { guardWebviewsForModal } from "./shared.js";
 import { workspaceFormError } from "./workspace-form.js";
 
-type SessionChoice = "last" | "new";
+type SessionChoice = "keep" | "new" | "last";
 type SaveWorkspace = (o: { name: string; model?: string; session: SessionChoice; folder?: string }) => Promise<{ ok: boolean; error?: string }>;
 interface Api {
   loopModels?: (loopId: string, force?: boolean) => Promise<{ ok: boolean; models: Array<{ id: string; name: string; utility?: boolean }> }>;
@@ -43,8 +43,9 @@ export async function openCreateWorkspaceModal(): Promise<void> {
           <select class="settings-input wsc-model"><option value="">Default model</option></select></label>
         <label class="wsc-row"><span class="wsc-label">Session</span>
           <select class="settings-input wsc-session">
-            <option value="last">Continue where it left off</option>
+            <option value="keep">Keep the current session</option>
             <option value="new">Start a new session</option>
+            <option value="last">Resume this workspace&rsquo;s last session</option>
           </select></label>
         <div class="wsc-row"><span class="wsc-label">Directory</span>
           <div class="wsc-dir">
@@ -87,7 +88,7 @@ export async function openCreateWorkspaceModal(): Promise<void> {
     const res = await save({
       name: nameIn.value.trim(),
       ...(modelSel.value ? { model: modelSel.value } : {}),
-      session: sessSel.value === "new" ? "new" : "last",
+      session: sessSel.value === "new" || sessSel.value === "last" ? sessSel.value : "keep",
       ...(folderIn.value.trim() ? { folder: folderIn.value.trim() } : {}),
     }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     createBtn.disabled = false;
