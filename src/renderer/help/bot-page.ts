@@ -20,6 +20,7 @@ import { clearInvalid, confirmAction, guardWebviewsForModal } from "./shared.js"
 import { AVATAR_COLORS, AVATAR_VARIANTS, DEFAULT_VARIANT, avatarOf, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
 import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } from "./composer-plus.js";
 import { primeConnectedIcons } from "./app-icon.js";
+import { openPowersModal } from "./powers-modal.js";
 
 export interface BotRow {
   slug: string; name: string; description: string; prompt: string; model: string;
@@ -519,150 +520,33 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     paintPowers();
   }
 
-  // ── THE MODAL: + Add a power. One fixed size whatever the tab; picks are a
-  //    draft until Save, and Cancel, ✕ or Escape drop them. ──
-  let modalKind: PowerKind = "folders";
-  let recents: string[] = [];
-  let draft: Pick<BotRow, PowerKind | "model"> | null = null;
-  function closeModal(): void {
-    if (!modal) return;
-    modal.remove();
-    modal = null;
-    draft = null;
-    guardWebviewsForModal(false);
-    document.removeEventListener("keydown", onModalKey, true);
-  }
-  function onModalKey(e: KeyboardEvent): void {
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeModal(); }
-  }
+  // ── + ADD A POWER: the one powers modal (help/powers-modal.ts), picking for
+  //    this super power; Save writes the picks in one update. ──
   function openModal(kind?: PowerKind): void {
     if (!bot) return;
-    if (kind) modalKind = kind;
-    if (modal) { paintModal(); return; }
-    draft = {
-      model: bot.model ?? "",
-      folders: powersOf(bot, "folders"), connections: powersOf(bot, "connections"),
-      models: modelList(bot).slice(1), skills: powersOf(bot, "skills"),
-    };
-    modal = el("div", "confirm-overlay botp-modal");
-    modal.innerHTML = `
-      <div class="confirm-box botp-modal-box" role="dialog" aria-modal="true" aria-label="Add a power">
-        <div class="confirm-head botp-modal-head"><h3>Add a power</h3>
-          <button class="ws-icon-btn botp-modal-x" type="button" title="Close" aria-label="Close">${CLOSE_SVG}</button></div>
-        <div class="skills-tabs botp-modal-tabs" role="tablist"></div>
-        <div class="confirm-body botp-modal-body"></div>
-        <div class="crud-form-error botp-error botp-modal-error hidden"></div>
-        <div class="confirm-foot">
-          <button class="action-btn secondary botp-modal-cancel" type="button">Cancel</button>
-          <button class="action-btn primary botp-modal-save" type="button">Save</button>
-        </div>
-      </div>`;
-    const tabs = modal.querySelector<HTMLElement>(".botp-modal-tabs")!;
-    for (const { kind: k, label } of POWER_KINDS) {
-      const b = el("button", "skills-tab", label);
-      b.type = "button"; b.dataset.kind = k; b.setAttribute("role", "tab");
-      b.addEventListener("click", () => { modalKind = k; paintModal(); });
-      tabs.appendChild(b);
-    }
-    modal.querySelector(".botp-modal-x")!.addEventListener("click", closeModal);
-    modal.querySelector(".botp-modal-cancel")!.addEventListener("click", closeModal);
-    modal.querySelector(".botp-modal-save")!.addEventListener("click", () => { void saveModal(); });
-    modal.addEventListener("mousedown", (e) => { if (e.target === modal) closeModal(); });
-    document.addEventListener("keydown", onModalKey, true);
-    guardWebviewsForModal(true);
-    document.body.appendChild(modal);
-    paintModal();
-    if (!onWeb()) void api().getWorkingDirRecents?.().then((r) => { recents = Array.isArray(r) ? r.map(String) : []; paintModal(); }).catch(() => {});
-  }
-  /** Flip one pick in the draft. Models move as one list: the first picked runs it. */
-  function toggleDraft(kind: PowerKind, name: string): void {
-    if (!draft) return;
-    if (kind === "models") {
-      const cur = modelList(draft);
-      Object.assign(draft, modelFields(cur.includes(name) ? cur.filter((m) => m !== name) : [...cur, name]));
-      paintModal();
-      return;
-    }
-    const cur = powersOf(draft, kind);
-    draft[kind] = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
-    paintModal();
-  }
-  async function saveModal(): Promise<void> {
-    if (!modal || !draft || !bot) return;
-    const patch: Record<string, unknown> = {};
-    for (const { kind } of POWER_KINDS) {
-      if (kind === "models") continue;
-      if (JSON.stringify(powersOf(draft, kind)) !== JSON.stringify(powersOf(bot, kind))) patch[kind] = powersOf(draft, kind);
-    }
-    if (JSON.stringify(modelList(draft)) !== JSON.stringify(modelList(bot))) Object.assign(patch, modelFields(modelList(draft)));
-    if (!Object.keys(patch).length) { closeModal(); return; }
-    const save = modal.querySelector<HTMLButtonElement>(".botp-modal-save")!;
-    save.disabled = true;
-    const r = await api().libraryAgentUpdate?.(bot.slug, patch).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-    if (!modal) return;
-    save.disabled = false;
-    if (!r?.ok) { showErr(modal.querySelector<HTMLElement>(".botp-modal-error")!, r?.error || "The powers could not be saved."); return; }
-    bot = { ...bot, ...(patch as Partial<BotRow>) };
-    showErr(sideErr, "");
-    paintPowers();
-    closeModal();
-  }
-  /** One choice in the modal: Add, or Added (a click takes it back off). */
-  function choice(icon: string, name: string, sub: string, has: boolean, onToggle: () => void, fixed?: string): HTMLElement {
-    const row = el("div", "botp-choice");
-    const ic = el("div", "botp-power-icon");
-    ic.innerHTML = icon;
-    const main = el("div", "botp-power-main");
-    main.appendChild(el("div", "botp-power-name", name));
-    if (sub) main.appendChild(el("div", "botp-power-sub", sub));
-    row.append(ic, main);
-    if (fixed) row.appendChild(el("span", "botp-power-tag", fixed));
-    const b = el("button", `action-btn ${has ? "" : "secondary "}botp-choice-btn${has ? " on" : ""}`, has ? "Added" : "Add");
-    b.type = "button";
-    b.addEventListener("click", onToggle);
-    row.appendChild(b);
-    return row;
-  }
-  function paintModal(): void {
-    if (!modal || !draft) return;
-    modal.querySelectorAll<HTMLElement>(".botp-modal-tabs .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.kind === modalKind));
-    const body = modal.querySelector<HTMLElement>(".botp-modal-body")!;
-    body.textContent = "";
-    const empty = (t: string): void => { body.appendChild(el("div", "botp-empty", t)); };
-    const d = draft;
-    if (modalKind === "folders") {
-      if (onWeb()) { empty("Folders live on your computer. Open Glyphh on your desktop to give this super power a folder."); }
-      else {
-        const pick = el("button", "action-btn secondary botp-pick", "Choose a folder…");
-        pick.type = "button";
-        pick.addEventListener("click", () => {
-          void api().pickDirectory?.().then((dir) => {
-            if (!dir || !draft) return;
-            if (!powersOf(draft, "folders").includes(dir)) toggleDraft("folders", dir);
-          });
-        });
-        body.appendChild(pick);
-      }
-      const have = powersOf(d, "folders");
-      for (const f of [...have, ...recents.filter((r) => !have.includes(r))]) {
-        body.appendChild(choice(PLUS_ICONS.folder, baseName(f), f, have.includes(f), () => toggleDraft("folders", f)));
-      }
-    } else if (modalKind === "connections") {
-      const have = powersOf(d, "connections");
-      const live = conns.filter((c) => c.on || have.includes(c.slug));
-      if (!live.length) empty("No connections yet. Connect an account on the Connections page first.");
-      for (const c of live) body.appendChild(choice(c.icon, c.name, c.org ? "Your organization's" : "", have.includes(c.slug), () => toggleDraft("connections", c.slug)));
-    } else if (modalKind === "models") {
-      const have = modelList(d);
-      if (!models.length) empty("Your team's models couldn't be read.");
-      for (const m of models) {
-        body.appendChild(choice(MODEL_SVG, m.name, "", have.includes(m.id), () => toggleDraft("models", m.id), have[0] === m.id ? "Runs on" : undefined));
-      }
-    } else {
-      const have = powersOf(d, "skills");
-      if (!skills.length) empty("No powers of your own yet. Ask Glyphh to make one.");
-      for (const s of skills) body.appendChild(choice(POWER_SVG, s.name, s.type === "task" ? "Task" : "Skill", have.includes(s.id), () => toggleDraft("skills", s.id)));
-    }
+    const b = bot;
+    openPowersModal({
+      ...(kind ? { tab: kind } : {}),
+      selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills") },
+      onSave: async (picked) => {
+        if (!bot) return { ok: false, error: "This super power is gone." };
+        const patch: Record<string, unknown> = {};
+        for (const k of ["folders", "connections", "skills"] as const) {
+          if (JSON.stringify(picked[k]) !== JSON.stringify(powersOf(bot, k))) patch[k] = picked[k];
+        }
+        if (JSON.stringify(picked.models) !== JSON.stringify(modelList(bot))) Object.assign(patch, modelFields(picked.models));
+        // A connection made inside the modal is new to this page's list too.
+        conns = await readConnectorRows(api()).catch(() => conns);
+        if (Object.keys(patch).length) {
+          const r = await api().libraryAgentUpdate?.(bot.slug, patch).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+          if (!r?.ok) return { ok: false, error: r?.error || "The powers could not be saved." };
+          bot = { ...bot, ...(patch as Partial<BotRow>) };
+        }
+        showErr(sideErr, "");
+        paintPowers();
+        return { ok: true };
+      },
+    });
   }
 
   // ── Load ──
@@ -683,13 +567,13 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     paintPowers();
     void primeConnectedIcons(conns.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
       if (destroyed) return;
-      void readConnectorRows(api()).then((rows) => { conns = rows; paintPowers(); paintModal(); }).catch(() => {});
+      void readConnectorRows(api()).then((rows) => { conns = rows; paintPowers(); }).catch(() => {});
     });
     nameIn.focus();
   })();
 
   return {
     back: () => false,
-    destroy: () => { destroyed = true; closeModal(); root.remove(); host.classList.remove("botp-host"); },
+    destroy: () => { destroyed = true; root.remove(); host.classList.remove("botp-host"); },
   };
 }

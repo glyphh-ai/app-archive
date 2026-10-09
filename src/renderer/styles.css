@@ -22275,3 +22275,33 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 @keyframes botp-pulse { 50% { opacity: .45; } }
 .botp-avatar-ask { resize: none; }
 .botp-avatar-note { font-size: 12px; color: var(--text-3); }
+
+/* ── THE POWERS MODAL (his order, 2026-10-09: "the powers modal that is used
+   everywhere"): one fixed size; tabs; a bar with the search left and + Add
+   right (or ‹ Connections on a sub-screen); the list; Cancel · Save. ── */
+.confirm-overlay .confirm-box.powm-box {
+  width: min(600px, calc(100vw - 48px)); min-width: min(600px, calc(100vw - 48px)); max-width: min(600px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 80px)); min-height: min(640px, calc(100vh - 80px)); max-height: min(640px, calc(100vh - 80px));
+  flex: none; display: flex; flex-direction: column;
+}
+.powm-head { display: flex; align-items: center; gap: 8px; flex: none; }
+.powm-head h3 { flex: 1; }
+.powm-x { width: 28px; height: 28px; flex: none; }
+.powm-x svg { width: 15px; height: 15px; }
+.powm-tabs { padding: 10px 18px 0; margin: 0; flex: none; }
+.powm-bar { display: flex; align-items: center; gap: 8px; padding: 10px 18px 0; flex: none; min-height: 34px; }
+.powm-search { position: static; transform: none; flex: 1; min-width: 0; width: auto; box-sizing: border-box; }
+.powm-add { flex: none; white-space: nowrap; }
+.powm-back { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.powm-back svg { width: 15px; height: 15px; }
+.powm-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.powm-error { margin: 0 18px 8px; flex: none; }
+.powm-foot { flex: none; }
+.powm-row.openable .botp-power-main { cursor: pointer; }
+.powm-row.openable .botp-power-main:hover .botp-power-name { text-decoration: underline; }
+.powm-row .botp-power-sub { white-space: nowrap; }
+.powm-icon .conn2-icon, .powm-app-icon { width: 26px; height: 26px; }
+.powm-connect { flex: none; min-width: 96px; }
+.powm-more { align-self: center; margin: 6px 0; }
+.powm-phead { margin-bottom: 6px; }
+.powm-back { margin-bottom: 0; }
