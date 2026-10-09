@@ -6033,13 +6033,7 @@ const railBotAvatars = new Map<string, { variant: number; color: string } | null
  *  … and name —> far right of same row the three dots"): the roster, in the
  *  order the library keeps it. */
 let railBots: Array<{ slug: string; name: string }> = [];
-/** THE POWERS on this member's plan (main/powers.ts): Images, Video, Audio… */
-let railPowers: Array<{ id: string; name: string; blurb: string; avatar: { variant: number; color: string } }> = [];
-async function primePowers(): Promise<void> {
-  const api = window.glyphh as unknown as { powersList?: () => Promise<{ ok: boolean; data?: unknown }> };
-  const env = await api.powersList?.().catch(() => null);
-  if (env?.ok && Array.isArray(env.data)) railPowers = env.data as typeof railPowers;
-}
+
 async function primeBotAvatars(): Promise<void> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
@@ -6207,7 +6201,7 @@ async function loadRailSessions(): Promise<void> {
     .sort((a, b) => b.mtime - a.mtime);
   reconcileWebDefaultFolder();
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
-  await Promise.all([primeBotAvatars(), primePowers()]);   // the rail's rows: Glyphh, its powers, its super powers
+  await primeBotAvatars();   // the rail's rows: Glyphh and its super powers
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -6492,17 +6486,9 @@ function renderRailSessions(): void {
     if (newest) sessOpen(newest);
     else el<HTMLButtonElement>("code-new-chat")?.click();
   } });
-  // POWERS — singular things you can talk to directly (his order, 2026-10-09).
-  if (railPowers.length) host.appendChild(sessSectionHead("Powers", "What Glyphh can do — talk to one directly"));
-  for (const p of railPowers) {
-    const mark = document.createElement("span");
-    mark.className = "code-sess-mark rail-bot-mark";
-    mark.innerHTML = botAvatarSvg(p.avatar, "idle", { size: 20 });
-    const id = `powers/${p.id}`;
-    row({ key: `power:${p.id}`, name: p.name, mark, liveId: id,
-      onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: p.name, cwd: "", mtime: 0 }) });
-  }
-  // SUPER POWERS — the bots: powers combined, carrying skills, tasks and schedules.
+  // SUPER POWERS ONLY (his order, 2026-10-09: "The left rail are only super
+  // powers"): the bots — powers combined, carrying skills, tasks, schedules.
+  // The powers themselves live in the chest, not here.
   if (railBots.length) host.appendChild(sessSectionHead("Super powers", "Your bots — powers combined into workflows"));
   for (const b of railBots) {
     const mark = document.createElement("span");
