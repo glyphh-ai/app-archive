@@ -6,6 +6,7 @@ import { confirmAction } from "./shared.js";
 import {
   applyRailTabsPerRow, applyTilesPerRow, applyWallWidth,
   clampRailTabsPerRow, clampTilesPerRow, clampWallWidth, railTabsLabel,
+  RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown,
 } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
 import { loadVoiceSection } from "./settings-voice.js";
@@ -570,6 +571,17 @@ function initSettings() {
     });
   }
 
+  // THE SIDEBAR TRAYS (his order, 2026-10-08) — persist BEFORE announcing;
+  // the rail re-reads the pref on the event (help/code.ts).
+  for (const [id, pref] of [["settings-rail-apps", RAIL_SHOW_APPS_PREF], ["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
+    const t = document.getElementById(id) as HTMLInputElement | null;
+    t?.addEventListener("change", () => {
+      void Promise.resolve(window.glyphh.setPreference(pref, t.checked)).then(() => {
+        document.dispatchEvent(new CustomEvent(RAIL_SECTIONS_CHANGED_EVENT));
+      });
+    });
+  }
+
   // Icon hover zoom — every icon in the app scales by this on hover.
   // Applied LIVE via the CSS var; persisted like every other preference.
   {
@@ -803,6 +815,10 @@ async function loadSettings() {
     echoWw.value = String(clampWallWidth(await window.glyphh.getPreference("echoWallWidth", 0)));
     const v = document.getElementById("settings-echo-wall-width-val");
     if (v) v.textContent = `${echoWw.value}%`;
+  }
+  for (const [id, pref] of [["settings-rail-apps", RAIL_SHOW_APPS_PREF], ["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
+    const t = document.getElementById(id) as HTMLInputElement | null;
+    if (t) t.checked = railTrayShown(await window.glyphh.getPreference(pref, RAIL_SHOW_DEFAULT));
   }
   const railCols = document.getElementById("settings-rail-tabs-cols") as HTMLInputElement | null;
   if (railCols) {

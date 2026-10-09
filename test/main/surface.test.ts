@@ -224,9 +224,9 @@ describe("settings — the one Customize page is the same on both surfaces; only
     }
   });
   it("the hidden settings rows are ONLY a capability the browser lacks (streamed panels); the dock's rows show; the rail hides only More", () => {
-    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row"]);
+    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row", "#rail-apps-row", "#rail-layouts-row"]);
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
-    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle"]);
+    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", "#rail-apps-head", "#rail-apps-body", "#rail-layouts-head", "#rail-layouts-body"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
     for (const b of WEB_RAIL_ECHO_BUTTONS) expect(WEB_HIDDEN_RAIL).not.toContain(b);
   });
