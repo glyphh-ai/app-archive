@@ -5910,6 +5910,7 @@ async function init(): Promise<void> {
     };
     const closeWebFullPanel = (): void => {
       if (!webFullHost) return;
+      (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();
       const pen = document.getElementById("page-body");
       webFullHost.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
         sec.classList.remove("active", "wb-hosted");
@@ -5960,6 +5961,7 @@ async function init(): Promise<void> {
         webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel, onClose: closeWebFullPanel });
         return;
       }
+      (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();
       const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${key}"]`);
       if (!sec) return;
       // A page that brings its own title row (Customize) is its own header:

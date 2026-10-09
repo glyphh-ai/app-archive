@@ -22103,3 +22103,17 @@ body.rail-collapsed .settings-group-titlebar.clears-strip { padding-left: var(--
 }
 .echo-card .artp-viewer-head { padding-left: var(--card-pad-l, 96px); padding-right: var(--card-pad-r, 64px); }
 body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-strip-w) !important; }
+
+/* ── THE SCHEDULES PAGE (his order, 2026-10-09): Customize's header. The title
+   row shows full screen only; the one tool row: count left, tools right. ── */
+.page-titlebar { display: none; }
+.web-full-body .page-titlebar { display: flex; margin: 0 0 14px; }
+.web-full-body > .help-section[data-section="schedules"] { padding: 0 0 24px; }
+.web-full-body > .help-section[data-section="schedules"] > :not(.page-titlebar) { margin-left: 28px; margin-right: 28px; }
+.page-toolrow { justify-content: flex-start; gap: 8px; }
+.page-toolrow > .skills-count { margin-right: auto; }
+.page-toolrow > .skills-search { position: static; transform: none; width: min(260px, 32vw); }
+.page-toolrow > .skills-pill { margin-left: 0; padding: 6px; border: none; background: none; color: var(--text-2); }
+.page-toolrow > .skills-pill:hover { background: var(--hover); color: var(--text); }
+.page-toolrow > .skills-pill > span { display: none; }
+.page-toolrow > .skills-pill svg { width: 16px; height: 16px; }

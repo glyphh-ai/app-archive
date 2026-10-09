@@ -415,8 +415,8 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "settings_open",
-    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, schedules, drips, models, members, billing, general, appearance, mcp.",
-    { page: z.string().describe("Which page: skills | connections | plugins | tasks | schedules | drips | general | appearance | mcp | models | members | billing") },
+    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, models, members, billing, general, appearance, mcp.",
+    { page: z.string().describe("Which page: skills | connections | plugins | tasks | general | appearance | mcp | models | members | billing") },
     async ({ page }) => via("settings.open", { page }),
   );
 

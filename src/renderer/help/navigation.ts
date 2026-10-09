@@ -161,6 +161,7 @@ export function loadActiveSection(explicit?: string) {
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "customize") loadSettingsGroup(sec);
   else if (sec === "drips") loadDrips();
+  else if (sec === "schedules") void loadSchedulesPage();
   else if (sec === "connections") void loadConnections();
   else if (sec === "files") void loadFiles();
   else if (sec === "code") loadCode();
@@ -899,7 +900,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "tasks") void loadTasksSettings();
-  else if (sub === "schedules") { mountSettingsSection("schedules"); void loadSchedulesPage(); }
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
@@ -1078,6 +1078,8 @@ export function openGroupTab(group: GroupPage, sub: string): void {
  *  the same nodes, listeners and ids intact — and gets them back on the
  *  next tab, or before its panel returns to the Settings modal. */
 let lentTools: Array<{ el: HTMLElement; parent: HTMLElement; next: Node | null }> = [];
+// The workbench hands lent tools home before a section leaves for its own page.
+(window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools = () => returnGroupTools();
 function returnGroupTools(): void {
   for (const t of lentTools.reverse()) {
     try { t.parent.insertBefore(t.el, t.next && t.next.parentNode === t.parent ? t.next : null); } catch { /* origin gone with its panel */ }
@@ -1116,11 +1118,13 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
   const host = sec.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
   host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
   if (host) host.scrollTop = 0;
-  adoptGroupTools(sec, host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`) ?? null);
+  returnGroupTools();
   // The page's one scope reaches the tab before it loads, so the tab paints
   // straight into Yours or Discover (his report, 2026-10-07).
   applyScopeTo(sub, groupScope, forceScope);
   loadSettingsSub(sub);
+  // After the load: a section tab (Schedules) is mounted by it, so its tools exist now.
+  adoptGroupTools(sec, host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`) ?? null);
   const label = sec.querySelector<HTMLElement>(`.settings-group-tabs > .skills-tab[data-sub="${sub}"]`)?.textContent?.trim() || sub;
   paintNoDiscover(host ?? null, sub, label, groupScope);
 }
@@ -1180,7 +1184,6 @@ function rehostOpenGroups(): void {
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
-  schedules: { host: "settings-schedules-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
 };
@@ -1262,7 +1265,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize", schedules: "schedules" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;

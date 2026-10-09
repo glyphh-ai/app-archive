@@ -167,10 +167,10 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect(WEB_BUILD_SUBS).not.toContain("connections-cfg");
   });
   it("the shape half: Tabs, Workspaces, Drips, Schedules", () => {
-    expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["schedules"]);
+    expect([...WEB_CUSTOMIZE_SUBS]).toEqual([]);
   });
   it("ONE page's tab order (his report, 2026-10-07): Skills, Agents, Apps, Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks last, a hidden row", () => {
-    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "schedules", "tasks"]);
+    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]);
     expect([...CUSTOMIZE_TAB_ORDER].sort()).toEqual([...WEB_GROUP_ROWS].sort());   // every row of the page, once
     expect(Object.isFrozen(CUSTOMIZE_TAB_ORDER)).toBe(true);
   });
@@ -197,9 +197,9 @@ describe("settings — the one Customize page is the same on both surfaces; only
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
   });
-  it("the web rail's menu is ONLY Artifacts, Customize (his order, 2026-10-05; Build folded in, his report, 2026-10-07)", () => {
-    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize"]);
-    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize"]);
+  it("the rail's menu is Artifacts, Customize, Schedules (his orders, 2026-10-05, 2026-10-07, 2026-10-09)", () => {
+    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize", "Schedules"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize", "schedules"]);
     expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain("build");
     for (const sub of ["connections-cfg", "devices"]) {
       expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
@@ -216,7 +216,7 @@ describe("settings — the one Customize page is the same on both surfaces; only
 
 describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
   it("exactly the rail's two open full screen on the web", () => {
-    expect([...webFullScreenPanels]).toEqual(["artifacts", "customize"]);
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "customize", "schedules"]);
     expect(webFullScreenPanels.map((k) => k)).toEqual(WEB_RAIL_LINKS.map((l) => l.sub));
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });

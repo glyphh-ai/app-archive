@@ -359,7 +359,6 @@ async function openEditor(row: ScheduleRow | null): Promise<void> {
   editing = row;
   el("schedules-overview")?.classList.add("hidden");
   el("schedules-head")?.classList.add("hidden");
-  el("schedules-toolbar")?.classList.add("hidden");
   el("schedule-editor")?.classList.remove("hidden");
   el("schedule-form-error")?.classList.add("hidden");
   const head = el("schedule-detail-head"); if (head) head.textContent = row ? row.name : "New schedule";
@@ -379,7 +378,6 @@ function closeEditor(): void {
   el("schedule-editor")?.classList.add("hidden");
   el("schedules-overview")?.classList.remove("hidden");
   el("schedules-head")?.classList.remove("hidden");
-  el("schedules-toolbar")?.classList.remove("hidden");
 }
 
 async function paintRuns(id: string): Promise<void> {

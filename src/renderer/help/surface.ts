@@ -111,15 +111,16 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
  *  plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
-/** The shape half: Schedules. (Tabs, Workspaces and Drips left the page,
- *  his orders 2026-10-09: workspaces live in the rail's tray and its +.) */
-export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["schedules"]);
+/** The shape half: empty now. (Tabs, Workspaces, Drips and Schedules left the
+ *  page, his orders 2026-10-09: workspaces live in the rail's tray and its +,
+ *  Schedules is a page of its own from the rail.) */
+export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze([]);
 
 /** THE ONE PAGE'S TAB ORDER (his report, 2026-10-07): Skills, Agents, Apps,
  *  Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks stays a
  *  hidden row (2026-09-17) and so never paints a tab. The Settings nav lists
  *  its rows in this order under the one Customize header. */
-export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "schedules", "tasks"]);
+export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]);
 
 /** The tabs with a Discover half (a hub / a directory). The page's one
  *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead
@@ -155,6 +156,8 @@ export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp
 export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
   { sub: "artifacts", label: "Artifacts" },
   { sub: "customize", label: "Customize" },
+  // A page of its own from the rail (his order, 2026-10-09).
+  { sub: "schedules", label: "Schedules" },
 ]);
 
 /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts -> new
@@ -168,7 +171,7 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  = close), an X on the right. Closing restores exactly what was showing.
  *  Customize takes this path on the desktop too (GROUP_PAGES); Artifacts
  *  stays an ordinary work panel there. */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize"]);
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize", "schedules"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
@@ -195,7 +198,7 @@ export function groupOfSub(sub: string): GroupPage | null {
   return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize", schedules: "Schedules" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
