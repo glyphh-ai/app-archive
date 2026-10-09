@@ -27,6 +27,7 @@ import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeig
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 import { scaffoldAppFolder } from "./app-scaffold.js";
+import { GLYPHH_GUIDE, GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -420,6 +421,8 @@ function registerTools(mcp: ToolRegistrar): void {
     "Read a Glyphh skill in full — its SKILL.md frontmatter and the markdown instructions (prompt) under it.",
     { slug: z.string().describe("Skill slug from skills_list") },
     async ({ slug }) => {
+      // The Glyphh power is built in: its text ships with the app, never a folder.
+      if (slug.replace(/^[a-z]+:/, "") === GLYPHH_GUIDE_SLUG) return text({ slug: GLYPHH_GUIDE_SLUG, name: "Glyphh", description: GLYPHH_POWER_LINE, prompt: GLYPHH_GUIDE, builtIn: true });
       try {
         const sk = getSkill(skillId(slug));
         return text({ slug, name: sk.name, description: sk.description, prompt: sk.body, frontmatter: sk.frontmatter, files: sk.files.map((f) => f.path), enabled: sk.enabled });
@@ -452,6 +455,8 @@ function registerTools(mcp: ToolRegistrar): void {
       })).optional().describe('For a power that runs on its own — the fixed slots the program calls agents through as ctx.agents.<slot>.run(prompt, { schema?, model? }). The program also has ctx.rpa: commands(app), run(app, command, value?), sequence(app, name, args?), read(app, selector?) — the mapped commands of the user\'s tabs (rpa_commands).'),
     },
     async (input) => {
+      const wants = (input.slug ?? input.name ?? "").trim().toLowerCase();
+      if (wants === GLYPHH_GUIDE_SLUG) return text(`Error: "${GLYPHH_GUIDE_SLUG}" is Glyphh's own built-in power — choose another name`);
       try { return text(saveBundle(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },

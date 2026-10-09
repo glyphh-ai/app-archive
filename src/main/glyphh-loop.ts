@@ -18,6 +18,7 @@ import { GlyphhLoop, LOOP_EFFORTS, readsByName, type LoopAgentDef, type LoopCata
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { listSkills } from "./skills-fs.js";
+import { GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
 import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
@@ -177,14 +178,6 @@ async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
   return out;
 }
 
-/** THE GLYPHH POWER LEADS THE INDEX (his order, 2026-10-09: "make sure the
- *  agent / glyphh skill is getting to the loop and is well versed in super
- *  powers"). It is Glyphh's own know-how — what powers and super powers are and
- *  how to build them — so its line says when to read it; the index caps a line
- *  at 200 characters. */
-export const GLYPHH_POWER_LINE =
-  "READ FIRST whenever the user mentions a power or a SUPER POWER (a bot on the rail), or asks to build, change or explain one: what they are, and the tools that make them.";
-
 /** The member's enabled powers, for the prompt's index (read with skill_get). */
 async function skillIndex(): Promise<LoopSkill[]> {
   try {
@@ -192,9 +185,10 @@ async function skillIndex(): Promise<LoopSkill[]> {
       .filter((sk) => sk.enabled)
       .map((sk) => {
         const slug = sk.id.slice(sk.id.indexOf(":") + 1);
-        return { slug, name: sk.name, description: slug === "glyphh" ? GLYPHH_POWER_LINE : sk.description };
+        return { slug, name: sk.name, description: sk.description };
       });
-    return [...rows.filter((r) => r.slug === "glyphh"), ...rows.filter((r) => r.slug !== "glyphh")];
+    // The Glyphh power is built in and leads every index: no folder holds it.
+    return [{ slug: GLYPHH_GUIDE_SLUG, name: "Glyphh", description: GLYPHH_POWER_LINE }, ...rows];
   } catch { return []; }
 }
 

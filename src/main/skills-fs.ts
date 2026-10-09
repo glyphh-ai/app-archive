@@ -25,6 +25,7 @@ import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
+import { GLYPHH_GUIDE_SLUG } from "../shared/glyphh-guide.js";
 
 /** ONE KIND, A POWER (his order, 2026-10-09: "they are all just one thing…
  *  just make them skills… they all support all the features… they are not
@@ -217,6 +218,9 @@ function listIn(root: string, source: SkillSource, enabled: boolean): SkillSumma
       .filter((e) => !e.name.startsWith(".") && (e.isDirectory() || e.isSymbolicLink()))
       .map((e) => e.name);
   } catch { return []; }
+  // THE GLYPHH POWER IS BUILT IN (his order, 2026-10-09): a folder of that
+  // name — the copy the catalog used to install — is nobody's to see.
+  if (source === "glyphh") names = names.filter((n) => n !== GLYPHH_GUIDE_SLUG);
   return names.map((n) => summarize(source, n, path.join(root, n), enabled)).filter((s): s is SkillSummary => !!s);
 }
 

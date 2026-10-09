@@ -22,6 +22,7 @@ import { getPreference, setPreference, preferencesByPrefix } from "./stores/pref
 import { ensureInstanceTab, installFromHub, listInstances, findInstance } from "./app-instances.js";
 import { instanceCardId, isInstanceCardId, instanceKeyOfCardId } from "../shared/app-instances.js";
 import { houseViewOfApp } from "../shared/house-store.js";
+import { GLYPHH_GUIDE_SLUG } from "../shared/glyphh-guide.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
 interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
@@ -104,7 +105,8 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
       rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, tool: kind === "app" ? houseViewOfApp(it.slug) : null, type: kind });
     }
   }
-  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind))) {
+  // The Glyphh power is built in: a catalog that still ships it is not offered.
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind) && x.slug !== GLYPHH_GUIDE_SLUG)) {
     rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, tool: p.kind === "app" ? houseViewOfApp(p.slug) : null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -335,11 +337,12 @@ async function update(skillId: string): Promise<{ version: number }> {
   return { version };
 }
 
-/** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
- *  skill and its plugin from the public catalog, installed once when absent.
- *  Keeping them CURRENT is the Update button's job, not this function's. */
+/** What every desktop gets without asking (his order, 2026-09-16): the memory
+ *  power from the public catalog, installed once when absent. Keeping it
+ *  CURRENT is the Update button's job, not this function's. */
 // No plugin: Claude Code's plugin of Glyphh served the CLIs, and the Glyphh loop is the only loop now (2026-10-09).
-const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "skill", slug: "glyphh-memory" }];
+// No Glyphh power: it is built into the loop (shared/glyphh-guide.ts), never installed (2026-10-09).
+const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh-memory" }];
 export async function installDefaultHubItems(): Promise<void> {
   try {
     const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);
