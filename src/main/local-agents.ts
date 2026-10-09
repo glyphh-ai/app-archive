@@ -26,6 +26,7 @@
 import { ipcMain } from "electron";
 import cron from "node-cron";
 import { getLocalDb } from "./local-db.js";
+import { broadcast } from "./broadcast.js";
 import {
   armSchedule, runSchedule, setAgentProviders, touchSchedule,
   type ScheduleRow, type ScheduleContext, type SlotAgent,
@@ -146,6 +147,10 @@ export function onAgentsChanged(cb: () => void): () => void {
 }
 function announceAgents(): void {
   for (const cb of changed) { try { cb(); } catch { /* a listener's failure is its own */ } }
+  // Every window too: the rail paints the super powers' faces from this
+  // roster, so a new icon shows there the moment it is saved (his order,
+  // 2026-10-09).
+  try { broadcast("agents-changed"); } catch { /* no window yet */ }
 }
 
 export function saveAgent(input: AgentInput): AgentRow {

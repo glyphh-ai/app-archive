@@ -436,11 +436,13 @@ export function buildMemberLibrary(client, deps = {}) {
     if (!res.applied) throw new Error(STALE);
     return row;
   };
-  const libraryAgentCreate = async (input) => { try { return ok(await saveAgent(input, null)); } catch (err) { return fail(err); } };
-  const libraryAgentUpdate = async (ref, patch) => { try { return ok(await saveAgent(patch, String(ref))); } catch (err) { return fail(err); } };
+  // The roster moved: the rail repaints the super powers' faces at once.
+  const agentsMoved = () => { try { window.dispatchEvent(new Event('glyphh:agents-changed')); } catch { /* no window */ } };
+  const libraryAgentCreate = async (input) => { try { const r = ok(await saveAgent(input, null)); agentsMoved(); return r; } catch (err) { return fail(err); } };
+  const libraryAgentUpdate = async (ref, patch) => { try { const r = ok(await saveAgent(patch, String(ref))); agentsMoved(); return r; } catch (err) { return fail(err); } };
   const libraryAgentDelete = async (ref) => {
-    try { await lib().remove('agent', String(ref), { updatedAt: now() }); return ok(true); }
-    catch (err) { return isNotFound(err) ? ok(true) : fail(err); }
+    try { await lib().remove('agent', String(ref), { updatedAt: now() }); agentsMoved(); return ok(true); }
+    catch (err) { if (isNotFound(err)) { agentsMoved(); return ok(true); } return fail(err); }
   };
 
   // ── Tasks (the Tasks page + the schedules picker) ─────────────────────────

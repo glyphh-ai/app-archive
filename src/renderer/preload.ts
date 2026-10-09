@@ -1048,6 +1048,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean; modality?: string; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number }>; error?: string }>,
   planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; defaultModel?: string }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
+  /** The agent roster moved (saved, deleted, pulled from the server). */
+  onAgentsChanged: (cb: () => void) => {
+    const l = () => cb();
+    ipcRenderer.on("agents-changed", l);
+    return () => { ipcRenderer.removeListener("agents-changed", l); };
+  },
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
   libraryAgentTaskRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-run-now", ref, taskId) as Promise<LibEnvelope>,

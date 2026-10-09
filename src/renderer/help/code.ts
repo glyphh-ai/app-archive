@@ -7100,6 +7100,16 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   initAnchorEvents();
+  // A SUPER POWER'S NEW FACE SHOWS AT ONCE (his order, 2026-10-09): the rail
+  // repaints from the roster whenever it moves — main announces every save,
+  // delete and server pull; the web's library shim fires the window event.
+  let botsRepaint = 0;
+  const repaintBots = () => {
+    const mine = ++botsRepaint;
+    void primeBotAvatars().then(() => { if (mine === botsRepaint) renderRailSessions(); }).catch(() => { /* the next move repaints */ });
+  };
+  (window.glyphh as unknown as { onAgentsChanged?: (cb: () => void) => () => void }).onAgentsChanged?.(repaintBots);
+  window.addEventListener("glyphh:agents-changed", repaintBots);
   // The collapsed bar's one-line status rides the SAME timeline event the Plan
   // slot already consumes — no second subscription onto the frame stream.
   document.addEventListener("glyphh-agent:timeline", (ev) => {
