@@ -22127,8 +22127,13 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .rail-bot-row .rail-bot-mark svg { width: 56px; height: 56px; }
 .rail-bot-row .rail-bot-mark img { width: 24px; height: 24px; }
 .rail-bot-row .code-history-title { flex: 1 1 auto; min-width: 0; color: var(--text-2); font-size: 14.5px; }
-.rail-bot-row.active { background: var(--hover); }
-.rail-bot-row.active .code-history-title { color: var(--text); }
+/* THE SELECTED SUPER POWER wears Glyphh's highlight (his report, 2026-10-09).
+   The older `body[data-rail-section="code"] .code-history-item.active` rule
+   reads --rail-active-bg, which nothing defines (transparent) — and it is
+   more specific than a plain .rail-bot-row.active, so the highlight never
+   showed. This one outranks it. */
+body .code-history .code-history-item.rail-bot-row.active { background: var(--hover); color: var(--text); }
+body .code-history .code-history-item.rail-bot-row.active .code-history-title { color: var(--text); }
 
 /* ── THE RAIL (his order, 2026-10-09): Glyphh right under + New; then the
    SUPER POWERS label, a search under it, the list. ── */
