@@ -16,7 +16,8 @@
  * extra models and your powers are named to it in its brief.
  */
 
-import { clearInvalid, confirmAction, guardWebviewsForModal } from "./shared.js";
+import { clearInvalid, confirmAction, escapeHtml, guardWebviewsForModal } from "./shared.js";
+import { safeIconUrl } from "./model-info.js";
 import { AVATAR_COLORS, AVATAR_VARIANTS, DEFAULT_VARIANT, avatarOf, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
 import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } from "./composer-plus.js";
 import { primeConnectedIcons } from "./app-icon.js";
@@ -31,6 +32,7 @@ export interface BotRow {
   avatar: BotAvatar | null;
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
 }
+type PowerTabName = "folders" | "connections" | "models" | "skills";
 interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; utility?: boolean }
 interface Api extends PlusApi {
@@ -49,6 +51,7 @@ interface Api extends PlusApi {
   avatarGenerate?: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
     Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>;
   getWorkingDirRecents?: () => Promise<string[]>;
+  modelsCatalog?: () => Promise<{ ok: boolean; data: unknown[]; error?: string }>;
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
 export type PowerKind = "folders" | "connections" | "models" | "skills";
@@ -157,6 +160,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   host.appendChild(root);
   let bot: BotRow | null = null;
   let models: LoopModel[] = [];
+  /** Each model's logo, from the server's catalog (models-catalog). */
+  const modelIcons = new Map<string, string>();
   let conns: PlusConnectorRow[] = [];
   let skills: Array<{ id: string; name: string; type?: string }> = [];
   let picked: BotAvatar = { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[0]! };
@@ -173,6 +178,11 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   titlebar.append(title, x);
   root.appendChild(titlebar);
 
+  // A logo that won't load falls back to the chip glyph (error does not bubble: capture it).
+  root.addEventListener("error", (e) => {
+    const img = e.target as HTMLElement | null;
+    if (img instanceof HTMLImageElement && img.classList.contains("powm-model-img")) img.outerHTML = MODEL_SVG;
+  }, true);
   const grid = el("div", "botp-grid");
   root.appendChild(grid);
   const form = el("div", "botp-form");
@@ -681,7 +691,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (kind === "models") {
       const caps = bot.modelCaps ?? {};
       return modelList(bot).map((m) => ({
-        icon: MODEL_SVG, name: modelName(m), stored: m,
+        icon: modelIconOf(m), name: modelName(m), stored: m,
         sub: caps[m] ? `$${caps[m]}/month cap` : "No limit",
         ...(m === bot!.model ? { tag: "Runs on" } : {}),
       }));
@@ -689,8 +699,22 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     return powersOf(bot, "skills").map((s) => { const k = skillOf(s); return { icon: POWER_SVG, name: k?.name ?? s, sub: k?.type === "task" ? "Task" : "Skill", stored: s }; });
   }
 
+  /** THE MODEL'S LOGO from the server (his order, 2026-10-09: "they should be
+   *  in the powers section and in the modal"); the chip glyph without one. */
+  function modelIconOf(name: string): string {
+    const url = safeIconUrl(modelIcons.get(name));
+    return url ? `<img class="powm-model-img" src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" />` : MODEL_SVG;
+  }
+
   function powerRow(kind: PowerKind, it: PowerItem): HTMLElement {
     const row = el("div", "botp-power");
+    // A power opens in the powers modal (his order, 2026-10-09).
+    if (it.stored !== undefined) {
+      const stored = it.stored;
+      row.classList.add("openable");
+      row.title = `Open ${it.name}`;
+      row.addEventListener("click", (e) => { if (!(e.target as HTMLElement).closest(".botp-power-remove")) openModal(kind, stored); });
+    }
     const ic = el("div", "botp-power-icon");
     ic.innerHTML = it.icon;
     const main = el("div", "botp-power-main");
@@ -777,11 +801,12 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   // ── + ADD A POWER: the one powers modal (help/powers-modal.ts), picking for
   //    this super power; Save writes the picks in one update. ──
-  function openModal(kind?: PowerKind): void {
+  function openModal(kind?: PowerKind, focus?: string): void {
     if (!bot) return;
     const b = bot;
     openPowersModal({
       ...(kind ? { tab: kind } : {}),
+      ...(kind && focus ? { focus: { tab: kind as PowerTabName, name: focus } } : {}),
       selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills"), modelCaps: { ...(b.modelCaps ?? {}) } },
       onSave: async (picked) => {
         if (!bot) return { ok: false, error: "This super power is gone." };
@@ -812,12 +837,16 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   // ── Load ──
   void (async () => {
-    const [got, ms, cs, sk] = await Promise.all([
+    const [got, ms, cs, sk, cat] = await Promise.all([
       api().libraryAgentGet?.(opts.slug).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) })),
       api().loopModels?.("glyphh").catch(() => null),
       readConnectorRows(api()).catch(() => [] as PlusConnectorRow[]),
       api().skillsList?.(["skill", "task"]).catch(() => null),
+      api().modelsCatalog?.().catch(() => null),
     ]);
+    for (const m of (cat?.ok && Array.isArray(cat.data) ? cat.data : []) as Array<{ name?: string; iconUrl?: string | null }>) {
+      if (m && typeof m.name === "string" && m.iconUrl) modelIcons.set(m.name, m.iconUrl);
+    }
     if (destroyed) return;
     if (!got?.ok || !got.data) { showErr(errEl, got?.error || "This super power could not be read."); return; }
     bot = got.data as BotRow;

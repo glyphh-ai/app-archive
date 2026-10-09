@@ -53,6 +53,11 @@ export interface PowersModalOptions {
   selection?: PowerSelection;
   onSave?: (sel: PowerSelection) => Promise<{ ok: boolean; error?: string }>;
   title?: string;
+  /** OPEN ON ONE POWER (his order, 2026-10-09: "Clicking a model, a
+   *  connection, etc. in the right rail should open that in the powers
+   *  modal"): a model or a connection opens its page; a folder or one of
+   *  your powers opens its tab, searched to it. `name` is how it is stored. */
+  focus?: { tab: PowerTab; name: string };
 }
 
 type Conn = { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; accountId?: string; org?: boolean; shared?: boolean };
@@ -113,7 +118,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   openModal?.close();
   if (!wakeWired) { wakeWired = true; api().onConnectorsChanged?.(() => wake?.()); }
   if (!progressWired) { progressWired = true; api().onConnectorsConnectProgress?.((p) => onProgress?.(p)); }
-  let tab: PowerTab = opts.tab ?? "folders";
+  let tab: PowerTab = opts.focus?.tab ?? opts.tab ?? "folders";
   const sel: PowerSelection | null = opts.selection
     ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills], modelCaps: { ...(opts.selection.modelCaps ?? {}) } }
     : null;
@@ -666,6 +671,31 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     }
   }
 
+  /** Land on one power once the lists are in (opts.focus). */
+  async function focusOn(f: { tab: PowerTab; name: string }): Promise<void> {
+    tab = f.tab;
+    if (f.tab === "models") {
+      const m = byName(f.name);
+      if (m) modelView = { kind: "detail", model: m };
+      else queries.models = f.name;
+    } else if (f.tab === "connections") {
+      const conn = conns.find((c) => c.appSlug === f.name && c.connected !== false);
+      // Its directory row carries the logo and the blurb for either page.
+      const app = (await api().connectorsGetApps?.(f.name).catch(() => null))?.apps.find((a) => a.id === f.name);
+      if (closed) return;
+      if (conn) connView = { kind: "perms", conn, ...(app ? { app } : {}) };
+      else if (app) connView = { kind: "app", app };
+      else queries.connections = rows.find((r) => r.slug === f.name)?.name ?? f.name;
+    } else if (f.tab === "folders") {
+      queries.folders = baseName(f.name);
+    } else {
+      queries.skills = skills.find((x) => x.id === f.name)?.name ?? f.name;
+    }
+    // A search box keeps its own input: seed it with the query just set.
+    for (const [key, input] of searches) if (queries[key] !== undefined) input.value = queries[key]!;
+    paint();
+  }
+
   // ── open, then fill ──
   document.addEventListener("keydown", onKey, true);
   guardWebviewsForModal(true);
@@ -687,6 +717,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     recents = Array.isArray(rc) ? rc.map(String) : [];
     connectAllowed = (gates as { connectionsAllowed?: boolean } | null)?.connectionsAllowed !== false;
     repaintBody();
+    if (opts.focus) await focusOn(opts.focus);
     void primeConnectedIcons(rows.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
       if (closed) return;
       void readConnectorRows(api()).then((r) => { rows = r; if (tab === "connections" && connView.kind === "list") repaintBody(); }).catch(() => {});

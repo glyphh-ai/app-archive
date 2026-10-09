@@ -22420,3 +22420,8 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .powm-row .powm-icon:has(.powm-model-img), .powm-detail-icon:has(.powm-model-img) { background: #fff; border-radius: 6px; }
 .powm-detail-icon .powm-model-img { width: 28px; height: 28px; }
 .powm-body .powm-hero { margin: 0 0 14px; padding: 24px 20px; gap: 18px; }
+
+/* The powers column: a model's logo on the same light tile as the modal's; every power opens in the modal. */
+.botp-power .botp-power-icon:has(.powm-model-img) { background: #fff; border-radius: 6px; }
+.botp-power.openable { cursor: pointer; }
+.botp-power.openable:hover { border-color: var(--border-3); background: var(--hover); }
