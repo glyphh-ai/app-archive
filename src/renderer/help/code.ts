@@ -44,7 +44,7 @@ import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBo
 import { pickUtilityModel } from "./utility-model.js";
 import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
-import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow } from "./wall-prefs.js";
+import { applyTilesPerRow, applyWallWidth, applyRailTabsPerRow, RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown } from "./wall-prefs.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
@@ -6255,16 +6255,41 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
 // Each header is a disclosure whose open/closed state is remembered; the pref
 // keys are new — the v1/v2 keys were swept by migration 0034 and honoring a
 // stale value would decide the panel's shape for him.
-interface RailSectionDef { toggle: string; body: string; pref: string }
+/** `head` + `showPref`: a tray the member turns on in Appearance (Tabs and
+ *  Workspaces — gone 2026-09-16, BACK as options on his order, 2026-10-08);
+ *  Recents has neither and always shows. */
+interface RailSectionDef { toggle: string; body: string; pref: string; head?: string; showPref?: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
-  // Tabs and Workspaces left the rail for Settings (his order, 2026-09-16); their trays stay hidden.
   { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen", head: "rail-apps-head", showPref: RAIL_SHOW_APPS_PREF },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen", head: "rail-layouts-head", showPref: RAIL_SHOW_LAYOUTS_PREF },
 ];
+// Enabled (the Appearance option) and open (the disclosure) are separate
+// axes: a tray's body shows only when BOTH hold, so flipping the option
+// keeps the member's collapsed/expanded choice.
+const railSectionEnabled: Record<string, boolean> = {};
+const railSectionOpen: Record<string, boolean> = {};
 
 function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
+  railSectionOpen[def.toggle] = open;
   el(def.toggle)?.classList.toggle("closed", !open);
-  el(def.body)?.classList.toggle("hidden", !open);
+  const enabled = !def.showPref || railSectionEnabled[def.toggle] === true;
+  el(def.body)?.classList.toggle("hidden", !(open && enabled));
   if (persist) void window.glyphh.setPreference?.(def.pref, open);
+  syncRailLayout();
+}
+
+/** Show or hide the optional trays per the Appearance options. Settings
+ *  dispatches `glyphh:rail-sections-changed` after a flip; this re-reads. */
+async function applyRailSectionsVisibility(): Promise<void> {
+  if (onWebTarget()) return;   // the trays are the desktop's (help/surface.ts WEB_HIDDEN_RAIL)
+  for (const def of RAIL_SECTIONS) {
+    if (!def.showPref || !def.head) continue;
+    const on = railTrayShown(await window.glyphh.getPreference?.(def.showPref, RAIL_SHOW_DEFAULT));
+    railSectionEnabled[def.toggle] = on;
+    el(def.head)?.classList.toggle("hidden", !on);
+    el(def.body)?.classList.toggle("hidden", !(on && railSectionOpen[def.toggle] === true));
+  }
   syncRailLayout();
 }
 
@@ -6278,6 +6303,8 @@ function initRailSections(): void {
     });
     void window.glyphh.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
   }
+  void applyRailSectionsVisibility();
+  document.addEventListener(RAIL_SECTIONS_CHANGED_EVENT, () => { void applyRailSectionsVisibility(); });
 }
 
 /** One authority over the rail stack's vertical share: with a tray open,

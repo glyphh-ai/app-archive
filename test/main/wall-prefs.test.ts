@@ -3,7 +3,18 @@ import {
   clampTilesPerRow, clampWallWidth, clampRailTabsPerRow,
   railTabsTrack, railTabsLabel,
   TILES_PER_ROW_DEFAULT, WALL_WIDTH_DEFAULT, RAIL_TABS_AUTO,
+  RAIL_SHOW_DEFAULT, railTrayShown,
 } from "../../src/renderer/help/wall-prefs.js";
+
+describe("the sidebar trays' option (his order, 2026-10-08)", () => {
+  it("is on by default, and only an explicit false puts a tray away", () => {
+    expect(RAIL_SHOW_DEFAULT).toBe(true);
+    expect(railTrayShown(undefined)).toBe(true);
+    expect(railTrayShown(null)).toBe(true);
+    expect(railTrayShown(true)).toBe(true);
+    expect(railTrayShown(false)).toBe(false);
+  });
+});
 
 describe("wall-prefs", () => {
   it("clamps tiles per row into its slider's range", () => {

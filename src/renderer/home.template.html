@@ -186,7 +186,10 @@
              recents and the Apps/Workspaces got dropped") — drag to resize
              Recents; the height persists as codeRecentsH. -->
         <div id="recents-vsplit" class="recents-vsplit hidden" title="Drag to resize"></div>
-        <div class="hidden code-rail-label app-rail-section-head" data-rail-section="apps">
+        <!-- Tabs and Workspaces trays — BACK as Appearance options (his order,
+             2026-10-08): `railShowApps` / `railShowLayouts` show a tray; its
+             disclosure remembers open/closed on its own (code.ts RAIL_SECTIONS). -->
+        <div id="rail-apps-head" class="hidden code-rail-label app-rail-section-head" data-rail-section="apps">
           <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             <span>Tabs</span>
@@ -198,7 +201,7 @@
           </div>
           <div id="recent-apps-list" class="app-rail-grid"></div>
         </div>
-        <div class="hidden code-rail-label app-rail-section-head" data-rail-section="layouts">
+        <div id="rail-layouts-head" class="hidden code-rail-label app-rail-section-head" data-rail-section="layouts">
           <button id="rail-layouts-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             <span>Workspaces</span>
