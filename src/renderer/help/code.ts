@@ -6906,6 +6906,12 @@ function initRailApps(): void {
   }
   // The + beside Workspaces: save what is on screen as a workspace.
   el("rail-layouts-add")?.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
+  // RESET (his order, 2026-10-09): the old Echo "remove all" — every panel and
+  // the open workspace close; the surface then seats a fresh Glyphh agent.
+  el("rail-layouts-reset")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
+  });
   syncRailLayout();
   void loadRecentApps();
   // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
