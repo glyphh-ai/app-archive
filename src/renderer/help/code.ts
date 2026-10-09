@@ -6040,6 +6040,14 @@ async function primeBotAvatars(): Promise<boolean> {
   }
   railBots = bots;
   rosterKnown = true;
+  // GLYPHH'S OWN RECORD (2026-10-09): its name on the rail, its voice on its threads.
+  void (window.glyphh as unknown as { libraryAgentGet?: (ref: string) => Promise<{ ok: boolean; data?: unknown }> }).libraryAgentGet?.("glyphh").then((r) => {
+    const g = r?.ok ? r.data as { name?: string; voice?: { model?: string; voiceId?: string } | null } : null;
+    const nameEl = document.getElementById("rail-glyphh-name");
+    if (nameEl) nameEl.textContent = (g?.name || "Glyphh").trim() || "Glyphh";
+    if (g?.voice?.model && g.voice.voiceId) railBotVoices.set("glyphh", { model: g.voice.model, voiceId: g.voice.voiceId });
+    else railBotVoices.delete("glyphh");
+  }).catch(() => { /* the rail keeps "Glyphh" */ });
   if (before) leaveGoneSuperPowers([...before].filter((slug) => !bots.some((b) => b.slug === slug)));
   // The connected accounts, read once here and again whenever one moves.
   if (!railConnectedWired) {
@@ -6570,7 +6578,16 @@ function leaveGoneSuperPowers(gone: string[]): void {
     w.__wbCloseBotPage?.(slug);
     if (currentId === `bots/${slug}` || railPickedKey === slug) home = true;
   }
-  if (home) openGlyphhHome();
+  if (home) openGlyphhNew();
+}
+
+/** GLYPHH, A NEW SESSION: Glyphh picked on the rail, any workspace closed, a
+ *  fresh thread — where a deleted super power's member lands. */
+function openGlyphhNew(): void {
+  railPickedKey = "glyphh";
+  renderRailSessions();
+  leaveWorkspace();
+  railNewGlyphh();
 }
 
 /** A new Glyphh session in the open agent — set at init (initCode). */
@@ -7098,8 +7115,26 @@ function initRailApps(): void {
   initRailSections();
   initWorkspacesVsplit();
   el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
-  // The home default as a door (the super power page's Delete lands here).
-  (window as unknown as { __glyphhOpenHome?: () => void }).__glyphhOpenHome = () => openGlyphhHome();
+  // Glyphh's ⋮: Edit, and only Edit — Glyphh is never deleted.
+  el("rail-glyphh-menu")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    closeSessMenu();
+    const m = document.createElement("div");
+    m.className = "code-menu";
+    const x = document.createElement("button");
+    x.className = "code-menu-item";
+    x.textContent = "Edit";
+    x.addEventListener("click", () => { closeSessMenu(); (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.("glyphh"); });
+    m.appendChild(x);
+    m.style.zIndex = "10040";
+    placeFixedMenu(btn, m, { align: "right", side: "auto" });
+    sessMenuEl = m;
+  });
+  // The landing after a delete (the super power page's Delete lands here):
+  // a NEW Glyphh session (his order, 2026-10-09: "it should just open the new
+  // agent session"), never the last thread.
+  (window as unknown as { __glyphhOpenHome?: () => void }).__glyphhOpenHome = () => openGlyphhNew();
   // THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
   // to it opens its conversation the way its rail row does.
   el("rail-sp-new")?.addEventListener("click", (e) => { e.stopPropagation(); openNewSuperPower(); });
@@ -7337,7 +7372,7 @@ export function initCode(): void {
   // repaints from the roster whenever it moves — main announces every save,
   // delete and server pull; the web's library shim fires the window event.
   // A super power's thread is read aloud in its own voice.
-  setSpeakerVoice(() => (currentId.startsWith("bots/") ? railBotVoices.get(currentId.slice(5)) ?? null : null));
+  setSpeakerVoice(() => (currentId.startsWith("bots/") ? railBotVoices.get(currentId.slice(5)) ?? null : railBotVoices.get("glyphh") ?? null));
   let botsRepaint = 0;
   const repaintBots = () => {
     const mine = ++botsRepaint;

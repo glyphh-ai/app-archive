@@ -84,7 +84,7 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
     await call("agents.save", { name: "Writer", brief: "You write." });
     expect(await call("agents.list", {})).toEqual([{
       agent: "writer", name: "Writer", description: "", model: null, role: "worker", hasBrief: true,
-      powers: [], connections: [], models: [], folders: [], superPowers: [], personality: null, effort: null,
+      powers: [], connections: [], models: [], folders: [], superPowers: [], personality: null, directness: null, temperament: null, effort: null,
     }]);
     expect(await call("agents.get", { agent: "writer" })).toMatchObject({ brief: "You write." });
     expect(await call("agents.delete", { agent: "writer" })).toEqual({ agent: "writer", deleted: true });

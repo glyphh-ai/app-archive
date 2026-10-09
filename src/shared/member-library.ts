@@ -400,6 +400,11 @@ export interface AgentRowLike {
    *  (playful), 3 = as it comes; effort is the loop's dial (low … max); the
    *  voice is a TTS model and one of its voices. Absent = the defaults. */
   personality?: number;
+  /** TWO MORE SLIDERS (his order, 2026-10-09: "Gentle -> Blunt and Kind ->
+   *  Spicy why not both?"): directness 1 gentle … 5 blunt, temperament 1 kind
+   *  … 5 spicy; 3 (or none) adds nothing. */
+  directness?: number;
+  temperament?: number;
   effort?: string;
   voice?: AgentVoiceLike | null;
   /** MONTHLY CAPS (his order, 2026-10-09): model name → dollars a month this
@@ -429,10 +434,17 @@ export interface AgentInputLike {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
-  personality?: number; effort?: string; voice?: AgentVoiceLike | null;
+  personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
 }
+
+/** GLYPHH'S OWN RECORD (his order, 2026-10-09: "give Glyphh a record with no
+ *  Delete… they can change its name all they want"): the agent row with this
+ *  slug is Glyphh — its brief, powers, super powers, sliders and voice ride
+ *  its own conversations. It is never a super power: no list offers it, no
+ *  delete takes it, its face is the mascot. */
+export const GLYPHH_AGENT = "glyphh";
 
 /** Caps as stored: a positive dollar amount per model, two decimals; anything else is no limit. */
 export function cleanModelCaps(v: unknown): Record<string, number> {
@@ -545,6 +557,8 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
     superPowers: (Array.isArray(input.superPowers) ? cleanNames(input.superPowers) : cleanNames(existing?.superPowers)).filter((s) => s !== slug),
     ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
+    ...optional("directness", input.directness === undefined ? cleanPersonality(existing?.directness) : cleanPersonality(input.directness)),
+    ...optional("temperament", input.temperament === undefined ? cleanPersonality(existing?.temperament) : cleanPersonality(input.temperament)),
     ...optional("effort", input.effort === undefined ? cleanEffort(existing?.effort) : cleanEffort(input.effort)),
     voice: input.voice === undefined ? cleanVoice(existing?.voice) : cleanVoice(input.voice),
     modelCaps: input.modelCaps === undefined ? cleanModelCaps(existing?.modelCaps) : cleanModelCaps(input.modelCaps),

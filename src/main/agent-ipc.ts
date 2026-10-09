@@ -26,7 +26,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
-import { getAgent, type AgentRow } from "./local-agents.js";
+import { getAgent, glyphhRow, type AgentRow } from "./local-agents.js";
 import { powerOfChat } from "../shared/powers.js";
 import { botEffort, botExtraFolders, botPersonalityNote, botPowersNote, botWorkFolder } from "../shared/bot-powers.js";
 import { getWorkingDirectory } from "./working-directory.js";
@@ -306,9 +306,14 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   const chat = storedChat(p.chatId);
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
-  const brief = [String(bot?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(bot), botPowersNote(bot, folder)].filter(Boolean).join("\n\n");
-  // The effort slider: a super power's own setting leads its turns.
-  const effort = bot ? botEffort(bot, p.effort) : p.effort;
+  // GLYPHH'S OWN RECORD (his order, 2026-10-09): a plain Glyphh thread wears
+  // what the member set on Glyphh's Edit page — its brief, sliders, powers and
+  // super powers. Its folder stays the thread's own (a thread's folder is its
+  // sandbox); a super power's or a power's thread is unchanged.
+  const self = bot ?? (power ? null : glyphhRow());
+  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(self, folder)].filter(Boolean).join("\n\n");
+  // The effort slider: a super power's own setting (or Glyphh's) leads its turns.
+  const effort = self ? botEffort(self, p.effort) : p.effort;
   // The bot's other folders ride as folder attachments: readable beside the working one.
   const botFolders = bot ? classifyPaths(botExtraFolders(bot, folder)) : [];
   const attachments = [...(p.attachments ?? []), ...botFolders.filter((f) => !(p.attachments ?? []).some((a) => a.path === f.path))];

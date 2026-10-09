@@ -29,7 +29,7 @@ import { createGlyphhSpinner } from "../glyphh-spinner.js";
 export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
   slug: string; name: string; description: string; prompt: string; model: string;
-  personality?: number; effort?: string; voice?: BotVoice | null;
+  personality?: number; directness?: number; temperament?: number; effort?: string; voice?: BotVoice | null;
   /** Model → dollars a month; absent = no limit (the gateway enforces it). */
   modelCaps?: Record<string, number>;
   avatar: BotAvatar | null;
@@ -70,6 +70,9 @@ export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["conne
 export const PERSONALITY_LABELS: ReadonlyArray<string> = Object.freeze(["Serious", "Calm", "Balanced", "Warm", "Playful"]);
 export const EFFORTS: ReadonlyArray<string> = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
 export const EFFORT_LABELS: ReadonlyArray<string> = Object.freeze(["Fastest", "Faster", "Balanced", "Deeper", "Deepest"]);
+/** TWO MORE SLIDERS (his order, 2026-10-09: "Gentle -> Blunt and Kind -> Spicy why not both?"). */
+export const DIRECTNESS_LABELS: ReadonlyArray<string> = Object.freeze(["Gentle", "Tactful", "Balanced", "Frank", "Blunt"]);
+export const TEMPERAMENT_LABELS: ReadonlyArray<string> = Object.freeze(["Kind", "Friendly", "Balanced", "Sassy", "Spicy"]);
 interface VoiceOption { id: string; name: string; providerSlug?: string; previewUrl?: string; category?: string }
 /** The voice a super power wears until one is picked: the member's own when
  *  the model offers it, else the model's first. */
@@ -173,6 +176,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   host.classList.add("botp-host");
   const root = el("div", "botp");
   host.appendChild(root);
+  /** GLYPHH'S OWN RECORD is edited here too (slug "glyphh", shared GLYPHH_AGENT). */
+  const isGlyphh = opts.slug === "glyphh";
   let bot: BotRow | null = null;
   let models: LoopModel[] = [];
   /** Each model's logo, from the server's catalog (models-catalog). */
@@ -256,6 +261,16 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
         <div class="botp-slider-ends"><span>Serious</span><span>Playful</span></div>
       </div>
       <div class="botp-slider">
+        <div class="botp-slider-head"><label class="settings-label">Directness</label><span class="botp-slider-val botp-directness-val"></span></div>
+        <input type="range" class="botp-range botp-directness" min="1" max="5" step="1" aria-label="Directness" />
+        <div class="botp-slider-ends"><span>Gentle</span><span>Blunt</span></div>
+      </div>
+      <div class="botp-slider">
+        <div class="botp-slider-head"><label class="settings-label">Temperament</label><span class="botp-slider-val botp-temperament-val"></span></div>
+        <input type="range" class="botp-range botp-temperament" min="1" max="5" step="1" aria-label="Temperament" />
+        <div class="botp-slider-ends"><span>Kind</span><span>Spicy</span></div>
+      </div>
+      <div class="botp-slider">
         <div class="botp-slider-head"><label class="settings-label">Thinking</label><span class="botp-slider-val botp-effort-val"></span></div>
         <input type="range" class="botp-range botp-effort" min="1" max="5" step="1" aria-label="Thinking: speed or effort" />
         <div class="botp-slider-ends"><span>Fast</span><span>Thorough</span></div>
@@ -282,13 +297,19 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   // THE SLIDERS (his order, 2026-10-09: "personality, thinking effort or speed").
   const persIn = q<HTMLInputElement>(".botp-personality");
   const effortIn = q<HTMLInputElement>(".botp-effort");
+  const directIn = q<HTMLInputElement>(".botp-directness");
+  const tempIn = q<HTMLInputElement>(".botp-temperament");
   let effortTouched = false;
   const paintSliders = (): void => {
     q<HTMLElement>(".botp-personality-val").textContent = PERSONALITY_LABELS[Number(persIn.value) - 1] ?? "";
+    q<HTMLElement>(".botp-directness-val").textContent = DIRECTNESS_LABELS[Number(directIn.value) - 1] ?? "";
+    q<HTMLElement>(".botp-temperament-val").textContent = TEMPERAMENT_LABELS[Number(tempIn.value) - 1] ?? "";
     q<HTMLElement>(".botp-effort-val").textContent = EFFORT_LABELS[Number(effortIn.value) - 1] ?? "";
-    for (const r of [persIn, effortIn]) r.style.setProperty("--fill", `${((Number(r.value) - 1) / 4) * 100}%`);
+    for (const r of [persIn, directIn, tempIn, effortIn]) r.style.setProperty("--fill", `${((Number(r.value) - 1) / 4) * 100}%`);
   };
   persIn.addEventListener("input", paintSliders);
+  directIn.addEventListener("input", paintSliders);
+  tempIn.addEventListener("input", paintSliders);
   effortIn.addEventListener("input", () => { effortTouched = true; paintSliders(); });
   /** The voice it speaks in (null = yours); picked in the avatar dropdown, kept on Save. */
   let pickedVoice: BotVoice | null = null;
@@ -310,6 +331,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** THE AVATAR, LEFT OF THE NAME, AS A DROPDOWN (his order, 2026-10-09):
    *  the sixteen faces, the picture it wears if one was made, + Add new. */
   function paintFaceBtn(): void {
+    // Glyphh wears its own mark, always (his order, 2026-10-09: "a fixed… face").
+    if (isGlyphh) { faceBtn.innerHTML = `<span class="botp-face-mark"><img src="brand/glyphh-mark.png" alt="" width="40" height="40" draggable="false" /></span>`; return; }
     faceBtn.innerHTML = `<span class="botp-face-mark">${botAvatarSvg(picked, "idle", { size: 40 })}</span><span class="botp-face-caret">${CARET_SVG}</span>`;
   }
   let faceMenu: HTMLElement | null = null;
@@ -359,7 +382,13 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     faceBtn.setAttribute("aria-expanded", "true");
     setTimeout(() => { document.addEventListener("mousedown", onFaceAway, true); document.addEventListener("keydown", onFaceKey, true); }, 0);
   }
-  faceBtn.addEventListener("click", openFaceMenu);
+  faceBtn.addEventListener("click", () => { if (!isGlyphh) openFaceMenu(); });
+  // GLYPHH'S PAGE (his order, 2026-10-09): no Delete, a fixed face, a free name.
+  if (isGlyphh) {
+    q<HTMLElement>(".botp-delete").remove();
+    faceBtn.disabled = true;
+    faceBtn.title = "Glyphh";
+  }
 
   // ── THE VOICE, its own dropdown on the identity row (his order, 2026-10-09:
   //    "that row is the agent's identity: Avatar -> voice -> name"). The
@@ -623,6 +652,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     paintFaceBtn();
     paintHead();
     persIn.value = String(bot.personality ?? 3);
+    directIn.value = String(bot.directness ?? 3);
+    tempIn.value = String(bot.temperament ?? 3);
     const ei = EFFORTS.indexOf(String(bot.effort ?? ""));
     effortIn.value = String(ei >= 0 ? ei + 1 : 3);   // unset sits in the middle until moved
     effortTouched = false;
@@ -636,7 +667,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!bot) return;
     const input = {
       name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: picked,
-      personality: Number(persIn.value), voice: pickedVoice,
+      personality: Number(persIn.value), directness: Number(directIn.value), temperament: Number(tempIn.value), voice: pickedVoice,
       // Untouched and never set, the effort stays the chat's own dial.
       ...(effortTouched || bot.effort ? { effort: EFFORTS[Number(effortIn.value) - 1] } : {}),
     };
@@ -879,7 +910,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       })),
     });
     const model: PowerMapModel = {
-      center: { name: nameIn.value.trim() || bot.name, face: botAvatarSvg(picked, "idle", { size: 84 }) },
+      center: { name: nameIn.value.trim() || bot.name, face: isGlyphh ? `<img src="brand/glyphh-mark.png" alt="" width="84" height="84" draggable="false" />` : botAvatarSvg(picked, "idle", { size: 84 }) },
       groups: [group("connections", "Connections"), group("folders", "Folders"), group("superPowers", "Super powers"), group("skills", "Powers"), group("models", "Models")],
     };
     map.update(model);
@@ -947,8 +978,15 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       if (m && typeof m.name === "string" && m.iconUrl) modelIcons.set(m.name, m.iconUrl);
     }
     if (destroyed) return;
-    if (!got?.ok || !got.data) { doneLoading(); showErr(errEl, got?.error || "This super power could not be read."); return; }
-    bot = got.data as BotRow;
+    // Glyphh's record is made the first time its page opens.
+    let row = got?.ok ? got.data : null;
+    if (!row && isGlyphh) {
+      const made = await api().libraryAgentUpdate?.("glyphh", { name: "Glyphh" }).catch(() => null);
+      row = made?.ok ? made.data : null;
+    }
+    if (destroyed) return;
+    if (!row) { doneLoading(); showErr(errEl, got?.error || "This super power could not be read."); return; }
+    bot = row as BotRow;
     models = ms?.ok ? ms.models.filter((m) => !m.utility) : [];
     conns = cs;
     skills = sk?.ok && Array.isArray(sk.data) ? (sk.data as Array<{ id: string; name: string; type?: string }>) : [];

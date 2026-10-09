@@ -110,10 +110,16 @@
         <!-- GLYPHH, the rail's first row (his orders, 2026-10-09; + New left the
              rail): its newest thread,
              else a new one (help/code.ts openGlyphhHome). -->
-        <button id="rail-glyphh" class="app-rail-nav-item rail-glyphh-row" type="button">
-          <img class="rail-glyphh-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
-          <span>Glyphh</span>
-        </button>
+        <!-- GLYPHH'S ⋮ (his order, 2026-10-09: "Glyphh needs a super power edit
+             button... the same three dots, no ability to delete"): Edit only.
+             The name is the member's (Glyphh's own record). -->
+        <div class="rail-glyphh-wrap">
+          <button id="rail-glyphh" class="app-rail-nav-item rail-glyphh-row" type="button">
+            <img class="rail-glyphh-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
+            <span id="rail-glyphh-name">Glyphh</span>
+          </button>
+          <button id="rail-glyphh-menu" class="code-chat-menu-btn rail-glyphh-menu" type="button" title="More" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></button>
+        </div>
         <!-- THE RAIL'S NAV ROWS ARE GONE (his order, 2026-10-09: "remove the other
              items… the entire top left rail"): + New, Glyphh, then Super powers. -->
         <!-- Recents — BACK (his order, 2026-09-10): the sessions are the CLI

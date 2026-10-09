@@ -33,7 +33,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, checkSuperPowers, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, checkSuperPowers, GLYPHH_AGENT, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -67,6 +67,9 @@ export interface AgentRow {
   models?: string[];
   /** The super powers it holds and may hand work to (2026-10-09). */
   superPowers?: string[];
+  /** Directness 1 gentle … 5 blunt; temperament 1 kind … 5 spicy (2026-10-09). */
+  directness?: number;
+  temperament?: number;
   /** The sliders and the voice (shared/member-library.ts AgentRowLike). */
   personality?: number;
   effort?: string;
@@ -131,8 +134,14 @@ function writeAgent(row: AgentRow): void {
   void remotePut("agent", row.slug, row).catch((e) => console.warn("[agents] save failed:", String(e)));
 }
 
+/** The SUPER POWERS: every agent row but Glyphh's own (GLYPHH_AGENT). */
 export function listAgents(): AgentRow[] {
-  return Array.from(agents.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(agents.values()).filter((a) => a.slug !== GLYPHH_AGENT).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** GLYPHH'S OWN RECORD, or null until the member first edits Glyphh. */
+export function glyphhRow(): AgentRow | null {
+  return readAgent(GLYPHH_AGENT);
 }
 
 export function getAgent(ref: string): AgentRow {
@@ -146,7 +155,7 @@ interface AgentInput {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
-  personality?: number; effort?: string; voice?: AgentVoiceLike | null;
+  personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
@@ -200,6 +209,7 @@ export function saveAgent(input: AgentInput): AgentRow {
 /** Delete the agent: its schedules go with it and the server drops the row. */
 export function deleteAgent(ref: string): void {
   const slug = String(ref);
+  if (slug === GLYPHH_AGENT) throw new Error("Glyphh can't be deleted");
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
   // would keep firing a prompt nobody can see or edit. Each is tombstoned:

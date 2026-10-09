@@ -15,6 +15,8 @@
 export interface BotPowersLike {
   model?: string;
   personality?: number;
+  directness?: number;
+  temperament?: number;
   effort?: string;
   folders?: string[];
   connections?: string[];
@@ -70,8 +72,23 @@ export const PERSONALITY_LINES: Readonly<Record<number, string>> = Object.freeze
 });
 export function botPersonalityNote(bot: BotPowersLike | null): string {
   const n = Math.round(Number(bot?.personality));
-  return PERSONALITY_LINES[n] ?? "";
+  return [PERSONALITY_LINES[n] ?? "", DIRECTNESS_LINES[Math.round(Number(bot?.directness))] ?? "", TEMPERAMENT_LINES[Math.round(Number(bot?.temperament))] ?? ""].filter(Boolean).join("\n");
 }
+
+/** DIRECTNESS (his order, 2026-10-09: "Gentle -> Blunt"): 3 (or none) adds nothing. */
+export const DIRECTNESS_LINES: Readonly<Record<number, string>> = Object.freeze({
+  1: "Directness: very gentle. Soften hard news, lead with what works, suggest rather than tell.",
+  2: "Directness: tactful. Say what matters plainly but kindly.",
+  4: "Directness: frank. Say what you think without padding.",
+  5: "Directness: blunt. Get straight to it; no cushioning, no hedging.",
+});
+/** TEMPERAMENT (his order, 2026-10-09: "Kind -> Spicy"): 3 (or none) adds nothing. */
+export const TEMPERAMENT_LINES: Readonly<Record<number, string>> = Object.freeze({
+  1: "Temperament: kind and encouraging. Warm, patient, generous with praise that is earned.",
+  2: "Temperament: friendly and easygoing.",
+  4: "Temperament: a little sassy. A dry aside or a raised eyebrow is welcome; stay respectful.",
+  5: "Temperament: spicy. Bold, cheeky opinions and playful jabs; never mean, never rude to the user.",
+});
 
 /** The effort a bot's turn runs at: its own slider when set, else what the turn asked. */
 export function botEffort(bot: BotPowersLike | null, asked: string | undefined): string | undefined {

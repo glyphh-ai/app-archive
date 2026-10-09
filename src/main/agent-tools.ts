@@ -33,11 +33,12 @@ import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
 import { listSkills } from "./skills-fs.js";
 import { getClient } from "./glyphh-client.js";
-import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, type AgentRole } from "../shared/member-library.js";
+import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, GLYPHH_AGENT, type AgentRole } from "../shared/member-library.js";
 
 interface SaveParams {
   agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown;
   powers?: unknown; connections?: unknown; models?: unknown; folders?: unknown; personality?: unknown; effort?: unknown; superPowers?: unknown;
+  directness?: unknown; temperament?: unknown;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -46,7 +47,8 @@ function summary(a: ReturnType<typeof getAgent>) {
   return {
     agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim(),
     powers: (a.skills ?? []).map((id) => id.slice(id.indexOf(":") + 1)), connections: a.connections ?? [], models: a.models ?? [],
-    folders: a.folders ?? [], superPowers: a.superPowers ?? [], personality: a.personality ?? null, effort: a.effort ?? null,
+    folders: a.folders ?? [], superPowers: a.superPowers ?? [], personality: a.personality ?? null,
+    directness: a.directness ?? null, temperament: a.temperament ?? null, effort: a.effort ?? null,
   };
 }
 
@@ -130,6 +132,7 @@ export function installAgentRelayHandlers(): void {
     if (!name) throw new Error("an agent needs a name");
     // MAKING never overwrites: a name that slugs onto an existing agent is that
     // agent, and changing it is an explicit update.
+    if (!ref && slugify(name) === GLYPHH_AGENT) throw new Error(`"${name}" is Glyphh's own name — pick another for a super power`);
     if (!ref && listAgents().some((a) => a.slug === slugify(name))) {
       throw new Error(`an agent called "${name}" already exists — pass { agent: "${slugify(name)}" } to update it`);
     }
@@ -152,6 +155,10 @@ export function installAgentRelayHandlers(): void {
     const models = p.models === undefined ? undefined : await Promise.all(cleanNames(p.models).map((m) => checkedModel(m)));
     const personality = p.personality === undefined ? undefined : cleanPersonality(p.personality);
     if (p.personality !== undefined && personality === undefined) throw new Error("personality is 1 (serious) to 5 (playful)");
+    const directness = p.directness === undefined ? undefined : cleanPersonality(p.directness);
+    if (p.directness !== undefined && directness === undefined) throw new Error("directness is 1 (gentle) to 5 (blunt)");
+    const temperament = p.temperament === undefined ? undefined : cleanPersonality(p.temperament);
+    if (p.temperament !== undefined && temperament === undefined) throw new Error("temperament is 1 (kind) to 5 (spicy)");
     const effort = p.effort === undefined ? undefined : cleanEffort(p.effort);
     if (p.effort !== undefined && effort === undefined) throw new Error(`effort is one of ${AGENT_EFFORTS.join(", ")}`);
     const row = saveAgent({
@@ -161,6 +168,8 @@ export function installAgentRelayHandlers(): void {
       ...(models ? { models: models.filter(Boolean) } : {}),
       ...(p.folders !== undefined ? { folders: cleanNames(p.folders) } : {}),
       ...(personality !== undefined ? { personality } : {}),
+      ...(directness !== undefined ? { directness } : {}),
+      ...(temperament !== undefined ? { temperament } : {}),
       ...(effort !== undefined ? { effort } : {}),
       // The super powers it holds: checked for itself and loops by saveAgent.
       ...(p.superPowers !== undefined ? { superPowers: cleanNames(p.superPowers) } : {}),

@@ -22796,3 +22796,9 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .pmap-k-superPowers .pmap-label-dot { background: #ec4899; }
 .pmap-k-superPowers.pmap-node { border-left: 3px solid #ec4899; }
 .pmap-k-superPowers .pmap-node-icon svg { width: 22px; height: 22px; }
+
+/* Glyphh's row and its ⋮ (Edit only, 2026-10-09). */
+.rail-glyphh-wrap { position: relative; }
+.rail-glyphh-wrap > .rail-glyphh-row { width: 100%; }
+.rail-glyphh-menu { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); opacity: 0; }
+.rail-glyphh-wrap:hover .rail-glyphh-menu, .rail-glyphh-menu:focus-visible { opacity: 1; }
