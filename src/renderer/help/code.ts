@@ -6509,18 +6509,12 @@ function openRailBotMenu(anchor: HTMLElement, b: { slug: string; name: string })
       renderRailSessions();
     });
   });
-  const r = anchor.getBoundingClientRect();
-  m.style.position = "fixed";
-  m.style.top = `${Math.round(r.bottom + 4)}px`;
-  m.style.left = `${Math.round(Math.max(8, r.right - 180))}px`;
+  // Placed by the one rule (menu-place.ts): under the ⋮, its right edge on
+  // the ⋮'s, flipped above when the rail runs out (his report, 2026-10-09:
+  // a fixed 180px offset landed it over the bot's name).
   m.style.zIndex = "10040";
-  document.body.appendChild(m);
+  placeFixedMenu(anchor, m, { align: "right", side: "auto" });
   sessMenuEl = m;
-  window.setTimeout(() => document.addEventListener("mousedown", function off(ev) {
-    if (m.contains(ev.target as Node)) return;
-    closeSessMenu();
-    document.removeEventListener("mousedown", off, true);
-  }, true), 0);
 }
 
 /** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
