@@ -127,6 +127,9 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;",
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 1.8;
 
+const EXPAND_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>`;
+const SHRINK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>`;
+
 export interface PowerMapHandle { update: (model: PowerMapModel) => void; destroy: () => void }
 
 export function mountPowerMap(host: HTMLElement, opts: { onOpen?: (kind: MapGroupKind, stored: string) => void; onAdd?: () => void } = {}): PowerMapHandle {
@@ -139,6 +142,7 @@ export function mountPowerMap(host: HTMLElement, opts: { onOpen?: (kind: MapGrou
       <button type="button" class="pmap-ctl" data-z="out" title="Zoom out" aria-label="Zoom out">−</button>
       <button type="button" class="pmap-ctl" data-z="fit" title="Fit" aria-label="Fit the map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     </div>
+    <button type="button" class="pmap-full-btn" title="Full screen" aria-label="Full screen" aria-pressed="false">${EXPAND_SVG}</button>
     <div class="pmap-hint">Drag to pan · ⌘ scroll to zoom</div>`;
   host.appendChild(root);
   const viewport = root.querySelector<HTMLElement>(".pmap-viewport")!;
@@ -175,6 +179,23 @@ export function mountPowerMap(host: HTMLElement, opts: { onOpen?: (kind: MapGrou
     if (z === "fit") { userMoved = false; fit(); }
     else zoomAt(z === "in" ? 1.2 : 1 / 1.2, viewport.clientWidth / 2, viewport.clientHeight / 2);
   }));
+  // FULL SCREEN (his order, 2026-10-09: "make the canvas expandable full
+  // screen"): the map lifts over the page; Esc or the button brings it back.
+  const fullBtn = root.querySelector<HTMLButtonElement>(".pmap-full-btn")!;
+  const setFull = (on: boolean): void => {
+    root.classList.toggle("pmap-full", on);
+    fullBtn.innerHTML = on ? SHRINK_SVG : EXPAND_SVG;
+    fullBtn.title = on ? "Exit full screen" : "Full screen";
+    fullBtn.setAttribute("aria-label", fullBtn.title);
+    fullBtn.setAttribute("aria-pressed", String(on));
+    userMoved = false;
+    requestAnimationFrame(fit);
+  };
+  fullBtn.addEventListener("click", () => setFull(!root.classList.contains("pmap-full")));
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape" && root.classList.contains("pmap-full")) { e.preventDefault(); e.stopPropagation(); setFull(false); }
+  };
+  document.addEventListener("keydown", onKey, true);
   viewport.addEventListener("wheel", (e) => {
     if (!(e.metaKey || e.ctrlKey)) return;
     e.preventDefault();
@@ -276,6 +297,6 @@ export function mountPowerMap(host: HTMLElement, opts: { onOpen?: (kind: MapGrou
 
   return {
     update: paint,
-    destroy: () => { ro.disconnect(); root.remove(); },
+    destroy: () => { ro.disconnect(); document.removeEventListener("keydown", onKey, true); root.remove(); },
   };
 }

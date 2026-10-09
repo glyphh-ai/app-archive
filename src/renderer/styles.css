@@ -22569,7 +22569,7 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
    esc view of a super power… the super power icon in the center with a white
    or theme aligned border circle"): help/power-map.ts, the top of the Edit
    page. A dotted canvas, node cards with handles, animated curved edges. ── */
-.botp-map { flex: none; padding: 0 24px; }
+.botp-map { flex: none; padding: 14px 24px 0; }
 .pmap {
   --pmap-grid: 18px;
   position: relative; height: 340px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
@@ -22683,3 +22683,16 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   100% { opacity: 0; transform: rotate(calc(var(--a) + var(--drift))) translateY(calc((var(--orbit) + var(--out)) * -1)) scale(.3); }
 }
 @media (prefers-reduced-motion: reduce) { .spn-comet, .spn-dust { display: none; } }
+
+/* The map's full screen: it lifts over the page, a dim backdrop behind it. */
+.pmap-full-btn {
+  position: absolute; right: 10px; top: 10px; z-index: 2; width: 30px; height: 30px; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised, var(--surface-2));
+}
+.pmap-full-btn:hover { color: var(--text); background: var(--hover); }
+.pmap-full-btn svg { width: 15px; height: 15px; }
+.pmap.pmap-full {
+  position: fixed; inset: 18px; z-index: 99000; height: auto; border-radius: 16px;
+  box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 62%, transparent), 0 24px 80px -20px #000;
+}
