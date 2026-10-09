@@ -513,10 +513,12 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
   (r.querySelector(".skill-row-by") as HTMLElement).textContent = opts.by;
   (r.querySelector(".skill-row-desc") as HTMLElement).textContent = opts.desc || "No description";
   const right = r.querySelector(".skill-row-right") as HTMLElement;
-  const date = document.createElement("span");
-  date.className = "skill-row-date";
-  date.textContent = opts.right;
-  right.appendChild(date);
+  if (opts.right) {
+    const date = document.createElement("span");
+    date.className = "skill-row-date";
+    date.textContent = opts.right;
+    right.appendChild(date);
+  }
   if (opts.action) right.appendChild(opts.action);
   if (opts.menu?.length) {
     const kb = document.createElement("button");
@@ -656,7 +658,8 @@ function renderList(): void {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           // A cloud app's card reads its release where a folder reads its date.
-          desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
+          // No last-edited date on the row (his order, 2026-10-09); a cloud app's release label stays.
+          desc: s.description, right: s.instance ? releaseLabel(s.instance) : "", icon: s.icon, tool: s.tool, type: s.type,
           share: shares[s.id],
           id: s.id,
           onOpen: () => void openDetail(s.id),
