@@ -920,7 +920,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "remote") void loadRemoteControl();
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
-  else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
@@ -1181,7 +1180,6 @@ function rehostOpenGroups(): void {
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
-  drips: { host: "settings-drips-host" },
   schedules: { host: "settings-schedules-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },

@@ -111,15 +111,15 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
  *  plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
-/** The shape half: Drips, Schedules. (Tabs and Workspaces left the page,
- *  his order 2026-10-09: workspaces live in the rail's tray and its +.) */
-export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["drips", "schedules"]);
+/** The shape half: Schedules. (Tabs, Workspaces and Drips left the page,
+ *  his orders 2026-10-09: workspaces live in the rail's tray and its +.) */
+export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["schedules"]);
 
 /** THE ONE PAGE'S TAB ORDER (his report, 2026-10-07): Skills, Agents, Apps,
  *  Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks stays a
  *  hidden row (2026-09-17) and so never paints a tab. The Settings nav lists
  *  its rows in this order under the one Customize header. */
-export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "drips", "schedules", "tasks"]);
+export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "schedules", "tasks"]);
 
 /** The tabs with a Discover half (a hub / a directory). The page's one
  *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead
@@ -172,15 +172,15 @@ export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifa
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
-/** THE GROUP PAGE (his order, 2026-10-07): ONE Customize page. Full screen on
- *  the WEB only; on the desktop it is a work panel exactly like Artifacts
- *  (his order, 2026-10-09: "customize should be the same color etc as
- *  artifacts with the expand and close buttons on the far right. Just match
- *  artifacts"). */
+/** THE GROUP PAGE (his order, 2026-10-07): ONE Customize page. Customize and
+ *  Artifacts open FULL SCREEN on BOTH surfaces, over the panels, one at a time
+ *  — only a close, no expand (his order, 2026-10-09: "i still want customize
+ *  and artifacts to open full screen. Closing each other and over the top of
+ *  the other panels"). */
 export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["customize"]);
 export type GroupPage = "customize";
-export function panelOpensFullScreen(key: string, web: boolean): boolean {
-  return web ? webPanelOpensFullScreen(key) : false;
+export function panelOpensFullScreen(key: string, _web: boolean): boolean {
+  return webPanelOpensFullScreen(key);
 }
 /** A DEAD PAGE KEY RESOLVES TO THE ONE PAGE (his report, 2026-10-07): a saved
  *  dock slot, a wall card, a remembered rail section or an older caller

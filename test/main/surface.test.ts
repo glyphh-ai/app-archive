@@ -167,10 +167,10 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect(WEB_BUILD_SUBS).not.toContain("connections-cfg");
   });
   it("the shape half: Tabs, Workspaces, Drips, Schedules", () => {
-    expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["drips", "schedules"]);
+    expect([...WEB_CUSTOMIZE_SUBS]).toEqual(["schedules"]);
   });
   it("ONE page's tab order (his report, 2026-10-07): Skills, Agents, Apps, Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks last, a hidden row", () => {
-    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "drips", "schedules", "tasks"]);
+    expect([...CUSTOMIZE_TAB_ORDER]).toEqual(["skills", "agents", "apps", "connections-cfg", "plugins", "schedules", "tasks"]);
     expect([...CUSTOMIZE_TAB_ORDER].sort()).toEqual([...WEB_GROUP_ROWS].sort());   // every row of the page, once
     expect(Object.isFrozen(CUSTOMIZE_TAB_ORDER)).toBe(true);
   });
@@ -225,9 +225,9 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Custo
   });
   it("the desktop opens Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
     expect([...GROUP_PAGES]).toEqual(["customize"]);
-    // Full screen on the web; a work panel on the desktop, like Artifacts (2026-10-09).
-    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(true); }
-    expect(panelOpensFullScreen("artifacts", false)).toBe(false);
+    // Full screen on BOTH surfaces, Customize and Artifacts alike (his order, 2026-10-09).
+    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
+    expect(panelOpensFullScreen("artifacts", false)).toBe(true);
     expect(panelOpensFullScreen("artifacts", true)).toBe(true);
     for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
   });
