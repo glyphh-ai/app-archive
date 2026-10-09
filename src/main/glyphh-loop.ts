@@ -65,6 +65,10 @@ export interface LoopRunPayload {
  *  happen inside the run, so the run's async context carries its tags to the
  *  one fetch both loops share; only model calls (/v1/messages) wear them. */
 const callTags = new AsyncLocalStorage<string[]>();
+/** THE THREAD A TURN RUNS ON, for the tools inside it (swarm.ts hand_off:
+ *  which team is asking). Set around every panel turn, like the tags. */
+const turnChat = new AsyncLocalStorage<string>();
+export function currentTurnChat(): string | null { return turnChat.getStore() ?? null; }
 function taggedFetch(input: string, init: RequestInit): Promise<Response> {
   const tags = callTags.getStore();
   if (tags?.length && /\/v1\/messages$/.test(input)) {
@@ -90,7 +94,7 @@ function taggedFetch(input: string, init: RequestInit): Promise<Response> {
  */
 // ONE BELT (his order, 2026-10-08: "just code"): the one type's belt is the
 // union of what the two carried.
-const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]);
+const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get", "hand_off"]);
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
@@ -322,6 +326,11 @@ const seenTurns = new Map<string, number>();
 /** Where each chat's frames go — the panel that started the turn, until
  *  another panel adopts the run (agent-live.ts re-points it here). */
 const loopSenders = new Map<string, WebContents>();
+/** The panel holding a chat's frames now (swarm.ts asks it to run a member's turn). */
+export function loopSenderOf(chatId: string): WebContents | null {
+  const s = loopSenders.get(chatId);
+  return s && !s.isDestroyed() ? s : null;
+}
 registerRunRebinder((chatId, sender, opts) => {
   if (!loop.has(chatId)) return { rebound: false, previous: null };
   const previous = loopSenders.get(chatId) ?? null;
@@ -445,7 +454,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
-  const started = await (p.tags?.length ? callTags.run(p.tags, run) : run());
+  const started = await turnChat.run(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run()));
   return started;
 }
 

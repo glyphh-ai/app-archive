@@ -36,7 +36,7 @@ import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, logLines, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, setSpeakerVoice, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, setSpeakerVoice, setVoiceChatProvider, speakTeamLine, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
 import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
@@ -80,8 +80,12 @@ import { artifactStandingLine } from "./artifact-rules.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app"; attachments?: AttachRef[]; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app" | "handoff"; attachments?: AttachRef[]; /** A TEAM MEMBER'S WORDS (swarm.ts, 2026-10-09): the super power who said it, drawn with its face and name. */ speaker?: string; /** A hand-off's live card in the team thread. */ handoff?: TeamHandoff; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+/** One hand-off in a team thread (swarm.ts): who, what, and how it stands. */
+interface TeamHandoff { id: string; member: string; name: string; ask: string; status: "working" | "done" | "failed" | "stopped"; startedAt: number; endedAt?: number }
 interface CodeChat {
+  /** A TEAM THREAD (his order, 2026-10-09: swarm mode): the super powers on it. */
+  members?: string[];
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
    *  made while it was current. Absent → the global workspace folder. */
@@ -2457,6 +2461,58 @@ const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
  *  account connection right in the thread; the button runs the SAME in-app
  *  OAuth the Connections page uses (connectorsConnect), and the waiting tool
  *  is answered when it finishes. The user never leaves the chat. */
+/** A team member's face and name, over its words in a team thread. */
+function speakerHeadEl(slug: string): HTMLElement {
+  const head = document.createElement("div");
+  head.className = "team-speaker";
+  const face = document.createElement("span");
+  face.className = "team-speaker-face";
+  face.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 22 });
+  const name = document.createElement("span");
+  name.className = "team-speaker-name";
+  name.textContent = railBots.find((b) => b.slug === slug)?.name ?? slug;
+  head.append(face, name);
+  return head;
+}
+
+/** A HAND-OFF CARD (his order, 2026-10-09): the member's face, what it was
+ *  asked, how it stands, and a door to its own thread — live while it works. */
+function handoffCardEl(h: TeamHandoff): HTMLElement {
+  const card = document.createElement("div");
+  card.className = `team-card ${h.status}`;
+  const face = document.createElement("span");
+  face.className = "team-card-face";
+  face.innerHTML = botAvatarSvg(avatarOf({ slug: h.member, avatar: railBotAvatars.get(h.member) ?? null }), h.status === "working" ? "generating" : h.status === "done" ? "done" : "error", { size: 34 });
+  const main = document.createElement("div");
+  main.className = "team-card-main";
+  const top = document.createElement("div");
+  top.className = "team-card-top";
+  const who = document.createElement("span");
+  who.className = "team-card-name";
+  who.textContent = h.name;
+  const state = document.createElement("span");
+  state.className = "team-card-state";
+  const secs = Math.max(1, Math.round(((h.endedAt ?? Date.now()) - h.startedAt) / 1000));
+  state.textContent = h.status === "working" ? "Working…" : h.status === "done" ? `Done · ${secs}s` : h.status === "stopped" ? "Stopped" : "Couldn't finish";
+  top.append(who, state);
+  const ask = document.createElement("div");
+  ask.className = "team-card-ask";
+  ask.textContent = h.ask;
+  main.append(top, ask);
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "action-btn secondary team-card-open";
+  open.textContent = h.status === "working" ? "Watch" : "Open";
+  open.title = `Open ${h.name}'s thread`;
+  open.addEventListener("click", () => {
+    railPickedKey = h.member;
+    renderRailSessions();
+    sessOpen({ id: `bots/${h.member}`, cli: GLYPHH_LOOP, title: h.name, cwd: "", mtime: 0, bot: h.member });
+  });
+  card.append(face, main, open);
+  return card;
+}
+
 function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "code-connect-card";
@@ -2649,6 +2705,7 @@ function openLocalSession(id: string): void {
 /** The super power thread whose face glows on its next paint (openGlyphhSession). */
 let botFlashFor: string | null = null;
 function renderThread(): void {
+  paintTeamBar();
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
   // this one's send must not wear its stop state).
@@ -2755,6 +2812,11 @@ function renderThread(): void {
         // WHAT THE TURN MADE (his order, 2026-09-29): a card with a look at it.
         el.className = "code-artifact-wrap";
         el.appendChild(artifactCardEl(b.msg.artifact, openImageLightbox));
+      } else if (b.msg.kind === "handoff" && b.msg.handoff) {
+        // A HAND-OFF, LIVE (his order, 2026-10-09: "each task is a live card…
+        // the user can open that super power directly to its own thread running").
+        el.className = "code-connect-wrap";
+        el.appendChild(handoffCardEl(b.msg.handoff));
       } else if (b.msg.kind === "app" && b.msg.app) {
         // THE APP THE TURN BUILT (his decisions, 2026-10-07): Build and run,
         // Open, Share to publish — the next step, in the thread.
@@ -2769,7 +2831,9 @@ function renderThread(): void {
         return;
       } else {
         if (b.msg.thinking && b.msg.thinking.trim()) inner.appendChild(thinkingEl(b.msg.thinking));
-        el.className = "code-agent-text";
+        // A MEMBER SPEAKS AS ITSELF: its face and name over its words.
+        if (b.msg.speaker) inner.appendChild(speakerHeadEl(b.msg.speaker));
+        el.className = "code-agent-text" + (b.msg.speaker ? " team-said" : "");
         el.innerHTML = formatMarkdown(b.msg.text);
         inner.appendChild(el);
         if (b.msg.timing) {
@@ -6490,6 +6554,15 @@ function renderRailSessions(): void {
       r.appendChild(menuBtn);
     }
     r.addEventListener("click", () => { railPickedKey = o.key; renderRailSessions(); o.onOpen(); });
+    // A super power drags into a conversation to join its team.
+    if (o.key !== "glyphh") {
+      r.draggable = true;
+      r.addEventListener("dragstart", (e) => {
+        e.dataTransfer?.setData(SUPER_POWER_DRAG, o.key);
+        e.dataTransfer?.setData("text/plain", o.name);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+      });
+    }
     host.appendChild(r);
   };
   // SUPER POWERS ONLY (his order, 2026-10-09: "The left rail are only super
@@ -6531,6 +6604,161 @@ function renderRailSessions(): void {
       onOpen: () => { leaveWorkspace(); sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }); },
       menu: (btn) => openRailBotMenu(btn, b), ...(badge ? { badge } : {}) });
   }
+}
+
+// ── THE TEAM (his order, 2026-10-09: swarm mode) ───────────────────────────
+/** The hand-offs running in this panel, by id → the member's thread (for Stop). */
+const teamRuns = new Map<string, string>();
+const SUPER_POWER_DRAG = "application/x-glyphh-super-power";
+
+/** Put a super power on a team thread (the member dragged it in, or Glyphh brought it). */
+function addTeamMember(chat: CodeChat, slug: string): boolean {
+  if (!slug || slug === "glyphh" || chat.bot || chat.id.startsWith("powers/")) return false;
+  const now = chat.members ?? [];
+  if (now.includes(slug)) return false;
+  chat.members = [...now, slug];
+  void saveStore();
+  if (current()?.id === chat.id) paintTeamBar();
+  return true;
+}
+function removeTeamMember(chat: CodeChat, slug: string): void {
+  chat.members = (chat.members ?? []).filter((m) => m !== slug);
+  void saveStore();
+  if (current()?.id === chat.id) paintTeamBar();
+}
+
+/** THE FACES ABOVE THE INPUT: who is on this thread's team, × to let one go, + to bring one in. */
+function paintTeamBar(): void {
+  const host = el("code-team-bar");
+  if (!host) return;
+  const c = current();
+  const members = c && !c.bot ? (c.members ?? []).filter((m) => railBots.some((b) => b.slug === m)) : [];
+  host.hidden = !members.length;
+  host.textContent = "";
+  if (!members.length || !c) return;
+  const label = document.createElement("span");
+  label.className = "team-bar-label";
+  label.textContent = "Team";
+  host.appendChild(label);
+  for (const slug of members) {
+    const b = railBots.find((x) => x.slug === slug)!;
+    const chip = document.createElement("span");
+    chip.className = "team-chip";
+    chip.title = b.name;
+    const face = document.createElement("span");
+    face.className = "team-chip-face";
+    face.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), sessDotState(`bots/${slug}`) !== "idle" ? "generating" : "idle", { size: 20 });
+    const name = document.createElement("span");
+    name.className = "team-chip-name";
+    name.textContent = b.name;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "team-chip-x";
+    x.textContent = "×";
+    x.title = `Take ${b.name} off the team`;
+    x.setAttribute("aria-label", x.title);
+    x.addEventListener("click", () => removeTeamMember(c, slug));
+    chip.append(face, name, x);
+    host.appendChild(chip);
+  }
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "team-add";
+  add.textContent = "+";
+  add.title = "Bring a super power onto the team";
+  add.addEventListener("click", (e) => { e.stopPropagation(); openTeamPicker(add, c); });
+  host.appendChild(add);
+}
+/** The + in the faces bar: every super power not on the team yet. */
+function openTeamPicker(anchor: HTMLElement, chat: CodeChat): void {
+  closeSessMenu();
+  const m = document.createElement("div");
+  m.className = "code-menu sp-filter-menu";
+  const left = railBots.filter((b) => !(chat.members ?? []).includes(b.slug));
+  if (!left.length) {
+    const none = document.createElement("div");
+    none.className = "code-menu-item";
+    none.textContent = "Everyone is on the team";
+    m.appendChild(none);
+  }
+  for (const b of left) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "code-menu-item";
+    const face = document.createElement("span");
+    face.className = "loop-mark sp-filter-face";
+    face.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 18 });
+    const label = document.createElement("span");
+    label.className = "loop-label";
+    label.textContent = b.name;
+    row.append(face, label);
+    row.addEventListener("click", () => { closeSessMenu(); addTeamMember(chat, b.slug); });
+    m.appendChild(row);
+  }
+  m.style.zIndex = "10040";
+  placeFixedMenu(anchor, m, { align: "left", side: "auto" });
+  sessMenuEl = m;
+}
+
+/** A HAND-OFF, RUN HERE (swarm.ts asks the panel holding the team thread): the
+ *  member's own thread gets the lead's words and runs like any send; its card
+ *  in the team thread is live; its answer lands back as its own message. */
+async function runTeamTurn(req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }): Promise<void> {
+  const g = window.glyphh as unknown as { teamHandoffDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> };
+  const reply = (r: { ok: boolean; text: string; error?: string }): void => { void g.teamHandoffDone?.(req.id, r); };
+  const team = chats.find((x) => x.id === req.team);
+  if (!team) { reply({ ok: false, text: "", error: "the team thread isn't open in this panel" }); return; }
+  if (req.joins) addTeamMember(team, req.member);
+  const card: TeamHandoff = { id: req.id, member: req.member, name: req.name, ask: req.ask, status: "working", startedAt: Date.now() };
+  team.messages.push({ role: "assistant", kind: "handoff", text: req.ask, at: Date.now(), handoff: card });
+  const memberId = `bots/${req.member}`;
+  let member = chats.find((x) => x.id === memberId);
+  if (!member) {
+    member = { id: memberId, title: req.name, createdAt: Date.now(), messages: [], mode: SESSION_MODE, bot: req.member, permission: defaultMode } as CodeChat;
+    chats.push(member);
+  }
+  member.messages.push({ role: "user", text: `${req.lead}: ${req.ask}`, at: Date.now(), speaker: "glyphh" });
+  liveRuns.set(memberId, { runId: null, text: "", bubble: null, startAt: Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
+  ensureRunTicker();
+  teamRuns.set(req.id, memberId);
+  await saveStore();
+  renderHistory();
+  renderThread();
+  const finished = new Promise<{ text: string; stopped: boolean }>((resolve) => {
+    const on = (e: Event): void => {
+      const d = (e as CustomEvent<{ chatId: string; text: string; stopped: boolean }>).detail;
+      if (d?.chatId !== memberId) return;
+      document.removeEventListener("glyphh-agent:turn-finished", on);
+      resolve({ text: String(d.text ?? ""), stopped: !!d.stopped });
+    };
+    document.addEventListener("glyphh-agent:turn-finished", on);
+  });
+  try {
+    await window.glyphh.glyphhRun({ chatId: memberId, mode: SESSION_MODE, permission: "auto" });
+  } catch (err) {
+    liveRuns.delete(memberId);
+    card.status = "failed";
+    card.endedAt = Date.now();
+    teamRuns.delete(req.id);
+    void saveStore();
+    renderThread();
+    reply({ ok: false, text: "", error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  const done = await finished;
+  teamRuns.delete(req.id);
+  card.status = done.stopped ? "stopped" : done.text.trim() ? "done" : "failed";
+  card.endedAt = Date.now();
+  // THEIR ANSWER, AS THEMSELVES, in the team thread — and aloud, in their own
+  // voice, after whoever is speaking (voice mode on in this team's thread only).
+  if (done.text.trim()) {
+    team.messages.push({ role: "assistant", text: done.text, at: Date.now(), speaker: req.member });
+    void speakTeamLine(done.text, railBotVoices.get(req.member) ?? null, team.id);
+  }
+  void saveStore();
+  renderHistory();
+  renderThread();
+  reply(done.text.trim() ? { ok: true, text: done.text } : { ok: false, text: "", error: done.stopped ? `${req.name} was stopped` : `${req.name} didn't answer` });
 }
 
 /** THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
@@ -7115,6 +7343,36 @@ function initRailApps(): void {
   initRailSections();
   initWorkspacesVsplit();
   el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
+  // THE TEAM (swarm.ts): main asks this panel to run a member's turn.
+  {
+    const g = window.glyphh as unknown as {
+      onTeamHandoff?: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }) => void) => unknown;
+      onTeamHandoffStop?: (cb: (req: { id: string }) => void) => unknown;
+    };
+    g.onTeamHandoff?.((req) => { void runTeamTurn(req); });
+    g.onTeamHandoffStop?.((req) => { const id = teamRuns.get(req.id); if (id) void window.glyphh.glyphhStop?.(id); });
+    // DRAG A SUPER POWER INTO THE CHAT (his order, 2026-10-09): drop on the agent.
+    const zone = document.querySelector<HTMLElement>(".code-agent");
+    if (zone) {
+      zone.addEventListener("dragover", (e) => {
+        if (!e.dataTransfer?.types.includes(SUPER_POWER_DRAG)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        zone.classList.add("team-drop");
+      });
+      zone.addEventListener("dragleave", (e) => { if (!zone.contains(e.relatedTarget as Node)) zone.classList.remove("team-drop"); });
+      zone.addEventListener("drop", (e) => {
+        const slug = e.dataTransfer?.getData(SUPER_POWER_DRAG);
+        zone.classList.remove("team-drop");
+        if (!slug) return;
+        e.preventDefault();
+        if (!current()) newChat();
+        const c = current()!;
+        if (c.bot) { toastOk("Teams live in Glyphh's conversations: open Glyphh, then drag them in."); return; }
+        addTeamMember(c, slug);
+      });
+    }
+  }
   // Glyphh's ⋮: Edit, and only Edit — Glyphh is never deleted.
   el("rail-glyphh-menu")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -7373,6 +7631,7 @@ export function initCode(): void {
   // delete and server pull; the web's library shim fires the window event.
   // A super power's thread is read aloud in its own voice.
   setSpeakerVoice(() => (currentId.startsWith("bots/") ? railBotVoices.get(currentId.slice(5)) ?? null : railBotVoices.get("glyphh") ?? null));
+  setVoiceChatProvider(() => currentId);
   let botsRepaint = 0;
   const repaintBots = () => {
     const mine = ++botsRepaint;

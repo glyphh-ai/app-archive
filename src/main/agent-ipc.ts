@@ -52,7 +52,7 @@ const sessionsFile = (): string => path.join(STORE_DIR(), "agent-sessions.json")
 const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
 interface StoredMessage { role?: string; text?: string; at?: number }
-interface StoredChat { id?: string; updatedAt?: number; messages?: StoredMessage[] }
+interface StoredChat { id?: string; updatedAt?: number; messages?: StoredMessage[]; /** A team thread's super powers (swarm.ts). */ members?: string[] }
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null; /** Ids the saver deleted — dropped from the merge. */ deleted?: string[] }
 
 /** A chat's folder as an absolute path: a display "~" that leaked into the
@@ -164,7 +164,7 @@ function saveSessionsFile(snap: SessionsSnapshot, from?: WebContents): void {
 }
 
 /** A stored chat by id, for the turn text and the loop's seed history. */
-function storedChat(chatId: string): StoredChat | undefined {
+export function storedChat(chatId: string): StoredChat | undefined {
   return (loadSessionsFile().chats as StoredChat[]).find((x) => x?.id === chatId);
 }
 
@@ -267,6 +267,18 @@ export interface RunPayload {
   effort?: string;
 }
 
+/** THE TEAM BRIEF (his order, 2026-10-09: swarm mode): who is on the team,
+ *  and how Glyphh leads it — first person, one hand-off at a time per member. */
+function teamNote(members: readonly string[]): string {
+  const rows = members.map((slug) => { try { return getAgent(slug); } catch { return null; } }).filter((a): a is AgentRow => !!a);
+  if (!rows.length) return "";
+  return [
+    "You lead a TEAM in this conversation. The user brought these super powers in:",
+    ...rows.map((a) => `- ${a.name} (${a.slug}): ${a.description || "no description"}`),
+    "Work like a team lead. Say briefly how you will split the job, then hand each piece to the member who fits with hand_off, speaking to them by name in first person. Each works on their own thread and answers here as themselves; react to what they say, hand off the next piece, do small glue work yourself, and close with one summary: what was done, what was found, what is left. Never invent an answer a member did not give.",
+  ].join("\n");
+}
+
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
  *  executor's fake WebContents that forwards frames up the socket (attach-run.ts). */
 /** The bot a `bots/<slug>` thread is with, or null (any other thread, or a bot since deleted). */
@@ -311,7 +323,9 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   // super powers. Its folder stays the thread's own (a thread's folder is its
   // sandbox); a super power's or a power's thread is unchanged.
   const self = bot ?? (power ? null : glyphhRow());
-  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(self, folder)].filter(Boolean).join("\n\n");
+  // A TEAM THREAD (swarm.ts): Glyphh leads the super powers the member dragged in.
+  const team = !bot && !power ? teamNote(storedChat(p.chatId)?.members ?? []) : "";
+  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(self, folder), team].filter(Boolean).join("\n\n");
   // The effort slider: a super power's own setting (or Glyphh's) leads its turns.
   const effort = self ? botEffort(self, p.effort) : p.effort;
   // The bot's other folders ride as folder attachments: readable beside the working one.

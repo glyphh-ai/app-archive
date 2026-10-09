@@ -22802,3 +22802,35 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .rail-glyphh-wrap > .rail-glyphh-row { width: 100%; }
 .rail-glyphh-menu { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); opacity: 0; }
 .rail-glyphh-wrap:hover .rail-glyphh-menu, .rail-glyphh-menu:focus-visible { opacity: 1; }
+
+/* ── THE TEAM (his order, 2026-10-09: swarm mode) ───────────────────────────
+   The faces above the input, the drop glow, a hand-off's live card, and a
+   member's words under its face and name. */
+.team-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 2px 8px; }
+.team-bar[hidden] { display: none; }
+.team-bar-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 12px; color: var(--text); }
+.team-chip-face { width: 20px; height: 20px; display: inline-flex; }
+.team-chip-face svg, .team-chip-face img { width: 20px; height: 20px; object-fit: contain; }
+.team-chip-x { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 18px; }
+.team-chip-x:hover { background: var(--hover); color: var(--text); }
+.team-add { width: 24px; height: 24px; padding: 0; border: 1px dashed var(--border); border-radius: 50%; background: transparent; color: var(--text-2); cursor: pointer; font-size: 15px; line-height: 22px; }
+.team-add:hover { border-color: var(--accent); color: var(--text); }
+.code-agent.team-drop { outline: 2px dashed var(--accent); outline-offset: -6px; border-radius: 12px; }
+.team-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; background: var(--surface); margin: 4px 0; }
+.team-card.done { border-left-color: #22c55e; }
+.team-card.failed, .team-card.stopped { border-left-color: var(--danger, #e5484d); }
+.team-card-face { width: 34px; height: 34px; flex: none; display: inline-flex; }
+.team-card-face svg, .team-card-face img { width: 34px; height: 34px; object-fit: contain; }
+.team-card-main { flex: 1; min-width: 0; }
+.team-card-top { display: flex; align-items: baseline; gap: 8px; }
+.team-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.team-card-state { font-size: 11.5px; color: var(--text-3); }
+.team-card.working .team-card-state { color: var(--accent-text, var(--accent)); }
+.team-card-ask { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.team-card-open { flex: none; }
+.team-speaker { display: flex; align-items: center; gap: 7px; margin: 10px 0 2px; }
+.team-speaker-face { width: 22px; height: 22px; display: inline-flex; }
+.team-speaker-face svg, .team-speaker-face img { width: 22px; height: 22px; object-fit: contain; }
+.team-speaker-name { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.code-agent-text.team-said { padding-left: 29px; }

@@ -1059,6 +1059,18 @@ contextBridge.exposeInMainWorld("glyphh", {
     return () => { ipcRenderer.removeListener("power-build-progress", l); };
   },
   avatarGenerateStop: () => ipcRenderer.invoke("avatar-generate-stop") as Promise<{ ok: boolean; stopped: boolean }>,
+  /** THE TEAM (swarm.ts, 2026-10-09): main asks this panel to run a member's turn; the answer goes back. */
+  onTeamHandoff: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }) => void) => {
+    const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; member: string; name: string; lead: string; ask: string; joins: boolean }) => cb(req);
+    ipcRenderer.on("team:handoff", l);
+    return () => { ipcRenderer.removeListener("team:handoff", l); };
+  },
+  onTeamHandoffStop: (cb: (req: { id: string }) => void) => {
+    const l = (_e: Electron.IpcRendererEvent, req: { id: string }) => cb(req);
+    ipcRenderer.on("team:handoff-stop", l);
+    return () => { ipcRenderer.removeListener("team:handoff-stop", l); };
+  },
+  teamHandoffDone: (id: string, result: { ok: boolean; text: string; error?: string }) => ipcRenderer.invoke("team-handoff-done", id, result) as Promise<boolean>,
   /** THE RAIL'S + (2026-10-09): Glyphh builds a whole super power — its powers, its face (main/super-power-build-ipc.ts). */
   superPowerBuild: (ask: string) => ipcRenderer.invoke("super-power-build", ask) as Promise<{ ok: true; data: { agent: string; name: string; description: string; powers: Array<{ id: string; name: string }>; connections: string[]; avatar: { variant: number; color: string; image?: string } | null; avatarError: string | null } } | { ok: false; error: string }>,
   superPowerBuildStop: () => ipcRenderer.invoke("super-power-build-stop") as Promise<{ ok: boolean; stopped: boolean }>,

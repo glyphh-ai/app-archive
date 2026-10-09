@@ -112,6 +112,7 @@ export function stopHandsFree(): void {
   awaitingReply = false;
   endAfterUtterance = false;
   voiceModeOn = false;
+  voiceOnFor = null;
   stopReply();                       // voice mode is over: hush a reply playing or still synthesizing
   paintVoiceMode();
   stopRecording();
@@ -159,6 +160,32 @@ async function voiceConfig(): Promise<VoiceConfig> {
  *  what is read aloud there. */
 let speakerVoice: () => { model: string; voiceId: string } | null = () => null;
 export function setSpeakerVoice(fn: () => { model: string; voiceId: string } | null): void { speakerVoice = fn; }
+
+/** THE THREAD VOICE MODE WAS TURNED ON IN (his order, 2026-10-09: "Turning it
+ *  off turns it off for the team. Turning it on for just one super power
+ *  doesn't enable it for the entire team"): a team's lines speak only when
+ *  voice mode was turned on in that team's thread. */
+let voiceChat: () => string = () => "";
+let voiceOnFor: string | null = null;
+export function setVoiceChatProvider(fn: () => string): void { voiceChat = fn; }
+
+/** ONE SPEAKER AT A TIME (his order, 2026-10-09: "They should wait their turn
+ *  to speak"): every spoken line, the lead's and each member's, goes through
+ *  this queue, so nobody talks over anyone. */
+let speech: Promise<void> = Promise.resolve();
+function inTurn(fn: () => Promise<void>): Promise<void> {
+  const next = speech.then(fn, fn);
+  speech = next.catch(() => undefined);
+  return next;
+}
+
+/** A TEAM MEMBER SAYS ITS LINE, in its own voice, after whoever is speaking. */
+export async function speakTeamLine(text: string, voice: { model: string; voiceId: string } | null, chatId: string): Promise<void> {
+  if (!text.trim() || !voiceModeOn || voiceOnFor !== chatId) return;
+  const p = await voicePref();
+  const pref = voice?.model && voice.voiceId ? { ...p, outputModel: voice.model, voiceId: voice.voiceId } : p;
+  await inTurn(() => playReplyTTS(text, { ...pref, autoplay: true }));
+}
 
 async function voicePref(): Promise<VoicePref> {
   let pref: VoicePref = {};
@@ -209,6 +236,7 @@ export async function toggleVoiceMode(): Promise<void> {
   if (osDenied) { void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.(); return; }
   if (recorder) return;
   voiceModeOn = true;
+  voiceOnFor = voiceChat() || null;
   handsFree = true;
   paintVoiceMode();
   if (!(await startRecording())) { voiceModeOn = false; handsFree = false; paintVoiceMode(); }
@@ -590,7 +618,7 @@ export async function onTurnComplete(text: string): Promise<void> {
   // Replies are spoken ONLY in voice mode, read live after the awaits above.
   // The stored `autoplay` pref (SDK default true, no longer in Settings) must
   // not make typed / dictated turns, or turns after voice mode ended, talk.
-  if (say && voiceModeOn) await playReplyTTS(say, { ...p, autoplay: true });
+  if (say && voiceModeOn) await inTurn(() => playReplyTTS(say, { ...p, autoplay: true }));
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
 }
 

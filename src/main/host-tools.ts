@@ -241,6 +241,22 @@ function registerTools(mcp: ToolRegistrar): void {
       } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
+  // THE TEAM (his order, 2026-10-09: swarm mode): Glyphh hands a member a piece
+  // of work, first person; the member works on its own thread and answers here.
+  mcp.tool(
+    "hand_off",
+    "TEAM THREADS: hand a piece of work to one of your team's super powers, speaking to them in FIRST PERSON as their team lead (\"UI Builder, can you build the header? Keep it accessible.\"). They work on their own thread — the user can open it and watch — and their answer comes back here and shows in the thread as their own message, so don't repeat it: react to it, hand off the next piece, or wrap up. Members answer one at a time. Hand work to the thread's members or the super powers you hold; one you hold joins the team. Independent pieces can go to different members in parallel calls.",
+    {
+      member: z.string().describe("The super power's slug or name, from agents_list"),
+      task: z.string().describe("What you need from them, first person, complete and self-contained — they see only this"),
+    },
+    async ({ member, task }) => {
+      const { handOff } = await import("./swarm.js");
+      const r = await handOff({ member, task });
+      if (!r.ok) return text(`Error: ${r.error ?? "the hand-off failed"}`);
+      return text(`${member} answered (shown in the thread as their message):\n\n${r.text}`);
+    },
+  );
   mcp.tool(
     "agent_delete",
     "DELETE one of the user's super powers (and its scheduled tasks). Its powers stay in the library. Only when the user asked for it.",
