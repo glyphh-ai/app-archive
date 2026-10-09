@@ -52,11 +52,12 @@ function summary(a: ReturnType<typeof getAgent>) {
 
 /** CONNECTIONS ARE LOOKED UP, NEVER GUESSED (his report, 2026-10-09: "the
  *  agent got the connector name wrong, it shouldn't guess… so the link can
- *  be used to map it"). Each name is checked against the connector catalog:
- *  an exact app id is kept; an exact match on a connector's NAME maps to its
- *  id; anything else is refused with the nearest real connectors, so the
- *  caller looks it up and saves again. A catalog that can't be read keeps
- *  the names as given (the rail's badge and the Connect door still show them). */
+ *  be used to map it"). Each name is LOOKED UP in the connector catalog: an
+ *  exact app id is kept; the same name or id (case and punctuation aside)
+ *  maps to it; otherwise the catalog's own best match — the top-ranked app
+ *  whose id or name starts with what was asked ("youtube" → youtube_data_api)
+ *  — is taken. Only a name the catalog has nothing for is refused, with the
+ *  nearest real ones. A catalog that can't be read keeps names as given. */
 export async function checkedConnections(raw: unknown): Promise<string[]> {
   const want = cleanNames(raw);
   const out: string[] = [];
@@ -66,8 +67,12 @@ export async function checkedConnections(raw: unknown): Promise<string[]> {
     let apps: Array<{ id: string; name: string }>;
     try { apps = (await getClient().connections.apps({ search: words, limit: 10 })).apps.map((a) => ({ id: a.id, name: a.name })); }
     catch { out.push(name); continue; }
+    const norm = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const n = norm(name);
     const hit = apps.find((a) => a.id === name)
-      ?? apps.find((a) => a.name.toLowerCase() === words.toLowerCase());
+      ?? apps.find((a) => norm(a.name) === n || norm(a.id) === n)
+      // The catalog ranks by relevance: its first app that starts with the ask.
+      ?? apps.find((a) => norm(a.id).startsWith(n) || norm(a.name).startsWith(n));
     if (hit) { if (!out.includes(hit.id)) out.push(hit.id); continue; }
     const near = apps.slice(0, 5).map((a) => `${a.id} (${a.name})`).join(", ");
     wrong.push(`"${name}"${near ? ` — did you mean: ${near}` : " — no connector matches"}`);

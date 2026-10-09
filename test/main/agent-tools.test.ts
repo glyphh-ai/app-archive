@@ -156,9 +156,13 @@ describe("connections are looked up, never guessed (his report, 2026-10-09)", ()
     expect(rows.get("clips")!.connections).toEqual(["youtube_data_api", "linkedin"]);
   });
 
-  it("a guessed slug is refused with the real ones, and nothing is saved", async () => {
-    await expect(call("agents.save", { name: "Clips", brief: "b", connections: ["youtube_api"] }))
-      .rejects.toThrow(/not a connector slug: "youtube_api" — did you mean: youtube_data_api \(YouTube Data API\).*connector_tools/);
-    expect(rows.size).toBe(0);
+  it("a short name maps to the catalog's best match; one with no match is refused with suggestions", async () => {
+    await call("agents.save", { name: "Clips", brief: "b", connections: ["youtube"] });
+    expect(rows.get("clips")!.connections).toEqual(["youtube"]);
+    await call("agents.save", { name: "Posts", brief: "b", connections: ["youtube-data"] });
+    expect(rows.get("posts")!.connections).toEqual(["youtube_data_api"]);
+    await expect(call("agents.save", { name: "Nope", brief: "b", connections: ["zzzz"] }))
+      .rejects.toThrow(/not a connector slug: "zzzz" — no connector matches.*connector_tools/);
+    expect(rows.has("nope")).toBe(false);
   });
 });
