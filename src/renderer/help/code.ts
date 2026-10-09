@@ -4244,7 +4244,7 @@ function wireComposerAttachments(): void {
       // EVERY POWER OPENS IN THE ONE MODAL (his order, 2026-10-09: "the + at the
       // bottom of the page by the agent input launches every power add etc.
       // into the same modal as edit super power does").
-      openPowers: (tab) => openPowersModal({ tab }),
+      openPowers: (tab) => (window as unknown as { __glyphhOpenPowers?: (t: string) => void }).__glyphhOpenPowers?.(tab),
       toast: toastOk,
       place: openChipDropUp,
       deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
@@ -7091,9 +7091,21 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   initAnchorEvents();
-  // THE POWERS MODAL, for the documents that cannot import it (the workbench bundle).
-  (window as unknown as { __glyphhOpenPowers?: (tab: string) => void }).__glyphhOpenPowers = (tab) =>
-    openPowersModal({ tab: tab === "connections" || tab === "models" || tab === "folders" ? tab : "skills" });
+  // THE POWERS MODAL, for every caller in this document and the ones that
+  // cannot import it (the workbench bundle). An AGENT PANEL is its own
+  // document, so its overlay would stop at the panel's edges (his report,
+  // 2026-10-09: "the modal overlay isn't covering the left rail"): a panel
+  // asks the shell through main, and the shell opens it over the window.
+  {
+    const solo = (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
+    const g = window.glyphh as unknown as { agentPanelOpenPowers?: (tab: string) => Promise<boolean>; onAgentPanelOpenPowers?: (cb: (p: { tab: string }) => void) => void };
+    const tabOf = (tab: string): "folders" | "connections" | "models" | "skills" => (tab === "connections" || tab === "models" || tab === "folders" ? tab : "skills");
+    (window as unknown as { __glyphhOpenPowers?: (tab: string) => void }).__glyphhOpenPowers = (tab) => {
+      if (solo && g.agentPanelOpenPowers) { void g.agentPanelOpenPowers(tabOf(tab)); return; }
+      openPowersModal({ tab: tabOf(tab) });
+    };
+    if (!solo) g.onAgentPanelOpenPowers?.((p) => openPowersModal({ tab: tabOf(p.tab) }));
+  }
   // A SUPER POWER'S NEW FACE SHOWS AT ONCE (his order, 2026-10-09): the rail
   // repaints from the roster whenever it moves — main announces every save,
   // delete and server pull; the web's library shim fires the window event.

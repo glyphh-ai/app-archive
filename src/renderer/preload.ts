@@ -1211,6 +1211,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   onAgentPanelCreateWorkspace: (callback: () => void) => {
     ipcRenderer.on("agent-panel:create-workspace", () => callback());
   },
+  /** A panel's powers modal opens in the SHELL, over the whole window (the rail included). */
+  agentPanelOpenPowers: (tab: string) => ipcRenderer.invoke("agent-panel-open-powers", { tab }) as Promise<boolean>,
+  onAgentPanelOpenPowers: (callback: (p: { tab: string }) => void) => {
+    ipcRenderer.on("agent-panel:open-powers", (_e, p: { tab: string }) => callback(p));
+  },
   /** A workspace a panel opens lands in the shell's grid, never inside the panel. */
   agentPanelOpenLayout: (p: { name: string }) => ipcRenderer.invoke("agent-panel-open-layout", p) as Promise<boolean>,
   onAgentPanelOpenLayout: (callback: (p: { name: string }) => void) => {

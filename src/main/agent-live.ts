@@ -120,6 +120,14 @@ export function registerAgentLiveIpc(): void {
     sendToHomeShell("agent-panel:create-workspace", {});
     return true;
   });
+  // THE POWERS MODAL from a panel (his report, 2026-10-09: "the modal overlay
+  // isn't covering the left rail"): a panel is its own document, so its
+  // overlay stops at its edges. The shell opens it, over everything.
+  ipcMain.handle("agent-panel-open-powers", (_e, p: { tab?: string } | undefined) => {
+    const tab = ["folders", "connections", "models", "skills"].includes(String(p?.tab)) ? String(p?.tab) : "skills";
+    sendToHomeShell("agent-panel:open-powers", { tab });
+    return true;
+  });
   // A SETTINGS PAGE a panel asks for (the "Choose a plan" door under a no-plan
   // refusal) opens in the shell's Settings, the one the dock opens.
   ipcMain.handle("agent-panel-open-settings", (_e, p: { sub?: string } | undefined) => {

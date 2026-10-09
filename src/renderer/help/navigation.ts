@@ -1077,7 +1077,10 @@ export function openGroupTab(_group: GroupPage, sub: string): void {
 export function openPowersFor(sub?: string): void {
   const s = String(sub ?? "");
   if (s === "agents") { toastInfo("Super powers live in the left rail: open one's ⋮ to edit it."); return; }
-  openPowersModal({ tab: s === "connections-cfg" || s === "connections" ? "connections" : s === "models" ? "models" : "skills" });
+  const tab = s === "connections-cfg" || s === "connections" ? "connections" : s === "models" ? "models" : "skills";
+  // Through the chat's door when it is up: it routes an agent panel's ask to the shell.
+  const door = (window as unknown as { __glyphhOpenPowers?: (t: string) => void }).__glyphhOpenPowers;
+  if (door) door(tab); else openPowersModal({ tab });
 }
 
 /** THE PAGE'S ONE TOOLBAR (his order, 2026-10-09: "make the header of the
