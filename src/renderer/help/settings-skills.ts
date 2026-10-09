@@ -319,7 +319,16 @@ async function refreshStandings(): Promise<void> {
   const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
     .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
   standings = r.ok ? r.data ?? {} : {};
-  if (current) paintSource(current.id);
+  if (current) { paintSource(current.id); if (!hubItem) { paintDetailTabs(typeOf(current)); paintDetailChrome(); } }
+  renderList();
+}
+
+/** GLYPHH'S OWN POWERS ARE PUBLISHED ALREADY (his order, 2026-10-09: "you
+ *  can't publish a glyphh built power. That is already published by us"):
+ *  one installed from the Glyphh catalog, or the Glyphh bundle itself, has no
+ *  Share and no Publish. */
+function fromGlyphh(s: { id: string; slug?: string; name?: string } | null | undefined): boolean {
+  return !!s && (standings[s.id]?.from === "glyphh" || isGlyphhBundle(s));
 }
 
 /** The Overview's source line: a folder from a hub says so and names its version. */
@@ -656,7 +665,7 @@ function renderList(): void {
             ...(back !== null ? [{ label: `Rollback to release ${back}`, onClick: () => void rollback(s) }] : []),
             ...(shares[s.id]?.pending
               ? [{ label: "Withdraw from review", onClick: () => void withdrawShare(s.id, s.name) }]
-              : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
+              : fromGlyphh(s) ? [] : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
             ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
             { sep: true as const },
             { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
@@ -1049,7 +1058,7 @@ function paintDetailChrome(): void {
   const hub = !!hubItem;
   // Share goes away once there IS a share (his order, 2026-09-17). Waiting on
   // the desk or live on the hub, the door out is Withdraw in the ⋮.
-  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head);
+  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head || fromGlyphh(current));
   el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
   el("skill-kebab")?.classList.toggle("hidden", hub);
   el("skill-edit")?.classList.add("hidden");
@@ -1721,10 +1730,11 @@ interface RosterAgentRow { id: string; slug?: string; name: string }
 interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
+/* No Agents tab (his order, 2026-10-09: "remove the agents tab"). */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents", "agents", "publish"],
-  app: ["overview", "contents", "skills", "tools", "agents", "connections", "releases", "publish"],
-  task: ["overview", "flow", "contents", "agents", "runs", "connections", "publish"],
+  skill: ["overview", "contents", "publish"],
+  app: ["overview", "contents", "skills", "tools", "connections", "releases", "publish"],
+  task: ["overview", "flow", "contents", "runs", "connections", "publish"],
   plugin: ["overview", "contents", "skills", "publish"],
 };
 /** THE DEVELOPER'S DESK (his ask, 2026-10-07): Releases (an app instance's,
@@ -1763,7 +1773,7 @@ function paintOverviewBody(body: string): void {
 
 /** Show only the tabs this item earns. */
 function paintDetailTabs(type: BundleType): void {
-  const allowed = TABS_FOR[type];
+  const allowed = TABS_FOR[type].filter((t) => t !== "publish" || !fromGlyphh(current));
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`)
     .forEach((b) => b.classList.toggle("hidden", !allowed.includes(b.dataset.dtab as DetailTab)));
 }
@@ -1783,7 +1793,7 @@ function tabHasContent(tab: DetailTab, n: number): void {
   if (hide && b.classList.contains("active")) selectDetailTab("overview");
 }
 function selectDetailTab(t: DetailTab): void {
-  if (!TABS_FOR[typeOf(current)].includes(t)) t = "overview";
+  if (!TABS_FOR[typeOf(current)].includes(t) || (t === "publish" && fromGlyphh(current))) t = "overview";
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
@@ -1978,6 +1988,7 @@ async function onEdit(): Promise<void> {
 
 async function share(): Promise<void> {
   if (!current) return;
+  if (fromGlyphh(current)) { notice(`${current.name} is Glyphh's: it is published on the Glyphh catalog already.`); return; }
   // RELEASE NOTES ARE REQUIRED ON A RE-SHARE (his spec, 2026-10-07): the
   // Publish tab collects them; a re-share without them lands there.
   const notes = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
