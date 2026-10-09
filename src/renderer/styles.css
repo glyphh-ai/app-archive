@@ -22280,8 +22280,9 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
    everywhere"): one fixed size; tabs; a bar with the search left and + Add
    right (or ‹ Connections on a sub-screen); the list; Cancel · Save. ── */
 .confirm-overlay .confirm-box.powm-box {
-  width: min(600px, calc(100vw - 48px)); min-width: min(600px, calc(100vw - 48px)); max-width: min(600px, calc(100vw - 48px));
-  height: min(640px, calc(100vh - 80px)); min-height: min(640px, calc(100vh - 80px)); max-height: min(640px, calc(100vh - 80px));
+  /* A tad wider for Your powers, which is Customize's Skills page (his order, 2026-10-09). */
+  width: min(760px, calc(100vw - 48px)); min-width: min(760px, calc(100vw - 48px)); max-width: min(760px, calc(100vw - 48px));
+  height: min(680px, calc(100vh - 80px)); min-height: min(680px, calc(100vh - 80px)); max-height: min(680px, calc(100vh - 80px));
   flex: none; display: flex; flex-direction: column;
 }
 .powm-head { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -22424,3 +22425,12 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 /* The powers column: every power opens in the modal. */
 .botp-power.openable { cursor: pointer; }
 .botp-power.openable:hover { border-color: var(--border-3); background: var(--hover); }
+
+/* Your powers = Customize › Skills, borrowed whole: its own head (search, Add),
+   tabs, list and details, without the "Skills" heading the tab already says. */
+.powm-lib-host { display: flex; flex-direction: column; min-width: 0; }
+.powm-lib-host > .settings-panel { display: block; padding: 0; margin: 0; max-width: none; }
+.powm-lib-host .skills-head > h2 { display: none; }
+.powm-lib-host .skills-head { margin-top: 0; }
+.powm-lib-host .skill-row-right .powm-skill-pick { margin-right: 4px; }
+.powm-lib-host .skill-detail-head .powm-skill-pick { margin-left: 8px; }

@@ -483,10 +483,12 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare; id?: string }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
+  // The installed folder's id: the powers modal hangs a super power's + / ✓ on it (help/powers-modal.ts).
+  if (opts.id) r.dataset.skillId = opts.id;
   r.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${iconOf(mark, opts.type)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"><span class="skill-row-title"></span>${typeChip(opts.type)}</div>
@@ -646,6 +648,7 @@ function renderList(): void {
           // A cloud app's card reads its release where a folder reads its date.
           desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           share: shares[s.id],
+          id: s.id,
           onOpen: () => void openDetail(s.id),
           action: up ? updateButton(s.id, up.latest) : s.instance?.update?.available ? instanceUpdateButton(s) : undefined,
           menu: [
@@ -1011,6 +1014,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   const files = r.data;
   const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
   hubItem = d;
+  el("skill-detail-view")?.removeAttribute("data-skill-id");
   current = {
     id: `hub:${d.ref}`, source: "glyphh", type: d.type ?? cfg.kind, name: d.name, description: d.description || frontmatter.description || "", author: d.author,
     enabled: true, dir: "", fileCount: Object.keys(files).length, updatedAt: d.updatedAt, frontmatter, body,
@@ -1616,6 +1620,7 @@ async function openDetail(id: string): Promise<void> {
   editing = false;
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
+  el("skill-detail-view")?.setAttribute("data-skill-id", r.data.id);
   const s = current;
   setDetailName(s.name, s.type);
   (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;

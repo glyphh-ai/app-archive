@@ -200,6 +200,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    returnSkillsPanel();
     hideBusy();
     onProgress = null;
     overlay.remove();
@@ -300,6 +301,9 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   // ── paint ──
   function paint(): void {
     if (closed) return;
+    // The borrowed Skills panel goes home before the body is cleared (it is re-borrowed below for its tab).
+    returnSkillsPanel();
+    bar.style.display = tab === "skills" ? "none" : "";
     tabsEl.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     bar.textContent = "";
     body.textContent = "";
@@ -309,11 +313,13 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     else paintSkills();
   }
   function repaintBody(): void {
+    // Your powers is the borrowed Skills panel: it repaints itself, and clearing would drop it.
+    if (tab === "skills") return;
     body.textContent = "";
     if (tab === "folders") paintFolders(true);
     else if (tab === "connections") paintConnections(true);
     else if (tab === "models") paintModels(true);
-    else paintSkills(true);
+    // Your powers paints itself: it is Customize's own Skills panel.
   }
 
   function paintFolders(bodyOnly = false): void {
@@ -660,16 +666,78 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     apply();
     return wrap;
   }
-  function paintSkills(bodyOnly = false): void {
-    if (!bodyOnly) bar.append(searchBox("skills", "Search your powers", repaintBody), addButton("+ Add", null, "Making a power here isn't built yet. Ask Glyphh to make one."));
-    const needle = (queries.skills ?? "").trim().toLowerCase();
-    const have = sel?.skills ?? [];
-    const list = skills.filter((s) => matches(needle, s.name, s.id));
-    if (!list.length) { empty(skills.length ? "Nothing matches." : "No powers of your own yet. Ask Glyphh to make one."); return; }
-    for (const s of list) {
-      body.appendChild(row({ icon: POWER_SVG, name: s.name, sub: s.type === "task" ? "Task" : "Skill", has: have.includes(s.id), onToggle: () => { sel!.skills = toggleIn(sel!.skills, s.id); repaintBody(); } }));
-    }
+  // ── YOUR POWERS = CUSTOMIZE › SKILLS, the panel itself (his order,
+  //    2026-10-09: "it should mirror the customize -> skills. Everything is
+  //    just a power it should have all the same content"). The modal borrows
+  //    the one Skills panel — list, search, Add, filter, sort, Discover, the
+  //    details page with its overview, contents, schedule and runs — and
+  //    gives it back when the tab or the modal closes. Picking for a super
+  //    power hangs a + / ✓ on each of your rows and on a details page. ──
+  let borrowed: { panel: HTMLElement; parent: HTMLElement; next: Node | null; wasActive: boolean } | null = null;
+  let libObserver: MutationObserver | null = null;
+  let pendingSkill: string | null = null;
+  function pickFor(id: string, name: string): HTMLButtonElement {
+    const has = !!sel?.skills.includes(id);
+    const b = el("button", "action-btn conn2-plus powm-pick powm-skill-pick" + (has ? " done" : ""));
+    b.type = "button";
+    b.dataset.for = id;
+    b.innerHTML = has ? CHECK_SVG : PLUS_BTN_SVG;
+    b.title = has ? `Added — click to remove ${name}` : `Add ${name}`;
+    b.setAttribute("aria-label", has ? `Remove ${name}` : `Add ${name}`);
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!sel) return;
+      sel.skills = toggleIn(sel.skills, id);
+      borrowed?.panel.querySelectorAll<HTMLButtonElement>(`.powm-skill-pick[data-for="${CSS.escape(id)}"]`).forEach((x) => x.replaceWith(pickFor(id, name)));
+    });
+    return b;
   }
+  function decorate(): void {
+    const panel = borrowed?.panel;
+    if (!panel) return;
+    panel.querySelectorAll<HTMLElement>(".skill-row[data-skill-id]").forEach((r) => {
+      const id = r.dataset.skillId!;
+      if (pendingSkill === id) { pendingSkill = null; r.click(); }
+      if (!sel || r.querySelector(".powm-skill-pick")) return;
+      const right = r.querySelector<HTMLElement>(".skill-row-right");
+      right?.insertBefore(pickFor(id, r.querySelector(".skill-row-title")?.textContent ?? id), right.firstChild);
+    });
+    if (!sel) return;
+    const view = panel.querySelector<HTMLElement>("#skill-detail-view");
+    const head = view?.querySelector<HTMLElement>(".skill-detail-head");
+    const id = view?.dataset.skillId ?? "";
+    const there = head?.querySelector<HTMLElement>(".powm-skill-pick");
+    if (!head || !id) { there?.remove(); return; }
+    if (there?.dataset.for === id) return;
+    there?.remove();
+    head.appendChild(pickFor(id, panel.querySelector("#skill-detail-name")?.textContent ?? id));
+  }
+  function returnSkillsPanel(): void {
+    if (!borrowed) return;
+    libObserver?.disconnect();
+    libObserver = null;
+    const { panel, parent, next, wasActive } = borrowed;
+    borrowed = null;
+    panel.querySelectorAll(".powm-skill-pick").forEach((x) => x.remove());
+    try { parent.insertBefore(panel, next && next.parentNode === parent ? next : null); } catch { /* its home is gone; leave it */ }
+    if (!wasActive) panel.classList.remove("active");
+  }
+  function paintSkills(): void {
+    const panel = document.querySelector<HTMLElement>('.settings-panel[data-sub="skills"]');
+    if (!panel?.parentElement) { empty("Your powers live in Customize › Skills."); return; }
+    // A Customize page behind us may have lent the panel's search and Add to its own head.
+    (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();
+    borrowed = { panel, parent: panel.parentElement, next: panel.nextSibling, wasActive: panel.classList.contains("active") };
+    const host = el("div", "powm-lib-host");
+    host.appendChild(panel);
+    body.appendChild(host);
+    panel.classList.add("active");
+    (window as unknown as { __glyphhLoadSettingsSub?: (sub: string) => void }).__glyphhLoadSettingsSub?.("skills");
+    libObserver = new MutationObserver(() => decorate());
+    libObserver.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-skill-id"] });
+    decorate();
+  }
+
 
   /** Land on one power once the lists are in (opts.focus). */
   async function focusOn(f: { tab: PowerTab; name: string }): Promise<void> {
@@ -689,7 +757,8 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     } else if (f.tab === "folders") {
       queries.folders = baseName(f.name);
     } else {
-      queries.skills = skills.find((x) => x.id === f.name)?.name ?? f.name;
+      // Its details page opens as soon as its row is painted (decorate).
+      pendingSkill = f.name;
     }
     // A search box keeps its own input: seed it with the query just set.
     for (const [key, input] of searches) if (queries[key] !== undefined) input.value = queries[key]!;

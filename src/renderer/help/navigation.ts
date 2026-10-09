@@ -1080,6 +1080,8 @@ export function openGroupTab(group: GroupPage, sub: string): void {
 let lentTools: Array<{ el: HTMLElement; parent: HTMLElement; next: Node | null }> = [];
 // The workbench hands lent tools home before a section leaves for its own page.
 (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools = () => returnGroupTools();
+// The powers modal borrows a settings panel (Your powers = Customize › Skills) and loads it through here.
+(window as unknown as { __glyphhLoadSettingsSub?: (sub: string) => void }).__glyphhLoadSettingsSub = (sub: string) => loadSettingsSub(sub);
 function returnGroupTools(): void {
   for (const t of lentTools.reverse()) {
     try { t.parent.insertBefore(t.el, t.next && t.next.parentNode === t.parent ? t.next : null); } catch { /* origin gone with its panel */ }
