@@ -105,9 +105,8 @@ describe("the session's type decides the panels — one list through the caps", 
               const m = agentMenuModel({ surface, mode, session, machines, locus });
               expect(m.sections.length).toBeGreaterThan(0);
               for (const s of m.sections) {
-                // An EMPTY Apps fold is allowed: "Apps · 0" says it, no line under it (his order, 2026-10-05).
                 // An empty Workspaces fold still holds "Create workspace…" (the menu's UI paints it; 2026-10-08).
-                else if (s.kind === "workspaces") expect(s.count).toBe(s.rows.length);
+                if (s.kind === "workspaces") expect(s.count).toBe(s.rows.length);
                 else expect(s.rows.length).toBeGreaterThan(0);
               }
             }
