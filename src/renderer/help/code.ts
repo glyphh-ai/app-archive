@@ -14,9 +14,9 @@
 import { threadLocus } from "./thread-locus.js";
 import { refreshBuildBadge } from "./app-updates.js";
 import {
-  LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
-  locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
-  type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike, newSessionSource,
+  LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
+  recentsKeeps, sessionLocked, sourceLocus, defaultLocus,
+  type Locus, type RecentsFilter, type RecentsRowLike, newSessionSource,
   defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
@@ -5932,15 +5932,10 @@ const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 // vendor CLIs wear their public marks, fetched once through main on the
 // desktop and through the front door's /webicon proxy on the web (the ONE
 // table in help/cli-marks.ts is also that proxy's allowlist).
-/** THE PLACE FILTER (his order, 2026-10-04): the same funnel gains a second
- *  group — All places / This desktop / Cloud — persisted on its own pref and
- *  applied by the ONE filter function below, in the rail and the dropdown. */
-let locusFilter: LocusFilter = "";
-/** The rail's and the dropdown's one filter. `among` is the loops the list
- *  can hold: a loop filter naming none of them is no filter there; `tab`
- *  absent = every type (the CLI window's own pool). */
+/** THE RECENTS' ONE FILTER is the search (his order, 2026-10-09: the place
+ *  funnel went — the dropdown groups by place and every row wears its glyph). */
 function sessFilter(opts: { query?: string }): RecentsFilter {
-  return { locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
+  return opts.query ? { query: opts.query } : {};
 }
 function sessFilterRow(sess: RailSession): RecentsRowLike {
   return { title: sess.title, cwd: sess.cwd, locus: sess.locus ?? "local" };
@@ -5948,63 +5943,6 @@ function sessFilterRow(sess: RailSession): RecentsRowLike {
 function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
   return recentsKeeps(sessFilterRow(sess), f);
 }
-/** Both lists re-render on either change: the rail here, the dropdown off the event. */
-function filtersChanged(): void {
-  renderRailSessions();
-  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
-}
-function setLocusFilter(place: LocusFilter): void {
-  locusFilter = place;
-  void window.glyphh.setPreference?.(LOCUS_FILTER_PREF, place);
-  filtersChanged();
-}
-const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
-let loopFilterMenu: HTMLDivElement | null = null;
-/** THE PLACE FILTER's menu (his order, 2026-10-04): All places / This desktop /
- *  Cloud — one pick, the rail and the dropdown both narrow to it. (The loop
- *  rows went with the CLI agents, 2026-10-08.) */
-function openPlaceFilterMenu(anchor: HTMLElement): void {
-  loopFilterMenu?.remove();
-  const m = document.createElement("div");
-  m.className = "code-menu loop-filter-menu";
-  const row = (label: string, on: boolean, mark: HTMLElement | null, onClick: () => void): void => {
-    const b = document.createElement("button");
-    b.className = "code-menu-item" + (on ? " on" : "");
-    if (mark) b.appendChild(mark);
-    const span = document.createElement("span");
-    span.className = "loop-label";
-    span.textContent = label;
-    b.appendChild(span);
-    if (on) {
-      const check = document.createElement("span");
-      check.className = "menu-check";
-      check.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
-      b.appendChild(check);
-    }
-    b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openPlaceFilterMenu(anchor); });
-    m.appendChild(b);
-  };
-  // THE PLACES (his order, 2026-10-04): one pick, the rail and the dropdown
-  // both narrow to it. The mark is the row's own locus glyph.
-  row("All places", locusFilter === "", null, () => setLocusFilter(""));
-  for (const o of LOCUS_OPTIONS) {
-    const mark = document.createElement("span");
-    mark.className = "code-sess-locus loop-mark";
-    mark.innerHTML = LOCUS_SVG[o.key];
-    row(o.name, locusFilter === o.key, mark, () => setLocusFilter(locusFilter === o.key ? "" : o.key));
-  }
-  // Placed by the one rule (menu-place.ts): below the funnel, hanging from
-  // its left edge, flipped to its right edge / above it when the viewport has
-  // no room there (his report, 2026-10-04: cut off with the agent on the right).
-  placeFixedMenu(anchor, m, { align: "left", side: "auto" });
-  loopFilterMenu = m;
-  const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
-  document.addEventListener("mousedown", close, true);
-}
-void (window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve("")).then((place) => {
-  locusFilter = locusFilterOf(place);
-  renderRailSessions();
-}).catch(() => {});
 
 /** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
@@ -6591,22 +6529,6 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
-  // The same place filter the rail has, to the right of the search (his order,
-  // 2026-09-16, restored 2026-09-30) — in every agent window's recents.
-  const filterBtn = document.createElement("button");
-  filterBtn.type = "button";
-  filterBtn.className = "rail-filter-btn" + (recentsFilterActive({ locus: locusFilter }) ? " active" : "");
-  filterBtn.title = "Filter by place";
-  filterBtn.innerHTML = FILTER_SVG;
-  filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openPlaceFilterMenu(filterBtn); });
-  searchWrap.appendChild(filterBtn);
-  const onFilter = (): void => {
-    if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
-    filterBtn.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
-    paint();
-  };
-  document.addEventListener("glyphh:loop-filter-changed", onFilter);
   menu.appendChild(searchWrap);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
@@ -6616,7 +6538,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function, the same prefs.
+    // The search is the one filter (2026-10-09).
     const menuFilter = sessFilter({ query: q });
     const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter));
     const mkRow = (sess: RailSession): HTMLElement => {

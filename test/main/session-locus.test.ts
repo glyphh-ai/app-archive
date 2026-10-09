@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  defaultLocus, newSessionSource, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
+  defaultLocus, newSessionSource, filterRecents, folderGranted, pickerSections, recentsKeeps,
   sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, sessionIsBlank, type RecentsRowLike,
   defaultWebFolder, filterPickerRows, pickerRecent, PICKER_RECENT_MAX,
   folderAfterPick, canWalkUp,
@@ -23,33 +23,15 @@ const rows: RecentsRowLike[] = [
   row({ title: "triage mail", locus: "local" }),
 ];
 
-describe("the one recents filter", () => {
-  it("keeps everything with nothing picked", () => {
-    expect(filterRecents(rows, { locus: "" })).toHaveLength(4);
-    expect(recentsFilterActive({ locus: "" })).toBe(false);
+describe("the recents' one filter is the search (2026-10-09: the place funnel went)", () => {
+  it("keeps everything with no search", () => {
+    expect(filterRecents(rows, {})).toHaveLength(4);
   });
 
-  it("narrows by place — This desktop / Cloud", () => {
-    expect(filterRecents(rows, { locus: "cloud" }).map((r) => r.title)).toEqual(["blog post"]);
-    expect(filterRecents(rows, { locus: "local" })).toHaveLength(3);
-    expect(recentsFilterActive({ locus: "cloud" })).toBe(true);
-  });
-
-  it("applies the search exactly as the rail does", () => {
-    expect(filterRecents(rows, { locus: "", query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
-  });
-
-
-  it("a row with no locus stamp is the desktop's", () => {
-    expect(recentsKeeps(row({ title: "old", locus: undefined }), { loops: [], locus: "local" })).toBe(true);
-    expect(recentsKeeps(row({ title: "old", locus: undefined }), { loops: [], locus: "cloud" })).toBe(false);
-  });
-
-  it("coerces the stored pref", () => {
-    expect(locusFilterOf("cloud")).toBe("cloud");
-    expect(locusFilterOf("local")).toBe("local");
-    expect(locusFilterOf("everywhere")).toBe("");
-    expect(locusFilterOf(null)).toBe("");
+  it("matches the search against title and folder, any case", () => {
+    expect(filterRecents(rows, { query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
+    expect(filterRecents(rows, { query: "mail" }).map((r) => r.title)).toEqual(["triage mail"]);
+    expect(recentsKeeps(row({ title: "old", locus: undefined }), { query: "old" })).toBe(true);
   });
 });
 

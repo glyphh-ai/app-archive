@@ -19,15 +19,6 @@
 
 export type Locus = "local" | "cloud";
 
-/** The place filter: "" = every place, else one locus. */
-export type LocusFilter = "" | Locus;
-
-export const LOCUS_FILTER_PREF = "recentsLocusFilter";
-export const LOCUS_OPTIONS: ReadonlyArray<{ key: Locus; name: string }> = [
-  { key: "local", name: "This desktop" },
-  { key: "cloud", name: "Cloud" },
-];
-
 export const LOCUS_TITLE: Record<Locus, string> = {
   local: "Runs on the desktop",
   cloud: "Runs in the cloud",
@@ -40,11 +31,6 @@ export const LOCUS_SVG: Record<Locus, string> = {
   cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .4-9A7 7 0 0 0 4.3 12.3 3.5 3.5 0 0 0 5.5 19z"/></svg>`,
 };
 export const LOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
-
-/** Coerce a stored preference into a place filter; anything else is "all". */
-export function locusFilterOf(v: unknown): LocusFilter {
-  return v === "local" || v === "cloud" ? v : "";
-}
 
 /** A session with NO turns anywhere — never written to, on any surface. A
  *  thread adopted from the server carries only a messageCount until it is
@@ -64,16 +50,15 @@ export interface RecentsRowLike {
   locus?: Locus;
 }
 
+/** THE SEARCH is the recents' one filter (his order, 2026-10-09: the place
+ *  funnel went — the list is grouped by place and every row wears its glyph). */
 export interface RecentsFilter {
-  /** The place picked in the funnel; "" = every place. */
-  locus: LocusFilter;
   /** The search box, matched against title and folder. */
   query?: string;
 }
 
-/** Does the filter keep this row? One rule for the rail and the dropdown. */
+/** Does the search keep this row? */
 export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
-  if (f.locus && (row.locus ?? "local") !== f.locus) return false;
   const q = (f.query ?? "").trim().toLowerCase();
   if (q && !`${row.title} ${row.cwd}`.toLowerCase().includes(q)) return false;
   return true;
@@ -81,11 +66,6 @@ export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
 
 export function filterRecents<T extends RecentsRowLike>(rows: readonly T[], f: RecentsFilter): T[] {
   return rows.filter((r) => recentsKeeps(r, f));
-}
-
-/** Is the funnel narrowing anything the list can hold? Lights the button. */
-export function recentsFilterActive(f: Pick<RecentsFilter, "locus">): boolean {
-  return !!f.locus;
 }
 
 // ── THE GRANT ────────────────────────────────────────────────────────────

@@ -20878,7 +20878,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .code-history-item.locked .code-history-title, .wb-session-row.locked .wb-session-title { opacity: 0.7; }
 .wb-session-row .code-sess-locus { margin-left: 0; margin-right: 4px; }
 .code-menu-item .code-sess-locus.loop-mark { margin-left: 0; margin-right: 7px; width: 14px; height: 14px; justify-content: center; }
-.loop-filter-menu .code-menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .wb-session-hint { font-size: 11.5px; color: var(--text-3); padding-top: 0; }
 .code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
 /* The Glyphh mascot is a tall figure, not a square favicon — at favicon size it
@@ -20889,9 +20888,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 .app-rail-search { display: flex; align-items: center; gap: 6px; }
 .app-rail-search .search-clear-wrap, .app-rail-search input { flex: 1; min-width: 0; }
-.rail-filter-btn { flex: none; width: 24px; height: 24px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.rail-filter-btn:hover { color: var(--text); background: var(--hover); }
-.rail-filter-btn.active { color: var(--accent); border-color: var(--accent); }
 .code-menu-item .loop-mark { vertical-align: middle; }
 .code-menu-item .menu-check { margin-left: auto; }
 
@@ -21061,15 +21057,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 
 
 /* The recents loop filter: wide enough for a name, a mark and a check on one line. */
-.code-menu.loop-filter-menu { min-width: 220px; }
-.code-menu.loop-filter-menu .code-menu-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.code-menu.loop-filter-menu .code-menu-item .loop-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.code-menu.loop-filter-menu .code-menu-item { justify-content: flex-start; text-align: left; }
-.code-menu.loop-filter-menu .code-sess-mark { flex: none; width: 16px; height: 16px; margin: 0 4px 0 0; }
-.code-menu.loop-filter-menu .code-sess-mark img { width: 16px; height: 16px; }
 
-.code-menu.loop-filter-menu .menu-check { flex: none; display: inline-flex; }
-.code-menu.loop-filter-menu .menu-check { flex: none; }
 
 /* THE MEMORY BROWSER (2026-09-20): a knowledge base's rows. */
 .mem-browser { margin-top: 12px; }
