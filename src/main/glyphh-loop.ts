@@ -16,6 +16,7 @@
 import type { WebContents } from "electron";
 import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { listSkills } from "./skills-fs.js";
 import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
@@ -54,6 +55,24 @@ export interface LoopRunPayload {
   /** What the composer attached: images ride as vision blocks, files and
    *  folders as a manifest the loop's read tools open. */
   attachments?: AttachRef[];
+  /** Gateway tags every model call of this turn carries (x-litellm-tags):
+   *  a super power's `glyphh-power:<slug>`, which its monthly caps meet. */
+  tags?: string[];
+}
+
+/** THE TURN'S TAGS, reaching the loop's fetch (his order, 2026-10-09: a super
+ *  power's monthly model cap "enforced by the gateway"). The loop's requests
+ *  happen inside the run, so the run's async context carries its tags to the
+ *  one fetch both loops share; only model calls (/v1/messages) wear them. */
+const callTags = new AsyncLocalStorage<string[]>();
+function taggedFetch(input: string, init: RequestInit): Promise<Response> {
+  const tags = callTags.getStore();
+  if (tags?.length && /\/v1\/messages$/.test(input)) {
+    const headers = new Headers(init.headers);
+    headers.set("x-litellm-tags", tags.join(","));
+    return fetch(input, { ...init, headers });
+  }
+  return fetch(input, init);
 }
 
 /**
@@ -251,6 +270,7 @@ const loop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  fetch: taggedFetch,
   warn: (m) => console.warn(m),
 });
 /** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
@@ -266,6 +286,7 @@ const unattendedLoop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  fetch: taggedFetch,
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -401,7 +422,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const manifest = attachmentPromptBlock(files);
   const images = attachmentImageRefs(atts).map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType, data: im.data } }));
   const effort = LOOP_EFFORTS.find((e) => e === p.effort);
-  const started = await loop.run({
+  const run = (): ReturnType<typeof loop.run> => loop.run({
     chatId: p.chatId, text: [text, manifest].filter(Boolean).join("\n\n"), model,
     ...(images.length ? { images } : {}),
     ...(effort ? { effort } : {}),
@@ -410,6 +431,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
+  const started = await (p.tags?.length ? callTags.run(p.tags, run) : run());
   return started;
 }
 

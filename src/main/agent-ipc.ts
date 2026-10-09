@@ -324,6 +324,8 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
     workdir: folder,
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(attachments.length ? { attachments } : {}),
+    // A super power's calls wear its tag: the gateway holds them to its caps.
+    ...(bot ? { tags: [`glyphh-power:${bot.slug}`] } : {}),
     history: chat?.messages ?? [],
   }, text);
 }

@@ -30,6 +30,7 @@ import { renderToolGroups } from "./settings-connections.js";
 import { planGates } from "./plan-gate.js";
 import { hideAppOverlay } from "../app-overlay.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
+import { capText, isChatModel, modelTypeLabel, parseCap, priceLines, tokensShort, type CatalogModel } from "./model-info.js";
 
 export type PowerTab = "folders" | "connections" | "models" | "skills";
 export const POWER_TABS: ReadonlyArray<{ tab: PowerTab; label: string }> = Object.freeze([
@@ -40,7 +41,11 @@ export const POWER_TABS: ReadonlyArray<{ tab: PowerTab; label: string }> = Objec
 ]);
 
 /** A super power's picks. `models` is one list: the first is the one it runs on. */
-export interface PowerSelection { folders: string[]; connections: string[]; models: string[]; skills: string[] }
+export interface PowerSelection {
+  folders: string[]; connections: string[]; models: string[]; skills: string[];
+  /** Model → dollars a month (his order, 2026-10-09); absent = no limit. The gateway enforces it. */
+  modelCaps?: Record<string, number>;
+}
 
 export interface PowersModalOptions {
   tab?: PowerTab;
@@ -51,9 +56,9 @@ export interface PowersModalOptions {
 }
 
 type Conn = { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; accountId?: string; org?: boolean; shared?: boolean };
-type CatalogApp = { id: string; name: string; description: string; icon?: string };
+type CatalogApp = { id: string; name: string; description: string; icon?: string; categories?: string[] };
 interface Api extends PlusApi {
-  loopModels?: (loopId: string, force?: boolean) => Promise<{ ok: boolean; models: Array<{ id: string; name: string; utility?: boolean }> }>;
+  modelsCatalog?: () => Promise<{ ok: boolean; data: unknown[]; error?: string }>;
   pickDirectory?: () => Promise<string | null>;
   getWorkingDirRecents?: () => Promise<string[]>;
   connectorsGetApps?: (search?: string, after?: string, category?: string) => Promise<{ apps: CatalogApp[]; hasMore: boolean; next?: string }>;
@@ -110,14 +115,17 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   if (!progressWired) { progressWired = true; api().onConnectorsConnectProgress?.((p) => onProgress?.(p)); }
   let tab: PowerTab = opts.tab ?? "folders";
   const sel: PowerSelection | null = opts.selection
-    ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills] }
+    ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills], modelCaps: { ...(opts.selection.modelCaps ?? {}) } }
     : null;
   /** The connections tab's own screens: the list, the directory, one connection's permissions. */
-  let connView: { kind: "list" } | { kind: "discover" } | { kind: "perms"; conn: Conn; app?: CatalogApp } = { kind: "list" };
+  let connView: { kind: "list" } | { kind: "discover" } | { kind: "perms"; conn: Conn; app?: CatalogApp } | { kind: "app"; app: CatalogApp } = { kind: "list" };
+  /** The models tab's screens: the list, one model's details. */
+  let modelView: { kind: "list" } | { kind: "detail"; model: CatalogModel } = { kind: "list" };
   const queries: Record<string, string> = {};
   let conns: Conn[] = [];
   let rows: PlusConnectorRow[] = [];
-  let models: Array<{ id: string; name: string }> = [];
+  let models: CatalogModel[] = [];
+  let modelsError = "";
   let skills: Array<{ id: string; name: string; type?: string }> = [];
   let recents: string[] = [];
   let catalog: CatalogApp[] = [];
@@ -179,7 +187,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   for (const t of POWER_TABS) {
     const b = el("button", "skills-tab", t.label);
     b.type = "button"; b.dataset.tab = t.tab; b.setAttribute("role", "tab");
-    b.addEventListener("click", () => { tab = t.tab; if (t.tab === "connections") connView = { kind: "list" }; showErr(""); paint(); });
+    b.addEventListener("click", () => { tab = t.tab; if (t.tab === "connections") connView = { kind: "list" }; if (t.tab === "models") modelView = { kind: "list" }; showErr(""); paint(); });
     tabsEl.appendChild(b);
   }
 
@@ -320,6 +328,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   function paintConnections(bodyOnly = false): void {
     if (connView.kind === "discover") { paintDiscover(bodyOnly); return; }
     if (connView.kind === "perms") { if (!bodyOnly) void paintPerms(connView.conn, connView.app); return; }
+    if (connView.kind === "app") { if (!bodyOnly) paintAppDetail(connView.app); return; }
     if (!bodyOnly) bar.append(searchBox("connections", "Search connections", repaintBody), addButton("+ Add", () => { connView = { kind: "discover" }; paint(); }));
     const needle = (queries.connections ?? "").trim().toLowerCase();
     const have = sel?.connections ?? [];
@@ -334,6 +343,45 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
         ...(conn && c.kind === "account" ? { onOpen: () => { connView = { kind: "perms", conn }; paint(); } } : {}),
       }));
     }
+  }
+
+  const appIcon = (a: CatalogApp, cls = "conn2-icon powm-app-icon"): string =>
+    `<span class="${cls}">${appIconInner({ iconUrl: a.icon ?? null, connection: { pipedreamSlug: a.id } }, a.name, "conn2-icon-initial")}</span>`;
+  /** THE DISCOVER CARD'S + (his order, 2026-10-09): + to connect, … while
+   *  connecting, ✓ once connected — settings-connections.ts connectAppButton. */
+  function connectButton(a: CatalogApp, done: boolean, busy: boolean): HTMLButtonElement {
+    const b = el("button", "action-btn conn2-plus powm-connect" + (done ? " done" : ""));
+    b.type = "button";
+    b.innerHTML = done ? CHECK_SVG : busy ? "…" : PLUS_BTN_SVG;
+    b.disabled = done || busy || !connectAllowed;
+    b.title = done ? "Connected" : busy ? "Connecting…" : connectAllowed ? `Connect ${a.name}` : "Connections aren't on your plan.";
+    b.setAttribute("aria-label", b.title);
+    b.addEventListener("click", (e) => { e.stopPropagation(); void connect(a, b); });
+    return b;
+  }
+  /** A directory app's details, under ‹ Connections (his order, 2026-10-09:
+   *  "connections needs this too"). */
+  function paintAppDetail(a: CatalogApp): void {
+    bar.appendChild(backButton("Connections", () => { connView = { kind: "discover" }; paint(); }));
+    const done = conns.some((c) => c.appSlug === a.id && c.connected !== false);
+    const head = el("div", "powm-detail-head");
+    head.innerHTML = appIcon(a, "conn2-icon lg");
+    const titles = el("div", "powm-detail-titles");
+    titles.append(el("div", "powm-detail-name", a.name), el("div", "powm-detail-sub", done ? "Connected" : "Not connected"));
+    head.append(titles, connectButton(a, done, connecting.has(a.id)));
+    body.appendChild(head);
+    body.appendChild(el("p", "powm-detail-desc", a.description || "No description yet."));
+    if (a.categories?.length) {
+      const facts = el("div", "powm-facts");
+      factRow(facts, "Categories", a.categories.join(", "));
+      body.appendChild(facts);
+    }
+  }
+  function factRow(host: HTMLElement, label: string, value: string): void {
+    if (!value) return;
+    const r = el("div", "powm-fact");
+    r.append(el("span", "powm-fact-label", label), el("span", "powm-fact-value", value));
+    host.appendChild(r);
   }
 
   async function loadCatalog(qText: string): Promise<void> {
@@ -367,17 +415,15 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       const busy = connecting.has(a.id);
       // THE DISCOVER CARD'S + (his order, 2026-10-09): + to connect, … while
       // connecting, ✓ once connected — settings-connections.ts connectAppButton.
-      const b = el("button", "action-btn conn2-plus powm-connect" + (done ? " done" : ""));
-      b.type = "button";
-      b.innerHTML = done ? CHECK_SVG : busy ? "…" : PLUS_BTN_SVG;
-      b.disabled = done || busy || !connectAllowed;
-      b.title = done ? "Connected" : busy ? "Connecting…" : connectAllowed ? `Connect ${a.name}` : "Connections aren't on your plan.";
-      b.setAttribute("aria-label", b.title);
-      b.addEventListener("click", () => { void connect(a, b); });
-      const icon = `<span class="conn2-icon powm-app-icon">${appIconInner({ iconUrl: a.icon ?? null, connection: { pipedreamSlug: a.id } }, a.name, "conn2-icon-initial")}</span>`;
+      const b = connectButton(a, done, busy);
       body.appendChild(row({
-        icon, name: a.name, sub: a.description || "", action: b,
-        ...(done ? { onOpen: () => { const c = conns.find((x) => x.appSlug === a.id && x.connected !== false); if (c) { connView = { kind: "perms", conn: c, app: a }; paint(); } } } : {}),
+        icon: appIcon(a), name: a.name, sub: a.description || "", action: b,
+        // A connected app opens its tools; any other its details (his order, 2026-10-09).
+        onOpen: () => {
+          const c = done ? conns.find((x) => x.appSlug === a.id && x.connected !== false) : undefined;
+          connView = c ? { kind: "perms", conn: c, app: a } : { kind: "app", app: a };
+          paint();
+        },
       }));
     }
     if (catalogNext) {
@@ -469,20 +515,117 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     });
   }
 
-  // ── MODELS and YOUR POWERS ──
+  // ── MODELS: a type and a description each; a name opens the details,
+  //    pricing and (when added to a super power) its monthly cap. ──
+  const byName = (name: string): CatalogModel | undefined => models.find((m) => m.name === name);
+  /** The model the super power runs on: the first chat model it has. */
+  const runsOn = (): string => (sel?.models ?? []).find((n) => isChatModel(byName(n) ?? { modality: "chat" })) ?? "";
+  function toggleModel(name: string): void {
+    if (!sel) return;
+    const had = sel.models.includes(name);
+    sel.models = toggleIn(sel.models, name);
+    if (had && sel.modelCaps) delete sel.modelCaps[name];
+  }
+  const capOf = (name: string): number | null => sel?.modelCaps?.[name] ?? null;
+  function modelSub(m: CatalogModel): string {
+    const bits = [modelTypeLabel(m.modality)];
+    if (sel?.models.includes(m.name)) bits.push(capText(capOf(m.name)));
+    if (m.description) bits.push(m.description);
+    return bits.join(" · ");
+  }
   function paintModels(bodyOnly = false): void {
+    if (modelView.kind === "detail") { if (!bodyOnly) paintModelDetail(modelView.model); return; }
     if (!bodyOnly) bar.append(searchBox("models", "Search models", repaintBody), addButton("+ Add", null, "Adding a model here isn't built yet."));
     const needle = (queries.models ?? "").trim().toLowerCase();
     const have = sel?.models ?? [];
-    const list = models.filter((m) => matches(needle, m.name, m.id));
-    if (!list.length) { empty(models.length ? "Nothing matches." : "Your team's models couldn't be read."); return; }
+    const main = runsOn();
+    const list = models.filter((m) => matches(needle, m.name, m.providerSlug ?? "", modelTypeLabel(m.modality), m.description ?? ""));
+    if (!list.length) { empty(models.length ? "Nothing matches." : modelsError || "Loading your team's models…"); return; }
     for (const m of list) {
       body.appendChild(row({
-        icon: MODEL_SVG, name: m.name, has: have.includes(m.id),
-        ...(have[0] === m.id ? { tag: "Runs on" } : {}),
-        onToggle: () => { sel!.models = toggleIn(sel!.models, m.id); repaintBody(); },
+        icon: MODEL_SVG, name: m.autoRouter ? "Auto" : m.name, sub: modelSub(m), has: have.includes(m.name),
+        ...(main === m.name ? { tag: "Runs on" } : {}),
+        onToggle: () => { toggleModel(m.name); repaintBody(); },
+        onOpen: () => { modelView = { kind: "detail", model: m }; paint(); },
       }));
     }
+  }
+  /** ONE MODEL (his order, 2026-10-09: "<- Models at the top then the information about the model, pricing, etc."). */
+  function paintModelDetail(m: CatalogModel): void {
+    bar.appendChild(backButton("Models", () => { modelView = { kind: "list" }; paint(); }));
+    const added = !!sel?.models.includes(m.name);
+    const head = el("div", "powm-detail-head");
+    const ic = el("div", "botp-power-icon powm-detail-icon");
+    ic.innerHTML = MODEL_SVG;
+    const titles = el("div", "powm-detail-titles");
+    titles.append(el("div", "powm-detail-name", m.autoRouter ? "Auto" : m.name), el("div", "powm-detail-sub", [m.providerSlug, modelTypeLabel(m.modality)].filter(Boolean).join(" · ")));
+    head.append(ic, titles);
+    if (runsOn() === m.name) head.appendChild(el("span", "botp-power-tag", "Runs on"));
+    if (sel) {
+      const b = el("button", "action-btn conn2-plus powm-pick" + (added ? " done" : ""));
+      b.type = "button";
+      b.innerHTML = added ? CHECK_SVG : PLUS_BTN_SVG;
+      b.title = added ? `Added — click to remove ${m.name}` : `Add ${m.name}`;
+      b.setAttribute("aria-label", added ? `Remove ${m.name}` : `Add ${m.name}`);
+      b.addEventListener("click", () => { toggleModel(m.name); paint(); });
+      head.appendChild(b);
+    }
+    body.appendChild(head);
+    body.appendChild(el("p", "powm-detail-desc", m.description || "No description yet."));
+    // THE MONTHLY CAP (his order, 2026-10-09): no limit, or a dollar amount a
+    // month this super power may spend on this model. The gateway enforces it.
+    if (sel && added) body.appendChild(capField(m));
+    const facts = el("div", "powm-facts");
+    factRow(facts, "Type", modelTypeLabel(m.modality));
+    factRow(facts, "Provider", m.providerSlug ?? "");
+    factRow(facts, "Context window", m.contextWindow ? `${tokensShort(m.contextWindow)} tokens` : "");
+    factRow(facts, "Max output", m.maxOutputTokens ? `${tokensShort(m.maxOutputTokens)} tokens` : "");
+    if (m.reasoning) factRow(facts, "Reasoning", "Yes");
+    body.appendChild(el("div", "conn2-h3 powm-section", "About"));
+    body.appendChild(facts);
+    const lines = priceLines(m);
+    body.appendChild(el("div", "conn2-h3 powm-section", "Pricing"));
+    const pricing = el("div", "powm-facts");
+    if (!lines.length) factRow(pricing, "Rates", "Not published yet");
+    for (const l of lines) factRow(pricing, l.label, l.value);
+    body.appendChild(pricing);
+    body.appendChild(el("div", "powm-note", "Rates include your plan's margin where it applies; your invoice is the final word."));
+  }
+  function capField(m: CatalogModel): HTMLElement {
+    const wrap = el("div", "powm-cap");
+    wrap.appendChild(el("div", "conn2-h3 powm-section", "Monthly cap"));
+    const opts = el("div", "powm-cap-row");
+    const name = `powm-cap-${Math.random().toString(36).slice(2, 8)}`;
+    const none = el("label", "powm-cap-opt");
+    const noneIn = el("input"); noneIn.type = "radio"; noneIn.name = name;
+    none.append(noneIn, el("span", "", "No limit"));
+    const some = el("label", "powm-cap-opt");
+    const someIn = el("input"); someIn.type = "radio"; someIn.name = name;
+    const amount = el("input", "settings-input powm-cap-amount");
+    amount.type = "text"; amount.inputMode = "decimal"; amount.placeholder = "20"; amount.setAttribute("aria-label", "Dollars a month");
+    some.append(someIn, el("span", "", "Cap at $"), amount, el("span", "", "a month"));
+    opts.append(none, some);
+    wrap.appendChild(opts);
+    const hint = el("div", "powm-note", "");
+    wrap.appendChild(hint);
+    const cur = capOf(m.name);
+    noneIn.checked = !cur;
+    someIn.checked = !!cur;
+    amount.value = cur ? String(cur) : "";
+    const apply = (): void => {
+      if (!sel) return;
+      sel.modelCaps ??= {};
+      const v = someIn.checked ? parseCap(amount.value) : null;
+      if (v) sel.modelCaps[m.name] = v; else delete sel.modelCaps[m.name];
+      hint.textContent = v
+        ? `The gateway stops this super power's calls to ${m.name} once it has spent ${capText(v).replace("/month cap", "")} this month, until the 1st.`
+        : someIn.checked ? "Enter a dollar amount." : "This super power may spend without a limit on this model (your plan's budget still applies).";
+    };
+    noneIn.addEventListener("change", apply);
+    someIn.addEventListener("change", () => { apply(); amount.focus(); });
+    amount.addEventListener("input", () => { someIn.checked = true; apply(); });
+    apply();
+    return wrap;
   }
   function paintSkills(bodyOnly = false): void {
     if (!bodyOnly) bar.append(searchBox("skills", "Search your powers", repaintBody), addButton("+ Add", null, "Making a power here isn't built yet. Ask Glyphh to make one."));
@@ -503,14 +646,15 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   paint();
   void (async () => {
     const [ms, sk, rc, gates] = await Promise.all([
-      api().loopModels?.("glyphh").catch(() => null),
+      api().modelsCatalog?.().catch((e: unknown) => ({ ok: false, data: [] as unknown[], error: e instanceof Error ? e.message : String(e) })),
       api().skillsList?.(["skill", "task"]).catch(() => null),
       api().getWorkingDirRecents?.().catch(() => []) ?? Promise.resolve([] as string[]),
       planGates().catch(() => null),
       reloadConnections(),
     ]);
     if (closed) return;
-    models = ms?.ok ? ms.models.filter((m) => !m.utility) : [];
+    models = ms?.ok ? (ms.data as CatalogModel[]).filter((m) => m && typeof m.name === "string" && m.active !== false) : [];
+    modelsError = ms?.ok ? "" : (ms?.error || "Your team's models couldn't be read.");
     skills = sk?.ok && Array.isArray(sk.data) ? (sk.data as Array<{ id: string; name: string; type?: string }>) : [];
     recents = Array.isArray(rc) ? rc.map(String) : [];
     connectAllowed = (gates as { connectionsAllowed?: boolean } | null)?.connectionsAllowed !== false;

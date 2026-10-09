@@ -69,6 +69,7 @@ export interface AgentRow {
   personality?: number;
   effort?: string;
   voice?: AgentVoiceLike | null;
+  modelCaps?: Record<string, number>;
   /** Armed — false parks every task without deleting its schedule. */
   live: boolean;
   guardrails: GuardrailsPolicy | null;
@@ -144,6 +145,7 @@ interface AgentInput {
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[];
   personality?: number; effort?: string; voice?: AgentVoiceLike | null;
+  modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 

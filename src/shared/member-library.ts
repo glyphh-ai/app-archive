@@ -398,6 +398,10 @@ export interface AgentRowLike {
   personality?: number;
   effort?: string;
   voice?: AgentVoiceLike | null;
+  /** MONTHLY CAPS (his order, 2026-10-09): model name → dollars a month this
+   *  super power may spend on it; absent = no limit. The gateway enforces
+   *  them (server power_caps.py) on calls tagged with its slug. */
+  modelCaps?: Record<string, number>;
   live: boolean;
   guardrails: GuardrailsPolicyLike | null;
   createdAt: string;
@@ -422,7 +426,20 @@ export interface AgentInputLike {
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[];
   personality?: number; effort?: string; voice?: AgentVoiceLike | null;
+  modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
+}
+
+/** Caps as stored: a positive dollar amount per model, two decimals; anything else is no limit. */
+export function cleanModelCaps(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [model, usd] of Object.entries(v as Record<string, unknown>)) {
+    const n = Math.round(Number(usd) * 100) / 100;
+    const m = String(model).trim();
+    if (m && Number.isFinite(n) && n > 0 && n <= 1_000_000) out[m] = n;
+  }
+  return out;
 }
 
 /** A super power's voice: the speech model it speaks through and the voice. */
@@ -525,6 +542,7 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
     ...optional("effort", input.effort === undefined ? cleanEffort(existing?.effort) : cleanEffort(input.effort)),
     voice: input.voice === undefined ? cleanVoice(existing?.voice) : cleanVoice(input.voice),
+    modelCaps: input.modelCaps === undefined ? cleanModelCaps(existing?.modelCaps) : cleanModelCaps(input.modelCaps),
     live: input.live === undefined ? existing?.live ?? true : !!input.live,
     guardrails: input.guardrails === undefined ? existing?.guardrails ?? null : cleanGuardrails(input.guardrails),
     createdAt: existing?.createdAt ?? nowIso,

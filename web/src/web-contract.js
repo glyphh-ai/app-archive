@@ -966,6 +966,11 @@ export function buildContract(client, deps) {
     /** What this org's plan allows (SDK plans.gates() — main's plan-gates IPC
      *  is the same pass-through). The renderer's plan-gate.ts falls back to
      *  its CLOSED gates on a throw, so this one may throw. */
+    /** The powers modal's models: the team's list, every type (main's models-catalog). */
+    modelsCatalog: async () => {
+      try { return { ok: true, data: await client.models.available() }; }
+      catch (err) { return { ok: false, data: [], error: err?.message ?? String(err) }; }
+    },
     planGates: () => client.plans.gates(),
     /** Main pushes this when the server moves the list; the web has no push
      *  seam yet (the composer re-reads on focus + open). An explicit no-op

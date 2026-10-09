@@ -22389,3 +22389,23 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border-radius: inherit;
 }
 .powm-busy.hidden { display: none; }
+
+/* ── DETAILS PAGES in the powers modal (his order, 2026-10-09): a model's or a
+   directory app's head, its description, a facts grid, pricing, the cap. ── */
+.powm-detail-head { display: flex; align-items: center; gap: 12px; padding: 4px 0 2px; }
+.powm-detail-icon { width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 10px; }
+.powm-detail-icon svg { width: 22px; height: 22px; }
+.powm-detail-titles { flex: 1; min-width: 0; }
+.powm-detail-name { font-size: 16px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.powm-detail-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+.powm-detail-desc { margin: 6px 0 4px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.powm-section { margin: 14px 0 6px; }
+.powm-facts { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.powm-fact { display: flex; justify-content: space-between; gap: 16px; padding: 8px 12px; font-size: 13px; border-top: 1px solid var(--border); }
+.powm-fact:first-child { border-top: none; }
+.powm-fact-label { color: var(--text-2); }
+.powm-fact-value { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.powm-note { margin-top: 8px; font-size: 12px; color: var(--text-3); }
+.powm-cap-row { display: flex; flex-direction: column; gap: 8px; }
+.powm-cap-opt { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.powm-cap-amount { width: 90px; height: 30px; padding: 0 8px; }

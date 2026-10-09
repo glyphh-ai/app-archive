@@ -26,6 +26,8 @@ export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
   slug: string; name: string; description: string; prompt: string; model: string;
   personality?: number; effort?: string; voice?: BotVoice | null;
+  /** Model → dollars a month; absent = no limit (the gateway enforces it). */
+  modelCaps?: Record<string, number>;
   avatar: BotAvatar | null;
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
 }
@@ -106,17 +108,26 @@ export function modelList(bot: Pick<BotRow, "model" | "models">): string[] {
   const main = String(bot.model ?? "").trim();
   return [...(main ? [main] : []), ...powersOf({ models: bot.models } as Pick<BotRow, PowerKind>, "models").filter((m) => m !== main)];
 }
-/** The fields a model list is saved as. */
-export function modelFields(list: string[]): { model: string; models: string[] } {
-  return { model: list[0] ?? "", models: list.slice(1) };
+/** The fields a model list is saved as: it runs on the first CHAT model
+ *  (an image or speech model is a power it uses, never what it runs on). */
+export function modelFields(list: string[], isChat: (name: string) => boolean = () => true): { model: string; models: string[] } {
+  const model = list.find(isChat) ?? "";
+  return { model, models: list.filter((m) => m !== model) };
+}
+/** The caps kept for a model list: only models still on it, positive dollars only. */
+export function capsFor(list: string[], caps: Record<string, number> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of list) { const v = Number(caps?.[m]); if (Number.isFinite(v) && v > 0) out[m] = v; }
+  return out;
 }
 
 /** The patch that adds (on) or removes (off) one power. Models move as one
  *  list: the first added runs it, and removing that one hands it to the next. */
-export function powerPatch(bot: Pick<BotRow, PowerKind | "model">, kind: PowerKind, name: string, on: boolean): Record<string, unknown> {
+export function powerPatch(bot: Pick<BotRow, PowerKind | "model" | "modelCaps">, kind: PowerKind, name: string, on: boolean, isChat?: (name: string) => boolean): Record<string, unknown> {
   if (kind === "models") {
     const cur = modelList(bot).filter((m) => m !== name);
-    return modelFields(on ? [...cur, name] : cur);
+    const list = on ? [...cur, name] : cur;
+    return { ...modelFields(list, isChat), modelCaps: capsFor(list, bot.modelCaps) };
   }
   const cur = powersOf(bot, kind).filter((x) => x !== name);
   return { [kind]: on ? [...cur, name] : cur };
@@ -667,7 +678,14 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!bot) return [];
     if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 ? { tag: "Works here" } : {}) }));
     if (kind === "connections") return powersOf(bot, "connections").map((c) => { const k = connOf(c); return { icon: k?.icon ?? PLUS_ICONS.connectors, name: k?.name ?? c, sub: k?.on ? "Connected" : "Not connected", stored: c }; });
-    if (kind === "models") return modelList(bot).map((m, i) => ({ icon: MODEL_SVG, name: modelName(m), sub: "", stored: m, ...(i === 0 ? { tag: "Runs on" } : {}) }));
+    if (kind === "models") {
+      const caps = bot.modelCaps ?? {};
+      return modelList(bot).map((m) => ({
+        icon: MODEL_SVG, name: modelName(m), stored: m,
+        sub: caps[m] ? `$${caps[m]}/month cap` : "No limit",
+        ...(m === bot!.model ? { tag: "Runs on" } : {}),
+      }));
+    }
     return powersOf(bot, "skills").map((s) => { const k = skillOf(s); return { icon: POWER_SVG, name: k?.name ?? s, sub: k?.type === "task" ? "Task" : "Skill", stored: s }; });
   }
 
@@ -748,7 +766,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** Remove one power from the list, saved at once. */
   async function setPower(kind: PowerKind, name: string, on: boolean): Promise<void> {
     if (!bot) return;
-    const patch = powerPatch(bot, kind, name, on);
+    const chat = new Set(models.map((m) => m.id));
+    const patch = powerPatch(bot, kind, name, on, (n) => chat.has(n));
     const r = await api().libraryAgentUpdate?.(bot.slug, patch).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     if (!r?.ok) { showErr(sideErr, r?.error || "The power could not be saved."); return; }
     showErr(sideErr, "");
@@ -763,14 +782,20 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const b = bot;
     openPowersModal({
       ...(kind ? { tab: kind } : {}),
-      selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills") },
+      selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills"), modelCaps: { ...(b.modelCaps ?? {}) } },
       onSave: async (picked) => {
         if (!bot) return { ok: false, error: "This super power is gone." };
         const patch: Record<string, unknown> = {};
         for (const k of ["folders", "connections", "skills"] as const) {
           if (JSON.stringify(picked[k]) !== JSON.stringify(powersOf(bot, k))) patch[k] = picked[k];
         }
-        if (JSON.stringify(picked.models) !== JSON.stringify(modelList(bot))) Object.assign(patch, modelFields(picked.models));
+        // It runs on its first chat model; the team's chat list is `models` here.
+        const chat = new Set(models.map((m) => m.id));
+        const isChat = (n: string): boolean => chat.has(n);
+        const fields = modelFields(picked.models, isChat);
+        if (fields.model !== (bot.model ?? "") || JSON.stringify(fields.models) !== JSON.stringify(powersOf(bot, "models").filter((m) => m !== bot!.model))) Object.assign(patch, fields);
+        const caps = capsFor(picked.models, picked.modelCaps);
+        if (JSON.stringify(caps) !== JSON.stringify(capsFor(modelList(bot), bot.modelCaps))) patch.modelCaps = caps;
         // A connection made inside the modal is new to this page's list too.
         conns = await readConnectorRows(api()).catch(() => conns);
         if (Object.keys(patch).length) {

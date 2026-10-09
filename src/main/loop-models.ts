@@ -116,4 +116,11 @@ export function registerLoopModelsIpc(): void {
   // rename (preload-contract law). The loop id it used to take is ignored —
   // there is one loop now, and one list.
   ipcMain.handle("loop-models", (_e, _loopId?: string, force?: boolean) => listLoopModels(!!force));
+  // THE POWERS MODAL'S MODELS (his order, 2026-10-09: "each model needs a type
+  // (from litellm) and a description from the server… a details page… pricing"):
+  // the team's whole list, every type, as the server publishes it.
+  ipcMain.handle("models-catalog", async () => {
+    try { return { ok: true as const, data: await getClient().models.available() }; }
+    catch (err) { return { ok: false as const, error: err instanceof Error ? err.message : String(err), data: [] }; }
+  });
 }
