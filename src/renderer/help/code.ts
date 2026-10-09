@@ -7606,19 +7606,31 @@ export function initCode(): void {
       __wbOpenGlyphhAgent?: () => void;
       __wbAgentInstanced?: () => boolean;
       __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "new-session" }) => void;
+      __wbAgentFocused?: () => boolean;
+      __wbAgentRoute?: (cmd: { type: "new-session" }) => boolean;
+      __wbHasAgentSeat?: () => boolean;
+      __wbFrontAgentSeat?: () => boolean;
     };
     w.__initCodeWorkbench?.();
     // The workbench boots async — a press before its doors exist waits for
     // them (a bounded poll, the same pattern every other early door uses).
     const go = (tries = 0): void => {
       if (!w.__wbAgentInstanced && !w.__wbOpenGlyphhAgent) { if (tries < 40) requestAnimationFrame(() => go(tries + 1)); return; }
-      // NEW MEANS NEW, 100% OF THE TIME (his order, 2026-09-29: "it should
-      // ALWAYS load a new agent with a new session no matter what"). It used
-      // to fall through to newSessionInPlace once a panel was open, which
-      // reset the thread of the panel that happened to be showing instead of
-      // opening one — and, with the store's pointer still naming the last
-      // thread, a freshly opened panel came up on it.
-      if (w.__wbAgentInstanced?.()) { w.__wbOpenAgentInstanceWith?.(GLYPHH_LOOP, { type: "new-session" }); return; }
+      // NEW TARGETS THE OPEN AGENT (his order, 2026-10-09, reversing
+      // 2026-09-29's "always a new agent": "new from the left rail should
+      // always just target the open agent... no need for it to open yet
+      // another agent window"). Where it lands, the same order a rail
+      // session click uses: the panel touched last, else the workspace's
+      // seat on screen, else the first open panel — a fresh session in it.
+      // Only with no agent open at all does a panel open.
+      if (w.__wbAgentInstanced?.()) {
+        const cmd = { type: "new-session" as const };
+        if (w.__wbAgentFocused?.() && w.__wbAgentRoute?.(cmd)) return;
+        if (w.__wbHasAgentSeat?.()) { newSessionInPlace(); w.__wbFrontAgentSeat?.(); return; }
+        if (w.__wbAgentRoute?.(cmd)) return;
+        w.__wbOpenAgentInstanceWith?.(GLYPHH_LOOP, cmd);
+        return;
+      }
       w.__wbOpenGlyphhAgent?.();
     };
     go();
