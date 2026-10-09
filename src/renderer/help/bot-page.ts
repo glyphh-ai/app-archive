@@ -166,10 +166,11 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   form.innerHTML = `
     <div class="crud-form-error botp-error hidden"></div>
     <div class="edit-head botp-head"></div>
-    <label class="settings-label">Name</label>
+    <label class="settings-label">Identity</label>
     <div class="botp-name-row">
       <button type="button" class="botp-face-btn" aria-haspopup="menu" aria-expanded="false" title="Change the avatar"></button>
-      <input type="text" class="settings-input botp-name" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
+      <button type="button" class="botp-voice-btn" aria-haspopup="menu" aria-expanded="false" title="Change the voice"></button>
+      <input type="text" class="settings-input botp-name" aria-label="Name" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
     </div>
     <label class="settings-label">When to use it</label>
     <input type="text" class="settings-input botp-desc" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
@@ -201,6 +202,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const nameIn = q<HTMLInputElement>(".botp-name");
   const descIn = q<HTMLInputElement>(".botp-desc");
   const faceBtn = q<HTMLButtonElement>(".botp-face-btn");
+  const voiceBtn = q<HTMLButtonElement>(".botp-voice-btn");
   // THE SLIDERS (his order, 2026-10-09: "personality, thinking effort or speed").
   const persIn = q<HTMLInputElement>(".botp-personality");
   const effortIn = q<HTMLInputElement>(".botp-effort");
@@ -236,7 +238,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   }
   let faceMenu: HTMLElement | null = null;
   function closeFaceMenu(): void {
-    stopPreview();
     faceMenu?.remove();
     faceMenu = null;
     faceBtn.setAttribute("aria-expanded", "false");
@@ -273,7 +274,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     add.type = "button";
     add.innerHTML = `${PLUS_SVG}<span>Add new</span>`;
     add.addEventListener("click", () => { closeFaceMenu(); openAvatarModal(); });
-    m.append(grid, voiceSection(), add);
+    m.append(grid, add);
     document.body.appendChild(m);
     const r = faceBtn.getBoundingClientRect();
     m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
@@ -284,9 +285,42 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   }
   faceBtn.addEventListener("click", openFaceMenu);
 
-  // ── THE VOICE, in the same dropdown (his order, 2026-10-09: "add voice to
-  //    the dropdown. Each super power will and can have its own voice"). The
+  // ── THE VOICE, its own dropdown on the identity row (his order, 2026-10-09:
+  //    "that row is the agent's identity: Avatar -> voice -> name"). The
   //    voices are the ones your speech model offers; ▶ plays a sample. ──
+  const SPEAKER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`;
+  const voiceLabel = (): string => pickedVoice?.name || (pickedVoice ? pickedVoice.voiceId : "Your voice");
+  function paintVoiceBtn(): void {
+    voiceBtn.innerHTML = `<span class="botp-voice-icon">${SPEAKER_SVG}</span><span class="botp-voice-btn-name"></span><span class="botp-face-caret">${CARET_SVG}</span>`;
+    (voiceBtn.querySelector(".botp-voice-btn-name") as HTMLElement).textContent = voiceLabel();
+  }
+  let voiceMenu: HTMLElement | null = null;
+  function closeVoiceMenu(): void {
+    stopPreview();
+    voiceMenu?.remove();
+    voiceMenu = null;
+    voiceBtn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", onVoiceAway, true);
+    document.removeEventListener("keydown", onVoiceKey, true);
+  }
+  function onVoiceAway(e: MouseEvent): void {
+    if (voiceMenu && !voiceMenu.contains(e.target as Node) && !voiceBtn.contains(e.target as Node)) closeVoiceMenu();
+  }
+  function onVoiceKey(e: KeyboardEvent): void { if (e.key === "Escape") { e.stopPropagation(); closeVoiceMenu(); } }
+  function openVoiceMenu(): void {
+    if (voiceMenu) { closeVoiceMenu(); return; }
+    const m = el("div", "botp-face-menu botp-voice-menu");
+    m.setAttribute("role", "menu");
+    m.appendChild(voiceSection());
+    document.body.appendChild(m);
+    const r = voiceBtn.getBoundingClientRect();
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
+    m.style.top = `${Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8)}px`;
+    voiceMenu = m;
+    voiceBtn.setAttribute("aria-expanded", "true");
+    setTimeout(() => { document.addEventListener("mousedown", onVoiceAway, true); document.addEventListener("keydown", onVoiceKey, true); }, 0);
+  }
+  voiceBtn.addEventListener("click", openVoiceMenu);
   let voiceList: { model: string; voices: VoiceOption[] } | { error: string } | null = null;
   let previewAudio: HTMLAudioElement | null = null;
   const stopPreview = (): void => { try { previewAudio?.pause(); } catch { /* gone */ } previewAudio = null; };
@@ -320,7 +354,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   function voiceSection(): HTMLElement {
     const sec = el("div", "botp-voice");
     const head = el("div", "botp-voice-head");
-    head.append(el("span", "", "Voice"), el("span", "botp-voice-now", pickedVoice?.name || (pickedVoice ? pickedVoice.voiceId : "Yours")));
+    head.append(el("span", "", "Voice"), el("span", "botp-voice-now", voiceLabel()));
     sec.appendChild(head);
     const list = el("div", "botp-voice-list");
     sec.appendChild(list);
@@ -331,8 +365,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       const vl = voiceList;
       const choose = (v: BotVoice | null): void => {
         pickedVoice = v;
-        (head.querySelector(".botp-voice-now") as HTMLElement).textContent = v?.name || (v ? v.voiceId : "Yours");
-        paintList();
+        paintVoiceBtn();
+        closeVoiceMenu();
       };
       const mine = el("button", "botp-voice-row" + (!pickedVoice ? " on" : ""));
       mine.type = "button";
@@ -455,6 +489,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     effortIn.value = String(ei >= 0 ? ei + 1 : 3);   // unset sits in the middle until moved
     effortTouched = false;
     pickedVoice = bot.voice ?? null;
+    paintVoiceBtn();
     paintSliders();
   }
 

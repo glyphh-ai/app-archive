@@ -22355,3 +22355,17 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .botp-form .agents2-brief-head .settings-label { margin: 0; }
 .botp-form .agents2-brief-head .agents2-wand { margin-bottom: 0; }
 .botp-form .settings-actions { margin-top: 32px !important; }
+
+/* The identity row: avatar → voice → name (his order, 2026-10-09). */
+.botp-voice-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 48px; max-width: 200px; padding: 0 8px 0 10px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 10px; color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.botp-voice-btn:hover, .botp-voice-btn[aria-expanded="true"] { border-color: var(--border-3); }
+.botp-voice-icon { display: inline-flex; color: var(--text-2); }
+.botp-voice-icon svg { width: 16px; height: 16px; }
+.botp-voice-btn-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.botp-voice-btn .botp-face-caret { color: var(--text-2); }
+.botp-voice-menu { width: 280px; }
+.botp-voice-menu .botp-voice { margin-top: 0; border-top: none; padding-top: 0; }
+.botp-voice-menu .botp-voice-list { max-height: 320px; }
