@@ -18,7 +18,8 @@
  *   Folders       + Add opens the folder picker (desktop).
  *   Models, Your powers   + Add is not built yet.
  *
- * With a `selection` (a super power's powers) every row carries Add / Added
+ * With a `selection` (a super power's powers) every row carries the Discover
+ * card's button, + to add and ✓ once added (a ✓ takes it back off),
  * and the footer saves the picks; Cancel, ✕ or Escape drop them.
  */
 
@@ -215,7 +216,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     return b;
   }
 
-  /** One row: icon, name (opening it when it has a page), a quiet line, and Add / Added or an action. */
+  /** One row: icon, name (opening it when it has a page), a quiet line, and + / ✓ or an action. */
   function row(o: { icon: string; name: string; sub?: string; tag?: string; has?: boolean; onToggle?: () => void; onOpen?: () => void; action?: HTMLElement }): HTMLElement {
     const r = el("div", "botp-choice powm-row" + (o.onOpen ? " openable" : ""));
     const ic = el("div", "botp-power-icon powm-icon");
@@ -228,8 +229,14 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (o.tag) r.appendChild(el("span", "botp-power-tag", o.tag));
     if (o.action) r.appendChild(o.action);
     else if (sel && o.onToggle) {
-      const b = el("button", `action-btn ${o.has ? "" : "secondary "}botp-choice-btn${o.has ? " on" : ""}`, o.has ? "Added" : "Add");
+      // THE DISCOVER CARD'S BUTTON on every row (his order, 2026-10-09): + to
+      // add, ✓ once added; the ✓ takes it back off.
+      const b = el("button", "action-btn conn2-plus powm-pick" + (o.has ? " done" : ""));
       b.type = "button";
+      b.innerHTML = o.has ? CHECK_SVG : PLUS_BTN_SVG;
+      b.title = o.has ? `Added — click to remove ${o.name}` : `Add ${o.name}`;
+      b.setAttribute("aria-label", o.has ? `Remove ${o.name}` : `Add ${o.name}`);
+      b.setAttribute("aria-pressed", o.has ? "true" : "false");
       b.addEventListener("click", (e) => { e.stopPropagation(); o.onToggle!(); });
       r.appendChild(b);
     }
