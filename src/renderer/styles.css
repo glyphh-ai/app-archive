@@ -21577,8 +21577,12 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .artp-host { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
 .artp { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; color: var(--text); }
 .artp-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; padding: 18px 20px 24px; }
-/* Full width with the Build page's gutters, never a centred column (his report, 2026-10-05). */
-.web-full-body .artp-list { width: 100%; padding: 18px 24px 40px; }
+/* Full width, never a centred column (his report, 2026-10-05). No padding of
+   its own (his order, 2026-10-09: "make the header on artifacts match
+   customize"): the title row sits at the top, flush to the rail, its rule
+   level with the rail's, exactly as Customize's does; the rows below carry
+   the 28px gutter. */
+.web-full-body .artp-list { width: 100%; padding: 0 0 40px; box-sizing: border-box; }
 .artp-title { margin: 0 0 14px; font: 700 20px var(--font-display, inherit); letter-spacing: -0.01em; }
 .artp-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .artp-tabs { display: inline-flex; gap: 2px; }
