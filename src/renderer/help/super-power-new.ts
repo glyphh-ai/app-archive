@@ -154,7 +154,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   // goes around"): at a random moment a bright head sweeps once round the
   // ring, white or the accent, shedding particles that drift outward.
   const comet = el("div", "spn-comet");
-  comet.innerHTML = `<span class="spn-comet-head"></span>${Array.from({ length: 7 }, (_, i) => `<span class="spn-comet-trail" style="--i:${i + 1}"></span>`).join("")}`;
+  comet.innerHTML = `<span class="spn-comet-light"></span><span class="spn-comet-head"></span>${Array.from({ length: 7 }, (_, i) => `<span class="spn-comet-trail" style="--i:${i + 1}"></span>`).join("")}`;
   hero.append(sparks, comet, ring);
   const COMET_MS = 1500;
   let cometTimer = 0;
@@ -169,13 +169,15 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     comet.classList.add("go");
     // Particles shed along the path: each leaves where the head is when it is born.
     // More dust (his order, 2026-10-09: "increase the number of particles").
-    const DUST = 44;
+    const DUST = 96;
     for (let i = 0; i < DUST; i++) {
-      const p = el("span", "spn-dust");
+      // Every third one is a spark: brighter, finer, flung further.
+      const spark = i % 3 === 0;
+      const p = el("span", spark ? "spn-dust spark" : "spn-dust");
       const t = (i / DUST) * COMET_MS;
       p.style.setProperty("--a", `${start + (i / DUST) * 360 + (Math.random() - 0.5) * 6}deg`);
       p.style.setProperty("--d", `${t}ms`);
-      p.style.setProperty("--out", `${6 + Math.random() * 30}px`);
+      p.style.setProperty("--out", `${spark ? 18 + Math.random() * 34 : 6 + Math.random() * 26}px`);
       p.style.setProperty("--drift", `${(Math.random() - 0.5) * 40}deg`);
       p.style.setProperty("--s", `${1.5 + Math.random() * 2.5}px`);
       hero.appendChild(p);
@@ -189,10 +191,11 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   // now and then; the ring breathes a soft glow behind it.
   const REGULAR: BotAvatar = { variant: 1, color: "#0b0a0f" };
   const paintCat = (wink: boolean): void => { face.innerHTML = botAvatarSvg(REGULAR, wink ? "playful" : "idle", { size: 112 }); };
-  // THE WINK IS THE FACE (his order, 2026-10-09: "show the wink on the cat,
-  // that is most important"): it rests winking — no flipping back and forth.
+  // THE REGULAR CAT, WINKING THE WAY THE RAIL'S DOES (his order, 2026-10-09:
+  // "i want the cat to actually have a wink animation, the regular cat, like
+  // you do in the left rail"): the idle face and its blink animation.
   const startCat = (): void => {
-    paintCat(true);
+    paintCat(false);
     face.classList.remove("spn-face-in");
     void face.offsetWidth;
     face.classList.add("spn-face-in");

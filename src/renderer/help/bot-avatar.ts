@@ -133,7 +133,8 @@ export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { 
   // to be more accentuated"): a thicker ring, a bigger pupil with a dark glint.
   const ringEl = `<path d="${ring}" fill="none" stroke="${white}" stroke-width="8"/>`;
   const pupil = (cx: number, cy: number, r = 12): string =>
-    `<circle class="eye" cx="${cx}" cy="${cy}" r="${r}" fill="${white}"/><circle cx="${cx + r * 0.35}" cy="${cy - r * 0.35}" r="${Math.max(3, r * 0.3)}" fill="${fill}"/>`;
+    // One group, so the rail's blink (.bot-cat.idle .eye) shuts pupil and glint together.
+    `<g class="eye"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${white}"/><circle cx="${cx + r * 0.35}" cy="${cy - r * 0.35}" r="${Math.max(3, r * 0.3)}" fill="${fill}"/></g>`;
   const eyes: Record<Eye, string> = {
     classic: `${ringEl}${pupil(92, 94)}`,
     look: `${ringEl}${pupil(68, 97)}`,
