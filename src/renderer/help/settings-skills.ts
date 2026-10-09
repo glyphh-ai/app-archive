@@ -1197,7 +1197,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   if (flowHost) { unmountFlow(flowHost); flowHost.textContent = ""; }
   flowGraph = null;
   const type = typeOf(s);
-  // A skill's connections ride its SKILL.md header (local-mcp-server.ts saveBundle).
+  // A skill's connections ride its SKILL.md header (host-tools.ts saveBundle).
   if (type === "skill") {
     const list = String(s.frontmatter?.connections ?? "").split(",").map((c) => c.trim()).filter(Boolean);
     await paintBundleConnections(list);

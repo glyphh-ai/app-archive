@@ -314,7 +314,6 @@ declare global {
       dripsRunning: () => Promise<string[]>;
       // Theme
       getTheme: () => Promise<string>;
-      exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       setTheme: (theme: string) => Promise<void>;
       // Account info
       getAuthStatus: () => Promise<{ authenticated: boolean; status: string; tier?: string }>;
@@ -504,12 +503,6 @@ declare global {
       // Remote relay
 
       // Local MCP server (127.0.0.1)
-      localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
-      localMcpStatus: () => Promise<{ running: boolean; port: number }>;
-      localMcpSetPort: (port: number) => Promise<{ ok: boolean; error?: string }>;
-      localMcpTokensList: () => Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>;
-      localMcpTokensCreate: (label: string) => Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>;
-      localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
 
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
 

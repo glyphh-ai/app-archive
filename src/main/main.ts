@@ -63,7 +63,6 @@ function isNewerVersion(latest: string, current: string): boolean {
 }
 import { setMainWindowRef } from "./main-window-ref";
 import { initRailCollapse } from "./screen-layout";
-import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
@@ -340,7 +339,6 @@ async function boot() {
   // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
   // LLMs. The cloud relay that let external callers reach in was removed; this
   // is the only remaining MCP surface, and it shares the handler registry.
-  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
@@ -1433,7 +1431,6 @@ function cleanupAll(backstopMs = 4000) {
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["authTimers", () => cleanupAuthTimers()],
-    ["localMcpServer", () => stopLocalMcpServer()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],
     ["taskRunner", () => stopTaskRunner()],

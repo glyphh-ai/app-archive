@@ -20,7 +20,7 @@ import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
@@ -888,7 +888,6 @@ function loadSettingsSub(sub: string): void {
   // members, billing (the license), apps, download, support, docs,
   // and the super-admin Plans/Orgs console.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
-  else if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();

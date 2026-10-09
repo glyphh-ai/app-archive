@@ -1339,7 +1339,6 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // Theme
   getTheme: () => ipcRenderer.invoke("get-theme") as Promise<string>,
-  exportGlyphhSkill: (provider: string) => ipcRenderer.invoke("export-glyphh-skill", provider) as Promise<{ ok: boolean; path?: string; error?: string }>,
   setTheme: (theme: string) => ipcRenderer.invoke("set-theme", theme),
 
   // Account info
@@ -1429,12 +1428,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // for the user's external tools.
 
   // Local MCP server (127.0.0.1) — the no-cloud alternative to the relay.
-  localMcpSetEnabled: (enabled: boolean) => ipcRenderer.invoke("local-mcp-set-enabled", enabled) as Promise<{ ok: boolean; error?: string }>,
-  localMcpStatus: () => ipcRenderer.invoke("local-mcp-status") as Promise<{ running: boolean; port: number }>,
-  localMcpSetPort: (port: number) => ipcRenderer.invoke("local-mcp-set-port", port) as Promise<{ ok: boolean; error?: string }>,
-  localMcpTokensList: () => ipcRenderer.invoke("local-mcp-tokens-list") as Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>,
-  localMcpTokensCreate: (label: string) => ipcRenderer.invoke("local-mcp-tokens-create", label) as Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>,
-  localMcpTokensRevoke: (id: string) => ipcRenderer.invoke("local-mcp-tokens-revoke", id) as Promise<{ ok: boolean }>,
 
   // BYOK provider key — the only surviving path is the Claude Code bootstrap
   // gate (boot-gate-ui.ts) saving an Anthropic key. The Providers Settings

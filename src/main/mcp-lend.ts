@@ -4,7 +4,7 @@
  * cloud gets the same tools as the desktop; the local server must win for the
  * window tools and the gateway's for the rest).
  *
- * The local server (local-mcp-server.ts) is this machine: its windows, its
+ * Glyphh's own tools (host-tools.ts, in process since 2026-10-09) are this machine: its windows, its
  * folders, its loopback apps. The gateway's /mcp (server glyphh/docs/glyphh-
  * mcp.md) is the member's cloud reach: the library the desktop syncs from,
  * the cloud clock, the app instances on the farm, the connected accounts.

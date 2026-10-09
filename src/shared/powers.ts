@@ -5,7 +5,7 @@
  * power's mcp tools you can interact with directly or Glyphh can combine").
  *
  * A POWER is one capability, named by the job, not the model: Images, Video,
- * Audio. It owns one MCP tool (local-mcp-server.ts) and the catalog models
+ * Audio. It owns one MCP tool (host-tools.ts) and the catalog models
  * that can do that job; the member's plan decides which are there, and a
  * power with no model on the plan is not offered. A member can talk to a
  * power directly (its own thread, `powers/<id>`), and Glyphh — or a super

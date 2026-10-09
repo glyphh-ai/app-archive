@@ -1,28 +1,20 @@
 /**
- * Local MCP server — a 127.0.0.1 HTTP MCP endpoint so an LLM running on the
- * SAME machine (Claude Desktop, Cursor, the `claude` CLI) can drive Glyphh
- * directly, with no cloud round-trip. It's an alternative to the cloud relay:
- * lowest latency, no account/tier requirement, works offline.
+ * host-tools.ts — GLYPHH'S OWN TOOLS, IN THE LOOP (his order, 2026-10-09: "so
+ * it is our own agent loop, why do we need an mcp server to reach our own
+ * shit?"). These used to be served on a 127.0.0.1 HTTP MCP server that the
+ * loop — and any outside client holding a token — connected to. The loop is
+ * the only loop now: the same tools are registered here and handed to it in
+ * process as catalog entries (glyphh-loop.ts). No port, no tokens, no door.
  *
- * It exposes the SAME tool surface as the cloud relay by dispatching every
- * call through `dispatchRelayMethod` — the shared handler registry that
- * `relay-handlers.ts` populates. Server-only tools (Pipedream connectors, the
- * capture store) are intentionally absent: those need cloud auth the local
- * server can't provide.
- *
- * Opt-in via the `localMcpEnabled` preference (Settings > MCP > Local server).
- * Bearer-token authed against locally-stored, SHA-256-hashed tokens.
+ * Each tool keeps the shape it had: a name, a description, a zod input shape
+ * and a handler answering `{ content: [{ type: "text", text }], isError? }`.
  */
 
-import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { userScopedPath } from "./app-paths.js";
-import crypto from "node:crypto";
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { UNATTENDED_MCP_PATH, withoutUnattendedTools } from "./unattended-tools.js";
+import { UNATTENDED_HIDDEN } from "./unattended-tools.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { callInstanceTool, listInstanceTools, installFolderAsInstance, listInstanceReleases, pinInstanceRelease, refuseBase64Flood, readBuildJob, waitBuildJob, logTail } from "./app-instances.js";
@@ -41,124 +33,20 @@ const TOKEN_TTL_DAYS = 90;
 const SERVER_NAME = "glyphh-local";
 const SERVER_VERSION = "1.0.0";
 
-// ── Token storage (hashed at rest in preferences) ──────────────────
+// ── THE TOOLS ────────────────────────────────────────────────────────
 
-interface StoredToken {
-  id: string;
-  label: string;
-  hash: string; // sha256(rawToken)
-  createdAt: string;
-  expiresAt: string;
+/** What a tool answers, as the MCP SDK shaped it (kept so every handler stays as written). */
+interface ToolAnswer {
+  content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+  isError?: boolean;
+}
+type ToolHandler = (args: any) => Promise<ToolAnswer> | ToolAnswer;   // eslint-disable-line @typescript-eslint/no-explicit-any
+/** The one method the tools below were registered through. */
+interface ToolRegistrar {
+  tool(name: string, description: string, shape: Record<string, z.ZodTypeAny>, handler: ToolHandler): void;
 }
 
-export interface LocalMcpTokenInfo {
-  id: string;
-  label: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-function sha256(s: string): string {
-  return crypto.createHash("sha256").update(s).digest("hex");
-}
-
-/**
- * WHERE A LOOPBACK SECRET LIVES (his order, 2026-09-17: "super durable and
- * can't fail on the user but also secure").
- *
- * These tokens guard http://127.0.0.1 — this machine's own tool surface — and
- * they were kept ONLY in preferences, which are fetched from the server. Until
- * that fetch lands, or if it fails, the map is empty and every token the app
- * itself wrote reads as expired, which is what the agent reported. A local
- * capability must not need the network to authenticate.
- *
- * So the hashes are mirrored beside the config files that already carry the
- * raw tokens, in the user's own directory, 0600. Preferences stay the roaming
- * copy; the file is the one that answers when the server has not. Verification
- * reads BOTH, so it never fails open (a token still has to match a hash we
- * minted) and never fails shut because a fetch is in flight.
- */
-const tokenFile = (): string => userScopedPath("mcp-tokens.json");
-
-function readTokenFile(): StoredToken[] {
-  try {
-    const raw = JSON.parse(fs.readFileSync(tokenFile(), "utf-8")) as StoredToken[];
-    return Array.isArray(raw) ? raw : [];
-  } catch { return []; }
-}
-
-function writeTokenFile(tokens: StoredToken[]): void {
-  try {
-    fs.mkdirSync(path.dirname(tokenFile()), { recursive: true });
-    fs.writeFileSync(tokenFile(), JSON.stringify(tokens, null, 2), { encoding: "utf-8", mode: 0o600 });
-  } catch (err) {
-    console.warn("[mcp] could not mirror the token store locally:", err instanceof Error ? err.message : err);
-  }
-}
-
-function loadTokens(): StoredToken[] {
-  const fromPrefs = getPreference<StoredToken[]>("localMcpTokens", []);
-  const prefs = Array.isArray(fromPrefs) ? fromPrefs : [];
-  const local = readTokenFile();
-  const byHash = new Map<string, StoredToken>();
-  for (const t of [...local, ...prefs]) if (t?.hash) byHash.set(t.hash, t);
-  return [...byHash.values()];
-}
-
-function saveTokens(tokens: StoredToken[]): void {
-  setPreference("localMcpTokens", tokens);
-  writeTokenFile(tokens);
-}
-
-/** Generate a token. The raw value is returned ONCE — only its hash is stored. */
-export function localMcpGenToken(label: string = "default", ttlDays: number = TOKEN_TTL_DAYS): LocalMcpTokenInfo & { token: string } {
-  const raw = `glyphh_${crypto.randomBytes(24).toString("hex")}`;
-  const now = new Date();
-  const expires = ttlDays > 0
-    ? new Date(now.getTime() + ttlDays * 24 * 60 * 60 * 1000)
-    : new Date("9999-12-31T00:00:00.000Z");
-  const rec: StoredToken = {
-    id: crypto.randomBytes(8).toString("hex"),
-    label: label.trim() || "default",
-    hash: sha256(raw),
-    createdAt: now.toISOString(),
-    expiresAt: expires.toISOString(),
-  };
-  const tokens = loadTokens();
-  tokens.push(rec);
-  saveTokens(tokens);
-  return { id: rec.id, label: rec.label, createdAt: rec.createdAt, expiresAt: rec.expiresAt, token: raw };
-}
-
-export function localMcpListTokens(): LocalMcpTokenInfo[] {
-  return loadTokens().map((t) => ({ id: t.id, label: t.label, createdAt: t.createdAt, expiresAt: t.expiresAt }));
-}
-
-export function localMcpRevokeToken(id: string): void {
-  saveTokens(loadTokens().filter((t) => t.id !== id));
-}
-
-/** Is a token we handed out earlier still good? A config file keeps its token
- *  forever, so the writer has to ask before reusing one — a token minted under
- *  another account, or lost when the preference store could not be read, stays
- *  in that file and every call fails with "the token has expired" (his report,
- *  2026-09-17). */
-export const localMcpTokenValid = (raw: string | undefined): boolean => isValidBearer(raw);
-
-function isValidBearer(raw: string | undefined): boolean {
-  if (!raw) return false;
-  const hash = sha256(raw);
-  const now = Date.now();
-  return loadTokens().some((t) => t.hash === hash && new Date(t.expiresAt).getTime() > now);
-}
-
-// ── MCP tool surface (mirrors the cloud relay's WS-routed tools) ───
-
-function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
-  // THE UNATTENDED DOOR (his report, 2026-10-08): the same server with every
-  // tool that touches the screen left out (unattended-tools.ts).
-  const mcp = opts.unattended ? withoutUnattendedTools(new McpServer({ name: SERVER_NAME, version: SERVER_VERSION })) : new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-
+function registerTools(mcp: ToolRegistrar): void {
   const via = async (method: string, params: unknown) => {
     try {
       const result = await dispatchRelayMethod(method, params);
@@ -573,7 +461,7 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
         const words = query.toLowerCase().split(/\s+/).filter(Boolean);
         const score = (t: typeof tools[number]): number => {
           const hay = `${t.slug} ${t.name} ${t.description ?? ""}`.toLowerCase();
-          return words.reduce((n, w) => n + (t.name.toLowerCase().includes(w) ? 3 : t.slug.toLowerCase().includes(w) ? 2 : hay.includes(w) ? 1 : 0), 0);
+          return words.reduce((n: number, w: string) => n + (t.name.toLowerCase().includes(w) ? 3 : t.slug.toLowerCase().includes(w) ? 2 : hay.includes(w) ? 1 : 0), 0);
         };
         return text(tools.map((t) => ({ t, s: score(t) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, top_k ?? 20).map((x) => shape(x.t)));
       }
@@ -1034,129 +922,46 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     async ({ url, wait }) => via("scrape.page", { url, wait }),
   );
 
-  return mcp;
 }
 
-// ── HTTP server lifecycle ──────────────────────────────────────────
-
-let server: http.Server | null = null;
-let boundPort = DEFAULT_PORT;
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => { data += chunk; });
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
-}
-
-function setCors(res: http.ServerResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id, mcp-protocol-version");
-}
-
-function bearerFrom(req: http.IncomingMessage): string | undefined {
-  const h = req.headers["authorization"];
-  if (!h || Array.isArray(h)) return undefined;
-  const m = /^Bearer\s+(.+)$/i.exec(h);
-  return m ? m[1].trim() : undefined;
-}
-
-async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  setCors(res);
-  const url = new URL(req.url || "/", `http://127.0.0.1:${boundPort}`);
-
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  // Health check — unauthenticated, so users can curl to confirm it's up.
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/mcp" || url.pathname === UNATTENDED_MCP_PATH)) {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ name: SERVER_NAME, version: SERVER_VERSION, status: "ok" }));
-    return;
-  }
-
-  if (req.method === "POST" && (url.pathname === "/mcp" || url.pathname === UNATTENDED_MCP_PATH)) {
-    if (!isValidBearer(bearerFrom(req))) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Invalid or missing bearer token. Generate one in Settings > MCP > Local server." }));
-      return;
-    }
-    let parsed: unknown;
-    try {
-      const body = await readBody(req);
-      parsed = body ? JSON.parse(body) : undefined;
-    } catch {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Invalid JSON body" }));
-      return;
-    }
-    // Stateless: a fresh server + transport per request (matches the cloud relay).
-    const mcp = buildMcpServer({ unattended: url.pathname === UNATTENDED_MCP_PATH });
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on("close", () => { transport.close().catch(() => {}); });
-    try {
-      await mcp.connect(transport);
-      await transport.handleRequest(req, res, parsed);
-    } catch (err) {
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
-      }
-    }
-    return;
-  }
-
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "Not found" }));
-}
-
-/** Start the local MCP server on 127.0.0.1. Idempotent. */
-export function startLocalMcpServer(): Promise<{ ok: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    if (server) { resolve({ ok: true }); return; }
-    const port = Number(getPreference("localMcpPort", DEFAULT_PORT)) || DEFAULT_PORT;
-    const srv = http.createServer((req, res) => { void handle(req, res); });
-    srv.on("error", (err: NodeJS.ErrnoException) => {
-      server = null;
-      const msg = err.code === "EADDRINUSE" ? `Port ${port} is already in use — pick another in Settings.` : err.message;
-      console.error("[local-mcp] failed to start:", msg);
-      resolve({ ok: false, error: msg });
-    });
-    srv.listen(port, "127.0.0.1", () => {
-      server = srv;
-      boundPort = port;
-      console.log(`[local-mcp] listening on http://127.0.0.1:${port}/mcp`);
-      resolve({ ok: true });
-    });
-  });
-}
-
-/** Stop the local MCP server. Idempotent. */
-export function stopLocalMcpServer(): void {
-  if (!server) return;
-  try { server.close(); } catch { /* ignore */ }
-  server = null;
-  console.log("[local-mcp] stopped");
-}
-
-export function localMcpStatus(): { running: boolean; port: number } {
-  const port = server ? boundPort : (Number(getPreference("localMcpPort", DEFAULT_PORT)) || DEFAULT_PORT);
-  return { running: !!server, port };
+/** One of Glyphh's own tools, ready for the loop's catalog. */
+export interface HostTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  run(args: Record<string, unknown>): Promise<{ text: string; failed: boolean; images?: Array<{ type: "image"; source: { type: "base64"; media_type: string; data: string } }> }>;
 }
 
 /**
- * Reconcile the running server with the `localMcpEnabled` preference. Called at
- * boot and whenever the user toggles the setting.
+ * Glyphh's tools, built fresh (each run reads the state it needs at call time).
+ * `unattended`: the screen-touching ones are left out (unattended-tools.ts) —
+ * a schedule or a background build has nobody to look at a panel.
  */
-export async function syncLocalMcpServer(): Promise<{ ok: boolean; error?: string }> {
-  const enabled = getPreference<boolean>("localMcpEnabled", true) !== false;
-  if (enabled && !server) return startLocalMcpServer();
-  if (!enabled && server) { stopLocalMcpServer(); return { ok: true }; }
-  return { ok: true };
+export function hostTools(opts: { unattended?: boolean } = {}): HostTool[] {
+  const out: HostTool[] = [];
+  registerTools({
+    tool(name, description, shape, handler) {
+      if (opts.unattended && UNATTENDED_HIDDEN.has(name)) return;
+      const schema = z.object(shape);
+      let inputSchema: Record<string, unknown> = { type: "object", properties: {} };
+      try { inputSchema = z.toJSONSchema(schema) as Record<string, unknown>; } catch { /* a shape zod cannot draw: the model gets the empty object */ }
+      out.push({
+        name, description, inputSchema,
+        async run(args) {
+          const parsed = schema.safeParse(args ?? {});
+          if (!parsed.success) return { text: `Error: ${parsed.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}`, failed: true };
+          try {
+            const r = await handler(parsed.data);
+            const parts = r?.content ?? [];
+            const images = parts.flatMap((c) => (c.type === "image" ? [{ type: "image" as const, source: { type: "base64" as const, media_type: c.mimeType, data: c.data } }] : []));
+            const text = parts.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n");
+            return { text, failed: !!r?.isError, ...(images.length ? { images } : {}) };
+          } catch (err) {
+            return { text: `Error: ${err instanceof Error ? err.message : String(err)}`, failed: true };
+          }
+        },
+      });
+    },
+  });
+  return out;
 }

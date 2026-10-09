@@ -1096,8 +1096,6 @@ export function buildContract(client, deps) {
     iconForRow, // an app row's tile src on the web (web-icons.js): its carried bytes, else its favicon via /webicon
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),
-    localMcpStatus: async () => ({ running: false, port: null }),
-    localMcpTokensList: async () => EMPTY.list(),
 
     // ── The preload's STRING properties ────────────────────────────────────────────
     // preload.ts exposes these as plain strings; the Proxy would otherwise answer

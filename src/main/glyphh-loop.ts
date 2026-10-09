@@ -14,7 +14,7 @@
  */
 
 import type { WebContents } from "electron";
-import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
+import { GlyphhLoop, LOOP_EFFORTS, readsByName, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { listSkills } from "./skills-fs.js";
@@ -22,7 +22,7 @@ import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
-import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { hostTools } from "./host-tools.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { getWorkingDirectory } from "./working-directory.js";
@@ -34,7 +34,7 @@ import { openRing, recordFrame } from "./attach-run-ring.js";
 import { attachmentImageRefs, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
-import { UNATTENDED_HIDDEN, UNATTENDED_MCP_PATH, isScreenFamily } from "./unattended-tools.js";
+import { isScreenFamily } from "./unattended-tools.js";
 import { mineSync as tabRows } from "./apps-store.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { commandToolSpec, rpaOf, sequenceToolSpec } from "../shared/rpa.js";
@@ -91,7 +91,6 @@ function taggedFetch(input: string, init: RequestInit): Promise<Response> {
 // ONE BELT (his order, 2026-10-08: "just code"): the one type's belt is the
 // union of what the two carried.
 const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]);
-const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> = { work: CORE_BELT, code: CORE_BELT };
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
@@ -99,8 +98,23 @@ const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringi
 /** Each installed app's tools, and each of the member's own MCP connections'
  *  tools, as catalog entries. A connection that will not answer in a few
  *  seconds simply has no entries this time. */
-async function catalogEntries(): Promise<LoopCatalogEntry[]> {
+async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
   const out: LoopCatalogEntry[] = [];
+  // GLYPHH'S OWN TOOLS, IN PROCESS (his order, 2026-10-09: "it is our own agent
+  // loop, why do we need an mcp server to reach our own shit?"): host-tools.ts,
+  // lent by the same rules the local server's tools were (mcp-lend.ts) — the
+  // belt's few by name, the rest found with find_tools. An unattended run gets
+  // them without the screen-touching ones.
+  const creds = await mcpCreds().catch(() => null);
+  const split = lendSplit({ localUp: true, gatewayUp: !!creds, connections: connectionsAvailable(), belt: new Set(CORE_BELT) });
+  for (const t of hostTools({ unattended })) {
+    if (!split.local(t.name)) continue;
+    out.push({
+      name: t.name, description: t.description, family: "Glyphh", inputSchema: t.inputSchema,
+      readOnly: readsByName(t.name), ...(CORE_BELT.has(t.name) ? { belt: true } : {}),
+      run: (args) => t.run(args),
+    });
+  }
   const apps = await listInstanceTools().catch(() => []);
   for (const a of apps) {
     for (const t of a.tools) {
@@ -204,23 +218,14 @@ async function mcpServers(): Promise<LoopMcpServer[]> { return mcpServersFor(fal
  *  2026-10-08: "the terminal window keeps randomly showing up"): the local
  *  server's unattended door, with every tool that touches the screen left
  *  out, so a schedule or a task slot can never open a panel. */
-async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
+async function mcpServersFor(_unattended: boolean): Promise<LoopMcpServer[]> {
+  // ONE SERVER LENT: the gateway's /mcp (the member's library, the cloud clock,
+  // the app instances, the connected accounts' lookup pair). Glyphh's own tools
+  // ride in process (catalogEntries) — no local server, no port, no token.
   const out: LoopMcpServer[] = [];
   const connections = connectionsAvailable();
-  const local = await startLocalMcpServer().then(() => localMcpStatus().port).catch((err) => {
-    console.warn("[glyphh-loop] local MCP unavailable:", err instanceof Error ? err.message : err);
-    return 0;
-  });
   const creds = await mcpCreds().catch(() => null);
-  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
-  if (local > 0) {
-    const token = localMcpGenToken(unattended ? "glyphh-loop-unattended" : "glyphh-loop", 365).token;
-    out.push({
-      name: "glyphh-app", url: `http://127.0.0.1:${local}${unattended ? UNATTENDED_MCP_PATH : "/mcp"}`,
-      headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE,
-      allow: unattended ? (t: string) => split.local(t) && !UNATTENDED_HIDDEN.has(t) : split.local,
-    });
-  }
+  const split = lendSplit({ localUp: true, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
   if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection", allow: split.gateway });
   if (!connections) console.warn("[glyphh-loop] connections lane off for this org — no connector tools lent");
   return out;
@@ -266,7 +271,7 @@ const loop = new GlyphhLoop({
   gateway: gatewayCreds,
   mcpServers,
   agents: agentDefs,
-  catalog: catalogEntries,
+  catalog: () => catalogEntries(false),
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
@@ -282,7 +287,7 @@ const unattendedLoop = new GlyphhLoop({
   gateway: gatewayCreds,
   mcpServers: () => mcpServersFor(true),
   agents: agentDefs,
-  catalog: async () => (await catalogEntries()).filter((e) => !isScreenFamily(e.family)),
+  catalog: async () => (await catalogEntries(true)).filter((e) => !isScreenFamily(e.family)),
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,

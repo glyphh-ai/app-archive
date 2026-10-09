@@ -26,7 +26,6 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
-import { startLocalMcpServer } from "./local-mcp-server.js";
 import { getAgent, type AgentRow } from "./local-agents.js";
 import { powerOfChat } from "../shared/powers.js";
 import { botEffort, botExtraFolders, botPersonalityNote, botPowersNote, botWorkFolder } from "../shared/bot-powers.js";
@@ -301,7 +300,6 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
     try { ok = statSync(folder).isDirectory(); } catch { ok = false; }
     if (!ok) throw new Error(`NO_WORKDIR: this session's folder no longer exists (${folder})`);
   }
-  await startLocalMcpServer().catch(() => { /* the turn still runs, with fewer tools and honestly so */ });
   // The composer's contract (unchanged since the bridge): the user turn is
   // already IN the chat store when run arrives — same-renderer IPC ordering
   // guarantees the save landed first.
