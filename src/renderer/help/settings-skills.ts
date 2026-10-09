@@ -1063,7 +1063,9 @@ function paintDetailChrome(): void {
   // Share goes away once there IS a share (his order, 2026-09-17). Waiting on
   // the desk or live on the hub, the door out is Withdraw in the ⋮.
   el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head || fromGlyphh(current));
-  el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
+  // No on/off switch on the details page (his order, 2026-10-09: "remove enabled, that is duplicative");
+  // a power turns off and on from its row's ⋮ in the list.
+  el("skill-enabled")?.closest(".skills-switch")?.classList.add("hidden");
   el("skill-kebab")?.classList.toggle("hidden", hub);
   el("skill-edit")?.classList.add("hidden");
   let add = el<HTMLButtonElement>("skill-hub-add");
