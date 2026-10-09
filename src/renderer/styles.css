@@ -22120,16 +22120,19 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 
 /* ── THE RAIL'S BOT ROWS (his order, 2026-10-09): the mascot, the name, the ⋮
    at the far right; the row opened last wears the active state. ── */
-.rail-bot-row { gap: 8px; padding-left: 8px; }
-.rail-bot-row .rail-bot-mark { display: inline-flex; width: 20px; height: 20px; flex: none; align-items: center; justify-content: center; }
-.rail-bot-row .rail-bot-mark img { width: 18px; height: 18px; }
-.rail-bot-row .code-history-title { flex: 1 1 auto; min-width: 0; color: var(--text-2); font-size: 13px; }
+/* BIGGER (his order, 2026-10-09): the super powers read as characters, not list items. */
+.rail-bot-row { gap: 11px; padding: 6px 4px 6px 10px; min-height: 40px; }
+.rail-bot-row .rail-bot-mark { display: inline-flex; width: 28px; height: 28px; flex: none; align-items: center; justify-content: center; }
+.rail-bot-row .rail-bot-mark svg { width: 28px; height: 28px; }
+.rail-bot-row .rail-bot-mark img { width: 24px; height: 24px; }
+.rail-bot-row .code-history-title { flex: 1 1 auto; min-width: 0; color: var(--text-2); font-size: 14.5px; }
 .rail-bot-row.active { background: var(--hover); }
 .rail-bot-row.active .code-history-title { color: var(--text); }
 
 /* ── THE RAIL (his order, 2026-10-09): Glyphh right under + New; then the
    SUPER POWERS label, a search under it, the list. ── */
-.rail-glyphh-row .rail-glyphh-mark { width: 16px; height: 16px; flex: none; }
+.rail-glyphh-row { gap: 11px; padding-top: 9px; padding-bottom: 9px; font-size: 15px; font-weight: 600; color: var(--text); }
+.rail-glyphh-row .rail-glyphh-mark { width: 26px; height: 26px; flex: none; }
 .rail-glyphh-row.active { background: var(--hover); color: var(--text); }
 .rail-sp-body > .rail-sp-head { padding: 14px 16px 6px; }
 .rail-sp-body > .app-rail-search { padding: 0 10px 6px; }

@@ -146,18 +146,18 @@ export const SPECS = [
     seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
     body: `
       killTransitions();
-      await until(() => $("#code-new-chat"));
+      await until(() => $("#code-session-new"));
       const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
       // A cold boot with nothing to restore opens the agent by itself — as an instance now.
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length >= 1, 10000);
       await sleep(600);
       const boot = panels().length;
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length === boot + 1, 8000);
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length === boot + 2, 8000);
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length === boot + 3, 8000);
       const slugs = panels().map((w) => w.closest(".echo-card")?.querySelector(".echo-card-head > span")?.textContent);
       const instances = panels().map((w) => new URL(w.getAttribute("src")).searchParams.get("instance"));
@@ -173,8 +173,8 @@ export const SPECS = [
     seedAgents: [{ id: "claude", name: "Claude", cli: "claude", icon: "", cmd: "claude", mcp: false, cwd: "/tmp/harness", command: "claude" }],
     body: `
       killTransitions();
-      await until(() => $("#code-new-chat"));
-      click($("#code-new-chat"));
+      await until(() => $("#code-session-new"));
+      click($("#code-session-new"));
       await until(() => window.__wbOpenAgentCli && window.__wbOpenTool, 10000);
       const named = (n) => $$(".echo-card").filter((c) => (c.querySelector(".echo-card-head > span")?.textContent || "") === n);
       window.__wbOpenAgentCli("claude", undefined, { fresh: true });
@@ -216,13 +216,13 @@ export const SPECS = [
     ],
     body: `
       killTransitions();
-      await until(() => $("#code-new-chat"));
+      await until(() => $("#code-session-new"));
       const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length >= 1, 10000);
       await sleep(600);
       const boot = panels().length;
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length === boot + 1, 8000);
       const wv = panels()[panels().length - 1];
       const card = wv.closest(".echo-card");
@@ -249,9 +249,9 @@ export const SPECS = [
     seedSessions: [{ id: "sid-1", cli: "claude", title: "Fix the rail", cwd: "/tmp/harness", mtime: 1758900000000 }],
     body: `
       killTransitions();
-      await until(() => $("#code-new-chat"));
+      await until(() => $("#code-session-new"));
       const panels = () => $$(".echo-card webview").filter((w) => (w.getAttribute("src") || "").includes("solo=tool:coding"));
-      click($("#code-new-chat"));
+      click($("#code-session-new"));
       await until(() => panels().length >= 1, 10000);
       await sleep(600);
       const boot = panels().length;

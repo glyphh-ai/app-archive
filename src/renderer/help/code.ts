@@ -6463,7 +6463,7 @@ function renderRailSessions(): void {
   for (const b of shown) {
     const mark = document.createElement("span");
     mark.className = "code-sess-mark rail-bot-mark";
-    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 20 });
+    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 28 });
     const id = `bots/${b.slug}`;
     row({ key: b.slug, name: b.name, mark, liveId: id,
       onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }),
@@ -6471,7 +6471,9 @@ function renderRailSessions(): void {
   }
 }
 
-/** GLYPHH, the rail row under + New (his order, 2026-10-09): its newest
+/** A new Glyphh session in the open agent — set at init (initCode). */
+let railNewGlyphh: () => void = () => {};
+/** GLYPHH, the rail's first row (his order, 2026-10-09): its newest
  *  thread (the rest are in the recents dropdown), else a new one. */
 function openGlyphhHome(): void {
   railPickedKey = "glyphh";
@@ -6479,7 +6481,7 @@ function openGlyphhHome(): void {
   document.getElementById("rail-glyphh")?.classList.add("active");
   const newest = railSessions.find((x) => !x.bot && !x.id.startsWith("powers/"));
   if (newest) sessOpen(newest);
-  else el<HTMLButtonElement>("code-new-chat")?.click();
+  else railNewGlyphh();
 }
 
 /** Which rail row the member opened last — it wears the active state. */
@@ -7387,7 +7389,9 @@ export function initCode(): void {
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
-  el("code-new-chat")?.addEventListener("click", () => {
+  // (The rail's + New left the rail, his order 2026-10-09; this is the door
+  // the Glyphh row uses when there is no thread yet.)
+  railNewGlyphh = () => {
     const w = window as unknown as {
       __initCodeWorkbench?: () => void;
       __wbOpenGlyphhAgent?: () => void;
@@ -7421,7 +7425,7 @@ export function initCode(): void {
       w.__wbOpenGlyphhAgent?.();
     };
     go();
-  });
+  };
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // The artifact viewer names the artifact in hand for the CURRENT session
   // (code-workbench.ts __wbSendToAgent passes it through before it types).
