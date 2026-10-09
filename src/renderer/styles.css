@@ -22491,7 +22491,7 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   animation: spn-spin 14s linear infinite; opacity: 0.85;
 }
 /* Calm, not a strobe (his note, 2026-10-09: "slow the strobe effect"). */
-.spn-building .spn-ring::before { animation-duration: 5s; opacity: 1; }
+.spn-building .spn-ring::before { animation-duration: 10s; opacity: 1; }
 .spn-building .spn-ring { animation: spn-pulse 3.2s ease-in-out infinite; }
 .spn-face { width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; }
 .spn-face svg, .spn-face img { width: 112px; height: 112px; object-fit: contain; }
@@ -22712,9 +22712,9 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .memory-privacy-text { flex: 1; min-width: 0; }
 .memory-privacy-link { flex: none; margin-left: auto; }
 
-/* The slight strobe (his order, 2026-10-09): the ring's glow breathes, slowly. */
-.spn-ring { animation: spn-breathe 4.5s ease-in-out infinite; }
-.spn-building .spn-ring { animation: spn-breathe 2.8s ease-in-out infinite; }
+/* No strobe (his order, 2026-10-09: "stop the probe on that or slow it way
+   down"): the ring holds a steady glow; only the slow conic turn moves. */
+.spn-ring, .spn-building .spn-ring { animation: none; }
 @keyframes spn-breathe {
   0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 85%, transparent), 0 0 26px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
   50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 95%, transparent), 0 0 44px 0 color-mix(in srgb, var(--accent) 85%, transparent); }

@@ -73,6 +73,18 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
   return n;
 };
 
+/** A gateway refusal in plain words: a rate limit says when it lifts, in local time. */
+export function friendlyError(raw: string): string {
+  const s = String(raw ?? "");
+  if (/\b429\b|rate limit/i.test(s)) {
+    const at = s.match(/resets at:?\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)\s*UTC/i);
+    const when = at ? new Date(`${at[1]}T${at[2]}Z`) : null;
+    const local = when && !Number.isNaN(when.getTime()) ? when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
+    return `Your organization has hit its model rate limit${local ? `. It resets at ${local}` : ""}. Try again then, or ask your admin to raise it.`;
+  }
+  return s;
+}
+
 export interface NewSuperPowerOptions {
   /** Open its conversation (help/code.ts: the rail's own opener). */
   onTalk?: (agent: string, name: string) => void;
@@ -111,7 +123,6 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     closed = true;
     clearTimers();
     clearTimeout(cometTimer);
-    clearTimeout(winkTimer);
     offBeat?.();
     document.removeEventListener("keydown", onKey, true);
     guardWebviewsForModal(false);
@@ -176,24 +187,13 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   // now and then; the ring breathes a soft glow behind it.
   const REGULAR: BotAvatar = { variant: 1, color: "#0b0a0f" };
   const paintCat = (wink: boolean): void => { face.innerHTML = botAvatarSvg(REGULAR, wink ? "playful" : "idle", { size: 112 }); };
-  let winkTimer = 0;
-  const winkLoop = (): void => {
-    clearTimeout(winkTimer);
-    winkTimer = window.setTimeout(() => {
-      if (closed) return;
-      paintCat(true);
-      window.setTimeout(() => { if (!closed && !doneShown) paintCat(false); }, 650);
-      winkLoop();
-    }, 3500 + Math.random() * 3000);
-  };
-  let doneShown = false;
+  // THE WINK IS THE FACE (his order, 2026-10-09: "show the wink on the cat,
+  // that is most important"): it rests winking — no flipping back and forth.
   const startCat = (): void => {
-    doneShown = false;
-    paintCat(false);
+    paintCat(true);
     face.classList.remove("spn-face-in");
     void face.offsetWidth;
     face.classList.add("spn-face-in");
-    winkLoop();
   };
 
   // ── ASK ──
@@ -241,7 +241,13 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
       go.disabled = true;
       body.appendChild(el("div", "powm-note", "Building super powers needs the Glyphh desktop app."));
     }
-    go.addEventListener("click", () => { void build(); });
+    go.addEventListener("click", () => {
+      // One build at a time: the button and the ideas go quiet at once.
+      go.disabled = true;
+      ideas.querySelectorAll<HTMLButtonElement>("button").forEach((b) => { b.disabled = true; });
+      field.disabled = true;
+      void build();
+    });
     foot.append(el("span", "spn-hint", "⌘↵ to build"), cancel, go);
     setTimeout(() => field.focus(), 30);
   }
@@ -284,10 +290,17 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
       });
     };
     light("plan");
-    const stop = el("button", "action-btn secondary", "Stop");
+    // WHILE IT RUNS (his order, 2026-10-09: "there needs to be a stop button
+    // here also when it is running and the buttons should be disabled, other
+    // than cancel and stop"): Cancel stops it and closes; Stop stops it and
+    // returns to the prompt. Nothing else is live.
+    const cancel = el("button", "action-btn secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", close);
+    const stop = el("button", "action-btn danger", "Stop");
     stop.type = "button";
     stop.addEventListener("click", () => { stop.disabled = true; stop.textContent = "Stopping…"; void api().superPowerBuildStop?.(); });
-    foot.append(el("span", "spn-hint", "This takes a minute or two"), stop);
+    foot.append(el("span", "spn-hint", "This takes a minute or two"), cancel, stop);
 
     offBeat = api().onSuperPowerBuildProgress?.((b) => {
       if (closed) return;
@@ -305,7 +318,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     if (closed) return;
     if (!r.ok) {
       paintAsk();
-      if (r.error !== "Stopped.") showErr(r.error);
+      if (r.error !== "Stopped.") showErr(friendlyError(r.error));
       return;
     }
     ask = "";
@@ -315,8 +328,6 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   // ── DONE ──
   function paintDone(b: Built): void {
     clearTimers();
-    clearTimeout(winkTimer);
-    doneShown = true;
     hero.className = "spn-hero spn-born";
     face.innerHTML = botAvatarSvg(b.avatar ?? REGULAR, "done", { size: 112, title: b.name });
     face.classList.remove("spn-face-in");
