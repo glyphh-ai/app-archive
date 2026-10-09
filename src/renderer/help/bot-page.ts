@@ -5,7 +5,7 @@
  * has: folder(s), connections, models -> + add a new power. Modal with
  * folders, connections, models, etc. super super simple.").
  *
- * Opens full screen from the rail's ⋮ → Edit bot (code-workbench.ts
+ * Opens full screen from the rail's ⋮ → Edit (code-workbench.ts
  * __wbOpenBotPage). Left: the Agents form as it was (name, icon, when to use
  * it, model, brief and its wand; Delete · Cancel · Save). Right: the bot's
  * powers by kind, each with a remove, and "+ Add a power", which opens the
@@ -126,7 +126,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       <button class="agents2-wand botp-wand" type="button" title="Write the brief with AI" aria-label="Write the brief with AI">${WAND_SVG}</button>
     </div>
     <div class="agents2-brief-error botp-brief-error hidden" role="alert"></div>
-    <textarea class="settings-input agents2-brief botp-brief" rows="9" placeholder="What this bot always knows and how it works."></textarea>
+    <textarea class="settings-input agents2-brief botp-brief" rows="9" placeholder="What this super power always knows and how it works."></textarea>
     <div class="settings-actions" style="margin-top:28px;">
       <button class="action-btn danger botp-delete" type="button">Delete</button>
       <div style="flex:1;"></div>
@@ -150,7 +150,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     head.textContent = "";
     const icons = el("div", "edit-head-icons");
     icons.innerHTML = botAvatarSvg(picked, "idle", { size: 44 });
-    head.append(icons, el("div", "edit-head-name", nameIn.value.trim() || bot?.name || "Bot"));
+    head.append(icons, el("div", "edit-head-name", nameIn.value.trim() || bot?.name || "Super power"));
   }
   function paintFaces(): void {
     const faces = q<HTMLElement>(".botp-faces");
@@ -186,12 +186,12 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   async function save(): Promise<void> {
     if (!bot) return;
     const input = { name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), model: modelSel.value, avatar: picked };
-    if (!input.name) { nameIn.classList.add("invalid"); clearInvalid(nameIn); showErr(errEl, "A bot needs a name."); return; }
-    if (!input.prompt) { briefIn.classList.add("invalid"); clearInvalid(briefIn); showErr(errEl, "A bot needs a brief — without one it can't be handed work."); return; }
+    if (!input.name) { nameIn.classList.add("invalid"); clearInvalid(nameIn); showErr(errEl, "A super power needs a name."); return; }
+    if (!input.prompt) { briefIn.classList.add("invalid"); clearInvalid(briefIn); showErr(errEl, "A super power needs a brief — without one it can't be handed work."); return; }
     saveBtn.disabled = true;
     const r = await api().libraryAgentUpdate?.(bot.slug, input).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     saveBtn.disabled = false;
-    if (!r?.ok) { showErr(errEl, r?.error || "The bot could not be saved."); return; }
+    if (!r?.ok) { showErr(errEl, r?.error || "The super power could not be saved."); return; }
     opts.onClose();
   }
   async function remove(): Promise<void> {
@@ -199,18 +199,18 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const sure = await confirmAction({
       title: `Delete “${bot.name}”?`,
       body: "Glyphh won't be able to hand work to it any more. Its scheduled tasks go with it.",
-      confirmLabel: "Delete bot",
+      confirmLabel: "Delete",
       danger: true,
     });
     if (!sure) return;
     const r = await api().libraryAgentDelete?.(bot.slug);
-    if (!r?.ok) { showErr(errEl, r?.error || "The bot could not be deleted."); return; }
+    if (!r?.ok) { showErr(errEl, r?.error || "The super power could not be deleted."); return; }
     opts.onClose();
   }
   async function writeBrief(): Promise<void> {
     if (wand.disabled) return;
     const input = { name: nameIn.value.trim(), description: descIn.value.trim(), model: modelSel.value, draft: briefIn.value.trim() };
-    if (!input.name && !input.description && !input.draft) { showErr(briefErr, "Give the bot a name and say when to use it first — the brief is written from those."); return; }
+    if (!input.name && !input.description && !input.draft) { showErr(briefErr, "Give the super power a name and say when to use it first — the brief is written from those."); return; }
     showErr(briefErr, "");
     wand.disabled = true;
     wand.classList.add("generating");
@@ -471,7 +471,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const empty = (t: string): void => { body.appendChild(el("div", "botp-empty", t)); };
     const d = draft;
     if (modalKind === "folders") {
-      if (onWeb()) { empty("Folders live on your computer. Open Glyphh on your desktop to give this bot a folder."); }
+      if (onWeb()) { empty("Folders live on your computer. Open Glyphh on your desktop to give this super power a folder."); }
       else {
         const pick = el("button", "action-btn secondary botp-pick", "Choose a folder…");
         pick.type = "button";
@@ -516,7 +516,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       api().skillsList?.(["skill", "task"]).catch(() => null),
     ]);
     if (destroyed) return;
-    if (!got?.ok || !got.data) { showErr(errEl, got?.error || "This bot could not be read."); return; }
+    if (!got?.ok || !got.data) { showErr(errEl, got?.error || "This super power could not be read."); return; }
     bot = got.data as BotRow;
     models = ms?.ok ? ms.models.filter((m) => !m.utility) : [];
     conns = cs;

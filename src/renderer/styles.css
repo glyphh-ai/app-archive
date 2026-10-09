@@ -22211,7 +22211,11 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
 .botp-empty { padding: 8px 2px; font-size: 12.5px; color: var(--text-3); }
 /* The modal: four tabs, one list, Done. */
 /* One size whatever the tab (his order, 2026-10-09: "make this modal stay the same height and width"). */
-.botp-modal-box { width: min(560px, calc(100vw - 48px)); height: min(600px, calc(100vh - 80px)); display: flex; flex-direction: column; }
+.confirm-overlay .confirm-box.botp-modal-box {
+  width: min(560px, calc(100vw - 48px)); min-width: min(560px, calc(100vw - 48px)); max-width: min(560px, calc(100vw - 48px));
+  height: min(600px, calc(100vh - 80px)); min-height: min(600px, calc(100vh - 80px)); max-height: min(600px, calc(100vh - 80px));
+  flex: none; display: flex; flex-direction: column;
+}
 .botp-modal-head { display: flex; align-items: center; gap: 8px; flex: none; }
 .botp-modal-head h3 { flex: 1; }
 .botp-modal-x { width: 28px; height: 28px; flex: none; }

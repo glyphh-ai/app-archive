@@ -6500,13 +6500,14 @@ function openRailBotMenu(anchor: HTMLElement, b: { slug: string; name: string })
     m.appendChild(x);
   };
   // EDIT BOT IS A PAGE (his order, 2026-10-09): the form left, its powers right.
-  item("Edit bot", false, () => {
+  // "Edit" and "Delete" (his order, 2026-10-09: "these are not bots they are Super Powers").
+  item("Edit", false, () => {
     const w = window as unknown as { __wbOpenBotPage?: (slug: string) => void; __glyphhOpenSettings?: (sub?: string) => void };
     if (w.__wbOpenBotPage) w.__wbOpenBotPage(b.slug);
     else w.__glyphhOpenSettings?.("agents");
   });
-  item("Delete bot", true, () => {
-    void confirmAction({ title: `Delete ${b.name}?`, body: "The bot goes. Its conversation stays in your recents.", confirmLabel: "Delete", danger: true }).then(async (ok) => {
+  item("Delete", true, () => {
+    void confirmAction({ title: `Delete ${b.name}?`, body: "The super power goes. Its conversation stays in your recents.", confirmLabel: "Delete", danger: true }).then(async (ok) => {
       if (!ok) return;
       await (window.glyphh as unknown as { libraryAgentDelete?: (ref: string) => Promise<unknown> }).libraryAgentDelete?.(b.slug);
       if (railPickedKey === b.slug) railPickedKey = "glyphh";
