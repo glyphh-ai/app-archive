@@ -385,7 +385,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   faceBtn.addEventListener("click", () => { if (!isGlyphh) openFaceMenu(); });
   // GLYPHH'S PAGE (his order, 2026-10-09): no Delete, a fixed face, a free name.
   if (isGlyphh) {
-    q<HTMLElement>(".botp-delete").remove();
+    // Hidden, not removed: the page wires every control by its selector.
+    q<HTMLElement>(".botp-delete").hidden = true;
     faceBtn.disabled = true;
     faceBtn.title = "Glyphh";
   }
