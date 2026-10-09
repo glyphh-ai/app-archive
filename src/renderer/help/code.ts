@@ -955,6 +955,10 @@ function initComposerControls(): void {
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     if (usageWrap && !usageWrap.contains(t)) el("code-usage-pop")?.classList.add("hidden");
+    // The microphone menu closes on a click away too (his report, 2026-10-09);
+    // its level meter stops itself (and lets go of the mic) once it is hidden.
+    const micWrap = el("code-mic-wrap");
+    if (micWrap && !micWrap.contains(t)) el("code-mic-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
