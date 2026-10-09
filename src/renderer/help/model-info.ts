@@ -21,6 +21,14 @@ export interface CatalogModel {
   autoRouter?: boolean;
   utility?: boolean;
   active?: boolean;
+  /** The server's icon for it: the provider's logo, Glyphh's mark, or its own. */
+  iconUrl?: string | null;
+}
+
+/** An icon URL the page may load: https, or a data image. */
+export function safeIconUrl(url: string | null | undefined): string | null {
+  const u = String(url ?? "").trim();
+  return /^https:\/\//i.test(u) || /^data:image\//i.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(u) ? u : null;
 }
 
 /** LiteLLM's mode word, as people say it. */

@@ -22414,3 +22414,8 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
    2026-10-09: the details page cut off Output and the rest — flex children
    were shrinking to fit instead of overflowing). */
 .powm-body > * { flex-shrink: 0; }
+
+/* The server's model icons (provider logos, Glyphh's mark), on a light tile so a dark logo reads on the dark theme. */
+.powm-model-img { width: 20px; height: 20px; object-fit: contain; display: block; }
+.powm-row .powm-icon:has(.powm-model-img), .powm-detail-icon:has(.powm-model-img) { background: #fff; border-radius: 6px; }
+.powm-detail-icon .powm-model-img { width: 28px; height: 28px; }

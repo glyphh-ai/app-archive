@@ -30,7 +30,7 @@ import { renderToolGroups } from "./settings-connections.js";
 import { planGates } from "./plan-gate.js";
 import { hideAppOverlay } from "../app-overlay.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
-import { capText, isChatModel, modelTypeLabel, parseCap, priceLines, tokensShort, type CatalogModel } from "./model-info.js";
+import { capText, isChatModel, modelTypeLabel, parseCap, priceLines, safeIconUrl, tokensShort, type CatalogModel } from "./model-info.js";
 
 export type PowerTab = "folders" | "connections" | "models" | "skills";
 export const POWER_TABS: ReadonlyArray<{ tab: PowerTab; label: string }> = Object.freeze([
@@ -224,6 +224,11 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     foot.appendChild(done);
   }
   q(".powm-x").addEventListener("click", close);
+  // An icon that won't load falls back to the chip glyph (error does not bubble: capture it).
+  overlay.addEventListener("error", (e) => {
+    const img = e.target as HTMLElement | null;
+    if (img instanceof HTMLImageElement && img.classList.contains("powm-model-img")) img.outerHTML = MODEL_SVG;
+  }, true);
   overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
 
   // ── the bar: search left, + Add right (or ‹ Connections on a sub-screen) ──
@@ -518,6 +523,12 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   // ── MODELS: a type and a description each; a name opens the details,
   //    pricing and (when added to a super power) its monthly cap. ──
   const byName = (name: string): CatalogModel | undefined => models.find((m) => m.name === name);
+  /** THE MODEL'S ICON from the server (his order, 2026-10-09): its provider's
+   *  logo or Glyphh's mark; the chip glyph when it has none or it won't load. */
+  const modelIcon = (m: CatalogModel): string => {
+    const url = safeIconUrl(m.iconUrl);
+    return url ? `<img class="powm-model-img" src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" />` : MODEL_SVG;
+  };
   /** The model the super power runs on: the first chat model it has. */
   const runsOn = (): string => (sel?.models ?? []).find((n) => isChatModel(byName(n) ?? { modality: "chat" })) ?? "";
   function toggleModel(name: string): void {
@@ -543,7 +554,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (!list.length) { empty(models.length ? "Nothing matches." : modelsError || "Loading your team's models…"); return; }
     for (const m of list) {
       body.appendChild(row({
-        icon: MODEL_SVG, name: m.autoRouter ? "Auto" : m.name, sub: modelSub(m), has: have.includes(m.name),
+        icon: modelIcon(m), name: m.autoRouter ? "Auto" : m.name, sub: modelSub(m), has: have.includes(m.name),
         ...(main === m.name ? { tag: "Runs on" } : {}),
         onToggle: () => { toggleModel(m.name); repaintBody(); },
         onOpen: () => { modelView = { kind: "detail", model: m }; paint(); },
@@ -556,7 +567,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     const added = !!sel?.models.includes(m.name);
     const head = el("div", "powm-detail-head");
     const ic = el("div", "botp-power-icon powm-detail-icon");
-    ic.innerHTML = MODEL_SVG;
+    ic.innerHTML = modelIcon(m);
     const titles = el("div", "powm-detail-titles");
     titles.append(el("div", "powm-detail-name", m.autoRouter ? "Auto" : m.name), el("div", "powm-detail-sub", [m.providerSlug, modelTypeLabel(m.modality)].filter(Boolean).join(" · ")));
     head.append(ic, titles);
