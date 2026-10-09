@@ -6941,6 +6941,8 @@ function initRailApps(): void {
   initRailSections();
   initWorkspacesVsplit();
   el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
+  // The home default as a door (the super power page's Delete lands here).
+  (window as unknown as { __glyphhOpenHome?: () => void }).__glyphhOpenHome = () => openGlyphhHome();
   // THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
   // to it opens its conversation the way its rail row does.
   el("rail-sp-new")?.addEventListener("click", (e) => { e.stopPropagation(); openNewSuperPower(); });

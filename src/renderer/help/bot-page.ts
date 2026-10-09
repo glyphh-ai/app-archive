@@ -163,7 +163,9 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
 const baseName = (p: string): string => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 const onWeb = (): boolean => !api().pickDirectory;
 
-export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: () => void }): BotPageHandle {
+/** `onDeleted`: where the member lands after Delete (his order, 2026-10-09: "the
+ *  screen should go back to the home default"); without it, Delete just closes. */
+export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: () => void; onDeleted?: () => void }): BotPageHandle {
   host.classList.add("botp-host");
   const root = el("div", "botp");
   host.appendChild(root);
@@ -645,7 +647,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!sure) return;
     const r = await api().libraryAgentDelete?.(bot.slug);
     if (!r?.ok) { showErr(errEl, r?.error || "The super power could not be deleted."); return; }
-    opts.onClose();
+    if (opts.onDeleted) opts.onDeleted(); else opts.onClose();
   }
   async function writeBrief(): Promise<void> {
     if (wand.disabled) return;

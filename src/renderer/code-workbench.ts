@@ -5973,7 +5973,12 @@ async function init(): Promise<void> {
       }
       if (key === "bot") {
         host.classList.add("own-head");   // Customize's title row is its header
-        webFullPanel = mountBotPage(panelBody, { slug: webFullBot, onClose: closeWebFullPanel });
+        webFullPanel = mountBotPage(panelBody, {
+          slug: webFullBot, onClose: closeWebFullPanel,
+          // A DELETED SUPER POWER LEAVES FOR HOME (his order, 2026-10-09): the
+          // page closes and Glyphh's own landing opens, as the rail's Glyphh row does.
+          onDeleted: () => { closeWebFullPanel(); (window as unknown as { __glyphhOpenHome?: () => void }).__glyphhOpenHome?.(); },
+        });
         return;
       }
       (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();
