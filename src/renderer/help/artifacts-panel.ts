@@ -71,6 +71,8 @@ export interface ArtifactsPanelOptions {
   onNav?: (nav: { view: "list" | "viewer"; title: string }) => void;
   /** After a message went to the agent (the web closes its full screen so the agent shows). */
   onSentToAgent?: () => void;
+  /** Full screen, the panel's own rows are the page's only header and carry the ✕. */
+  onClose?: () => void;
 }
 
 export interface ArtifactsPanelHandle {
@@ -90,6 +92,7 @@ const KIND_ICON: Record<string, string> = {
 const LOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
 const SHARE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
 const KEBAB_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>`;
+const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
 const BACK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>`;
 const COMMENT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 const CHAT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>`;
@@ -215,12 +218,22 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   host.appendChild(root);
 
   // ── THE LIST ──────────────────────────────────────────────────────────────
-  // THE SAME CHROME AS THE BUILD PAGES (his report, 2026-10-05: "the
-  // artifacts page looks nothing like the other pages"): the Skills page's
-  // head (title, centred search), its tab strip and its rows, verbatim classes.
+  // THE SAME HEADER AS CUSTOMIZE (his order, 2026-10-09: "same with
+  // artifacts... doesn't need two headers and it should match customize"):
+  // the title row (46px, the rule, the ✕ when full screen), then one row —
+  // the tabs, and the search at its right end — right above the list.
   const list = el("div", "artp-list");
-  const head = el("div", "skills-head");
-  head.appendChild(el("h2", "", "Artifacts"));
+  const closeBtn = (): HTMLButtonElement => {
+    const x = btn("ws-icon-btn settings-group-close artp-close", CLOSE_SVG, "Close");
+    x.addEventListener("click", () => opts.onClose?.());
+    return x;
+  };
+  const titlebar = el("div", "settings-group-titlebar");
+  titlebar.appendChild(el("h1", "settings-group-title", "Artifacts"));
+  if (opts.onClose) titlebar.appendChild(closeBtn());
+  list.appendChild(titlebar);
+  const head = el("div", "settings-group-head artp-head");
+  const tools = el("div", "settings-group-tools");
   const search = el("div", "skills-search", SEARCH_SVG);
   const q = document.createElement("input");
   q.type = "text";
@@ -229,9 +242,8 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   q.autocomplete = "off";
   q.addEventListener("input", () => paintList());
   search.appendChild(q);
-  head.appendChild(search);
-  list.appendChild(head);
-  const tabs = el("div", "skills-tabs");
+  tools.appendChild(search);
+  const tabs = el("div", "skills-tabs settings-group-tabs");
   tabs.setAttribute("role", "tablist");
   let tab: ArtifactTab = "all";
   for (const t of ARTIFACT_TABS) {
@@ -242,12 +254,9 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     b.addEventListener("click", () => { tab = t.key; paintList(); });
     tabs.appendChild(b);
   }
-  const spacer = el("div", "", "");
-  spacer.style.flex = "1";
-  tabs.appendChild(spacer);
-  const count = el("span", "skills-count", "");
-  tabs.appendChild(count);
-  list.appendChild(tabs);
+  const count = el("span", "skills-count artp-count", "");
+  head.append(tabs, count, tools);
+  list.appendChild(head);
   const groups = el("div", "artp-groups");
   list.appendChild(groups);
   root.appendChild(list);
@@ -358,7 +367,8 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   const vhead = el("div", "artp-viewer-head");
   const back = btn("ws-icon-btn artp-back", BACK_SVG, "Back to Artifacts");
   back.addEventListener("click", () => showList());
-  if (web) back.classList.add("hidden");   // the full-screen host's "‹ Artifacts" is the back on the web
+  // The viewer's own back on every surface: the full-screen "‹ Artifacts"
+  // row is gone (his order, 2026-10-09).
   vhead.appendChild(back);
   const vtitle = el("span", "artp-viewer-title");
   vhead.appendChild(vtitle);
@@ -369,6 +379,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   const shareBtn = btn("btn btn-primary artp-share-btn", `${SHARE_SVG}<span>Share</span>`);
   vactions.append(commentBtn, chatBtn, shareBtn);
   vhead.appendChild(vactions);
+  if (opts.onClose) vhead.appendChild(closeBtn());
   viewer.appendChild(vhead);
   const stage = el("div", "artp-stage");
   const content = el("div", "artp-content");

@@ -651,7 +651,7 @@ function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
   if (!collapsed && !headsMarked) return;
   headsMarked = collapsed;
-  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar"));
+  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar, .artp-viewer-head"));
   if (!collapsed) { heads.forEach((h) => h.classList.remove("clears-strip")); return; }
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
@@ -665,7 +665,7 @@ function markHeadsUnderStrip(): void {
   }
   for (const [x, y] of [[12, Math.round(topH / 2)], [Math.round(stripW - 8), Math.round(topH / 2)]]) {
     for (const el of document.elementsFromPoint(x, y)) {
-      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar");
+      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar, .artp-viewer-head");
       if (h) { under.add(h); break; }
     }
   }
@@ -5930,7 +5930,8 @@ async function init(): Promise<void> {
       document.body.classList.add("web-full-open");
       syncWallVisibility();
       if (key === "artifacts") {
-        webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel });
+        host.classList.add("own-head");   // its own rows are the header (his order, 2026-10-09)
+        webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel, onClose: closeWebFullPanel });
         return;
       }
       const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${key}"]`);

@@ -22104,3 +22104,19 @@ body.rail-collapsed .settings-group-titlebar.clears-strip { padding-left: var(--
 .settings-group-tools .skills-pill svg { width: 16px; height: 16px; }
 .settings-group-tools .skills-head-actions { margin-left: 2px; }
 .settings-group-host .skills-head { display: none; }
+
+/* ── ARTIFACTS MATCHES CUSTOMIZE (his order, 2026-10-09): the title row, then
+   one row of tabs with the search at its right end; the viewer's own row is
+   the same 46px top row with the rule. ── */
+.artp-list { padding: 0 0 24px; }
+.artp-list > .settings-group-titlebar { flex: none; }
+.artp-head { flex: none; }
+.artp-head > .skills-tabs { margin-bottom: 0; }
+.artp-head > .artp-count { margin-left: 8px; }
+.artp-groups { padding: 0 28px; }
+.artp-viewer-head {
+  height: var(--panel-row-h, 46px); box-sizing: border-box;
+  border-bottom: 1px solid var(--border); background: none;
+}
+.echo-card .artp-viewer-head { padding-left: var(--card-pad-l, 96px); padding-right: var(--card-pad-r, 64px); }
+body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-strip-w) !important; }
