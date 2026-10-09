@@ -6023,10 +6023,12 @@ function missingConnections(b: { connections: string[] }): string[] {
 const railBotVoices = new Map<string, { model: string; voiceId: string }>();
 
 /** Read the roster; true when it was actually read (an empty list counts). */
+let rosterKnown = false;
 async function primeBotAvatars(): Promise<boolean> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
   if (!env?.ok || !Array.isArray(env.data)) return false;
+  const before = rosterKnown ? new Set(railBots.map((b) => b.slug)) : null;
   railBotAvatars.clear();
   railBotVoices.clear();
   const bots: Array<{ slug: string; name: string; connections: string[] }> = [];
@@ -6037,6 +6039,8 @@ async function primeBotAvatars(): Promise<boolean> {
     bots.push({ slug: a.slug, name: String(a.name || a.slug), connections: Array.isArray(a.connections) ? a.connections.map(String).filter(Boolean) : [] });
   }
   railBots = bots;
+  rosterKnown = true;
+  if (before) leaveGoneSuperPowers([...before].filter((slug) => !bots.some((b) => b.slug === slug)));
   // The connected accounts, read once here and again whenever one moves.
   if (!railConnectedWired) {
     railConnectedWired = true;
@@ -6551,6 +6555,22 @@ async function maybeIntroSuperPowers(): Promise<void> {
   if (seen) return;
   void g.setPreference?.(SUPER_POWER_INTRO_PREF, true);
   window.setTimeout(() => openNewSuperPower(), 900);
+}
+
+/** A SUPER POWER THAT IS GONE LEAVES THE SCREEN (his report, 2026-10-09:
+ *  "deleting the super power while on the same page didn't go back to an
+ *  empty agent or the last agent"): whatever deleted it — its page, the
+ *  rail's ⋮, Glyphh's agent_delete, a pull from the server — its Edit page
+ *  closes, and a member in its conversation lands on Glyphh's home. */
+function leaveGoneSuperPowers(gone: string[]): void {
+  if (!gone.length) return;
+  const w = window as unknown as { __wbCloseBotPage?: (slug: string) => void };
+  let home = false;
+  for (const slug of gone) {
+    w.__wbCloseBotPage?.(slug);
+    if (currentId === `bots/${slug}` || railPickedKey === slug) home = true;
+  }
+  if (home) openGlyphhHome();
 }
 
 /** A new Glyphh session in the open agent — set at init (initCode). */

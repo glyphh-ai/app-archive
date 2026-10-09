@@ -5936,6 +5936,10 @@ async function init(): Promise<void> {
     };
     /** The bot the "bot" page edits (set by __wbOpenBotPage just before it opens). */
     let webFullBot = "";
+    // A super power that is gone takes its open Edit page with it (help/code.ts leaveGoneSuperPowers).
+    (window as unknown as { __wbCloseBotPage?: (slug: string) => void }).__wbCloseBotPage = (slug: string) => {
+      if (webFullKey === "bot" && webFullBot === String(slug ?? "")) closeWebFullPanel();
+    };
     const openWebFullPanel = (rawKey: string): void => {
       // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
       const key = legacyKey(rawKey);
