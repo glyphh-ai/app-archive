@@ -22752,3 +22752,15 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 }
 .spn-comet-head { width: 9px; height: 9px; margin: -4.5px; background: #fff; box-shadow: 0 0 8px 3px var(--comet), 0 0 18px 7px color-mix(in srgb, var(--comet) 60%, transparent), 0 0 34px 12px color-mix(in srgb, var(--comet) 30%, transparent); }
 .spn-dust.spark { background: #fff; box-shadow: 0 0 6px 1px var(--comet), 0 0 2px #fff; animation-duration: .9s; }
+button.spn-chip { font: inherit; font-size: 12px; cursor: pointer; }
+button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); border-style: solid; }
+
+/* A super power's connections still to connect (his order, 2026-10-09): a red
+   rounded square with the count, on its rail row; a click opens the first. */
+.rail-sp-badge {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 4px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 5px; background: var(--danger, #e5484d); color: #fff;
+  font: 700 11px/1 var(--font-sans); cursor: pointer;
+}
+.rail-sp-badge:hover { filter: brightness(1.12); }

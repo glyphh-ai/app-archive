@@ -64,6 +64,7 @@ const S = 'viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="curren
 const CLOSE_SVG = `<svg ${S} stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
 const BOLT_SVG = `<svg ${S} stroke-width="2"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`;
 const CHECK_SVG = `<svg ${S} stroke-width="2.6"><path d="m5 12 5 5L20 7"/></svg>`;
+const PLUS_SVG = `<svg ${S} stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>`;
 const SPARK_SVG = `<svg ${S} stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>`;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] => {
@@ -375,20 +376,34 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
         for (const slug of b.connections) {
           const ok = have.has(slug);
           if (!ok) missing++;
-          const c = el("span", `spn-chip ${ok ? "on" : "off"}`);
-          c.innerHTML = `${ok ? CHECK_SVG : ""}<span>${escapeHtml(slug.replace(/_/g, " "))}</span>`;
+          // A missing one is a door (his report, 2026-10-09: "the connect icon
+          // didn't work… it should open the modal to that connector").
+          const c = el(ok ? "span" : "button", `spn-chip ${ok ? "on" : "off"}`);
+          c.innerHTML = `${ok ? CHECK_SVG : PLUS_SVG}<span>${escapeHtml(slug.replace(/_/g, " "))}</span>`;
+          if (!ok) {
+            (c as HTMLButtonElement).type = "button";
+            c.title = `Connect ${slug.replace(/_/g, " ")}`;
+            c.addEventListener("click", () => openConnector(slug));
+          }
           list.appendChild(c);
         }
         if (missing) {
           note.textContent = `Connect ${missing === 1 ? "it" : `these ${missing}`} so it can do its job.`;
           const connect = el("button", "action-btn secondary spn-connect", "Connect");
           connect.type = "button";
-          connect.addEventListener("click", () => { close(); openPowersModal({ tab: "connections" }); });
+          const first = b.connections.find((x) => !have.has(x))!;
+          connect.addEventListener("click", () => openConnector(first));
           conns.appendChild(connect);
         } else {
           note.textContent = "All connected. It's ready.";
         }
       }).catch(() => { /* the chips stay unmarked */ });
+    }
+
+    /** The powers modal, open on that connector's own page (its + connects it). */
+    function openConnector(slug: string): void {
+      close();
+      openPowersModal({ tab: "connections", focus: { tab: "connections", name: slug } });
     }
 
     const again = el("button", "action-btn secondary", "Build another");

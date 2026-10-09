@@ -52,7 +52,7 @@ import { openCreateWorkspaceModal } from "./workspace-create.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
-import { mountComposerPlus, manageTargetOf, PLUS_CHECK, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
+import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
@@ -6000,7 +6000,24 @@ const railBotAvatars = new Map<string, { variant: number; color: string } | null
 /** THE RAIL IS THE BOTS (his order, 2026-10-09: "the left rail is bot avatar
  *  … and name —> far right of same row the three dots"): the roster, in the
  *  order the library keeps it. */
-let railBots: Array<{ slug: string; name: string }> = [];
+let railBots: Array<{ slug: string; name: string; connections: string[] }> = [];
+
+/** The member's connected accounts, by slug (null until read): a super power
+ *  whose connections are not all here wears a red count on the rail (his
+ *  order, 2026-10-09: "a red rounded square with a number for the number of
+ *  connections that are required but not connected"). */
+let railConnected: Set<string> | null = null;
+let railConnectedWired = false;
+async function refreshRailConnected(): Promise<void> {
+  const rows = await readConnectorRows(window.glyphh as unknown as PlusApi).catch(() => null);
+  if (!rows) return;
+  railConnected = new Set(rows.filter((r) => r.kind === "account" && r.on).map((r) => r.slug));
+  renderRailSessions();
+}
+/** The connections a super power needs that are not connected yet. */
+function missingConnections(b: { connections: string[] }): string[] {
+  return railConnected ? b.connections.filter((c) => !railConnected!.has(c)) : [];
+}
 
 /** Each super power's own voice, by slug (voice-mic.ts setSpeakerVoice reads it). */
 const railBotVoices = new Map<string, { model: string; voiceId: string }>();
@@ -6012,14 +6029,20 @@ async function primeBotAvatars(): Promise<boolean> {
   if (!env?.ok || !Array.isArray(env.data)) return false;
   railBotAvatars.clear();
   railBotVoices.clear();
-  const bots: Array<{ slug: string; name: string }> = [];
-  for (const a of env.data as Array<{ slug?: string; name?: string; avatar?: { variant: number; color: string } | null; voice?: { model?: string; voiceId?: string } | null }>) {
+  const bots: Array<{ slug: string; name: string; connections: string[] }> = [];
+  for (const a of env.data as Array<{ slug?: string; name?: string; connections?: unknown; avatar?: { variant: number; color: string } | null; voice?: { model?: string; voiceId?: string } | null }>) {
     if (!a || typeof a.slug !== "string") continue;
     railBotAvatars.set(a.slug, a.avatar ?? null);
     if (a.voice?.model && a.voice.voiceId) railBotVoices.set(a.slug, { model: a.voice.model, voiceId: a.voice.voiceId });
-    bots.push({ slug: a.slug, name: String(a.name || a.slug) });
+    bots.push({ slug: a.slug, name: String(a.name || a.slug), connections: Array.isArray(a.connections) ? a.connections.map(String).filter(Boolean) : [] });
   }
   railBots = bots;
+  // The connected accounts, read once here and again whenever one moves.
+  if (!railConnectedWired) {
+    railConnectedWired = true;
+    (window.glyphh as unknown as { onConnectorsChanged?: (cb: () => void) => void }).onConnectorsChanged?.(() => { void refreshRailConnected(); });
+    void refreshRailConnected();
+  }
   return true;
 }
 
@@ -6434,7 +6457,7 @@ function renderRailSessions(): void {
   // dropdown at the agent's top right, which reads railSessions as before.
   host.textContent = "";
   document.getElementById("rail-glyphh")?.classList.toggle("active", railPickedKey === "glyphh");
-  const row = (o: { key: string; name: string; mark: HTMLElement; liveId?: string; onOpen: () => void; menu?: (btn: HTMLElement) => void }): void => {
+  const row = (o: { key: string; name: string; mark: HTMLElement; liveId?: string; onOpen: () => void; menu?: (btn: HTMLElement) => void; badge?: HTMLElement }): void => {
     const r = document.createElement("div");
     r.className = "code-history-item rail-bot-row";
     r.dataset.bot = o.key;
@@ -6445,6 +6468,7 @@ function renderRailSessions(): void {
     label.title = o.name;
     r.append(o.mark, label);
     if (o.liveId && sessDotState(o.liveId) !== "idle") r.appendChild(sessDot(o.liveId));
+    if (o.badge) r.appendChild(o.badge);
     if (o.menu) {
       const menuBtn = document.createElement("button");
       menuBtn.className = "code-chat-menu-btn";
@@ -6474,9 +6498,26 @@ function renderRailSessions(): void {
     mark.className = "code-sess-mark rail-bot-mark";
     mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 56 });
     const id = `bots/${b.slug}`;
+    // CONNECTIONS STILL TO CONNECT: a red count; a click opens the first one's page.
+    const missing = missingConnections(b);
+    let badge: HTMLElement | undefined;
+    if (missing.length) {
+      const bd = document.createElement("button");
+      bd.type = "button";
+      bd.className = "rail-sp-badge";
+      bd.textContent = String(missing.length);
+      const names = missing.map((m) => m.replace(/_/g, " ")).join(", ");
+      bd.title = `${missing.length} connection${missing.length === 1 ? "" : "s"} to connect: ${names}`;
+      bd.setAttribute("aria-label", bd.title);
+      bd.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPowersModal({ tab: "connections", focus: { tab: "connections", name: missing[0]! } });
+      });
+      badge = bd;
+    }
     row({ key: b.slug, name: b.name, mark, liveId: id,
       onOpen: () => { leaveWorkspace(); sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }); },
-      menu: (btn) => openRailBotMenu(btn, b) });
+      menu: (btn) => openRailBotMenu(btn, b), ...(badge ? { badge } : {}) });
   }
 }
 
