@@ -22107,9 +22107,11 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 /* ── THE SCHEDULES PAGE (his order, 2026-10-09): Customize's header. The title
    row shows full screen only; the one tool row: count left, tools right. ── */
 .page-titlebar { display: none; }
-.web-full-body .page-titlebar { display: flex; margin: 0 0 14px; }
-.web-full-body > .help-section[data-section="schedules"] { padding: 0 0 24px; }
-.web-full-body > .help-section[data-section="schedules"] > :not(.page-titlebar) { margin-left: 28px; margin-right: 28px; }
+/* The SECTION carries the 28px gutter; the title row reaches past it to both
+   edges. (Margins on the children overflowed: a full-width child plus 56px
+   pushed + Add and the close off the right edge, his report 2026-10-09.) */
+.web-full-body > .help-section[data-section="schedules"] { padding: 0 28px 24px; box-sizing: border-box; }
+.web-full-body .page-titlebar { display: flex; margin: 0 -28px 14px; }
 .page-toolrow { justify-content: flex-start; gap: 8px; }
 .page-toolrow > .skills-count { margin-right: auto; }
 .page-toolrow > .skills-search { position: static; transform: none; width: min(260px, 32vw); }
