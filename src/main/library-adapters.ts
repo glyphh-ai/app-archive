@@ -7,7 +7,7 @@
  *   (tabs, workspaces and agents left the disk on 2026-10-07 — the desktop
  *   reads them straight from the server: library-remote.ts)
  *   skill      ~/.glyphh/<user>/skills/<name>/                    skills-fs.ts (+ skills-disabled/glyphh/)
- *   task       ~/.glyphh/<user>/tasks/<slug>/                     skills-fs.ts (+ skills-disabled/task/)
+ *   (task)     retired 2026-10-09: a power with a program lives in the skills home and syncs as "skill"
  *   drip       user-state.sqlite  drips                           drip-manager.ts
  *   schedule   user-state.sqlite  loop_schedules                  schedule-store.ts (writers: local-library.ts, local-agents.ts)
  *
@@ -165,5 +165,7 @@ export function scheduleAdapter(): KindAdapter {
 
 /** Every adapter, by kind. */
 export function allAdapters(): KindAdapter[] {
-  return [bundleAdapter("skill"), bundleAdapter("task"), dripAdapter(), scheduleAdapter()];
+  // ONE KIND (2026-10-09): every power syncs as kind "skill" from the one
+  // home; the server converts its old "task" records into powers.
+  return [bundleAdapter("skill"), dripAdapter(), scheduleAdapter()];
 }

@@ -79,15 +79,15 @@ function readManifest(dir: string): TaskManifest {
 
 function writeManifest(dir: string, m: TaskManifest): void {
   fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(m, null, 2) + "\n", "utf-8");
-  // The bundle changed on this machine: the member library hears it (library-sync.ts).
-  noteLibrarySave("task", path.basename(dir));
+  // The power changed on this machine: the member library hears it (library-sync.ts) — one kind.
+  noteLibrarySave("skill", path.basename(dir));
 }
 
-function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
+function specOf(id: string, dir: string, slug: string, enabled: boolean): TaskSpec {
   const m = readManifest(dir);
   let description = "";
   let icon: string | null = null;
-  try { description = getSkill(`task:${slug}`).description; } catch { description = ""; }
+  try { description = getSkill(id).description; } catch { description = ""; }
   if (m.icon) { try { icon = fs.readFileSync(path.join(dir, m.icon), "utf-8"); } catch { icon = null; } }
   return {
     slug, name: m.name || slug, description, program: m.program, icon,
@@ -97,12 +97,17 @@ function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
   };
 }
 
-/** Every task bundle, enabled or parked. */
+/** Every power that runs on its own (it carries task.json), enabled or parked.
+ *  One home since 2026-10-09: any power with a program is one of these. */
 export function listTaskSpecs(): TaskSpec[] {
   migrateLegacyTasks();
   const out: TaskSpec[] = [];
-  for (const s of listSkills("task")) {
-    try { out.push(specOf(s.dir, s.id.slice("task:".length), s.enabled)); } catch { /* a folder without a program is not a task yet */ }
+  const seen = new Set<string>();
+  const all = listSkills("skill").sort((a, b) => (a.source === b.source ? 0 : a.source === "glyphh" ? -1 : 1));
+  for (const s of all) {
+    const slug = s.id.slice(s.id.indexOf(":") + 1);
+    if (seen.has(slug)) continue;   // the one home wins; a leftover of the same name in the old tasks home is shadowed
+    try { out.push(specOf(s.id, s.dir, slug, s.enabled)); seen.add(slug); } catch { /* no program: a power that does not run on its own */ }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

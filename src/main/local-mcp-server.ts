@@ -182,14 +182,13 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   const skillSlug = (name: string): string =>
     name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
 
-  /** ONE ID PER SHAPE: the homes differ, so a slug alone is ambiguous. */
-  const idFor = (slug: string, type: BundleType): string =>
-    `${type === "app" ? "app" : type === "task" ? "task" : type === "plugin" ? "plugin" : "glyphh"}:${String(slug).trim()}`;
+  /** ONE HOME (2026-10-09): every power is glyphh:<slug>; an app's source keeps app:<slug>. */
+  const idFor = (slug: string, type: BundleType): string => `${type === "app" ? "app" : "glyphh"}:${String(slug).trim()}`;
 
   /** Find a bundle by slug across every home, whatever its type. */
   function findBundle(slug: string): { id: string; type: BundleType } | null {
     const want = String(slug).trim().toLowerCase();
-    for (const sk of listSkills(["skill", "task", "plugin"])) {
+    for (const sk of listSkills("skill")) {
       if (sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase() === want) return { id: sk.id, type: sk.type };
     }
     return null;
@@ -204,7 +203,7 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     return {
       slug: id.slice(id.indexOf(":") + 1), type: sk.type, name: sk.name, description: sk.description,
       folder: sk.dir, enabled: sk.enabled, files: sk.files.map((f) => f.path),
-      where: WHERE[sk.type], mirroredToEveryCli: sk.enabled,
+      where: WHERE[sk.type],
       ...(note ? { note } : {}),
     };
   }
@@ -226,21 +225,24 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
    *  what it actually needs — a skill can ship files now, which is why an
    *  agent needing code no longer has to reach for an app bundle. */
   function saveBundle(input: {
-    type: BundleType; slug?: string; name: string; description?: string; prompt?: string;
+    type?: BundleType; slug?: string; name: string; description?: string; prompt?: string;
     files?: Record<string, string>; program?: string; connections?: string[]; schedule?: string;
-    slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string; kind?: "glyphh" | "cli"; cli?: string }>;
+    slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string }>;
   }): Record<string, unknown> {
     const name = String(input.name ?? "").trim();
-    if (!name) throw new Error("a bundle needs a name");
-    const type = input.type;
-    if (type === "plugin") {
-      throw new Error("a plugin is Claude Code's own format — import one with skill_import in the app, or build a skill (type \"skill\"), an app (type \"app\") or a task (type \"task\")");
-    }
+    if (!name) throw new Error("a power needs a name");
+    // ONE KIND (2026-10-09): what a power CARRIES decides what it does — a
+    // program makes it run on its own, a face (ui/) makes it an app's source.
+    // A legacy `type` is still honored when given.
+    const type: BundleType = input.type
+      ?? (input.program || input.schedule || input.slots?.length ? "task"
+        : Object.keys(input.files ?? {}).some((r) => r === "app.json" || /^ui\/.*\.html?$/i.test(r)) ? "app" : "skill");
     const slug = (input.slug ? String(input.slug) : skillSlug(name)) || "skill";
     const extra = checkFiles(input.files);
     checkNoForeignManifest(type, Object.keys(extra));
 
-    // A TASK IS A PROGRAM: the task lane owns task.json, run.js and the slots.
+    // A POWER THAT RUNS ON ITS OWN carries a program: task.json, run.js and its
+    // slots, in the same one home as every other power.
     if (type === "task") {
       const spec = saveTaskSpec({ slug, name, description: input.description, program: input.program, slots: input.slots, connections: input.connections, schedule: input.schedule });
       const id = idFor(slug, "task");
@@ -467,30 +469,28 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "skill_save",
-    "THE ONE DOOR for making anything in the user's library. Everything there is a SKILL and `type` says which kind, so use the user's own word: "
-    + '`type:"skill"` = markdown instructions an agent follows, and it may ship files (scripts, references) — this is the default answer to "make me a skill"; '
-    + '`type:"task"` = a PROGRAM the desktop runs itself (pass `program` = run.js exporting async run(ctx, input), `slots` for the agents it calls; ctx.decide(state, questions) and ctx.route(state, branches, {minConfidence, fallback}) make deterministic Jev decisions through GlyphhRouter), for headless or scheduled work; '
-    + '`type:"app"` = a work panel with a face (pass `files` including ui/index.html) and its own tools. '
-    + "Never build an app because you need code: a skill carries files and a task carries a program. The answer says what was made, its folder, and where the user sees it.",
+    "THE ONE DOOR for making a POWER — the only thing in the user's library. A power is one thing: a SKILL.md folder (its instructions) that carries whatever it needs, and what it carries decides what it can do. "
+    + "Instructions an agent follows: pass `prompt` (and any reference files or scripts in `files`). "
+    + "Work that runs on its own (on a schedule, as a pipeline): also pass `program` = run.js exporting async run(ctx, input), `slots` for the agents it calls and an optional `schedule`; ctx.decide(state, questions) and ctx.route(state, branches, {minConfidence, fallback}) make deterministic Jev decisions through GlyphhRouter. "
+    + "A face (a work panel): pass `files` including ui/index.html. "
+    + "Always declare the connected accounts it uses in `connections`. Never ask the user what kind it is. The answer says what was made, its folder, and where the user sees it (Your powers).",
     {
-      type: z.enum(["skill", "app", "task"]).describe('The shape — use the user\'s word: "skill", "task" or "app"'),
+      type: z.enum(["skill", "app", "task"]).optional().describe("Leave it out: what the power carries decides what it does. Old callers may still pass it."),
       slug: z.string().optional().describe("Existing slug to update; omit to create"),
       name: z.string().describe("Name"),
       description: z.string().optional().describe("One line: when an agent should reach for this"),
       prompt: z.string().optional().describe("SKILL.md body — the instructions (every type has one)"),
       files: z.record(z.string(), z.string()).optional().describe("Extra files by relative path, e.g. { \"scripts/report.js\": \"…\", \"ui/index.html\": \"…\" }"),
-      program: z.string().optional().describe('type:"task" only — run.js: module.exports = async function run(ctx, input) { … }. ctx: agents.<slot>.run, connections.<app>.call, data(repo).exec, decide(state, questions, {model?}), route(state, branches, {instructions?, minConfidence?, fallback?}), checkpoint, log'),
-      schedule: z.string().optional().describe('type:"task" only — a five-field cron in the machine\'s local time ("0 8 * * 1-5" is weekdays at 8am). Setting it puts the task on the clock and it shows on Settings → Customize → Schedules; change it there afterwards, not here.'),
+      program: z.string().optional().describe('For a power that runs on its own — run.js: module.exports = async function run(ctx, input) { … }. ctx: agents.<slot>.run, connections.<app>.call, data(repo).exec, decide(state, questions, {model?}), route(state, branches, {instructions?, minConfidence?, fallback?}), checkpoint, log'),
+      schedule: z.string().optional().describe('For a power that runs on its own — a five-field cron in the machine\'s local time ("0 8 * * 1-5" is weekdays at 8am). Setting it puts the power on the clock and it shows on Schedules; change it there afterwards, not here.'),
       connections: z.array(z.string()).optional().describe('The connected accounts it needs, by app slug (e.g. ["gmail","google_calendar"]). REQUIRED whenever the code calls ctx.connections.<app> or the app declares connector tools: a run refuses any account the manifest does not declare.'),
       slots: z.array(z.object({
         name: z.string().optional(),
         label: z.string().optional(),
         description: z.string().optional(),
-        agent: z.string().nullable().optional().describe("An agent slug from agents_list (Glyphh or CLI). null = the default Glyphh agent on the default model with no brief — never silently the first agent."),
-        kind: z.enum(["glyphh", "cli"]).optional().describe('The lane: "glyphh" runs the Glyphh loop, "cli" runs a vendor CLI headless (claude, codex, gemini, copilot, cursor). Omit to take it from the agent.'),
-        cli: z.string().optional().describe('kind:"cli" only — the CLI id (claude, codex, gemini, copilot, cursor) when no agent names one'),
+        agent: z.string().nullable().optional().describe("A super power's slug from agents_list. null = Glyphh on the default model with no brief — never silently the first one."),
         model: z.string().optional().describe("The slot's model; it beats the agent's own. Omit for the agent's, then the org default."),
-      })).optional().describe('type:"task" only — the fixed slots the program calls agents through as ctx.agents.<slot>.run(prompt, { schema?, model? }). The program also has ctx.rpa: commands(app), run(app, command, value?), sequence(app, name, args?), read(app, selector?) — the mapped commands of the user\'s tabs (rpa_commands).'),
+      })).optional().describe('For a power that runs on its own — the fixed slots the program calls agents through as ctx.agents.<slot>.run(prompt, { schema?, model? }). The program also has ctx.rpa: commands(app), run(app, command, value?), sequence(app, name, args?), read(app, selector?) — the mapped commands of the user\'s tabs (rpa_commands).'),
     },
     async (input) => {
       try { return text(saveBundle(input)); }

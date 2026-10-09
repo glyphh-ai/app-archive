@@ -58,6 +58,8 @@ export interface PowersModalOptions {
    *  modal"): a model or a connection opens its page; a folder or one of
    *  your powers opens its tab, searched to it. `name` is how it is stored. */
   focus?: { tab: PowerTab; name: string };
+  /** Open straight on Your powers' New power screen (Customize's Add → New power). */
+  newPower?: boolean;
 }
 
 type Conn = { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; accountId?: string; org?: boolean; shared?: boolean };
@@ -695,7 +697,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   //    power hangs a + / ✓ on each of your rows and on a details page. ──
   let borrowed: { panel: HTMLElement; parent: HTMLElement; next: Node | null; wasActive: boolean } | null = null;
   /** Your powers' screens: the Skills panel, a new power's prompt, what Glyphh built. */
-  let skillView: { kind: "panel" } | { kind: "new" } | { kind: "built"; power: BuiltPower } = { kind: "panel" };
+  let skillView: { kind: "panel" } | { kind: "new" } | { kind: "built"; power: BuiltPower } = opts.newPower ? { kind: "new" } : { kind: "panel" };
   let newAsk = "";
   let libObserver: MutationObserver | null = null;
   let pendingSkill: string | null = null;
@@ -800,7 +802,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     const ic = el("div", "botp-power-icon powm-detail-icon");
     ic.innerHTML = POWER_SVG;
     const titles = el("div", "powm-detail-titles");
-    titles.append(el("div", "powm-detail-name", p.name), el("div", "powm-detail-sub", `${p.type === "task" ? "Task" : "Skill"} · built by Glyphh${sel ? " · added" : ""}`));
+    titles.append(el("div", "powm-detail-name", p.name), el("div", "powm-detail-sub", `${p.type === "task" ? "Runs on its own" : "Instructions"} · built by Glyphh${sel ? " · added" : ""}`));
     head.append(ic, titles);
     body.appendChild(head);
     body.appendChild(el("p", "powm-detail-desc", p.description || ""));

@@ -13,10 +13,10 @@ export const POWER_ASK_MAX = 2000;
 export function powerBuildPrompt(ask: string): string {
   return [
     "The member is adding a new POWER from the powers modal. Build exactly one with skill_save, then stop.",
-    "Choose its shape: type \"skill\" when it is instructions an agent follows; type \"task\" when it must run on its own (on a schedule, as a pipeline), and then write its program (run.js) and its slots too.",
+    "A power is one thing: its instructions (prompt), plus whatever it needs. Give it a program (run.js) and slots only when it must run on its own, on a schedule or as a pipeline. Never pass `type`.",
     "Declare every connected account it uses in `connections`, by app slug (gmail, google_calendar, slack, …), including ones the member has not connected yet.",
     "Do not ask questions: make sensible choices and say them in the description. Do not run it.",
-    "End your reply with ONE line of JSON and nothing after it: {\"slug\":\"…\",\"type\":\"skill\"|\"task\",\"name\":\"…\",\"connections\":[\"…\"]}",
+    "End your reply with ONE line of JSON and nothing after it: {\"slug\":\"…\",\"name\":\"…\",\"connections\":[\"…\"]}",
     "",
     "What the member asked for:",
     String(ask ?? "").trim().slice(0, POWER_ASK_MAX),

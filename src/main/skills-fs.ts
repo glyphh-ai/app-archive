@@ -26,9 +26,17 @@ import { getPreference } from "./stores/preferences-db.js";
 import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
-export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
-/** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
-export type HomeKind = "skill" | "app" | "plugin" | "task";
+/** ONE KIND, A POWER (his order, 2026-10-09: "they are all just one thing…
+ *  just make them skills… they all support all the features… they are not
+ *  skills they are powers"; "our agent loop is the only loop… ~/.glyphh is the
+ *  only folder"). Every power is a SKILL.md folder in the skills home, and what
+ *  it carries decides what it can do (task.json + run.js = it runs on its own,
+ *  app.json + ui/ = it has a face). The tasks home is read only until its
+ *  folders have moved in (tidyHomes); the CLI skill folders and the plugins
+ *  home are gone — the Glyphh loop is the only loop. */
+export type SkillSource = "glyphh" | "app" | "task";
+/** What a caller asks for. Every kind but "app" reads the one home. */
+export type HomeKind = "skill" | "app" | "task";
 /** The tasks home: bundles the desktop runs itself (task-runner.ts). */
 export const TASKS_HOME = (): string => userScopedPath("tasks");
 
@@ -38,14 +46,13 @@ export const TASKS_HOME = (): string => userScopedPath("tasks");
  *  SKILL.md — so it is read from the bundle, never guessed from where it
  *  lives. SKILL.md frontmatter may declare `type:` and that is honored only
  *  when no manifest is there yet (an agent naming its intent mid-build). */
-export type BundleType = "skill" | "app" | "task" | "plugin";
+export type BundleType = "skill" | "app" | "task";
 
 export function bundleType(dir: string, declared?: string): BundleType {
   if (fs.existsSync(path.join(dir, "task.json"))) return "task";
   if (fs.existsSync(path.join(dir, "app.json"))) return "app";
-  if (isPlugin(dir)) return "plugin";
   const d = (declared || "").trim().toLowerCase();
-  return d === "app" || d === "task" || d === "plugin" ? d : "skill";
+  return d === "app" || d === "task" ? d : "skill";
 }
 
 export interface SkillSummary {
@@ -82,11 +89,7 @@ const NO_HOME = (): string => userScopedPath(".no-app-home");
 const ROOTS: Record<SkillSource, () => string> = {
   glyphh: () => userScopedPath("skills"),
   app: NO_HOME,
-  plugin: () => userScopedPath("plugins"),
   task: () => TASKS_HOME(),
-  claude: () => path.join(homedir(), ".claude", "skills"),
-  codex: () => path.join(homedir(), ".codex", "skills"),
-  gemini: () => path.join(homedir(), ".gemini", "skills"),
 };
 const DISABLED_ROOT = (): string => userScopedPath("skills-disabled");
 
@@ -94,7 +97,9 @@ const DISABLED_ROOT = (): string => userScopedPath("skills-disabled");
  *  Glyphh skills home rides as kind `skill`, the tasks home as kind `task`.
  *  Apps and plugins are machine bundles; a CLI's own folders are the CLI's. */
 function syncKindOf(source: SkillSource): MemberLibraryKind | null {
-  return source === "glyphh" ? "skill" : source === "task" ? "task" : null;
+  // One kind rides the library: the skills home. A folder left in the old
+  // tasks home (a name clash tidyHomes would not overwrite) stays local.
+  return source === "glyphh" ? "skill" : null;
 }
 function announceBundle(source: SkillSource, name: string): void {
   const kind = syncKindOf(source);
@@ -155,17 +160,9 @@ export function walk(dir: string, rel = ""): SkillFile[] {
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** A plugin (Claude Code's format) carries .claude-plugin/plugin.json instead of a root SKILL.md. */
-const PLUGIN_MANIFEST = path.join(".claude-plugin", "plugin.json");
-const isPlugin = (dir: string): boolean => fs.existsSync(path.join(dir, PLUGIN_MANIFEST));
-function pluginManifest(dir: string): { name?: string; description?: string; version?: string; author?: { name?: string } | string } {
-  try { return JSON.parse(fs.readFileSync(path.join(dir, PLUGIN_MANIFEST), "utf-8")) as ReturnType<typeof pluginManifest>; } catch { return {}; }
-}
-/** The file that makes a folder a skill, an app, or a plugin. */
+/** The file that makes a folder a power: its SKILL.md. */
 function markerOf(dir: string): string | null {
-  if (fs.existsSync(path.join(dir, "SKILL.md"))) return path.join(dir, "SKILL.md");
-  if (isPlugin(dir)) return path.join(dir, PLUGIN_MANIFEST);
-  return null;
+  return fs.existsSync(path.join(dir, "SKILL.md")) ? path.join(dir, "SKILL.md") : null;
 }
 
 /** A bundle installed from the hub is BY its publisher, not by this user (his
@@ -181,13 +178,9 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   const md = path.join(dir, "SKILL.md");
   let text = "";
   try { text = fs.readFileSync(md, "utf-8"); } catch { text = ""; }
-  let frontmatter: Record<string, string> = text ? parseSkillMd(text).frontmatter : {};
-  let marker = md;
-  if (!text && isPlugin(dir)) {
-    const m = pluginManifest(dir);
-    frontmatter = { name: m.name || "", description: m.description || "", author: typeof m.author === "string" ? m.author : (m.author?.name || ""), version: m.version || "" };
-    marker = path.join(dir, PLUGIN_MANIFEST);
-  } else if (!text) return null;
+  if (!text) return null;
+  const frontmatter: Record<string, string> = parseSkillMd(text).frontmatter;
+  const marker = md;
   let updatedAt = "";
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
   const type = bundleType(dir, frontmatter.type);
@@ -214,161 +207,80 @@ export function bundleMarks(dir: string, type: BundleType): { icon: string | nul
   } catch { return { icon: null, tool: null }; }
 }
 
-/** The target a CLI-directory symlink points at, or "" when it is not a link. */
-function linkTarget(p: string): string {
-  try {
-    if (!fs.lstatSync(p).isSymbolicLink()) return "";
-    return path.resolve(path.dirname(p), fs.readlinkSync(p));
-  } catch { return ""; }
-}
-
-/** Is this a link GLYPHH planted — by anyone on this machine?
- *
- *  The CLI skill directories are machine-wide while Glyphh's homes are per
- *  user, so the links in them may belong to a user who is not signed in. That
- *  made another user's skills and apps list three times over, once per CLI,
- *  under "From Claude Code" (his report, 2026-09-17). Ownership is the data
- *  dir, not this session's homes. */
-const isGlyphhLink = (p: string): boolean => {
-  const target = linkTarget(p);
-  return !!target && target.startsWith(glyphhPath() + path.sep);
-};
-
-/** …and is it THIS session's? Only these are kept; another user's are pruned,
- *  so the CLIs read the signed-in user's skills and nobody else's. */
-const isOurLink = (p: string): boolean => {
-  const target = linkTarget(p);
-  return !!target && [ROOTS.glyphh(), ROOTS.app(), ROOTS.task(), ROOTS.plugin()].some((r) => target.startsWith(r + path.sep));
-};
 const isApp = (dir: string): boolean => fs.existsSync(path.join(dir, "app.json"));
-const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : kind === "plugin" ? ROOTS.plugin() : kind === "task" ? ROOTS.task() : ROOTS.glyphh());
+const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : ROOTS.glyphh());
 
 function listIn(root: string, source: SkillSource, enabled: boolean): SkillSummary[] {
   let names: string[] = [];
   try {
     names = fs.readdirSync(root, { withFileTypes: true })
       .filter((e) => !e.name.startsWith(".") && (e.isDirectory() || e.isSymbolicLink()))
-      .filter((e) => source === "glyphh" || !isGlyphhLink(path.join(root, e.name)))
       .map((e) => e.name);
   } catch { return []; }
   return names.map((n) => summarize(source, n, path.join(root, n), enabled)).filter((s): s is SkillSummary => !!s);
 }
 
-/** ONE home, every loop sees it: each enabled Glyphh skill is linked into every
- *  CLI skills directory on the box; links whose skill is gone are removed. A
- *  real folder of the same name in a CLI's directory is that CLI's own and is
- *  left alone. */
-/** Two folders hold the same files? (names, sizes and bytes of every text file) */
-function sameFolder(a: string, b: string): boolean {
-  const fa = walk(a), fb = walk(b);
-  if (fa.length !== fb.length || fa.some((f, i) => f.path !== fb[i].path || f.size !== fb[i].size)) return false;
-  return fa.every((f) => { try { return fs.readFileSync(path.join(a, f.path)).equals(fs.readFileSync(path.join(b, f.path))); } catch { return false; } });
-}
+/** The CLI skill folders Glyphh used to plant links in (Claude Code, Codex,
+ *  Gemini). Read only by tidyHomes, to take Glyphh's own links back out. */
+const CLI_SKILL_DIRS = (): string[] => [".claude", ".codex", ".gemini"].map((d) => path.join(homedir(), d, "skills"));
 
-/** ADOPTION (his ruling, 2026-09-16): a skill a CLI holds as a real folder moves
- *  into Glyphh's home and a link takes its place, so Glyphh is the one copy and
- *  every CLI sees it. A same-named skill already home with different files
- *  lands as <name>-<cli>; an identical one is dropped for the link. Links a
- *  CLI planted itself (a plugin, a marketplace) are not ours and stay. */
-function adoptAll(): void {
-  const home = ROOTS.glyphh();
-  for (const source of ["claude", "codex", "gemini"] as const) {
-    const root = ROOTS[source]();
+/**
+ * THE ONE HOME, TIDIED once per process (his order, 2026-10-09: "kill all of
+ * that reading from claude… ~/.glyphh is the only folder that would matter"):
+ *
+ *   1. every link Glyphh planted in a CLI's skill folder (pointing into
+ *      ~/.glyphh) is removed — a CLI's own folders are never touched;
+ *   2. every power still in the old tasks home moves into the skills home,
+ *      where it syncs as the one kind; a name already taken there stays put
+ *      and is listed from where it is.
+ *
+ * Nothing else is mirrored, adopted or registered anywhere: the Glyphh loop
+ * is the only loop, and the cloud library is where every power lives.
+ */
+let tidied = false;
+export function tidyHomes(force = false): void {
+  if (tidied && !force) return;
+  tidied = true;
+  const ours = glyphhPath() + path.sep;
+  for (const dir of CLI_SKILL_DIRS()) {
     let ents: fs.Dirent[] = [];
-    try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
     for (const e of ents) {
-      if (!e.isDirectory() || e.name.startsWith(".")) continue;
-      const src = path.join(root, e.name);
-      if (!fs.existsSync(path.join(src, "SKILL.md"))) continue;
-      if (isApp(src)) continue;   // an app bundle in a CLI's folder is not adopted: apps live in the cloud
+      const p = path.join(dir, e.name);
       try {
-        const target = home;
-        fs.mkdirSync(target, { recursive: true });
-        let dest = path.join(target, e.name);
-        if (fs.existsSync(dest)) {
-          if (sameFolder(src, dest)) { fs.rmSync(src, { recursive: true, force: true }); fs.symlinkSync(dest, src, "dir"); continue; }
-          dest = path.join(target, `${e.name}-${source}`);
-          if (fs.existsSync(dest)) continue;
-        }
-        fs.renameSync(src, dest);
-        fs.symlinkSync(dest, src, "dir");
-      } catch (err) {
-        console.warn(`[skills] adopting ${source}/${e.name} failed:`, err instanceof Error ? err.message : String(err));
-      }
+        if (!fs.lstatSync(p).isSymbolicLink()) continue;
+        const target = path.resolve(path.dirname(p), fs.readlinkSync(p));
+        if (target.startsWith(ours)) fs.rmSync(p, { force: true });
+      } catch { /* not ours to judge */ }
     }
   }
-}
-
-export function syncLinks(): void {
-  adoptAll();
-  // Both homes link into every CLI: an app's SKILL.md is how agents drive it.
-  const homes: Array<[string, string[]]> = [];
-  for (const home of [ROOTS.glyphh()]) {
+  for (const enabled of [true, false]) {
+    const from = enabled ? ROOTS.task() : path.join(DISABLED_ROOT(), "task");
+    const to = enabled ? ROOTS.glyphh() : path.join(DISABLED_ROOT(), "glyphh");
     let names: string[] = [];
-    try { names = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* none yet */ }
-    homes.push([home, names]);
-  }
-  for (const source of ["claude", "codex", "gemini"] as const) {
-    const root = ROOTS[source]();
-    if (!fs.existsSync(path.dirname(root))) continue;
-    try {
-      fs.mkdirSync(root, { recursive: true });
-      for (const e of fs.readdirSync(root, { withFileTypes: true })) {
-        const p = path.join(root, e.name);
-        // Ours and dead, or someone else's entirely: either way it goes.
-        if (isGlyphhLink(p) && (!isOurLink(p) || !fs.existsSync(path.join(p, "SKILL.md")))) fs.rmSync(p, { force: true });
+    try { names = fs.readdirSync(from, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { continue; }
+    for (const name of names) {
+      const src = path.join(from, name);
+      const dest = path.join(to, name);
+      if (!fs.existsSync(path.join(src, "SKILL.md")) || fs.existsSync(dest)) continue;
+      try {
+        fs.mkdirSync(to, { recursive: true });
+        fs.renameSync(src, dest);
+        if (enabled) noteLibrarySave("skill", name);
+        console.log(`[powers] "${name}" moved from the tasks home into the one home`);
+      } catch (err) {
+        console.warn(`[powers] could not move "${name}" into the one home:`, err instanceof Error ? err.message : String(err));
       }
-      for (const [home, names] of homes) for (const name of names) {
-        const dest = path.join(root, name);
-        let st: fs.Stats | null = null;
-        try { st = fs.lstatSync(dest); } catch { /* absent */ }
-        if (st && !st.isSymbolicLink()) continue;
-        if (st && isOurLink(dest)) continue;
-        if (st) fs.rmSync(dest, { force: true });
-        fs.symlinkSync(path.join(home, name), dest, "dir");
-      }
-    } catch (err) {
-      console.warn(`[skills] sync into ${source} failed:`, err instanceof Error ? err.message : String(err));
     }
   }
-  syncPluginMarketplace();
 }
 
-/** The plugins home is a LOCAL MARKETPLACE for Claude Code: a marketplace.json
- *  naming every plugin folder, registered once (`claude plugin marketplace add`),
- *  each plugin installed from it at user scope. Best effort and quiet: no
- *  Claude on the machine simply leaves the plugins as folders. */
-let marketplaceSynced = "";
-function syncPluginMarketplace(): void {
-  const home = ROOTS.plugin();
-  let names: string[] = [];
-  try { names = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".") && isPlugin(path.join(home, e.name))).map((e) => e.name); } catch { return; }
-  const plugins = names.map((n) => { const m = pluginManifest(path.join(home, n)); return { name: m.name || n, source: `./${n}`, description: m.description || "", version: m.version || "0.1.0" }; });
-  const doc = JSON.stringify({ name: "glyphh", owner: { name: "Glyphh" }, plugins }, null, 2) + "\n";
-  const key = doc;
-  if (marketplaceSynced === key) return;
-  marketplaceSynced = key;
-  try {
-    fs.mkdirSync(path.join(home, ".claude-plugin"), { recursive: true });
-    fs.writeFileSync(path.join(home, ".claude-plugin", "marketplace.json"), doc, "utf-8");
-  } catch (err) { console.warn("[plugins] marketplace.json:", err instanceof Error ? err.message : String(err)); return; }
-  if (!fs.existsSync(path.join(homedir(), ".claude"))) return;
-  const run = (args: string[]): void => {
-    try { execFileSync("claude", ["plugin", ...args], { stdio: "ignore", timeout: 20_000, env: { ...process.env, CLAUDE_CODE_NO_TELEMETRY: "1" } }); }
-    catch { /* not installed, or already there */ }
-  };
-  const marker = path.join(home, ".claude-plugin", ".registered");
-  if (!fs.existsSync(marker)) { run(["marketplace", "add", home, "--scope", "user"]); try { fs.writeFileSync(marker, new Date().toISOString()); } catch { /* fine */ } }
-  for (const pl of plugins) run(["install", `${pl.name}@glyphh`, "--scope", "user"]);
-}
-
-/** The homes a kind reads from. A list of kinds unions them, which is how one
- *  page lists skills and apps together while both pages still exist. */
-const SOURCES_FOR = (kind: HomeKind): SkillSource[] =>
-  kind === "app" ? [] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
+/** The homes a kind reads from: every kind but an app reads the one home
+ *  (and the old tasks home, until tidyHomes has emptied it). */
+const SOURCES_FOR = (kind: HomeKind): SkillSource[] => (kind === "app" ? [] : ["glyphh", "task"]);
 
 export function listSkills(kind: HomeKind | HomeKind[] = "skill"): SkillSummary[] {
-  syncLinks();
+  tidyHomes();
   const out: SkillSummary[] = [];
   const sources = [...new Set((Array.isArray(kind) ? kind : [kind]).flatMap(SOURCES_FOR))];
   for (const source of sources) {
@@ -404,12 +316,6 @@ export function getSkill(id: string): SkillDetail {
   const { source, name, dir, enabled } = dirOf(id);
   const sum = summarize(source, name, dir, enabled);
   if (!sum) throw new Error(`skill has no SKILL.md: ${id}`);
-  if (source === "plugin" && !fs.existsSync(path.join(dir, "SKILL.md"))) {
-    let body = "";
-    try { body = fs.readFileSync(path.join(dir, "README.md"), "utf-8"); } catch { body = ""; }
-    const m = pluginManifest(dir);
-    return { ...sum, frontmatter: { name: sum.name, description: sum.description, version: m.version || "" }, body, files: walk(dir) };
-  }
   const { frontmatter, body } = parseSkillMd(fs.readFileSync(path.join(dir, "SKILL.md"), "utf-8"));
   return { ...sum, frontmatter, body, files: walk(dir) };
 }
@@ -445,7 +351,6 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   const dest = on ? path.join(ROOTS[source](), name) : path.join(DISABLED_ROOT(), source, name);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
-  syncLinks();
   announceBundle(source, name);
   return summarize(source, name, dest, on)!;
 }
@@ -458,7 +363,6 @@ export function setInstallForgetter(fn: (id: string) => void): void { forgetInst
 export function deleteSkill(id: string): void {
   const { source, name, dir } = dirOf(id);
   fs.rmSync(dir, { recursive: true, force: true });
-  syncLinks();
   forgetInstall?.(id);
   announceBundleGone(source, name);
 }
@@ -472,7 +376,7 @@ export interface SyncableBundle { id: string; dir: string; enabled: boolean }
 
 /** Every bundle of a synced kind on this machine, enabled or parked. */
 export function listSyncableBundles(kind: "skill" | "task"): SyncableBundle[] {
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  const source: SkillSource = "glyphh";   // one home (a "task" record lands as a power)
   const out: SyncableBundle[] = [];
   for (const [root, enabled] of [[ROOTS[source](), true], [path.join(DISABLED_ROOT(), source), false]] as const) {
     let ents: fs.Dirent[] = [];
@@ -494,7 +398,7 @@ export function listSyncableBundles(kind: "skill" | "task"): SyncableBundle[] {
  *  it came FROM the sync. */
 export function applyRemoteBundle(kind: "skill" | "task", id: string, enabled: boolean, files: Array<{ path: string; bytes: Uint8Array | null; mtime: number }>): string {
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) throw new Error(`bad bundle id: ${id}`);
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  const source: SkillSource = "glyphh";   // one home (a "task" record lands as a power)
   const live = path.join(ROOTS[source](), id);
   const parked = path.join(DISABLED_ROOT(), source, id);
   const dest = enabled ? live : parked;
@@ -514,20 +418,19 @@ export function applyRemoteBundle(kind: "skill" | "task", id: string, enabled: b
   }
   if (!markerOf(dest)) throw new Error(`"${id}" arrived without a SKILL.md, so nothing would list it`);
   if (kind === "task") { try { fs.rmSync(path.join(dest, "app.json"), { force: true }); } catch { /* fine */ } }
-  syncLinks();
   return dest;
 }
 
 /** The server tombstoned this bundle: the folder goes (live or parked), quietly. */
 export function removeBundleLocal(kind: "skill" | "task", id: string): boolean {
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
+  const source: SkillSource = "glyphh";   // one home (a "task" record lands as a power)
   let gone = false;
   for (const dir of [path.join(ROOTS[source](), id), path.join(DISABLED_ROOT(), source, id)]) {
     if (!fs.existsSync(dir)) continue;
     fs.rmSync(dir, { recursive: true, force: true });
     gone = true;
   }
-  if (gone) { syncLinks(); forgetInstall?.(idOf(source, id)); }
+  if (gone) forgetInstall?.(idOf(source, id));
   return gone;
 }
 
@@ -662,7 +565,6 @@ export function adoptSkill(id: string): SkillSummary {
   if (fs.existsSync(home)) throw new Error(`a Glyphh ${target === "app" ? "app" : "skill"} named "${name}" already exists`);
   fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.renameSync(dir, home);
-  syncLinks();
   announceBundle(target, name);
   return summarize(target, name, home, true)!;
 }
@@ -698,10 +600,10 @@ export function revealSkill(id: string): void {
  *  CLI's directory the machine has, so every loop can use it. */
 export function installSkill(name: string, files: Record<string, string>, kind: HomeKind = "skill"): SkillSummary {
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) throw new Error(`bad skill name: ${name}`);
-  const plugin = kind === "plugin" || (!files["SKILL.md"] && !!files[".claude-plugin/plugin.json"]);
-  if (!files["SKILL.md"] && !plugin) throw new Error("a skill needs a SKILL.md");
-  if (plugin && !files[".claude-plugin/plugin.json"]) throw new Error("a plugin needs .claude-plugin/plugin.json");
-  const source: SkillSource = plugin ? "plugin" : kind === "task" || files["task.json"] ? "task" : kind === "app" || files["app.json"] ? "app" : "glyphh";
+  if (!files["SKILL.md"]) throw new Error("a power needs a SKILL.md");
+  // One home: a program (task.json) or anything else is a power like any
+  // other; only an app's source keeps its own lane (the cloud instance).
+  const source: SkillSource = kind === "app" || files["app.json"] ? "app" : "glyphh";
   const dir = path.join(ROOTS[source](), name);
   fs.mkdirSync(dir, { recursive: true });
   for (const [rel, text] of Object.entries(files)) {
@@ -717,7 +619,6 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   // makes something the user cannot see anywhere (his report, 2026-09-17), so
   // the two writers verify their own work rather than trust it.
   if (!markerOf(dir)) throw new Error(`"${name}" was written without a SKILL.md, so nothing would list it`);
-  syncLinks();
   announceBundle(source, name);
   return summarize(source, name, dir, true)!;
 }
@@ -746,15 +647,12 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
   const { source, name, dir, enabled } = dirOf(id);
   const from = bundleType(dir);
   if (from === to) return summarize(source, name, dir, enabled)!;
-  if (from === "plugin" || to === "plugin") {
-    throw new Error("a plugin keeps Claude Code's own shape — export it and import it as a plugin instead");
-  }
-  const target: SkillSource = to === "app" ? "app" : to === "task" ? "task" : "glyphh";
+  const target: SkillSource = to === "app" ? "app" : "glyphh";
   const dest = enabled ? path.join(ROOTS[target](), name) : path.join(DISABLED_ROOT(), target, name);
-  if (fs.existsSync(dest)) throw new Error(`a ${to} named "${name}" is already here — rename one of them first`);
+  if (dest !== dir && fs.existsSync(dest)) throw new Error(`a power named "${name}" is already here — rename one of them first`);
 
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.renameSync(dir, dest);
+  if (dest !== dir) fs.renameSync(dir, dest);
   fs.rmSync(path.join(dest, from === "app" ? "app.json" : "task.json"), { force: true });
 
   if (to === "task" && !fs.existsSync(path.join(dest, "task.json"))) {
@@ -784,7 +682,6 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
     }
   }
   setFrontmatterType(path.join(dest, "SKILL.md"), to === "skill" ? null : to);
-  syncLinks();
   if (to === "app" && enabled) {
   }
   // A retype is a delete in one library kind and a save in another.
@@ -817,15 +714,10 @@ export function createSkill(rawName: string, kind: HomeKind = "skill"): SkillSum
   if (fs.existsSync(path.join(homeFor(kind), name))) throw new Error(`a ${kind} named "${name}" already exists`);
   const md = `---\nname: ${name}\ndescription: What this ${kind} is for, in one line — the agent reads this to decide when to use it.\n---\n\n# ${name}\n\nInstructions the agent follows when this ${kind} applies.\n`;
   if (kind === "skill") return installSkill(name, { "SKILL.md": md });
-  if (kind === "plugin") {
-    const pj = JSON.stringify({ name, description: `What this plugin is for, in one line.`, version: "0.1.0" }, null, 2) + "\n";
-    const readme = `# ${name}\n\nA Claude Code plugin: skills/, commands/, agents/, hooks/ and .mcp.json travel together.\n`;
-    return installSkill(name, { ".claude-plugin/plugin.json": pj, "README.md": readme, [`skills/${name}/SKILL.md`]: md }, "plugin");
-  }
   if (kind === "task") {
     const tj = JSON.stringify({ name, program: "run.js", slots: { main: { label: "Main", description: "The agent this task runs through.", agent: null } }, schedule: null, dependencies: { connections: [] } }, null, 2) + "\n";
     const js = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
-    return installSkill(name, { "SKILL.md": md, "task.json": tj, "run.js": js }, "task");
+    return installSkill(name, { "SKILL.md": md, "task.json": tj, "run.js": js });
   }
   const manifest = JSON.stringify({ name, ui: "ui/index.html", tools: "tools/manifest.json", data: "data/schema.sql", dependencies: { connections: [] }, screenshots: [] }, null, 2) + "\n";
   const ui = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8" /><title>${name}</title></head>\n<body><h1>${name}</h1><p>The app's face. The agent drives it through the tools in tools/manifest.json.</p></body></html>\n`;
@@ -843,7 +735,7 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
     folder = tmp;
   }
   const find = (dir: string, depth: number): string | null => {
-    if (kind === "plugin" ? isPlugin(dir) : fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
+    if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
     if (depth === 0) return null;
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name.startsWith(".") || e.name === "__MACOSX") continue;
@@ -853,33 +745,32 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
     return null;
   };
   const src = find(folder, 2);
-  if (!src) throw new Error(kind === "plugin" ? "no .claude-plugin/plugin.json inside that" : "no SKILL.md inside that");
-  const given = kind === "plugin" ? (pluginManifest(src).name || "") : parseSkillMd(fs.readFileSync(path.join(src, "SKILL.md"), "utf-8")).frontmatter.name;
+  if (!src) throw new Error("no SKILL.md inside that");
+  const given = parseSkillMd(fs.readFileSync(path.join(src, "SKILL.md"), "utf-8")).frontmatter.name;
   const base = (given || path.basename(src === tmp ? picked.replace(/\.(zip|glyphh)$/i, "") : src)).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || kind;
-  const target: SkillSource = kind === "plugin" ? "plugin" : kind === "task" || fs.existsSync(path.join(src, "task.json")) ? "task" : kind === "app" || isApp(src) ? "app" : "glyphh";
+  const target: SkillSource = kind === "app" || isApp(src) ? "app" : "glyphh";
   let name = base;
   for (let i = 2; fs.existsSync(path.join(ROOTS[target](), name)); i++) name = `${base}-${i}`;
   const dest = path.join(ROOTS[target](), name);
   fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
-  syncLinks();
   announceBundle(target, name);
   return summarize(target, name, dest, true)!;
 }
 
 export function registerSkillsIpc(): void {
-  const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
+  const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "task" ? "task" : "skill");
   const kindsOf = (k: unknown): HomeKind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
   ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
   ipcMain.handle("skill-import", async (e, kind?: string) => {
     const k = kindOf(kind);
     const win = BrowserWindow.fromWebContents(e.sender);
     const picked = await dialog.showOpenDialog(win ?? undefined as never, {
-      title: k === "app" ? "Import an app" : k === "plugin" ? "Import a plugin" : k === "task" ? "Import a task" : "Import a skill", properties: ["openFile", "openDirectory"],
+      title: k === "app" ? "Import an app" : "Import a power", properties: ["openFile", "openDirectory"],
       // A picked bundle lands by WHAT IT IS (app.json/task.json inside), so the
       // skills picker takes .glyphh app exports too.
-      filters: [{ name: k === "app" ? "App (.glyphh, zip or folder)" : k === "plugin" ? "Plugin (zip or folder)" : k === "task" ? "Task (zip or folder)" : "Skill or app (.glyphh, zip or folder)", extensions: k === "plugin" || k === "task" ? ["zip"] : ["glyphh", "zip"] }],
+      filters: [{ name: "Power (.glyphh, zip or folder)", extensions: ["glyphh", "zip"] }],
     });
     if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };
     try { return { ok: true, data: importSkill(picked.filePaths[0], k) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }

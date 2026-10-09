@@ -13,6 +13,7 @@
  * prompt: <SKILL.md body> } — `prompt` keeps the proxy's skills mirror fed.
  */
 
+import type { HomeKind } from "./skills-fs.js";
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getActiveUserId } from "./app-paths.js";
@@ -62,6 +63,12 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
 type Kind = "skill" | "app" | "plugin" | "task";
 const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
 const kindsOf = (k: unknown): Kind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
+/** Where a hub item lands on this machine: the one home (an app's source keeps
+ *  its own lane). A hub "plugin" is Claude Code's format and has no home here. */
+const homeKindOf = (k: Kind): HomeKind => {
+  if (k === "plugin") throw new Error("plugins were Claude Code's format; Glyphh installs powers only");
+  return k === "app" ? "app" : "skill";
+};
 /** The hub kind behind a local bundle: what the folder IS (its manifest), and
  *  only if it can't be read, the home its id names. */
 const kindOfId = (id: string): Kind => {
@@ -86,7 +93,7 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   // the desktop carries on disk — the house apps among them — are not
   // installs, and counting them ticked Drive, Audio, Video, Images and Slides
   // on Discover while Your apps stood at zero (his report, 2026-10-07).
-  const mine = new Set(listSkills(["skill", "task", "plugin"])
+  const mine = new Set(listSkills("skill")
     .map((sk) => `${kindOfId(sk.id)}:${sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase()}`));
   if (kinds.includes("app")) for (const i of await listInstances().catch(() => [])) mine.add(`app:${i.slug.toLowerCase()}`);
   const have = (kind: Kind, slug: string): boolean => mine.has(`${kind}:${(slug || "").toLowerCase()}`);
@@ -162,7 +169,7 @@ export async function installHubItem(ref: string, kind: Kind): Promise<{ id: str
   }
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
-  const installed = installSkill(meta.slug, files, kind);
+  const installed = installSkill(meta.slug, files, homeKindOf(kind));
   origin(installed.id, Object.keys(files));
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
@@ -223,7 +230,7 @@ async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "o
 export interface BundleStanding { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
 async function standings(): Promise<Record<string, BundleStanding>> {
   const out: Record<string, BundleStanding> = {};
-  const mine = listSkills(["skill", "task", "plugin"]);
+  const mine = listSkills("skill");
   if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const catalog = await catalogRows(kinds);
@@ -254,7 +261,7 @@ async function standings(): Promise<Record<string, BundleStanding>> {
 export interface ShareState { head: number | null; pending: number | null; rejected: number | null }
 async function shareStates(): Promise<Record<string, ShareState>> {
   const out: Record<string, ShareState> = {};
-  const mine = listSkills(["skill", "task", "plugin"]);
+  const mine = listSkills("skill");
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const client = getClient();
   const lists = await Promise.all(kinds.map(async (k) =>
@@ -321,7 +328,7 @@ async function update(skillId: string): Promise<{ version: number }> {
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
   const name = skillId.slice(skillId.indexOf(":") + 1);
   const gone = (o.files ?? []).filter((f) => !(f in files));
-  installSkill(name, files, o.kind);
+  installSkill(name, files, homeKindOf(o.kind));
   if (gone.length) removeSkillFiles(skillId, gone);
   const version = versionOf(meta);
   setPreference(ORIGIN_KEY(skillId), { ...o, version, files: Object.keys(files) } satisfies InstallOrigin);
@@ -331,14 +338,15 @@ async function update(skillId: string): Promise<{ version: number }> {
 /** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
  *  skill and its plugin from the public catalog, installed once when absent.
  *  Keeping them CURRENT is the Update button's job, not this function's. */
-const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }, { kind: "skill", slug: "glyphh-memory" }];
+// No plugin: Claude Code's plugin of Glyphh served the CLIs, and the Glyphh loop is the only loop now (2026-10-09).
+const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "skill", slug: "glyphh-memory" }];
 export async function installDefaultHubItems(): Promise<void> {
   try {
     const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);
     for (const want of DEFAULT_INSTALLS) {
       const hit = pub.find((p) => p.kind === want.kind && p.slug === want.slug);
       if (!hit) continue;
-      const have = listSkills(want.kind).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
+      const have = listSkills(homeKindOf(want.kind)).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
       if (have) continue;
       // NOTHING REWRITES A FOLDER BEHIND THE USER (his report, 2026-09-17:
       // "it showed as having an update once but it isn't showing anymore").

@@ -180,7 +180,7 @@ let lastLibrary = "";
 function libraryChanged(): boolean {
   let sig = "";
   try {
-    const skills = listSkills(["skill", "task", "plugin"]).map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
+    const skills = listSkills("skill").map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
     const conns = listConnRows().map((c) => `${c.slug}:${c.enabled ? 1 : 0}:${c.hiddenTools.join(",")}`).sort();
     // A tab's RPA mapping changed (a command mapped, a sequence saved) → the
     // catalog carries a new tool; the tab rows ride the fingerprint for it.

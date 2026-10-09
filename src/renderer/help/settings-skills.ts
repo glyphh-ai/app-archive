@@ -25,6 +25,7 @@ import { cronToWords, openScheduleOnLoad } from "./schedules.js";
 import { renderRunList } from "./lib-runs.js";
 import { renderConnectionTable, connDeps, openConnectionOnLoad, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
+import { openPowersModal } from "./powers-modal.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -121,8 +122,8 @@ const KINDS: BundleType[] = cfg.kinds ?? [cfg.kind];
 const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.type ?? cfg.kind;
 /** The type reads as a chip only when it is NOT what this page is already
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
-const typeChip = (type: BundleType | undefined): string =>
-  type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
+/* No kind chip: a power is a power (2026-10-09). */
+const typeChip = (_type: BundleType | undefined): string => "";
 /** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
  *  IS, else its type's. The middle step matters for the work-panel apps —
  *  Design, Slides, Drive and the media panels are those panels, and the ones
@@ -133,10 +134,10 @@ const typeChip = (type: BundleType | undefined): string =>
  *  here hand-rolls a second path to that image. */
 /** Where the user finds each kind — the line a toast reads back after a write. */
 const WHERE_TO_SEE: Record<BundleType, string> = {
-  skill: "Settings → Build → Skills (type Skill)",
-  app: "Settings → Build → Skills (type App) and the Apps work panel",
-  task: "Settings → Build → Skills (type Task); put it on a clock under Customize → Schedules",
-  plugin: "Settings → Build → Plugins",
+  skill: "Your powers (Customize › Powers, or the + box › Your powers)",
+  app: "Your powers, and its panel opens like any app",
+  task: "Your powers; it runs on its own — put it on a clock with Schedules",
+  plugin: "Your powers",
 };
 const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
@@ -2395,17 +2396,10 @@ function paintControls(): void {
 function filterMenu(): MenuItem[] {
   const authors = [...new Set(skills.map(authorOf))].sort((a, b) => a.localeCompare(b));
   const sources = SOURCE_ORDER.filter((src) => skills.some((s) => s.source === src));
-  const types = (["skill", "app", "task", "plugin"] as BundleType[]).filter((t) => skills.some((s) => s.type === t));
+  void sources;
+  // No Type or Source filter: one kind, one home (2026-10-09).
   return [
     { heading: "Filter by" },
-    ...(types.length > 1 ? [{ label: "Type", children: [
-      { label: "All", checked: !filterType, onClick: () => { filterType = ""; renderList(); } },
-      ...types.map((t) => ({ label: `${TYPE_LABEL[t][0]!.toUpperCase()}${TYPE_LABEL[t].slice(1)}`, checked: filterType === t, onClick: () => { filterType = t; renderList(); } })),
-    ] }] : []),
-    { label: "Source", children: [
-      { label: "All", checked: !filterSource, onClick: () => { filterSource = ""; renderList(); } },
-      ...sources.map((src) => ({ label: src === "glyphh" ? "Glyphh" : SOURCE_LABEL[src].replace("From ", ""), checked: filterSource === src, onClick: () => { filterSource = src; renderList(); } })),
-    ] },
     { label: "Created by", children: [
       { label: "All", checked: !filterAuthor, onClick: () => { filterAuthor = ""; renderList(); } },
       ...authors.map((a) => ({ label: a, checked: filterAuthor === a, onClick: () => { filterAuthor = a; renderList(); } })),
@@ -2459,7 +2453,8 @@ function wire(): void {
   el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
-    ...KINDS.map((k) => ({ label: `New ${TYPE_LABEL[k]}`, onClick: () => void createNew(k) })),
+    // A NEW POWER IS GLYPHH'S TO BUILD (2026-10-09): one door, the powers modal's New power.
+    { label: "New power", onClick: () => openPowersModal({ tab: "skills", newPower: true }) },
     { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
@@ -2551,8 +2546,11 @@ function setScope(scope: "mine" | "discover", force = false): void {
   return { load: loadSkillsSettings, setScope };
 }
 
+/* ONE KIND, A POWER (his order, 2026-10-09: "Collapse 4 things into one
+   thing... a power"): this one page lists every power — what used to be a
+   skill, a task or an app — and says "power" for all of them. */
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", kinds: ["skill", "task"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
+  kind: "skill", kinds: ["skill", "task", "app"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "power", nouns: "powers", icon: SKILL_ICON, back: "Powers",
 });
 const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
