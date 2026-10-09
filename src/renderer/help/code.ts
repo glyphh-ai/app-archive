@@ -75,7 +75,6 @@ import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
 import { pickGreeting, firstNameOf } from "./landing-greeting.js";
-import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, appOutputId, appOutputKey, isAppOutput, noteOutputAppUse, orderedOutputApps, type OutputApp, type StoredOutputFormat } from "./output-format.js";
 import { artifactStandingLine } from "./artifact-rules.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
@@ -138,10 +137,6 @@ interface CodeChat {
    *  Both local-only (thread-store caches them, never pushes them). */
   titleLocked?: boolean;
   titleGenerated?: boolean;
-  /** THE OUTPUT PICK (his order, 2026-10-05): the composer's Output chip.
-   *  Absent = Auto. Artifact adds one standing line to every later turn
-   *  (output-format.ts). Local to this surface, like `permission`. */
-  outputFormat?: StoredOutputFormat;
   /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): the + menu's
    *  Devices picks, by machine id; absent = every attached desktop. */
   devices?: string[];
@@ -381,194 +376,15 @@ function paintChips(): void {
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
-  paintOutputChip();
 }
 
-// ── The Output chip (his order, 2026-10-05): what shape the answer takes ──
-// One chip beside mode / model / effort; a drop-up in the composer's own
-// `.code-drop-up` style. Auto, and the rows output-format.ts flags live.
-// The pick is the SESSION's (stored on the chat, persisted with it); on the
-// lazy landing — no session yet — it is held and stamped at birth, like the
-// pending folder and models.
-let pendingOutputFormat: StoredOutputFormat | null = null;
 /** THE ARTIFACT IN HAND picked before the session exists (the lazy Work
  *  landing has no chat until the first send): newChat stamps it on the
  *  session it creates — the send that follows carries the id in its steer.
  *  Without this the agent was handed the artifact's NAME and tried it as an
  *  id (his report, 2026-10-05). */
 let pendingArtifactRef: { id: string; name: string } | null = null;
-function currentOutputFormat(): StoredOutputFormat {
-  const c = current();
-  return outputFormatOf(c ? c.outputFormat : pendingOutputFormat);
-}
-/** APPS AS OUTPUT TARGETS (his order, 2026-10-07): the installed apps whose
- *  manifest says `output: true`, and this member's recent picks (a server
- *  preference, so every surface agrees). */
-let outputApps: OutputApp[] = [];
-let outputRecent: string[] = [];
-const OUTPUT_RECENT_PREF = "outputAppsRecent";
-async function loadOutputApps(): Promise<void> {
-  try {
-    const r = await window.glyphh.skillsList("app") as { ok: boolean; data?: Array<{ id: string; name: string; icon?: string | null; instance?: { key: string; tools: string[]; output?: boolean } }> };
-    const rows = r.ok ? r.data ?? [] : [];
-    outputApps = rows.filter((s) => s.instance?.output).map((s) => ({ key: s.instance!.key, slug: s.instance!.key.split("~")[0]!, name: s.name, tools: s.instance!.tools ?? [], icon: s.icon ?? null }));
-    const pref = await window.glyphh.getPreference?.(OUTPUT_RECENT_PREF, []);
-    outputRecent = Array.isArray(pref) ? pref.map(String) : [];
-  } catch { outputApps = []; }
-  paintOutputChip();
-}
-const outputAppOf = (id: unknown): OutputApp | null => (isAppOutput(id) ? outputApps.find((a) => a.key === appOutputKey(id)) ?? null : null);
-function paintOutputChip(): void {
-  const oc = el("code-output-chip");
-  if (!oc) return;
-  const id = currentOutputFormat();
-  const label = oc.querySelector<HTMLElement>("span");
-  if (label) label.textContent = outputChipLabel(id, outputApps);
-  oc.classList.toggle("picked", id !== "auto");
-  oc.title = id === "auto" ? "Output — let Glyphh answer in the thread" : `Output — ${outputChipLabel(id, outputApps)}`;
-}
-function setOutputFormat(id: StoredOutputFormat): void {
-  const c = current();
-  if (c) { c.outputFormat = id; void saveStore(); }
-  else pendingOutputFormat = id;
-  if (isAppOutput(id)) {
-    outputRecent = noteOutputAppUse(outputRecent, appOutputKey(id));
-    void window.glyphh.setPreference?.(OUTPUT_RECENT_PREF, outputRecent);
-  }
-  paintOutputChip();
-}
-/** The picked output wears a check, like a Devices row (his report,
- *  2026-10-07: the pick showed nothing selected). */
-function outputCheckSlot(on: boolean): HTMLElement {
-  const slot = document.createElement("span");
-  slot.className = "drop-check-slot";
-  if (on) slot.innerHTML = PLUS_CHECK;
-  return slot;
-}
-function renderOutputMenu(): void {
-  const menu = el("code-output-menu");
-  if (!menu) return;
-  menu.textContent = "";
-  const head = document.createElement("div");
-  head.className = "code-drop-head";
-  head.textContent = "Output";
-  menu.appendChild(head);
-  const picked = currentOutputFormat();
-  for (const f of liveOutputFormats()) {
-    const item = document.createElement("button");
-    item.className = "code-drop-item code-output-item" + (f.id === picked ? " selected" : "");
-    item.type = "button";
-    item.setAttribute("role", "menuitemradio");
-    item.setAttribute("aria-checked", f.id === picked ? "true" : "false");
-    const icon = document.createElement("span");
-    icon.className = "drop-icon";
-    icon.innerHTML = f.icon;
-    const label = document.createElement("span");
-    label.className = "drop-main";
-    label.textContent = f.label;
-    const hint = document.createElement("span");
-    hint.className = "drop-hint";
-    hint.textContent = f.hint;
-    item.append(icon, label, hint, outputCheckSlot(f.id === picked));
-    item.addEventListener("click", (e) => {
-      e.stopPropagation();
-      // Only the live ids are stored (output-format.ts); the menu lists no other.
-      setOutputFormat(outputFormatOf(f.id));
-      menu.classList.add("hidden");
-      el("code-output-chip")?.focus();
-    });
-    menu.appendChild(item);
-  }
-  // THE APPS (his order, 2026-10-07): the first few by this member's recent
-  // picks, then "More outputs ›" — a searchable page for the rest.
-  if (!outputApps.length) return;
-  const { top, rest } = orderedOutputApps(outputApps, outputRecent);
-  const sep = document.createElement("div");
-  sep.className = "code-drop-sep";
-  menu.appendChild(sep);
-  const ahead = document.createElement("div");
-  ahead.className = "code-drop-head";
-  ahead.textContent = "Apps";
-  menu.appendChild(ahead);
-  const appRow = (a: OutputApp): HTMLButtonElement => {
-    const id = appOutputId(a.key);
-    const item = document.createElement("button");
-    item.className = "code-drop-item code-output-item code-output-app" + (id === picked ? " selected" : "");
-    item.type = "button";
-    item.setAttribute("role", "menuitemradio");
-    item.setAttribute("aria-checked", id === picked ? "true" : "false");
-    const icon = document.createElement("span");
-    icon.className = "drop-icon";
-    if (a.icon) { const img = document.createElement("img"); img.src = a.icon; img.alt = ""; icon.appendChild(img); }
-    else icon.textContent = (a.name || "?").charAt(0).toUpperCase();
-    const label = document.createElement("span");
-    label.className = "drop-main";
-    label.textContent = a.name;
-    const hint = document.createElement("span");
-    hint.className = "drop-hint";
-    hint.textContent = a.tools.length ? `${a.tools.length} ${a.tools.length === 1 ? "tool" : "tools"}` : "Put the result into it";
-    item.append(icon, label, hint, outputCheckSlot(id === picked));
-    item.addEventListener("click", (e) => { e.stopPropagation(); setOutputFormat(id); menu.classList.add("hidden"); el("code-output-chip")?.focus(); });
-    return item;
-  };
-  for (const a of top) menu.appendChild(appRow(a));
-  if (!rest.length) return;
-  const more = document.createElement("button");
-  more.className = "code-drop-item code-output-more";
-  more.type = "button";
-  more.setAttribute("role", "menuitem");
-  more.innerHTML = `<span class="drop-icon"></span><span class="drop-main">More outputs ›</span><span class="drop-hint"></span>`;
-  (more.querySelector(".drop-hint") as HTMLElement).textContent = `${rest.length} more`;
-  more.addEventListener("click", (e) => { e.stopPropagation(); renderOutputAppsPage(menu, picked, appRow); });
-  menu.appendChild(more);
-}
 
-/** "More outputs ›": every output app, searched, twenty at a time, with a way back. */
-const OUTPUT_PAGE = 20;
-function renderOutputAppsPage(menu: HTMLElement, picked: string, appRow: (a: OutputApp) => HTMLButtonElement): void {
-  menu.textContent = "";
-  const back = document.createElement("button");
-  back.className = "code-drop-item code-output-back";
-  back.type = "button";
-  back.setAttribute("role", "menuitem");
-  back.innerHTML = `<span class="drop-icon">‹</span><span class="drop-main">Output</span><span class="drop-hint"></span>`;
-  back.addEventListener("click", (e) => { e.stopPropagation(); renderOutputMenu(); menu.querySelector<HTMLButtonElement>(".code-drop-item")?.focus(); });
-  menu.appendChild(back);
-  const search = document.createElement("input");
-  search.type = "text";
-  search.className = "loop-drop-search repo-drop-search ws-locus-search";
-  search.placeholder = "Search apps…";
-  search.spellcheck = false;
-  search.autocomplete = "off";
-  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-  search.addEventListener("click", (ev) => ev.stopPropagation());
-  menu.appendChild(search);
-  const list = document.createElement("div");
-  list.className = "ws-locus-list";
-  menu.appendChild(list);
-  const all = [...orderedOutputApps(outputApps, outputRecent, outputApps.length).top];
-  let shown = OUTPUT_PAGE;
-  const paint = (): void => {
-    list.textContent = "";
-    const q = search.value.trim().toLowerCase();
-    const hits = all.filter((a) => !q || a.name.toLowerCase().includes(q) || a.slug.includes(q) || a.tools.some((t) => t.toLowerCase().includes(q)));
-    for (const a of hits.slice(0, shown)) list.appendChild(appRow(a));
-    if (!hits.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No app matches.</div>`);
-    if (hits.length > shown) {
-      const moreRow = document.createElement("button");
-      moreRow.className = "code-drop-item code-output-more";
-      moreRow.type = "button";
-      moreRow.innerHTML = `<span class="drop-icon"></span><span class="drop-main">Show more</span><span class="drop-hint"></span>`;
-      (moreRow.querySelector(".drop-hint") as HTMLElement).textContent = `${hits.length - shown} more`;
-      moreRow.addEventListener("click", (e) => { e.stopPropagation(); shown += OUTPUT_PAGE; paint(); });
-      list.appendChild(moreRow);
-    }
-    void picked;
-  };
-  search.addEventListener("input", () => { shown = OUTPUT_PAGE; paint(); });
-  paint();
-  search.focus();
-}
 /** Keyboard on an open chip menu: arrows move, Enter picks, Esc closes
  *  (focus back on the chip). The Output and Folder chips share it. */
 function chipMenuKeys(menu: HTMLElement, chipId: string, e: KeyboardEvent): void {
@@ -1062,29 +878,6 @@ function initComposerControls(): void {
     mm?.classList.toggle("hidden");
     if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
   });
-  // The Output chip's drop-up (his order, 2026-10-05) — the same open rule
-  // as the model picker: one picker at a time, placed by openChipDropUp.
-  const outputWrap = el("code-output-wrap");
-  if (outputWrap) {
-    const omenu = document.createElement("div");
-    omenu.id = "code-output-menu";
-    omenu.className = "code-drop-up code-output-menu hidden";
-    omenu.setAttribute("role", "menu");
-    outputWrap.appendChild(omenu);
-    omenu.addEventListener("keydown", (e) => chipMenuKeys(omenu, "code-output-chip", e));
-    el("code-output-chip")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const opening = omenu.classList.contains("hidden");
-      if (!opening) { omenu.classList.add("hidden"); return; }
-      renderOutputMenu();
-      omenu.classList.remove("hidden");
-      openChipDropUp(omenu);
-      (omenu.querySelector<HTMLButtonElement>(".code-drop-item.selected") ?? omenu.querySelector<HTMLButtonElement>(".code-drop-item"))?.focus();
-    });
-    el("code-output-chip")?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown" && omenu.classList.contains("hidden")) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
-    });
-  }
   const ctxWrap = el("code-ctx-wrap");
   if (ctxWrap) {
     const cpop = document.createElement("div");
@@ -1146,7 +939,6 @@ function initComposerControls(): void {
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
-    if (outputWrap && !outputWrap.contains(t)) el("code-output-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     if (usageWrap && !usageWrap.contains(t)) el("code-usage-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
@@ -2190,8 +1982,6 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
-  // The Output pick made on the lazy landing is this session's (his order, 2026-10-05).
-  if (pendingOutputFormat) { c.outputFormat = pendingOutputFormat; pendingOutputFormat = null; }
   if (pendingDevices) { c.devices = pendingDevices; pendingDevices = undefined; }
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
@@ -5050,7 +4840,7 @@ function send(): void {
   // remote control is off here — never a Terminal to work around it.
   const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
   // THE APP CONTRACT RIDES THE TURN (2026-10-07): an app prompt, or the New app door.
-  const steer = [briefSteer(), outputStandingLine(c.outputFormat, outputAppOf(c.outputFormat)), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached, !selfDeviceId || deviceChecked(c.devices, selfDeviceId)) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
+  const steer = [briefSteer(), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached, !selfDeviceId || deviceChecked(c.devices, selfDeviceId)) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
   // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
   // the server's /api/harness, or the member's own desktop over the relay —
   // the SDK's one `run()` routes on the source). The gate is the SDK handle's
@@ -7126,9 +6916,6 @@ function initRailApps(): void {
   // Build, and the default apps installed in the background after first paint.
   void refreshBuildBadge();
   installDefaultsInBackground();
-  // APPS AS OUTPUT TARGETS (2026-10-07): the drop-up's apps, kept current.
-  void loadOutputApps();
-  document.addEventListener("glyphh:apps-changed", () => { void loadOutputApps(); });
 
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
@@ -7835,7 +7622,6 @@ export function initCode(): void {
     const wave = el("code-rec-wave");
     if (!wrap || !left || !right || !wave) return;
     const mode = el("code-mode-wrap");
-    const output = el("code-output-wrap");
     const level = el("code-level-wrap");
     const model = el("code-model-wrap");
     const stop = el("code-speak-wrap");
@@ -7851,7 +7637,7 @@ export function initCode(): void {
       }
     };
     void wrap; void wave;
-    order(left, [plus, mic, mode, output]);
+    order(left, [plus, mic, mode]);
     order(right, [model, level, stop]);
   };
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic = seatMic;

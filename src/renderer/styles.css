@@ -14555,7 +14555,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   color: var(--text-3);
 }
 .code-composer-bar .code-chip:not(.code-speak-stop):not(.recording):not(.mic-error):hover { color: var(--text); background: var(--hover); }
-.code-composer-bar .code-chip.code-output-chip.picked { color: var(--text); }
 .code-composer-bar .code-chip.warn { color: var(--warning); }
 .code-composer-bar .code-chip.code-plus-chip { font-size: 18px; padding: 0 5px; }
 .code-composer-bar .code-chip.code-mic-chip { padding: 2px 5px; }
@@ -14963,26 +14962,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   .code-composer-bar { gap: 4px; }
   .code-bar-left, .code-bar-right { gap: 3px; }
 }
-/* The Output chip (his order, 2026-10-05): word + caret; a pick other than
-   Auto reads in the text colour. Its menu is the composer's drop-up with an
-   icon column. */
-/* THE FOLDER CHIP (his order, 2026-10-07): the Output chip's face with a
-   folder glyph; its drop-up carries a search over the recents + Add folder. */
-
-
-.code-chip.code-output-chip { display: inline-flex; align-items: center; gap: 5px; }
-.code-chip.code-output-chip svg { flex: none; }
-.code-chip.code-output-chip.picked { color: var(--text); border-color: var(--border-3); }
-#code-output-menu { width: min(300px, 92cqi); }
-.code-drop-item.code-output-item { justify-content: flex-start; gap: 10px; }
-.code-drop-item.code-output-item .drop-icon { display: inline-flex; width: 16px; height: 16px; flex: none; color: var(--text-3); }
-.code-drop-item.code-output-item .drop-icon svg { width: 100%; height: 100%; }
-.code-drop-item.code-output-item .drop-main { color: var(--text); font-size: 12.5px; white-space: nowrap; }
-.code-drop-item.code-output-item .drop-hint { margin-left: auto; white-space: nowrap; }
-.code-drop-item.code-output-item.selected .drop-icon { color: var(--accent); }
-/* The picked output wears a check, like a Devices row (his report, 2026-10-07). */
-.code-drop-item.code-output-item .drop-check-slot { flex: none; display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; margin-left: 8px; }
-.code-drop-item.code-output-item:focus-visible { outline: none; background: var(--hover); }
 
 /* THE + MENU (composer-plus.ts; his order, 2026-10-06): every row = an icon
    to the left of the words, then a shortcut key, a › caret (a sub-pane), or a
