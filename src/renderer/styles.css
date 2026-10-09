@@ -14407,6 +14407,24 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   height: 100%;
   display: block;
 }
+/* A SUPER POWER'S FACE in the centre: the mascot's own 165×200 box, full
+   strength, and one glow when its thread opens (his order, 2026-10-09). */
+.code-ghost-mark.code-ghost-bot {
+  width: 88px;
+  height: 107px;
+  opacity: 1;
+}
+.code-ghost-mark.code-ghost-bot.flash > * {
+  animation: code-ghost-bot-glow 1.6s ease-out 1;
+}
+@keyframes code-ghost-bot-glow {
+  0%   { filter: drop-shadow(0 0 0 transparent); transform: scale(0.94); }
+  25%  { filter: drop-shadow(0 0 10px var(--accent)) drop-shadow(0 0 26px var(--accent)) brightness(1.15); transform: scale(1.04); }
+  100% { filter: drop-shadow(0 0 0 transparent); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .code-ghost-mark.code-ghost-bot.flash > * { animation: none; }
+}
 /* TITLE — mirrors the home hero's greeting (.dash-greeting): title font. */
 .code-ghost-title {
   font-family: var(--font-sans);

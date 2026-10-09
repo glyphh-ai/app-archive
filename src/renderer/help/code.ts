@@ -2645,6 +2645,8 @@ function openLocalSession(id: string): void {
   gotoSection("agent");
 }
 
+/** The super power thread whose face glows on its next paint (openGlyphhSession). */
+let botFlashFor: string | null = null;
 function renderThread(): void {
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
@@ -2667,6 +2669,9 @@ function renderThread(): void {
   thread.appendChild(inner);
   stopGhostRotation();
   const c = current();
+  // The glow is spent on the first paint after the open, empty thread or not.
+  const flashBot = !!c && botFlashFor === c.id;
+  botFlashFor = null;
   // A server-adopted thread paints as soon as its lazily-fetched messages land.
   if (c) hydrateMessagesIfNeeded(c.id);
   document.querySelector(".code-agent")?.classList.remove("work-landing");
@@ -2688,6 +2693,15 @@ function renderThread(): void {
     const title = document.createElement("div");
     title.className = "code-ghost-title";
     title.textContent = greeting(ghostName);
+    // A SUPER POWER'S THREAD wears ITS face and ITS name in the centre (his
+    // order, 2026-10-09), and the face glows once when the thread is opened.
+    if (c?.bot) {
+      const slug = c.bot;
+      mark.classList.add("code-ghost-bot");
+      mark.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle");
+      title.textContent = railBots.find((b) => b.slug === slug)?.name ?? c.title;
+      if (flashBot) mark.classList.add("flash");
+    }
     // SAYING = the rotating slogan (secondary font); rotation preserved.
     const quote = document.createElement("div");
     quote.className = "code-ghost-quote";
@@ -6278,6 +6292,7 @@ async function openGlyphhSession(id: string, title?: string): Promise<void> {
     return;
   }
   console.warn("[sess] open", JSON.stringify({ id, mode: SESSION_MODE, turns: chat.messages?.length ?? 0 }));
+  if (chat.bot) botFlashFor = chat.id;
   selectChat(chat);
   // A thread adopted as metadata carries no turns until fetched; renderThread
   // asks too, but asking here means the history lands even if the thread is
@@ -6455,19 +6470,28 @@ function renderRailSessions(): void {
     mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 56 });
     const id = `bots/${b.slug}`;
     row({ key: b.slug, name: b.name, mark, liveId: id,
-      onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }),
+      onOpen: () => { leaveWorkspace(); sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }); },
       menu: (btn) => openRailBotMenu(btn, b) });
   }
 }
 
 /** A new Glyphh session in the open agent — set at init (initCode). */
 let railNewGlyphh: () => void = () => {};
+/** A RAIL CLICK CLOSES THE WORKSPACE (his order, 2026-10-09: "if a workspace is
+ *  open and the user clicks the glyphh agent … or any super power the layout
+ *  should be closed and that panel loaded") — every card goes, then the thread
+ *  opens in a fresh agent panel. */
+function leaveWorkspace(): void {
+  const w = window as unknown as { __wbWorkspaceOpen?: () => boolean; __wbEchoReset?: () => void };
+  if (w.__wbWorkspaceOpen?.()) w.__wbEchoReset?.();
+}
 /** GLYPHH, the rail's first row (his order, 2026-10-09): its newest
  *  thread (the rest are in the recents dropdown), else a new one. */
 function openGlyphhHome(): void {
   railPickedKey = "glyphh";
   renderRailSessions();
   document.getElementById("rail-glyphh")?.classList.add("active");
+  leaveWorkspace();
   const newest = railSessions.find((x) => !x.bot && !x.id.startsWith("powers/"));
   if (newest) sessOpen(newest);
   else railNewGlyphh();

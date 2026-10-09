@@ -6227,6 +6227,12 @@ async function init(): Promise<void> {
     // The composer band's reset button (help/code.ts DOM) — close every
     // panel, back to the bare command center.
     (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset = resetEcho;
+    // IS A WORKSPACE UP? (his order, 2026-10-09: "if a workspace is open and
+    // the user clicks the glyphh agent … or any super power the layout should
+    // be closed and that panel loaded") — the rail asks before it opens a thread.
+    (window as unknown as { __wbWorkspaceOpen?: () => boolean }).__wbWorkspaceOpen = () =>
+      echoLayoutName != null || echoActiveLayout != null || activeLayoutId != null
+      || openList.some((x) => x.layoutId != null);
     // RESET TO THE DESIGN (his ask, 2026-10-07: "reset the workspace back to
     // what is configured if the layout got fucked up" — ⌘⇧Esc, the Workspace
     // menu, `.dip reset`). The live arrangement is thrown away: both
