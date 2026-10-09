@@ -22409,3 +22409,8 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .powm-cap-row { display: flex; flex-direction: column; gap: 8px; }
 .powm-cap-opt { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
 .powm-cap-amount { width: 90px; height: 30px; padding: 0 8px; }
+
+/* The modal's body scrolls; its sections keep their full height (his report,
+   2026-10-09: the details page cut off Output and the rest — flex children
+   were shrinking to fit instead of overflowing). */
+.powm-body > * { flex-shrink: 0; }

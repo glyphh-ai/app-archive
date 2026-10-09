@@ -589,7 +589,6 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (!lines.length) factRow(pricing, "Rates", "Not published yet");
     for (const l of lines) factRow(pricing, l.label, l.value);
     body.appendChild(pricing);
-    body.appendChild(el("div", "powm-note", "Rates include your plan's margin where it applies; your invoice is the final word."));
   }
   function capField(m: CatalogModel): HTMLElement {
     const wrap = el("div", "powm-cap");
