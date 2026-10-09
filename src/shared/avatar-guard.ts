@@ -58,15 +58,20 @@ export function avatarAskProblem(ask: string): string | null {
   return null;
 }
 
-/** The instruction both model checks read. The answer must be exactly SAFE to pass. */
+/** The instruction both model checks read. Hard on the kinds that matter,
+ *  plain about work words: a super power's job ("technical execution",
+ *  "kills stale processes") is not violence (his report, 2026-10-09: the
+ *  code super power's own description was refused). */
 export const GUARD_POLICY = [
-  "You are a strict content gate for avatar icons in a workplace app used by all ages.",
-  "Answer UNSAFE if there is ANY sign of: nudity, sexual or suggestive content, violence, blood, gore, injury, death, weapons, drugs, alcohol, tobacco, hate or extremist symbols, slurs, harassment, self-harm, horror, real or recognizable people, politicians, celebrities, trademarked characters or brand logos, readable text or letters, or anything a careful school would not show.",
-  "When unsure, answer UNSAFE.",
-  "Answer with exactly one word: SAFE or UNSAFE.",
+  "You check requests for, and pictures of, cartoon avatar icons in a workplace app used by people of all ages.",
+  "Reply with exactly one word: SAFE or UNSAFE.",
+  "UNSAFE: nudity or sexual or suggestive content; violence, blood, gore or injury; weapons; drugs, alcohol or tobacco; hate or extremist symbols or slurs; harassment or insults; self-harm; horror; a real or recognizable person; a trademarked character or a brand logo.",
+  "SAFE: everything else. Descriptions of a job or a skill are SAFE even when a word sounds harsh elsewhere: \"technical execution\", \"kills stale processes\", \"shoots product videos\", \"hacks on code\", \"attacks hard problems\", \"deadlines\", \"crash reports\", \"debugging\", \"queue worker\".",
+  "If the request or picture clearly falls under an UNSAFE kind, or you genuinely cannot tell whether it does, answer UNSAFE.",
 ].join("\n");
 
-/** A check's answer passes only when it is exactly SAFE (any other text fails). */
+/** A check's answer passes only when its one word is SAFE (any other word fails). */
 export function guardPassed(answer: string): boolean {
-  return String(answer ?? "").trim().replace(/[.!]$/, "").toUpperCase() === "SAFE";
+  // Formatting is not an answer ("**SAFE**", "Safe."); any other word is.
+  return String(answer ?? "").replace(/[^A-Za-z]/g, "").toUpperCase() === "SAFE";
 }

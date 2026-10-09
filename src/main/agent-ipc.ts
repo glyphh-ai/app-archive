@@ -29,7 +29,7 @@ import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } fr
 import { startLocalMcpServer } from "./local-mcp-server.js";
 import { getAgent, type AgentRow } from "./local-agents.js";
 import { powerOfChat } from "../shared/powers.js";
-import { botExtraFolders, botPowersNote, botWorkFolder } from "../shared/bot-powers.js";
+import { botEffort, botExtraFolders, botPersonalityNote, botPowersNote, botWorkFolder } from "../shared/bot-powers.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
@@ -308,7 +308,9 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   const chat = storedChat(p.chatId);
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
-  const brief = [String(bot?.prompt ?? power?.brief ?? "").trim(), botPowersNote(bot, folder)].filter(Boolean).join("\n\n");
+  const brief = [String(bot?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(bot), botPowersNote(bot, folder)].filter(Boolean).join("\n\n");
+  // The effort slider: a super power's own setting leads its turns.
+  const effort = bot ? botEffort(bot, p.effort) : p.effort;
   // The bot's other folders ride as folder attachments: readable beside the working one.
   const botFolders = bot ? classifyPaths(botExtraFolders(bot, folder)) : [];
   const attachments = [...(p.attachments ?? []), ...botFolders.filter((f) => !(p.attachments ?? []).some((a) => a.path === f.path))];
@@ -318,7 +320,7 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
     chatId: p.chatId,
     ...(p.permission ? { permission: p.permission } : {}),
     ...(model ? { model } : {}),
-    ...(p.effort ? { effort: p.effort } : {}),
+    ...(effort ? { effort } : {}),
     workdir: folder,
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(attachments.length ? { attachments } : {}),

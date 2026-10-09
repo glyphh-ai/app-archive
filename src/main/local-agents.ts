@@ -33,7 +33,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -65,6 +65,10 @@ export interface AgentRow {
   folders?: string[];
   connections?: string[];
   models?: string[];
+  /** The sliders and the voice (shared/member-library.ts AgentRowLike). */
+  personality?: number;
+  effort?: string;
+  voice?: AgentVoiceLike | null;
   /** Armed — false parks every task without deleting its schedule. */
   live: boolean;
   guardrails: GuardrailsPolicy | null;
@@ -139,6 +143,7 @@ interface AgentInput {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[];
+  personality?: number; effort?: string; voice?: AgentVoiceLike | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 

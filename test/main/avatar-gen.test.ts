@@ -11,7 +11,7 @@ import { cleanAvatar } from "../../src/shared/member-library.js";
 
 describe("the word screen", () => {
   it("lets a friendly ask through, and ordinary job words", () => {
-    for (const ok of ["wearing goggles, holding a tiny wrench", "a cat with a laptop and headphones", "troubleshoots servers", "skills and deadlines", "a button on its chest", "dead simple", "kill switch"]) {
+    for (const ok of ["Code & Systems Bot. It glyphh Bot worker for code synthesis, architecture, debugging and technical execution; picks up queue tasks assigned to code-builder.", "wearing goggles, holding a tiny wrench", "a cat with a laptop and headphones", "troubleshoots servers", "skills and deadlines", "a button on its chest", "dead simple", "kill switch"]) {
       expect(avatarAskProblem(ok)).toBeNull();
     }
   });
@@ -30,7 +30,8 @@ describe("the word screen", () => {
   it("passes a model's answer only when it is exactly SAFE", () => {
     expect(guardPassed("SAFE")).toBe(true);
     expect(guardPassed(" safe. ")).toBe(true);
-    for (const no of ["UNSAFE", "", "SAFE?", "Probably SAFE", "I think it is safe", "SAFE but"]) expect(guardPassed(no)).toBe(false);
+    expect(guardPassed("**SAFE**")).toBe(true);
+    for (const no of ["UNSAFE", "", "Probably SAFE", "I think it is safe", "SAFE but", "SAFE UNSAFE", "**UNSAFE**"]) expect(guardPassed(no)).toBe(false);
   });
 });
 

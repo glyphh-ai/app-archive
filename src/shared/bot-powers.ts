@@ -14,6 +14,8 @@
 
 export interface BotPowersLike {
   model?: string;
+  personality?: number;
+  effort?: string;
   folders?: string[];
   connections?: string[];
   models?: string[];
@@ -52,4 +54,23 @@ export function botPowersNote(bot: BotPowersLike | null, workdir: string): strin
   const skills = list(bot.skills);
   if (skills.length) lines.push(`- Powers you may load: ${skills.join(", ")}.`);
   return lines.length ? ["Your powers:", ...lines].join("\n") : "";
+}
+
+/** THE PERSONALITY SLIDER (his order, 2026-10-09): 1 serious … 5 playful; 3
+ *  (or none) adds nothing. The work stays exact at every setting. */
+export const PERSONALITY_LINES: Readonly<Record<number, string>> = Object.freeze({
+  1: "Personality: strictly professional. Be terse and formal; no jokes, no small talk.",
+  2: "Personality: calm and to the point. Friendly, but keep it brief and plain.",
+  4: "Personality: warm and lightly playful. A little humour is welcome; the work stays exact.",
+  5: "Personality: playful and full of character. Have fun with how you say things; the work itself stays exact.",
+});
+export function botPersonalityNote(bot: BotPowersLike | null): string {
+  const n = Math.round(Number(bot?.personality));
+  return PERSONALITY_LINES[n] ?? "";
+}
+
+/** The effort a bot's turn runs at: its own slider when set, else what the turn asked. */
+export function botEffort(bot: BotPowersLike | null, asked: string | undefined): string | undefined {
+  const own = String(bot?.effort ?? "").trim();
+  return own || asked;
 }

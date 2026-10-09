@@ -67,6 +67,8 @@ const CLOSE_SVG = `<svg ${S} stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="
 const SEARCH_SVG = `<svg ${S} stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
 const BACK_SVG = `<svg ${S} stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>`;
 const MODEL_SVG = `<svg ${S} stroke-width="1.9"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>`;
+const CHECK_SVG = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+const PLUS_BTN_SVG = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 const POWER_SVG = `<svg ${S} stroke-width="1.9"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] => {
@@ -321,10 +323,14 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     for (const a of catalog) {
       const done = have.has(a.id);
       const busy = connecting.has(a.id);
-      const b = el("button", `action-btn ${done ? "" : "primary "}powm-connect`, done ? "Connected" : busy ? "Connecting…" : "Connect");
+      // THE DISCOVER CARD'S + (his order, 2026-10-09): + to connect, … while
+      // connecting, ✓ once connected — settings-connections.ts connectAppButton.
+      const b = el("button", "action-btn conn2-plus powm-connect" + (done ? " done" : ""));
       b.type = "button";
+      b.innerHTML = done ? CHECK_SVG : busy ? "…" : PLUS_BTN_SVG;
       b.disabled = done || busy || !connectAllowed;
-      if (!connectAllowed && !done) b.title = "Connections aren't on your plan.";
+      b.title = done ? "Connected" : busy ? "Connecting…" : connectAllowed ? `Connect ${a.name}` : "Connections aren't on your plan.";
+      b.setAttribute("aria-label", b.title);
       b.addEventListener("click", () => { void connect(a, b); });
       const icon = `<span class="conn2-icon powm-app-icon">${appIconInner({ iconUrl: a.icon ?? null, connection: { pipedreamSlug: a.id } }, a.name, "conn2-icon-initial")}</span>`;
       body.appendChild(row({
@@ -365,7 +371,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     showErr("");
     connecting.add(a.id);
     btn.disabled = true;
-    btn.textContent = "Connecting…";
+    btn.textContent = "…";
     const before = new Set(conns.filter((c) => c.connected !== false).map((c) => c.id));
     const r = await api().connectorsConnect!(a.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     if (!r.ok) { connecting.delete(a.id); hideAppOverlay(); if (!closed) { showErr(r.error || "Couldn't connect."); repaintBody(); } return; }

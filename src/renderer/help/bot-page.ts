@@ -22,14 +22,21 @@ import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } fr
 import { primeConnectedIcons } from "./app-icon.js";
 import { openPowersModal } from "./powers-modal.js";
 
+export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
   slug: string; name: string; description: string; prompt: string; model: string;
+  personality?: number; effort?: string; voice?: BotVoice | null;
   avatar: BotAvatar | null;
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
 }
 interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; utility?: boolean }
 interface Api extends PlusApi {
+  voiceSettingsGet?: () => Promise<unknown>;
+  voiceConfig?: () => Promise<unknown>;
+  catalogModels?: () => Promise<unknown>;
+  catalogVoices?: (provider: string) => Promise<unknown>;
+  voiceSynthesize?: (text: string, model: string, voiceId: string | null) => Promise<unknown>;
   libraryAgentGet?: (ref: string) => Promise<Envelope>;
   libraryAgentUpdate?: (ref: string, patch: unknown) => Promise<Envelope>;
   libraryAgentDelete?: (ref: string) => Promise<Envelope>;
@@ -46,6 +53,23 @@ export type PowerKind = "folders" | "connections" | "models" | "skills";
 /** Shut on first open: everything but Folders. */
 export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["connections", "models", "skills"]);
 
+/** The sliders' stops (his order, 2026-10-09). Effort maps onto the loop's dial. */
+export const PERSONALITY_LABELS: ReadonlyArray<string> = Object.freeze(["Serious", "Calm", "Balanced", "Warm", "Playful"]);
+export const EFFORTS: ReadonlyArray<string> = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
+export const EFFORT_LABELS: ReadonlyArray<string> = Object.freeze(["Fastest", "Faster", "Balanced", "Deeper", "Deepest"]);
+interface VoiceOption { id: string; name: string; providerSlug?: string; previewUrl?: string; category?: string }
+/** Desktop IPC answers raw; the web contract wraps it in { ok, data }. */
+function unwrap<T>(res: unknown): T | null {
+  if (res && typeof res === "object" && "data" in (res as object) && "ok" in (res as object)) return ((res as { data?: T }).data ?? null);
+  return (res as T) ?? null;
+}
+function asBytes(res: unknown): ArrayBuffer | null {
+  const r = unwrap<unknown>(res);
+  if (r instanceof ArrayBuffer) return r;
+  if (ArrayBuffer.isView(r)) return (r as ArrayBufferView).buffer as ArrayBuffer;
+  return null;
+}
+const PLAY_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>`;
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
 const PLUS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
@@ -149,6 +173,18 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     </div>
     <label class="settings-label">When to use it</label>
     <input type="text" class="settings-input botp-desc" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
+    <div class="botp-sliders">
+      <div class="botp-slider">
+        <div class="botp-slider-head"><label class="settings-label">Personality</label><span class="botp-slider-val botp-personality-val"></span></div>
+        <input type="range" class="botp-range botp-personality" min="1" max="5" step="1" aria-label="Personality" />
+        <div class="botp-slider-ends"><span>Serious</span><span>Playful</span></div>
+      </div>
+      <div class="botp-slider">
+        <div class="botp-slider-head"><label class="settings-label">Thinking</label><span class="botp-slider-val botp-effort-val"></span></div>
+        <input type="range" class="botp-range botp-effort" min="1" max="5" step="1" aria-label="Thinking: speed or effort" />
+        <div class="botp-slider-ends"><span>Fast</span><span>Thorough</span></div>
+      </div>
+    </div>
     <div class="agents2-brief-head">
       <label class="settings-label">Brief</label>
       <button class="agents2-wand botp-wand" type="button" title="Write the brief with AI" aria-label="Write the brief with AI">${WAND_SVG}</button>
@@ -165,6 +201,19 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const nameIn = q<HTMLInputElement>(".botp-name");
   const descIn = q<HTMLInputElement>(".botp-desc");
   const faceBtn = q<HTMLButtonElement>(".botp-face-btn");
+  // THE SLIDERS (his order, 2026-10-09: "personality, thinking effort or speed").
+  const persIn = q<HTMLInputElement>(".botp-personality");
+  const effortIn = q<HTMLInputElement>(".botp-effort");
+  let effortTouched = false;
+  const paintSliders = (): void => {
+    q<HTMLElement>(".botp-personality-val").textContent = PERSONALITY_LABELS[Number(persIn.value) - 1] ?? "";
+    q<HTMLElement>(".botp-effort-val").textContent = EFFORT_LABELS[Number(effortIn.value) - 1] ?? "";
+    for (const r of [persIn, effortIn]) r.style.setProperty("--fill", `${((Number(r.value) - 1) / 4) * 100}%`);
+  };
+  persIn.addEventListener("input", paintSliders);
+  effortIn.addEventListener("input", () => { effortTouched = true; paintSliders(); });
+  /** The voice it speaks in (null = yours); picked in the avatar dropdown, kept on Save. */
+  let pickedVoice: BotVoice | null = null;
   const briefIn = q<HTMLTextAreaElement>(".botp-brief");
   const wand = q<HTMLButtonElement>(".botp-wand");
   const saveBtn = q<HTMLButtonElement>(".botp-save");
@@ -176,9 +225,8 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   function paintHead(): void {
     const head = q<HTMLElement>(".botp-head");
     head.textContent = "";
-    const icons = el("div", "edit-head-icons");
-    icons.innerHTML = botAvatarSvg(picked, "idle", { size: 44 });
-    head.append(icons, el("div", "edit-head-name", nameIn.value.trim() || bot?.name || "Super power"));
+    // The name alone: the avatar is on the row below (his order, 2026-10-09).
+    head.append(el("div", "edit-head-name", nameIn.value.trim() || bot?.name || "Super power"));
   }
   const CARET_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
   /** THE AVATAR, LEFT OF THE NAME, AS A DROPDOWN (his order, 2026-10-09):
@@ -188,6 +236,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   }
   let faceMenu: HTMLElement | null = null;
   function closeFaceMenu(): void {
+    stopPreview();
     faceMenu?.remove();
     faceMenu = null;
     faceBtn.setAttribute("aria-expanded", "false");
@@ -224,7 +273,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     add.type = "button";
     add.innerHTML = `${PLUS_SVG}<span>Add new</span>`;
     add.addEventListener("click", () => { closeFaceMenu(); openAvatarModal(); });
-    m.append(grid, add);
+    m.append(grid, voiceSection(), add);
     document.body.appendChild(m);
     const r = faceBtn.getBoundingClientRect();
     m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
@@ -234,6 +283,82 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     setTimeout(() => { document.addEventListener("mousedown", onFaceAway, true); document.addEventListener("keydown", onFaceKey, true); }, 0);
   }
   faceBtn.addEventListener("click", openFaceMenu);
+
+  // ── THE VOICE, in the same dropdown (his order, 2026-10-09: "add voice to
+  //    the dropdown. Each super power will and can have its own voice"). The
+  //    voices are the ones your speech model offers; ▶ plays a sample. ──
+  let voiceList: { model: string; voices: VoiceOption[] } | { error: string } | null = null;
+  let previewAudio: HTMLAudioElement | null = null;
+  const stopPreview = (): void => { try { previewAudio?.pause(); } catch { /* gone */ } previewAudio = null; };
+  async function loadVoices(): Promise<void> {
+    const a = api();
+    const [vs, cfg] = await Promise.all([a.voiceSettingsGet?.().catch(() => null), a.voiceConfig?.().catch(() => null)]);
+    const model = String(unwrap<{ outputModel?: string | null }>(vs)?.outputModel || unwrap<{ tts?: string | null }>(cfg)?.tts || "").trim();
+    if (!model) { voiceList = { error: "Pick a speech model in Settings › Voice first." }; return; }
+    const cat = unwrap<Array<{ id: string; providerSlug: string }>>(await a.catalogModels?.().catch(() => null));
+    const provider = (Array.isArray(cat) ? cat.find((x) => x.id === model)?.providerSlug : undefined) || model.split("/")[0] || "";
+    const voices = unwrap<VoiceOption[]>(await a.catalogVoices?.(provider).catch(() => null));
+    voiceList = Array.isArray(voices) && voices.length ? { model, voices } : { error: "Your speech model has no voices to pick from." };
+  }
+  async function preview(v: VoiceOption, model: string, btn: HTMLButtonElement): Promise<void> {
+    stopPreview();
+    btn.classList.add("busy");
+    try {
+      let src = v.previewUrl || "";
+      if (!src) {
+        const raw = await api().voiceSynthesize?.(`Hi, I'm ${nameIn.value.trim() || "a super power"}.`, model, v.id);
+        const bytes = asBytes(raw);
+        if (!bytes) throw new Error("no audio");
+        src = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      }
+      const au = new Audio(src);
+      previewAudio = au;
+      await au.play();
+    } catch { /* no sample: stay quiet */ }
+    btn.classList.remove("busy");
+  }
+  function voiceSection(): HTMLElement {
+    const sec = el("div", "botp-voice");
+    const head = el("div", "botp-voice-head");
+    head.append(el("span", "", "Voice"), el("span", "botp-voice-now", pickedVoice?.name || (pickedVoice ? pickedVoice.voiceId : "Yours")));
+    sec.appendChild(head);
+    const list = el("div", "botp-voice-list");
+    sec.appendChild(list);
+    const paintList = (): void => {
+      list.textContent = "";
+      if (!voiceList) { list.appendChild(el("div", "botp-empty", "Loading voices…")); return; }
+      if ("error" in voiceList) { list.appendChild(el("div", "botp-empty", voiceList.error)); return; }
+      const vl = voiceList;
+      const choose = (v: BotVoice | null): void => {
+        pickedVoice = v;
+        (head.querySelector(".botp-voice-now") as HTMLElement).textContent = v?.name || (v ? v.voiceId : "Yours");
+        paintList();
+      };
+      const mine = el("button", "botp-voice-row" + (!pickedVoice ? " on" : ""));
+      mine.type = "button";
+      mine.append(el("span", "botp-voice-play-gap"), el("span", "botp-voice-name", "Your voice"));
+      mine.addEventListener("click", () => choose(null));
+      list.appendChild(mine);
+      for (const v of vl.voices) {
+        const on = !!pickedVoice && pickedVoice.voiceId === v.id && pickedVoice.model === vl.model;
+        const r = el("div", "botp-voice-row" + (on ? " on" : ""));
+        r.setAttribute("role", "button");
+        r.tabIndex = 0;
+        const play = el("button", "ws-icon-btn botp-voice-play");
+        play.type = "button"; play.title = `Hear ${v.name}`; play.setAttribute("aria-label", `Hear ${v.name}`);
+        play.innerHTML = PLAY_SVG;
+        play.addEventListener("click", (e) => { e.stopPropagation(); void preview(v, vl.model, play); });
+        r.append(play, el("span", "botp-voice-name", v.name));
+        if (v.category) r.appendChild(el("span", "botp-voice-cat", v.category));
+        r.addEventListener("click", () => choose({ model: vl.model, voiceId: v.id, name: v.name }));
+        r.addEventListener("keydown", (e) => { if (e.key === "Enter") choose({ model: vl.model, voiceId: v.id, name: v.name }); });
+        list.appendChild(r);
+      }
+    };
+    paintList();
+    if (!voiceList) void loadVoices().then(() => { if (sec.isConnected) paintList(); });
+    return sec;
+  }
 
   // ── + ADD NEW: an avatar made by the Images power in the mascot's style.
   //    One fixed size; Generate as often as wanted; Use it puts the picture on
@@ -325,11 +450,22 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     picked = avatarOf({ slug: bot.slug, avatar: bot.avatar });
     paintFaceBtn();
     paintHead();
+    persIn.value = String(bot.personality ?? 3);
+    const ei = EFFORTS.indexOf(String(bot.effort ?? ""));
+    effortIn.value = String(ei >= 0 ? ei + 1 : 3);   // unset sits in the middle until moved
+    effortTouched = false;
+    pickedVoice = bot.voice ?? null;
+    paintSliders();
   }
 
   async function save(): Promise<void> {
     if (!bot) return;
-    const input = { name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: picked };
+    const input = {
+      name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: picked,
+      personality: Number(persIn.value), voice: pickedVoice,
+      // Untouched and never set, the effort stays the chat's own dial.
+      ...(effortTouched || bot.effort ? { effort: EFFORTS[Number(effortIn.value) - 1] } : {}),
+    };
     if (!input.name) { nameIn.classList.add("invalid"); clearInvalid(nameIn); showErr(errEl, "A super power needs a name."); return; }
     if (!input.prompt) { briefIn.classList.add("invalid"); clearInvalid(briefIn); showErr(errEl, "A super power needs a brief — without one it can't be handed work."); return; }
     saveBtn.disabled = true;

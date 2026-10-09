@@ -153,6 +153,13 @@ async function voiceConfig(): Promise<VoiceConfig> {
   return cfg;
 }
 
+/** A SUPER POWER SPEAKS IN ITS OWN VOICE (his order, 2026-10-09: "Each super
+ *  power will and can have its own voice"). The chat registers who is talking
+ *  in the open thread; its speech model and voice replace the member's for
+ *  what is read aloud there. */
+let speakerVoice: () => { model: string; voiceId: string } | null = () => null;
+export function setSpeakerVoice(fn: () => { model: string; voiceId: string } | null): void { speakerVoice = fn; }
+
 async function voicePref(): Promise<VoicePref> {
   let pref: VoicePref = {};
   try {
@@ -175,6 +182,8 @@ async function voicePref(): Promise<VoicePref> {
     voiceId: pref.voiceId || cfg.voice || null,
   };
   if (merged.mode === undefined && merged.inputModel) merged.mode = "push-to-talk";
+  const own = speakerVoice();
+  if (own?.model && own.voiceId) { merged.outputModel = own.model; merged.voiceId = own.voiceId; }
   return merged;
 }
 

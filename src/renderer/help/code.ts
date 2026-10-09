@@ -34,7 +34,7 @@ import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, logLines, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, setSpeakerVoice, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
 import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
@@ -6003,15 +6003,20 @@ const railBotAvatars = new Map<string, { variant: number; color: string } | null
  *  order the library keeps it. */
 let railBots: Array<{ slug: string; name: string }> = [];
 
+/** Each super power's own voice, by slug (voice-mic.ts setSpeakerVoice reads it). */
+const railBotVoices = new Map<string, { model: string; voiceId: string }>();
+
 async function primeBotAvatars(): Promise<void> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
   if (!env?.ok || !Array.isArray(env.data)) return;
   railBotAvatars.clear();
+  railBotVoices.clear();
   const bots: Array<{ slug: string; name: string }> = [];
-  for (const a of env.data as Array<{ slug?: string; name?: string; avatar?: { variant: number; color: string } | null }>) {
+  for (const a of env.data as Array<{ slug?: string; name?: string; avatar?: { variant: number; color: string } | null; voice?: { model?: string; voiceId?: string } | null }>) {
     if (!a || typeof a.slug !== "string") continue;
     railBotAvatars.set(a.slug, a.avatar ?? null);
+    if (a.voice?.model && a.voice.voiceId) railBotVoices.set(a.slug, { model: a.voice.model, voiceId: a.voice.voiceId });
     bots.push({ slug: a.slug, name: String(a.name || a.slug) });
   }
   railBots = bots;
@@ -7109,6 +7114,8 @@ export function initCode(): void {
   // A SUPER POWER'S NEW FACE SHOWS AT ONCE (his order, 2026-10-09): the rail
   // repaints from the roster whenever it moves — main announces every save,
   // delete and server pull; the web's library shim fires the window event.
+  // A super power's thread is read aloud in its own voice.
+  setSpeakerVoice(() => (currentId.startsWith("bots/") ? railBotVoices.get(currentId.slice(5)) ?? null : null));
   let botsRepaint = 0;
   const repaintBots = () => {
     const mine = ++botsRepaint;

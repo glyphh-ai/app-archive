@@ -390,6 +390,14 @@ export interface AgentRowLike {
   folders?: string[];
   connections?: string[];
   models?: string[];
+  /** THE SLIDERS AND THE VOICE (his order, 2026-10-09: "sliders on the super
+   *  power.. personality, thinking effort or speed, and add voice… Each super
+   *  power will and can have its own voice"). Personality 1 (serious) … 5
+   *  (playful), 3 = as it comes; effort is the loop's dial (low … max); the
+   *  voice is a TTS model and one of its voices. Absent = the defaults. */
+  personality?: number;
+  effort?: string;
+  voice?: AgentVoiceLike | null;
   live: boolean;
   guardrails: GuardrailsPolicyLike | null;
   createdAt: string;
@@ -413,7 +421,31 @@ export interface AgentInputLike {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[];
+  personality?: number; effort?: string; voice?: AgentVoiceLike | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
+}
+
+/** A super power's voice: the speech model it speaks through and the voice. */
+export interface AgentVoiceLike { model: string; voiceId: string; name?: string }
+/** The loop's effort dial, slowest-cheapest first (sdk/loop LOOP_EFFORTS). */
+export const AGENT_EFFORTS: ReadonlyArray<string> = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
+export const PERSONALITY_DEFAULT = 3;
+export function cleanPersonality(v: unknown): number | undefined {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : undefined;
+}
+export function cleanEffort(v: unknown): string | undefined {
+  const s = String(v ?? "").trim();
+  return AGENT_EFFORTS.includes(s) ? s : undefined;
+}
+export function cleanVoice(v: unknown): AgentVoiceLike | null {
+  const o = v as AgentVoiceLike | null;
+  if (!o || typeof o !== "object") return null;
+  const model = String(o.model ?? "").trim().slice(0, 200);
+  const voiceId = String(o.voiceId ?? "").trim().slice(0, 200);
+  if (!model || !voiceId) return null;
+  const name = String(o.name ?? "").trim().slice(0, 80);
+  return name ? { model, voiceId, name } : { model, voiceId };
 }
 
 /** A list of names as stored: trimmed, no blanks, no repeats, order kept. */
@@ -465,6 +497,8 @@ export function cleanGuardrails(g: GuardrailsPolicyLike | null | undefined): Gua
   return Object.values(out).some((v) => v !== null) ? out : null;
 }
 
+const optional = <K extends string, V>(k: K, v: V | undefined): Partial<Record<K, V>> => (v === undefined ? {} : ({ [k]: v } as Record<K, V>));
+
 /** The agent record an input makes over an existing one — local-agents'
  *  saveAgent and the web's create/update build the SAME row through this. */
 export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | null, nowIso: string): AgentRowLike {
@@ -488,6 +522,9 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     folders: Array.isArray(input.folders) ? cleanNames(input.folders) : cleanNames(existing?.folders),
     connections: Array.isArray(input.connections) ? cleanNames(input.connections) : cleanNames(existing?.connections),
     models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
+    ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
+    ...optional("effort", input.effort === undefined ? cleanEffort(existing?.effort) : cleanEffort(input.effort)),
+    voice: input.voice === undefined ? cleanVoice(existing?.voice) : cleanVoice(input.voice),
     live: input.live === undefined ? existing?.live ?? true : !!input.live,
     guardrails: input.guardrails === undefined ? existing?.guardrails ?? null : cleanGuardrails(input.guardrails),
     createdAt: existing?.createdAt ?? nowIso,

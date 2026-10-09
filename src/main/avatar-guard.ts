@@ -19,7 +19,7 @@ async function ask(content: Block[]): Promise<string> {
   if (!model) throw new Error("The safety check needs a default model (Settings → General), so nothing was made.");
   const res = await streamMessage({
     baseUrl: creds.baseUrl, token: creds.token, timeoutMs: 60_000,
-    body: { model, max_tokens: 8, system: GUARD_POLICY, messages: [{ role: "user", content }] },
+    body: { model, max_tokens: 256, system: GUARD_POLICY, messages: [{ role: "user", content }] },
   });
   return res.content.map((b) => (b.type === "text" ? String((b as { text?: unknown }).text ?? "") : "")).join("").trim();
 }
@@ -31,9 +31,12 @@ export async function guardAvatarAsk(typed: string, about = ""): Promise<void> {
   const text = [typed, about].map((t) => String(t ?? "").trim()).filter(Boolean).join("\n");
   if (!String(text ?? "").trim()) return;
   let answer = "";
-  try { answer = await ask([{ type: "text", text: `Is this request for a cartoon avatar SAFE or UNSAFE?\n\n<request>\n${text}\n</request>` }]); }
+  try { answer = await ask([{ type: "text", text: `A member wants a cartoon avatar for one of their AI helpers. Is this request SAFE or UNSAFE?\n\n<request>\n${text}\n</request>` }]); }
   catch (err) { throw new Error(err instanceof Error && /safety check/.test(err.message) ? err.message : "The safety check could not run, so nothing was made. Try again."); }
-  if (!guardPassed(answer)) throw new Error("That can't be made into an avatar. Describe a friendly character instead.");
+  if (!guardPassed(answer)) {
+    console.warn("[avatar-guard] request refused", JSON.stringify({ answer: answer.slice(0, 80) }));
+    throw new Error("That can't be made into an avatar. Describe a friendly character instead.");
+  }
 }
 
 /** Throws unless the finished picture is clean (a PNG, base64 without the data: prefix). */
@@ -45,5 +48,8 @@ export async function guardAvatarImage(pngBase64: string): Promise<void> {
       { type: "text", text: "This picture will be an avatar icon. It should be one friendly cartoon character and nothing else. Is it SAFE or UNSAFE?" },
     ]);
   } catch (err) { throw new Error(err instanceof Error && /safety check/.test(err.message) ? err.message : "The picture's safety check could not run, so it was not used. Try again."); }
-  if (!guardPassed(answer)) throw new Error("The picture didn't pass the safety check, so it was not used. Try a different description.");
+  if (!guardPassed(answer)) {
+    console.warn("[avatar-guard] picture refused", JSON.stringify({ answer: answer.slice(0, 80) }));
+    throw new Error("The picture didn't pass the safety check, so it was not used. Try a different description.");
+  }
 }
