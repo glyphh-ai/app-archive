@@ -694,14 +694,13 @@ function registerTools(mcp: ToolRegistrar): void {
     {
       dir: z.string().optional().describe("The app's folder on this machine (absolute). Default: this session's working folder"),
       slug: z.string().optional().describe("The app's slug — must match manifest.json's when given"),
-      kind: z.enum(["org", "personal"]).optional().describe("Which instance: the organization's (admins) or your personal one. Default: the one that exists, else org then personal"),
       note: z.string().optional().describe("A release note, kept on the release"),
       wait: z.boolean().optional().describe("Follow a source build to its end (default true); false answers at once with the job"),
       waitSeconds: z.number().int().positive().max(600).optional().describe("How long to follow a build before answering with it still running (default 600)"),
       bundleBase64: z.string().optional().describe("A SMALL .glyphh bundle (a zip) as base64, handed over from outside — under 64 KB; otherwise pass `dir`"),
       intent: z.literal("app").optional().describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),
     },
-    async ({ dir, slug, kind, note, wait, waitSeconds, bundleBase64 }) => {
+    async ({ dir, slug, note, wait, waitSeconds, bundleBase64 }) => {
       if (bundleBase64) {
         try {
           refuseBase64Flood(bundleBase64);
@@ -711,7 +710,7 @@ function registerTools(mcp: ToolRegistrar): void {
       }
       return cloud(async () => {
         const out = await installFolderAsInstance(dir || getExplicitWorkingDirectory(), {
-          ...(slug ? { slug } : {}), ...(kind ? { kind } : {}), ...(note ? { note } : {}),
+          ...(slug ? { slug } : {}), ...(note ? { note } : {}),
           wait: wait !== false, ...(waitSeconds ? { waitMs: waitSeconds * 1000 } : {}),
         });
         return { ...out, where: WHERE.app, next: out.release ? "open it: panels_open { app: <slug> }; its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" }` };

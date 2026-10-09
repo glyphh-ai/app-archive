@@ -377,7 +377,7 @@ declare global {
       appInstancePin: (id: string, n: number) => Promise<LibEnvelope>;
       appInstanceUpdate: (id: string) => Promise<LibEnvelope>;
       appInstancesUpdateAll: () => Promise<LibEnvelope>;
-      appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => Promise<LibEnvelope>;
+      appInstallFolder: (dir: string, opts?: { slug?: string; note?: string }) => Promise<LibEnvelope>;
       appBuildStatus: (job: string) => Promise<LibEnvelope>;
       skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
       skillReveal: (id: string) => Promise<LibEnvelope>;

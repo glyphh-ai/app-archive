@@ -26,7 +26,8 @@
 import { tabRowOf, type OrgAppRowLike, type TabRowLike } from "./member-library.js";
 import { houseViewOfApp } from "./house-store.js";
 
-export type InstanceKind = "org" | "personal";
+/** Apps are personal (his order, 2026-10-09: "no more org apps"): each runs on its owner's machine. */
+export type InstanceKind = "personal";
 export type InstanceStatus = "pending" | "ready" | "stopped" | "error";
 
 /** One row of `GET /api/app-instances` (the server's Instance.summary()). */
@@ -34,11 +35,7 @@ export interface AppInstanceSummary {
   key: string;
   slug: string;
   kind: InstanceKind;
-  access: "everyone" | "restricted";
-  public: boolean;
   status: InstanceStatus;
-  members: string[];
-  orgConnectionId: string | null;
   bundle: { sha256: string; bytes?: number };
   manifest: { name: string; tools: unknown[]; capabilities: string[]; connectors: string[]; description?: string };
   /** The pinned release number; null (or absent) = nothing deployed yet. */
@@ -112,20 +109,20 @@ export const INSTANCE_CONFIG_KEY = "instance";
 /** The id prefix of an instance's Settings → Apps card. */
 export const INSTANCE_CARD_PREFIX = "app-instance:";
 
-/** The create request for a bundle: slug, kind, the zip's identity and the
+/** The create request for a bundle: slug, the zip's identity and the
  *  manifest as it is. Throws on what the server would refuse, so a bad bundle
  *  never costs a round trip. */
-export function instanceRequestOf(manifest: BundleManifestLike, bundle: { sha256: string; sizeBytes: number }, kind: InstanceKind): InstanceCreateRequest {
+export function instanceRequestOf(manifest: BundleManifestLike, bundle: { sha256: string; sizeBytes: number }): InstanceCreateRequest {
   const slug = String(manifest.slug || "").toLowerCase().trim();
+  const kind: InstanceKind = "personal";
   if (!SLUG_RE.test(slug)) throw new Error(`the manifest's slug must match ${SLUG_RE.source} (got "${manifest.slug}")`);
-  if (kind !== "org" && kind !== "personal") throw new Error('kind is "org" or "personal"');
   if (!SHA_RE.test(bundle.sha256)) throw new Error("bundle.sha256 must be 64 hex characters");
   if (!Number.isInteger(bundle.sizeBytes) || bundle.sizeBytes <= 0) throw new Error("bundle.sizeBytes must be a positive integer");
   return { slug, kind, bundle: { sha256: bundle.sha256, sizeBytes: bundle.sizeBytes }, manifest: { ...manifest, slug } };
 }
 
-/** The instance key for a slug: the slug for an org instance, `slug~user` for a personal one. */
-export const instanceKeyOf = (slug: string, kind: InstanceKind, userId: string): string => (kind === "personal" ? `${slug}~${userId}` : slug);
+/** The instance key for a slug: `slug~owner`. */
+export const instanceKeyOf = (slug: string, userId: string): string => `${slug}~${userId}`;
 
 /** The slug an instance key names (`slug~user` → slug). */
 export const slugOfKey = (key: string): string => key.split("~", 1)[0];
@@ -210,18 +207,11 @@ export function instanceKeyOfRow(row: { config?: Record<string, unknown> | null;
 }
 
 /** THE LIST. Every tab row the member has (web, native, glyphh) and every
- *  instance they may open that no tab row names yet (an org instance an admin
- *  installed shows for every member without a row of their own) — one row per
- *  slug. Instance rows carry the instance's status in launchConfig so a
+ *  instance of theirs that no tab row names yet — one row per slug. Instance rows carry the instance's status in launchConfig so a
  *  surface reads it without a second lookup. */
 export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[], nowIso = new Date(0).toISOString()): OrgAppRowLike[] {
   const bySlug = new Map<string, AppInstanceSummary>();
-  for (const inst of instances) {
-    // An org instance wins over the member's personal one of the same slug
-    // for the row's identity; both stay reachable by key through the tools.
-    const have = bySlug.get(inst.slug);
-    if (!have || (have.kind === "personal" && inst.kind === "org")) bySlug.set(inst.slug, inst);
-  }
+  for (const inst of instances) if (!bySlug.has(inst.slug)) bySlug.set(inst.slug, inst);
   const out: OrgAppRowLike[] = [];
   const seen = new Set<string>();
   for (const tab of tabs) {
@@ -259,7 +249,7 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
  *  every door opens it the same way. */
 function withInstance(row: OrgAppRowLike, inst: AppInstanceSummary): OrgAppRowLike {
   const tool = typeof row.launchConfig?.tool === "string" && row.launchConfig.tool ? null : houseViewOfApp(inst.slug);
-  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), ...(tool ? { tool } : {}), instanceStatus: inst.status, instanceAccess: inst.access, instancePublic: inst.public } };
+  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), ...(tool ? { tool } : {}), instanceStatus: inst.status } };
 }
 
 /** The Settings → Apps card of an instance — the shape the library page lists
@@ -280,7 +270,7 @@ export interface InstanceCard {
   tool: string | null;
   /** Not a folder: the instance it stands for; `release` = the pinned n,
    *  `version` the developer's, `update` what the catalog would move it to. */
-  instance: { key: string; kind: InstanceKind; status: InstanceStatus; access: string; public: boolean; tools: string[]; release: number | null; version: string | null; update: InstanceUpdate | null; output: boolean };
+  instance: { key: string; kind: InstanceKind; status: InstanceStatus; tools: string[]; release: number | null; version: string | null; update: InstanceUpdate | null; output: boolean };
 }
 
 export const instanceCardId = (key: string): string => `${INSTANCE_CARD_PREFIX}${key}`;
@@ -297,9 +287,8 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     type: "app",
     name: String(inst.manifest?.name || inst.slug),
     description: String(inst.manifest?.description ?? ""),
-    // A house app is Glyphh's (his report, 2026-10-07: "by you" on Design); an
-    // org instance the org's; a member's own install theirs.
-    author: houseViewOfApp(inst.slug) ? "Glyphh" : inst.kind === "org" ? "your organization" : "you",
+    // A house app is Glyphh's (his report, 2026-10-07: "by you" on Design); every other one the member's.
+    author: houseViewOfApp(inst.slug) ? "Glyphh" : "you",
     enabled: inst.status !== "stopped" && inst.status !== "error",
     dir: "",
     fileCount: 0,
@@ -307,7 +296,7 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     icon: null,
     // A house app's card wears its panel's mark, as every other door does.
     tool: houseViewOfApp(inst.slug),
-    instance: { key: inst.key, kind: inst.kind, status: inst.status, access: inst.access, public: inst.public, tools, release: releaseOf(inst), version: inst.version ?? null, update: updateOf(inst), output: inst.output === true || (inst.manifest as { output?: unknown } | undefined)?.output === true },
+    instance: { key: inst.key, kind: inst.kind, status: inst.status, tools, release: releaseOf(inst), version: inst.version ?? null, update: updateOf(inst), output: inst.output === true || (inst.manifest as { output?: unknown } | undefined)?.output === true },
   };
 }
 
@@ -315,7 +304,6 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
 export function instanceDetailOf(inst: AppInstanceSummary, nowIso?: string): InstanceCard & { frontmatter: Record<string, string>; body: string; files: never[] } {
   const card = instanceCardOf(inst, nowIso);
   const tools = (Array.isArray(inst.manifest?.tools) ? inst.manifest.tools : []) as Array<{ name?: string; description?: string }>;
-  const where = inst.kind === "org" ? (inst.access === "restricted" ? "members on its list" : "every member of your organization") : "you";
   const release = releaseOf(inst);
   // THE PAGE IS THE APP'S OWN SKILL.md when its release ships one (his order,
   // 2026-10-07: "at the very least the .md description of the app"); the
@@ -326,14 +314,14 @@ export function instanceDetailOf(inst: AppInstanceSummary, nowIso?: string): Ins
     "",
     card.description,
     "",
-    `Installed in the cloud as ${inst.kind === "org" ? "an organization" : "a personal"} app (instance \`${inst.key}\`, status ${inst.status}, ${release === null ? "nothing deployed yet" : `release ${release}`}). Open to ${where}${inst.public ? ", and public on its own hostname" : ""}.`,
+    `Installed on your machine (instance \`${inst.key}\`, status ${inst.status}, ${release === null ? "nothing deployed yet" : `release ${release}`}).`,
     "",
     ...(tools.length ? ["## Tools", "", ...tools.map((t) => `- \`${t.name}\`${t.description ? ` — ${t.description}` : ""}`)] : []),
     ...(inst.manifest?.connectors?.length ? ["", "## Connections", "", ...inst.manifest.connectors.map((c) => `- ${c}`)] : []),
   ];
   return {
     ...card,
-    frontmatter: { name: card.name, description: card.description, type: "app", instance: inst.key, kind: inst.kind, status: inst.status, access: inst.access, author: card.author, ...(release === null ? {} : { release: String(release) }) },
+    frontmatter: { name: card.name, description: card.description, type: "app", instance: inst.key, kind: inst.kind, status: inst.status, author: card.author, ...(release === null ? {} : { release: String(release) }) },
     body: lines.join("\n"),
     files: [],
   };
@@ -352,13 +340,11 @@ export function instanceToolRows(instances: AppInstanceSummary[]): Array<{ app: 
   })).filter((r) => r.tools.length > 0);
 }
 
-/** Which instance a tool call names: the exact key, else the org instance of
- *  that slug, else the caller's personal one. */
+/** Which instance a tool call names: the exact key, else the caller's own instance of that slug. */
 export function resolveInstance(instances: AppInstanceSummary[], ref: string, userId: string): AppInstanceSummary | undefined {
   const key = String(ref || "").trim().toLowerCase();
   if (!key) return undefined;
   return instances.find((i) => i.key === key)
-    ?? instances.find((i) => i.slug === key && i.kind === "org")
     ?? instances.find((i) => i.key === `${key}~${userId}`)
     ?? instances.find((i) => i.slug === key);
 }

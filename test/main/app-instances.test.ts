@@ -4,8 +4,8 @@
  * request a bundle makes, the tab row an instance gets, the one list
  * (instances + tabs, one row per slug), the panel URL, the Apps-page
  * card; and the desktop door (src/main/app-instances.ts) over a fake client:
- * install = create → PUT → ready, the org/personal fallback, the panel's
- * `glyphh.call` as the member.
+ * install = create → PUT → ready (one create, always personal: "no more
+ * org apps", his order 2026-10-09), the panel's `glyphh.call` as the member.
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -15,7 +15,7 @@ import { list as tarList } from "tar";
 import {
   callPathOf, instanceCardOf, instanceDetailOf, instanceKeyOfRow, instanceRequestOf, instanceTabOpen, instanceTabRow, instanceToolRows,
   mergeAppRows, panelPathOf, panelUrlOf, resolveInstance, tabConfigOf, instanceCardId, isInstanceCardId, instanceKeyOfCardId,
-  releaseOf, rollbackTargetOf,
+  releaseOf, rollbackTargetOf, instanceKeyOf,
   type AppInstanceSummary,
 } from "../../src/shared/app-instances.js";
 import type { TabRowLike } from "../../src/shared/member-library.js";
@@ -27,12 +27,12 @@ const MANIFEST = {
   tools: [{ name: "list_expenses", description: "Every expense", capability: "db.exec", inputSchema: { type: "object" } }],
   window: { width: 900 }, release: { version: "1.2.0" }, description: "Expenses, filed.",
 };
-const ORG: AppInstanceSummary = {
-  key: "expense-desk", slug: "expense-desk", kind: "org", access: "everyone", public: false, status: "ready", members: [], orgConnectionId: null,
+const APP: AppInstanceSummary = {
+  key: "expense-desk~u1", slug: "expense-desk", kind: "personal", status: "ready",
   bundle: { sha256: SHA, bytes: 1234 }, manifest: { name: "Expense Desk", tools: MANIFEST.tools, capabilities: MANIFEST.capabilities, connectors: ["gmail"], description: "Expenses, filed." },
-  url: "/app-host/expense-desk/",
+  url: "/app-host/expense-desk~u1/",
 };
-const PERSONAL: AppInstanceSummary = { ...ORG, key: "notes~u1", slug: "notes", kind: "personal", manifest: { name: "Notes", tools: [], capabilities: [], connectors: [] }, url: "/app-host/notes~u1/" };
+const PERSONAL: AppInstanceSummary = { ...APP, key: "notes~u1", slug: "notes", manifest: { name: "Notes", tools: [], capabilities: [], connectors: [] }, url: "/app-host/notes~u1/" };
 const tab = (over: Partial<TabRowLike>): TabRowLike => ({
   id: "crm", kind: "web", slug: "crm", name: "CRM", prodUrl: "https://crm", nativeRef: null, config: null, description: "", access: "members", owned: true,
   latestVersion: null, version: "0.1.0", secretNames: [], requiredConnections: [], listing: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z", ...over,
@@ -41,36 +41,42 @@ const tab = (over: Partial<TabRowLike>): TabRowLike => ({
 const LOCAL = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk (local)", nativeRef: "/Users/me/.glyphh/apps/expense-desk/index.html", config: { capabilities: ["db.exec"], secrets: { K: "v" } } });
 
 describe("instanceRequestOf — the create body a bundle makes", () => {
-  it("carries slug, kind, the zip's identity and the manifest as it is", () => {
-    const req = instanceRequestOf(MANIFEST, { sha256: SHA, sizeBytes: 1234 }, "org");
-    expect(req).toEqual({ slug: "expense-desk", kind: "org", bundle: { sha256: SHA, sizeBytes: 1234 }, manifest: { ...MANIFEST, slug: "expense-desk" } });
+  it("carries slug, kind personal, the zip's identity and the manifest as it is", () => {
+    const req = instanceRequestOf(MANIFEST, { sha256: SHA, sizeBytes: 1234 });
+    expect(req).toEqual({ slug: "expense-desk", kind: "personal", bundle: { sha256: SHA, sizeBytes: 1234 }, manifest: { ...MANIFEST, slug: "expense-desk" } });
   });
-  it("refuses what the server would: a bad slug, kind, sha or size", () => {
-    expect(() => instanceRequestOf({ ...MANIFEST, slug: "Bad Slug" }, { sha256: SHA, sizeBytes: 1 }, "org")).toThrow(/slug/);
-    expect(() => instanceRequestOf(MANIFEST, { sha256: "nope", sizeBytes: 1 }, "org")).toThrow(/sha256/);
-    expect(() => instanceRequestOf(MANIFEST, { sha256: SHA, sizeBytes: 0 }, "org")).toThrow(/sizeBytes/);
-    expect(() => instanceRequestOf(MANIFEST, { sha256: SHA, sizeBytes: 1 }, "team" as never)).toThrow(/kind/);
+  it("is always personal: a caller that still hands a kind gets no other", () => {
+    const legacy = instanceRequestOf as unknown as (m: typeof MANIFEST, b: { sha256: string; sizeBytes: number }, kind: string) => { kind: string };
+    expect(legacy(MANIFEST, { sha256: SHA, sizeBytes: 1 }, "org").kind).toBe("personal");
+  });
+  it("refuses what the server would: a bad slug, sha or size", () => {
+    expect(() => instanceRequestOf({ ...MANIFEST, slug: "Bad Slug" }, { sha256: SHA, sizeBytes: 1 })).toThrow(/slug/);
+    expect(() => instanceRequestOf(MANIFEST, { sha256: "nope", sizeBytes: 1 })).toThrow(/sha256/);
+    expect(() => instanceRequestOf(MANIFEST, { sha256: SHA, sizeBytes: 0 })).toThrow(/sizeBytes/);
+  });
+  it("an instance key is always <slug>~<owner>", () => {
+    expect(instanceKeyOf("expense-desk", "u1")).toBe("expense-desk~u1");
   });
 });
 
 describe("instanceTabRow — the tab record an instance gets", () => {
   it("is a glyphh row with no local entry whose config names the instance", () => {
-    const row = instanceTabRow(ORG, MANIFEST, null, "2026-10-04T10:00:00.000Z");
+    const row = instanceTabRow(APP, MANIFEST, null, "2026-10-04T10:00:00.000Z");
     expect(row.kind).toBe("glyphh");
     expect(row.nativeRef).toBeNull();
     expect(row.prodUrl).toBeNull();
-    expect(row.config).toMatchObject({ instance: "expense-desk", instanceKind: "org", capabilities: ["db.exec", "notify.send"], connectors: ["gmail"], workbench: true, release: { version: "1.2.0" } });
+    expect(row.config).toMatchObject({ instance: "expense-desk~u1", instanceKind: "personal", capabilities: ["db.exec", "notify.send"], connectors: ["gmail"], workbench: true, release: { version: "1.2.0" } });
     expect(row.version).toBe("1.2.0");
     expect(row.requiredConnections).toEqual([{ slug: "gmail", actAs: "user", connected: false }]);
-    expect(instanceKeyOfRow(row)).toBe("expense-desk");
+    expect(instanceKeyOfRow(row)).toBe("expense-desk~u1");
   });
   it("retargets a row from before the cloud: entry gone, identity, dates and config vars kept", () => {
-    const row = instanceTabRow(ORG, MANIFEST, LOCAL, "2026-10-04T10:00:00.000Z");
+    const row = instanceTabRow(APP, MANIFEST, LOCAL, "2026-10-04T10:00:00.000Z");
     expect(row.nativeRef).toBeNull();
     expect(row.id).toBe("expense-desk");
     expect(row.createdAt).toBe(LOCAL.createdAt);
-    expect(row.config).toMatchObject({ instance: "expense-desk", secrets: { K: "v" } });
-    expect(instanceKeyOfRow(row)).toBe("expense-desk");
+    expect(row.config).toMatchObject({ instance: "expense-desk~u1", secrets: { K: "v" } });
+    expect(instanceKeyOfRow(row)).toBe("expense-desk~u1");
   });
   it("with no manifest, reads the instance's own summary", () => {
     const row = instanceTabRow(PERSONAL, null, null, "2026-10-04T10:00:00.000Z");
@@ -81,13 +87,16 @@ describe("instanceTabRow — the tab record an instance gets", () => {
 
 describe("mergeAppRows — THE LIST", () => {
   it("lists tab rows and every instance no tab names, one row per slug (an old row never beside its instance)", () => {
-    const rows = mergeAppRows([ORG, PERSONAL], [tab({}), LOCAL], "2026-10-04T00:00:00.000Z");
+    const rows = mergeAppRows([APP, PERSONAL], [tab({}), LOCAL], "2026-10-04T00:00:00.000Z");
     expect(rows.map((r) => r.slug).sort()).toEqual(["crm", "expense-desk", "notes"]);
     const desk = rows.find((r) => r.slug === "expense-desk")!;
     // The instance is the app; the local copy is hidden behind it.
     expect(desk.execPath).toBeNull();
     expect(desk.appArchetype).toBe("glyphh-app");
-    expect(desk.launchConfig).toMatchObject({ instance: "expense-desk", instanceStatus: "ready", instanceAccess: "everyone" });
+    expect(desk.launchConfig).toMatchObject({ instance: "expense-desk~u1", instanceStatus: "ready", instanceKind: "personal" });
+    // No org fields ride on the row any more.
+    expect(desk.launchConfig).not.toHaveProperty("instanceAccess");
+    expect(desk.launchConfig).not.toHaveProperty("instancePublic");
     const notes = rows.find((r) => r.slug === "notes")!;
     expect(notes.launchConfig).toMatchObject({ instance: "notes~u1", instanceKind: "personal" });
   });
@@ -98,11 +107,11 @@ describe("mergeAppRows — THE LIST", () => {
     expect(rows[0].launchConfig).not.toHaveProperty("data");
     expect(rows[0].launchConfig).not.toHaveProperty("legacyLocal");
   });
-  it("an org instance wins a personal one of the same slug for the row", () => {
-    const mine = { ...PERSONAL, key: "expense-desk~u1", slug: "expense-desk" };
-    const rows = mergeAppRows([mine, ORG], []);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].launchConfig?.instance).toBe("expense-desk");
+  it("two instances of one slug make one row: the first listed wins, no kind preferred", () => {
+    const other = { ...APP, key: "expense-desk~u2" };
+    expect(mergeAppRows([APP, other], [])).toHaveLength(1);
+    expect(mergeAppRows([APP, other], [])[0].launchConfig?.instance).toBe("expense-desk~u1");
+    expect(mergeAppRows([other, APP], [])[0].launchConfig?.instance).toBe("expense-desk~u2");
   });
   it("a glyphh tab with no instance behind it and no bundle on this machine is not listed — it is a row left over from a delete (his report, 2026-10-07)", () => {
     const dead = tab({ id: "daily-brief", kind: "glyphh", slug: "daily-brief", name: "Daily Brief", config: { instance: "daily-brief~u1" }, nativeRef: null });
@@ -115,9 +124,9 @@ describe("mergeAppRows — THE LIST", () => {
     expect(mergeAppRows([], [tab({ id: "mail", kind: "web", slug: "mail", name: "Mail", prodUrl: "https://mail" })]).map((r) => r.slug)).toEqual(["mail"]);
   });
   it("a tab that names an instance carries its live status", () => {
-    const named = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk", config: { instance: "expense-desk" } });
-    const rows = mergeAppRows([{ ...ORG, status: "stopped" }], [named]);
-    expect(rows[0].launchConfig).toMatchObject({ instance: "expense-desk", instanceStatus: "stopped" });
+    const named = tab({ id: "expense-desk", kind: "glyphh", slug: "expense-desk", name: "Expense Desk", config: { instance: "expense-desk~u1" } });
+    const rows = mergeAppRows([{ ...APP, status: "stopped" }], [named]);
+    expect(rows[0].launchConfig).toMatchObject({ instance: "expense-desk~u1", instanceStatus: "stopped" });
   });
 
   // THE HOUSE APPS ARE APPS (his law, 2026-10-06): Images, Drive and the rest
@@ -157,7 +166,7 @@ describe("the panel URL", () => {
 
 describe("releases on the summary", () => {
   it("release n reads off the row; rollback = n-1, nothing before release 1 or with nothing deployed", () => {
-    expect(releaseOf(ORG)).toBeNull();
+    expect(releaseOf(APP)).toBeNull();
     expect(releaseOf({ release: 3 })).toBe(3);
     expect(releaseOf({ release: 0 })).toBeNull();
     expect(rollbackTargetOf({ release: 3 })).toBe(2);
@@ -169,70 +178,84 @@ describe("releases on the summary", () => {
 
 describe("the Apps-page card and the tool rows", () => {
   it("a card stands for the instance, with no folder", () => {
-    const card = instanceCardOf(ORG, "2026-10-04T00:00:00.000Z");
-    expect(card).toMatchObject({ id: "app-instance:expense-desk", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "your organization", tool: null });
+    const card = instanceCardOf(APP, "2026-10-04T00:00:00.000Z");
+    expect(card).toMatchObject({ id: "app-instance:expense-desk~u1", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "you", tool: null });
+    expect(card.instance).toMatchObject({ key: "expense-desk~u1", kind: "personal", status: "ready" });
+    expect(card.instance).not.toHaveProperty("access");
+    expect(card.instance).not.toHaveProperty("public");
     // A house app's card is Glyphh's and wears its panel's mark; the manifest's description rides (his report, 2026-10-07).
-    const house = instanceCardOf({ ...ORG, slug: "design", kind: "personal", manifest: { ...ORG.manifest, name: "Design", description: "The member's design systems" } });
+    const house = instanceCardOf({ ...APP, key: "design~u1", slug: "design", manifest: { ...APP.manifest, name: "Design", description: "The member's design systems" } });
     expect(house).toMatchObject({ author: "Glyphh", tool: "gdesign", description: "The member's design systems", name: "Design" });
     expect(card.instance.tools).toEqual(["list_expenses"]);
     expect(card.instance.release).toBeNull();
     expect(isInstanceCardId(card.id)).toBe(true);
     expect(instanceKeyOfCardId(instanceCardId("notes~u1"))).toBe("notes~u1");
-    const detail = instanceDetailOf(ORG);
-    expect(detail.frontmatter).toMatchObject({ instance: "expense-desk", kind: "org", status: "ready" });
+    const detail = instanceDetailOf(APP);
+    expect(detail.frontmatter).toMatchObject({ instance: "expense-desk~u1", kind: "personal", status: "ready", author: "you" });
     expect(detail.frontmatter).not.toHaveProperty("release");
-    expect(detail.body).toContain("nothing deployed yet");
+    expect(detail.frontmatter).not.toHaveProperty("access");
+    expect(detail.body).toContain("Installed on your machine (instance `expense-desk~u1`, status ready, nothing deployed yet).");
+    expect(detail.body).not.toContain("Installed in the cloud");
+    expect(detail.body).not.toContain("Open to");
+    expect(detail.body).not.toContain("hostname");
     expect(detail.body).toContain("`list_expenses` — Every expense");
     expect(detail.files).toEqual([]);
   });
   it("the detail's page is the release's SKILL.md when it ships one, frontmatter stripped (his order, 2026-10-07)", () => {
     const skill = "---\nname: app-expense-desk\ndescription: Expenses.\n---\n\n# Expense Desk\n\nFile and find expenses.\n\n## Tools\n\n- `list_expenses` — every expense.\n";
-    const detail = instanceDetailOf({ ...ORG, release: 2, skill });
+    const detail = instanceDetailOf({ ...APP, release: 2, skill });
     expect(detail.body.startsWith("# Expense Desk")).toBe(true);
     expect(detail.body).not.toContain("name: app-expense-desk");
-    expect(detail.body).not.toContain("Installed in the cloud"), "the app's own page, not the synthesized one";
-    expect(instanceDetailOf({ ...ORG, skill: "  " }).body).toContain("Installed in the cloud");
+    // The app's own page, not the synthesized one.
+    expect(detail.body).not.toContain("Installed on your machine");
+    expect(instanceDetailOf({ ...APP, skill: "  " }).body).toContain("Installed on your machine");
   });
   it("the card and the detail carry the pinned release", () => {
-    const live = { ...ORG, release: 4 };
+    const live = { ...APP, release: 4 };
     expect(instanceCardOf(live).instance.release).toBe(4);
     const detail = instanceDetailOf(live);
     expect(detail.frontmatter.release).toBe("4");
-    expect(detail.body).toContain("release 4");
+    expect(detail.body).toContain("Installed on your machine (instance `expense-desk~u1`, status ready, release 4).");
   });
   it("tool rows are the gateway's shape, keyed by instance, instances without tools left out", () => {
-    expect(instanceToolRows([ORG, PERSONAL])).toEqual([
-      { app: "expense-desk", name: "Expense Desk", kind: "org", status: "ready", tools: [{ name: "list_expenses", description: "Every expense", inputSchema: { type: "object" } }] },
+    expect(instanceToolRows([APP, PERSONAL])).toEqual([
+      { app: "expense-desk~u1", name: "Expense Desk", kind: "personal", status: "ready", tools: [{ name: "list_expenses", description: "Every expense", inputSchema: { type: "object" } }] },
     ]);
   });
-  it("resolves a ref by key, by slug (org first), or the member's personal one", () => {
-    const mine = { ...PERSONAL, key: "expense-desk~u1", slug: "expense-desk" };
-    expect(resolveInstance([mine, ORG], "expense-desk", "u1")?.key).toBe("expense-desk");
-    expect(resolveInstance([mine, ORG], "expense-desk~u1", "u1")?.key).toBe("expense-desk~u1");
-    expect(resolveInstance([mine], "expense-desk", "u1")?.key).toBe("expense-desk~u1");
-    expect(resolveInstance([ORG], "nothing", "u1")).toBeUndefined();
+  it("resolves a ref by exact key, else the caller's own <slug>~<user>, else any instance of that slug", () => {
+    const theirs = { ...APP, key: "expense-desk~u2" };
+    expect(resolveInstance([APP], "expense-desk~u1", "u1")?.key).toBe("expense-desk~u1");
+    expect(resolveInstance([theirs, APP], "expense-desk~u2", "u1")?.key).toBe("expense-desk~u2");
+    expect(resolveInstance([APP], "expense-desk", "u1")?.key).toBe("expense-desk~u1");
+    expect(resolveInstance([theirs], "expense-desk", "u1")?.key).toBe("expense-desk~u2");
+    expect(resolveInstance([APP], "nothing", "u1")).toBeUndefined();
+    expect(resolveInstance([APP], "  ", "u1")).toBeUndefined();
+  });
+  it("a slug ref never picks another member's instance over the caller's own, whatever the order", () => {
+    const x2 = { ...PERSONAL, key: "x~u2", slug: "x" };
+    const x1 = { ...PERSONAL, key: "x~u1", slug: "x" };
+    expect(resolveInstance([x2, x1], "x", "u1")?.key).toBe("x~u1");
+    expect(resolveInstance([x1, x2], "x", "u1")?.key).toBe("x~u1");
+    expect(resolveInstance([x2, x1], "X", "u2")?.key).toBe("x~u2");
   });
 });
 
 // ── the desktop door, over a fake client ─────────────────────────────────────
 const calls: Array<{ method: string; path: string; body?: unknown }> = [];
-let forbidOrg = false;
 let token: string | null = "tok-1";
 /** What GET /api/app-instances answers (the deploy tests swap it). */
-let listed: AppInstanceSummary[] = [ORG];
+let listed: AppInstanceSummary[] = [APP];
 const RELEASE = { n: 2, sha256: "b".repeat(64), sizeBytes: 4096, note: "second", at: "2026-10-06T00:00:00.000Z", by: "u1", pinned: true };
 /** The SDK's appInstances resource (sdk/src/resources/app-instances.ts), recorded. */
 const sdk = {
-  create: async (input: { slug: string; kind: "org" | "personal"; bundle: { sha256: string; sizeBytes: number }; manifest: Record<string, unknown> }) => {
+  create: async (input: { slug: string; kind: "personal"; bundle: { sha256: string; sizeBytes: number }; manifest: Record<string, unknown> }) => {
     calls.push({ method: "SDK", path: "create", body: input });
-    if (forbidOrg && input.kind === "org") { const e = new Error("org admin only") as Error & { code: string }; e.code = "E_FORBIDDEN"; throw e; }
-    const key = input.kind === "personal" ? `${input.slug}~u1` : input.slug;
-    return { instance: { ...ORG, key, slug: input.slug, kind: input.kind, status: "pending" as const, release: null }, upload: { url: "https://r2.test/put-bundle", key: `apps/o/${input.slug}/releases/1/bundle.zip` } };
+    return { instance: { ...APP, key: `${input.slug}~u1`, slug: input.slug, kind: input.kind, status: "pending" as const, release: null }, upload: { url: "https://r2.test/put-bundle", key: `apps/o/${input.slug}/releases/1/bundle.zip` } };
   },
   builds: async (key: string) => { calls.push({ method: "SDK", path: `builds ${key}` }); return { build: { n: 3 }, upload: { url: "https://r2.test/put-source", key: `apps/o/${key}/builds/3/source.tgz` } }; },
   runBuild: async (key: string, n: number, opts?: { note?: string }) => { calls.push({ method: "SDK", path: `runBuild ${key} ${n}`, body: opts }); return { release: RELEASE, log: "x".repeat(10_000) + "\nbuild ok" }; },
   releases: async (key: string) => { calls.push({ method: "SDK", path: `releases ${key}` }); return [{ ...RELEASE, n: 1, pinned: false }, RELEASE]; },
-  pin: async (key: string, n: number) => { calls.push({ method: "SDK", path: `pin ${key} ${n}` }); return { ...ORG, key, release: n }; },
+  pin: async (key: string, n: number) => { calls.push({ method: "SDK", path: `pin ${key} ${n}` }); return { ...APP, key, release: n }; },
 };
 const JOB_ID = "job_0123456789abcdef01234567";
 let jobReads = 0;
@@ -261,10 +284,9 @@ vi.mock("../../src/main/glyphh-client.js", () => ({
       post: async (path: string, body?: unknown) => {
         calls.push({ method: "POST", path, body });
         if (path === "/api/app-instances") {
-          if (forbidOrg && (body as { kind: string }).kind === "org") { const e = new Error("org admin only") as Error & { code: string }; e.code = "E_FORBIDDEN"; throw e; }
-          return { instance: { ...ORG, status: "pending", kind: (body as { kind: "org" | "personal" }).kind }, upload: { url: "https://r2.test/put", key: "bundles/x" } };
+          return { instance: { ...APP, status: "pending", kind: (body as { kind: "personal" }).kind }, upload: { url: "https://r2.test/put", key: "bundles/x" } };
         }
-        if (path.endsWith("/ready")) { readyBodies.push(body); return { ...ORG, status: "ready", release: 7 }; }
+        if (path.endsWith("/ready")) { readyBodies.push(body); return { ...APP, status: "ready", release: 7 }; }
         // THE BUILD IS A JOB (2026-10-07): /run answers the job at once.
         const run = path.match(/^\/api\/app-instances\/([^/]+)\/builds\/(\d+)\/run$/);
         if (run) { jobReads = 0; return { job: { id: JOB_ID, key: run[1], status: "queued", log: "", release: null, error: null } }; }
@@ -285,23 +307,30 @@ describe("installBundleAsInstance — create → PUT → ready", () => {
     calls.length = 0;
     const puts: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => { puts.push({ url: String(url), init: init! }); return new Response(null, { status: 200 }); }) as typeof fetch;
-    const live = await main.installBundleAsInstance(Buffer.from("zipbytes"), MANIFEST, { kind: "org", fetchImpl });
+    const live = await main.installBundleAsInstance(Buffer.from("zipbytes"), MANIFEST, { fetchImpl });
     expect(live.status).toBe("ready");
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /api/app-instances", "POST /api/app-instances/expense-desk/ready"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /api/app-instances", "POST /api/app-instances/expense-desk~u1/ready"]);
     expect((calls[0].body as { bundle: { sizeBytes: number } }).bundle.sizeBytes).toBe(8);
     expect(puts[0].url).toBe("https://r2.test/put");
     expect(puts[0].init.method).toBe("PUT");
   });
-  it("tries an org instance first and falls back to personal when refused", async () => {
-    calls.length = 0; forbidOrg = true;
+  it("sends exactly ONE create, kind personal — no org attempt, even when a caller still hands a kind", async () => {
     const fetchImpl = (async () => new Response(null, { status: 200 })) as typeof fetch;
-    await main.installBundleAsInstance(Buffer.from("zipbytes"), MANIFEST, { fetchImpl });
-    expect(calls.filter((c) => c.path === "/api/app-instances").map((c) => (c.body as { kind: string }).kind)).toEqual(["org", "personal"]);
-    forbidOrg = false;
+    for (const opts of [{ fetchImpl }, { fetchImpl, kind: "org" } as never]) {
+      calls.length = 0;
+      await main.installBundleAsInstance(Buffer.from("zipbytes"), MANIFEST, opts);
+      const creates = calls.filter((c) => c.path === "/api/app-instances");
+      expect(creates).toHaveLength(1);
+      expect(creates[0]).toMatchObject({ method: "POST", body: { slug: "expense-desk", kind: "personal" } });
+      expect(calls.filter((c) => c.path.endsWith("/ready"))).toHaveLength(1);
+    }
   });
   it("a refused upload is an error, not a half-made instance", async () => {
+    calls.length = 0;
     const fetchImpl = (async () => new Response(null, { status: 403 })) as typeof fetch;
-    await expect(main.installBundleAsInstance(Buffer.from("z"), MANIFEST, { kind: "org", fetchImpl })).rejects.toThrow(/upload was refused/);
+    await expect(main.installBundleAsInstance(Buffer.from("z"), MANIFEST, { fetchImpl })).rejects.toThrow(/upload was refused/);
+    expect(calls.filter((c) => c.path === "/api/app-instances")).toHaveLength(1);
+    expect(calls.some((c) => c.path.endsWith("/ready"))).toBe(false);
   });
 });
 
@@ -309,7 +338,7 @@ describe("the instance's tools and the panel bridge", () => {
   it("app_call_tool invokes the instance by key, slug, or the member's own", async () => {
     calls.length = 0;
     expect(await main.callInstanceTool("expense-desk", "list_expenses", { q: 1 })).toEqual([{ id: 1 }]);
-    expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/api/app-instances/expense-desk/invoke", body: { tool: "list_expenses", args: { q: 1 } } });
+    expect(calls.at(-1)).toMatchObject({ method: "POST", path: "/api/app-instances/expense-desk~u1/invoke", body: { tool: "list_expenses", args: { q: 1 } } });
     await expect(main.callInstanceTool("missing", "x", {})).rejects.toThrow(/not installed in the cloud/);
     expect(await main.listInstanceTools()).toHaveLength(1);
   });
@@ -319,20 +348,20 @@ describe("the instance's tools and the panel bridge", () => {
       seen.push({ url: String(url), init: init! });
       return new Response(JSON.stringify({ ok: true, result: { pong: true } }), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch;
-    expect(await main.callInstanceBridge("expense-desk", "ping", { a: 1 }, fetchImpl)).toEqual({ ok: true, result: { pong: true } });
-    expect(seen[0].url).toBe("https://api.test/app-host/expense-desk/call");
+    expect(await main.callInstanceBridge("expense-desk~u1", "ping", { a: 1 }, fetchImpl)).toEqual({ ok: true, result: { pong: true } });
+    expect(seen[0].url).toBe("https://api.test/app-host/expense-desk~u1/call");
     expect((seen[0].init.headers as Record<string, string>).authorization).toBe("Bearer tok-1");
     expect(JSON.parse(String(seen[0].init.body))).toEqual({ method: "ping", args: { a: 1 } });
   });
   it("a refusal is the pod's error line; signed out is said plainly", async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ error: "forbidden", detail: "app expense-desk is not open to you" }), { status: 403 })) as typeof fetch;
-    expect(await main.callInstanceBridge("expense-desk", "ping", {}, fetchImpl)).toEqual({ ok: false, error: "app expense-desk is not open to you" });
+    expect(await main.callInstanceBridge("expense-desk~u1", "ping", {}, fetchImpl)).toEqual({ ok: false, error: "app expense-desk is not open to you" });
     token = null;
-    expect(await main.callInstanceBridge("expense-desk", "ping", {}, fetchImpl)).toEqual({ ok: false, error: "signed out" });
+    expect(await main.callInstanceBridge("expense-desk~u1", "ping", {}, fetchImpl)).toEqual({ ok: false, error: "signed out" });
     token = "tok-1";
   });
   it("the panel URL is the server's proxy, ui/ with a trailing slash", () => {
-    expect(main.instancePanelUrl("expense-desk")).toBe("https://api.test/app-host/expense-desk/ui/");
+    expect(main.instancePanelUrl("expense-desk~u1")).toBe("https://api.test/app-host/expense-desk~u1/ui/");
   });
 });
 
@@ -396,48 +425,48 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
   const pack = async () => Buffer.from("tgzbytes");
   const puts: Array<{ url: string; init: RequestInit }> = [];
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => { puts.push({ url: String(url), init: init! }); return new Response(null, { status: 200 }); }) as typeof fetch;
-  const RECALL: AppInstanceSummary = { ...ORG, key: "recall", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }, { name: "ingest" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
+  const RECALL: AppInstanceSummary = { ...APP, key: "recall~u1", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }, { name: "ingest" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
 
   const sleep = async () => undefined;
-  it("deploys onto the existing instance of that slug: no create, source PUT as gzip, the build run with the note AS A JOB that is followed to ready, the log a tail", async () => {
+  it("deploys onto the member's own instance of that slug: no create, source PUT as gzip, the build run with the note AS A JOB that is followed to ready, the log a tail", async () => {
     calls.length = 0; puts.length = 0; listed = [RECALL];
     const logs: string[] = [];
     const out = await main.deployFolderAsInstance(dir, { slug: "recall", note: "second", fetchImpl, pack, sleep, onLog: (l) => logs.push(l) });
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall"]);
-    expect(calls.find((c) => c.path === "/api/app-instances/recall/builds/3/run")?.body).toEqual({ note: "second" });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall~u1"]);
+    expect(calls.find((c) => c.path === "/api/app-instances/recall~u1/builds/3/run")?.body).toEqual({ note: "second" });
     expect(calls.filter((c) => c.path === `/api/app-instances/jobs/${JOB_ID}`)).toHaveLength(2);
     expect(logs[0]).toBe("npm ci");
     expect(out.mode).toBe("source");
     expect(out.job?.status).toBe("ready");
-    expect(out.url).toBe("/app-host/recall/ui/");
+    expect(out.url).toBe("/app-host/recall~u1/ui/");
     expect(puts).toHaveLength(1);
     expect(puts[0].url).toBe("https://r2.test/put-source");
     expect(puts[0].init.method).toBe("PUT");
     expect((puts[0].init.headers as Record<string, string>)["content-type"]).toBe("application/gzip");
-    expect(out.key).toBe("recall");
+    expect(out.key).toBe("recall~u1");
     expect(out.release).toEqual(RELEASE);
     expect(out.log.length).toBe(main.DEPLOY_LOG_TAIL_CHARS);
     expect(out.log.endsWith("build ok")).toBe(true);
     expect(out.tools).toEqual(["ask", "ingest"]);
   });
-  it("with no instance yet, creates one first (org, falling back to personal when refused) with the source's identity standing in for the bundle", async () => {
-    calls.length = 0; puts.length = 0; listed = []; forbidOrg = true;
+  it("with no instance yet, creates exactly ONE (personal) with the source's identity standing in for the bundle", async () => {
+    calls.length = 0; puts.length = 0; listed = [];
     const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack, sleep });
     const made = calls.filter((c) => c.path === "create").map((c) => c.body as { kind: string; slug: string; bundle: { sizeBytes: number } });
-    expect(made.map((m) => m.kind)).toEqual(["org", "personal"]);
-    expect(made[1]).toMatchObject({ slug: "recall", bundle: { sizeBytes: 8 } });
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "create", "builds recall~u1"]);
+    expect(made).toHaveLength(1);
+    expect(made[0]).toMatchObject({ slug: "recall", kind: "personal", bundle: { sizeBytes: 8 } });
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "builds recall~u1"]);
     expect(calls.some((c) => c.path === "/api/app-instances/recall~u1/builds/3/run")).toBe(true);
     expect(out.key).toBe("recall~u1");
     // No live row answers yet: the folder's declared tools stand in.
     expect(out.tools).toEqual(["ask"]);
-    forbidOrg = false;
   });
-  it("`kind` names the instance: a personal deploy never touches the org's", async () => {
-    calls.length = 0; listed = [RECALL];
-    await main.deployFolderAsInstance(dir, { slug: "recall", kind: "personal", fetchImpl, pack, sleep });
+  it("never deploys onto another member's instance of the slug: the caller's own is made (one personal create), even when a caller still hands a kind", async () => {
+    calls.length = 0; listed = [{ ...RECALL, key: "recall~u2" }];
+    const out = await main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl, pack, sleep, kind: "org" } as never);
     expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["create", "builds recall~u1"]);
     expect((calls.find((c) => c.path === "create")!.body as { kind: string }).kind).toBe("personal");
+    expect(out.key).toBe("recall~u1");
   });
   it("refuses the folder rules before any call, and a refused upload before the build", async () => {
     calls.length = 0; listed = [RECALL];
@@ -446,8 +475,8 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
     expect(calls.filter((c) => c.method === "SDK")).toHaveLength(0);
     const refuse = (async () => new Response(null, { status: 403 })) as typeof fetch;
     await expect(main.deployFolderAsInstance(dir, { slug: "recall", fetchImpl: refuse, pack })).rejects.toThrow(/source upload was refused/);
-    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall"]);
-    listed = [ORG];
+    expect(calls.filter((c) => c.method === "SDK").map((c) => c.path)).toEqual(["builds recall~u1"]);
+    listed = [APP];
   });
   it("wait: false answers at once with the job and no release; a failed job is an error that carries the log", async () => {
     calls.length = 0; listed = [RECALL];
@@ -463,7 +492,7 @@ describe("deployFolderAsInstance — builds → PUT the source → runBuild", ()
 });
 
 describe("ONE DOOR, BY PATH (2026-10-07): installFolderAsInstance", () => {
-  const RECALL: AppInstanceSummary = { ...ORG, key: "recall", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
+  const RECALL: AppInstanceSummary = { ...APP, key: "recall~u1", slug: "recall", manifest: { name: "Recall", tools: [{ name: "ask" }], capabilities: ["db.exec"], connectors: [] }, release: 1 };
   const fetchImpl = (async () => new Response(null, { status: 200 })) as typeof fetch;
   it("a folder with a build script is SOURCE: the build job lane", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-src-"));
@@ -473,8 +502,10 @@ describe("ONE DOOR, BY PATH (2026-10-07): installFolderAsInstance", () => {
     calls.length = 0; listed = [RECALL];
     const out = await main.installFolderAsInstance(dir, { fetchImpl, pack: async () => Buffer.from("tgz"), sleep: async () => undefined });
     expect(out.mode).toBe("source");
-    expect(out.key).toBe("recall");
+    expect(out.key).toBe("recall~u1");
     expect(out.release).toEqual(RELEASE);
+    // The member's own instance is listed: no create.
+    expect(calls.some((c) => c.path === "create")).toBe(false);
     fs.rmSync(dir, { recursive: true, force: true });
   });
   it("a folder with manifest.json + its entry is a BUNDLE: zipped, created, PUT, readied with the note; the slug must agree", async () => {
@@ -487,14 +518,18 @@ describe("ONE DOOR, BY PATH (2026-10-07): installFolderAsInstance", () => {
     const zipped = main.zipBundleFolder(dir);
     expect(zipped.length).toBeGreaterThan(0);
     calls.length = 0; readyBodies.length = 0; listed = [];
-    const out = await main.installFolderAsInstance(dir, { fetchImpl, kind: "org", note: "first" });
+    const out = await main.installFolderAsInstance(dir, { fetchImpl, note: "first" });
     expect(out.mode).toBe("bundle");
     expect(out.job).toBeNull();
     expect(out.release?.n).toBe(7);
-    // The LIVE summary's tools win over the folder's declared ones (the fixture's /ready answers the org row).
+    // The LIVE summary's tools win over the folder's declared ones (the fixture's /ready answers the APP row).
     expect(out.tools).toEqual(["list_expenses"]);
     expect(readyBodies).toEqual([{ note: "first" }]);
-    expect(calls.map((c) => `${c.method} ${c.path}`).slice(0, 2)).toEqual(["POST /api/app-instances", "POST /api/app-instances/expense-desk/ready"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`).slice(0, 2)).toEqual(["POST /api/app-instances", "POST /api/app-instances/expense-desk~u1/ready"]);
+    // ONE create, kind personal.
+    const creates = calls.filter((c) => c.path === "/api/app-instances");
+    expect(creates).toHaveLength(1);
+    expect((creates[0].body as { kind: string }).kind).toBe("personal");
     await expect(main.installFolderAsInstance(dir, { fetchImpl, slug: "other" })).rejects.toThrow(/is the app "recall" but the call named "other"/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -522,24 +557,25 @@ describe("ONE DOOR, BY PATH (2026-10-07): installFolderAsInstance", () => {
 
 describe("app_releases / app_pin / the Rollback IPC", () => {
   it("lists the releases of the instance a ref names", async () => {
-    calls.length = 0; listed = [ORG];
+    calls.length = 0; listed = [APP];
     const rows = await main.listInstanceReleases("expense-desk");
+    expect(calls.at(-1)?.path).toBe("releases expense-desk~u1");
     expect(rows.map((r) => [r.n, r.pinned])).toEqual([[1, false], [2, true]]);
     await expect(main.listInstanceReleases("missing")).rejects.toThrow(/not installed in the cloud/);
   });
   it("pins a release by key; n must be a release number", async () => {
     calls.length = 0;
     expect((await main.pinInstanceRelease("expense-desk", 1)).release).toBe(1);
-    expect(calls.at(-1)?.path).toBe("pin expense-desk 1");
+    expect(calls.at(-1)?.path).toBe("pin expense-desk~u1 1");
     await expect(main.pinInstanceRelease("expense-desk", 0)).rejects.toThrow(/release number/);
     await expect(main.pinInstanceRelease("expense-desk", 1.5)).rejects.toThrow(/release number/);
   });
   it("the app-instance-pin IPC takes the card id or the key and answers the envelope", async () => {
     calls.length = 0;
-    const ok = await main.appInstancePinHandler(instanceCardId("expense-desk"), 1);
-    expect(ok).toMatchObject({ ok: true, data: { key: "expense-desk", release: 1 } });
-    expect(calls.at(-1)?.path).toBe("pin expense-desk 1");
-    expect(await main.appInstancePinHandler("expense-desk", 2)).toMatchObject({ ok: true, data: { release: 2 } });
+    const ok = await main.appInstancePinHandler(instanceCardId("expense-desk~u1"), 1);
+    expect(ok).toMatchObject({ ok: true, data: { key: "expense-desk~u1", release: 1 } });
+    expect(calls.at(-1)?.path).toBe("pin expense-desk~u1 1");
+    expect(await main.appInstancePinHandler("expense-desk~u1", 2)).toMatchObject({ ok: true, data: { release: 2 } });
     expect(await main.appInstancePinHandler("missing", 1)).toMatchObject({ ok: false, error: expect.stringMatching(/not installed in the cloud/) });
     expect(await main.appInstancePinHandler("expense-desk", NaN)).toMatchObject({ ok: false, error: expect.stringMatching(/release number/) });
   });

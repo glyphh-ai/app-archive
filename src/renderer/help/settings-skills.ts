@@ -35,7 +35,7 @@ type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
 interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
 /** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
-interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
+interface InstanceOfRow { key: string; kind: "personal"; status: string; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
 interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }

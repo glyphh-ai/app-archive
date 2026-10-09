@@ -87,7 +87,7 @@ powers and super powers for them. A tool runs it and returns the result.
 - \`app_list_tools\` — the full map of the MCP tools the user's installed Glyphh apps expose: \`[{ app, name, kind, status, release, tools: [{ name, description, inputSchema }], skill }]\`; \`skill\` is the app's SKILL.md, how to use its tools. Every user's apps differ — search or discover first, never assume.
 - \`app_call_tool { app, tool, args }\` — run one headlessly (save a record, query a graph, search a vector store, create an event). \`args\` must match the tool's \`inputSchema\`.
 - An app carries its tools and the SKILL that teaches them: INSTALL binds both to Glyphh and to every super power on the member's key (the skill lands in the library as \`app-<slug>\`).
-- \`app_deploy { slug, kind?, note?, sourceBase64 }\` — build and deploy an app from its source folder (see Building a Glyphh app). The answer carries the release, the build log's tail and the tools the app now exposes.
+- \`app_deploy { slug, note?, sourceBase64 }\` — build and deploy an app from its source folder (see Building a Glyphh app). The answer carries the release, the build log's tail and the tools the app now exposes.
 - \`app_releases { app }\` / \`app_pin { app, n }\` — the app's releases, and a rollback (pin the previous n).
 - \`app_install { bundleBase64, intent: "app" }\` — import a BUILT bundle (a zip) you were handed, by sending it as base64. Re-installing the same slug records a new release and pins it.
 
@@ -189,7 +189,7 @@ with the result. Do not design an app around a model call it cannot make.
     worker.js          optional; the server side: glyphh.handle, glyphh.call
 
 Write it in the Code session's folder (the thread's folder is the sandbox),
-then **deploy it with \`app_deploy { slug, kind?, note?, sourceBase64 }\`** (the
+then **deploy it with \`app_deploy { slug, note?, sourceBase64 }\`** (the
 folder as a .tgz, base64). The cloud worker runs \`npm ci\` and \`next build\`,
 bundles \`worker.js\`, cuts the next RELEASE and pins it; the answer carries the
 release, the tail of the build log and the tools now available. A failed build

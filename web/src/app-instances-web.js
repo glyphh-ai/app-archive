@@ -95,9 +95,9 @@ export function buildAppInstancesWeb(client, deps = {}) {
     return (await listInstances()).filter((i) => !haveFolders.has(i.slug)).map((i) => instanceCardOf(i, at));
   };
   const find = async (id) => {
-    // A card id or a bare key, like the desktop's findInstance (2026-10-07).
+    // A card id, a key, or a bare slug (the list is the member's own apps), like the desktop's findInstance.
     const key = isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id);
-    const inst = (await listInstances()).find((i) => i.key === key);
+    const inst = (await listInstances()).find((i) => i.key === key || i.slug === key);
     if (!inst) throw new Error(`no cloud app ${key}`);
     return inst;
   };
@@ -127,7 +127,7 @@ export function buildAppInstancesWeb(client, deps = {}) {
    *  pinInstanceRelease). Answers the instance with its `release`. */
   const pin = async (id, n) => {
     const key = isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id);
-    const inst = (await listInstances()).find((i) => i.key === key);
+    const inst = (await listInstances()).find((i) => i.key === key || i.slug === key);
     if (!inst) throw new Error(`no cloud app ${key}`);
     const release = Number(n);
     if (!Number.isInteger(release) || release < 1) throw new Error('n must be a release number (a positive integer)');

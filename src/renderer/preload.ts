@@ -1149,7 +1149,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
   appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
   /** THE APP CARD (2026-10-07): Build and run a folder on this machine (a source build answers its job); read a build job. */
-  appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
+  appInstallFolder: (dir: string, opts?: { slug?: string; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
   appBuildStatus: (job: string) => ipcRenderer.invoke("app-build-status", job) as Promise<LibEnvelope>,
   appInstanceReleases: (id: string) => ipcRenderer.invoke("app-instance-releases", id) as Promise<LibEnvelope>,
   /** THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07). */

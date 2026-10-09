@@ -837,8 +837,8 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("app-instances-update-all", () => env(() => updateAllInstances()));
   // THE APP CARD'S Build and run (2026-10-07): the folder is on this machine;
   // a source build answers its job at once and the card follows it.
-  ipcMain.handle("app-install-folder", (_e: unknown, dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) =>
-    env(() => installFolderAsInstance(String(dir || ""), { ...(opts?.slug ? { slug: opts.slug } : {}), ...(opts?.kind ? { kind: opts.kind } : {}), ...(opts?.note ? { note: opts.note } : {}), wait: false })));
+  ipcMain.handle("app-install-folder", (_e: unknown, dir: string, opts?: { slug?: string; note?: string }) =>
+    env(() => installFolderAsInstance(String(dir || ""), { ...(opts?.slug ? { slug: opts.slug } : {}), ...(opts?.note ? { note: opts.note } : {}), wait: false })));
   ipcMain.handle("app-build-status", (_e: unknown, job: string) => env(() => readBuildJob(String(job || ""))));
   // THE RELEASES TAB (2026-10-07): every release of the instance a card names.
   ipcMain.handle("app-instance-releases", (_e: unknown, id: string) => env(() => listInstanceReleases(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));

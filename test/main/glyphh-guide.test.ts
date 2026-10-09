@@ -25,7 +25,7 @@ describe("the built-in Glyphh power", () => {
       "connections_list_tools", "connections_call_tool",
       "app_list_tools", "app_call_tool", "app_install", "app_deploy", "app_releases", "app_pin",
     ]) expect(md, `${tool} is undocumented`).toContain(`\`${tool}`);
-    for (const spec of ["app_deploy { slug, kind?, note?, sourceBase64 }", "app_pin { app, n }", "app_releases { app }", "POSTGRES SQL", "`$1`", "NEO4J Cypher", "{ ok: true, result }", "{ ok: false, error }", "next.config.mjs", "output: 'export'", '"manifestVersion": 3', "GLYPHH_APP_BASE", "never throws"])
+    for (const spec of ["app_deploy { slug, note?, sourceBase64 }", "app_pin { app, n }", "app_releases { app }", "POSTGRES SQL", "`$1`", "NEO4J Cypher", "{ ok: true, result }", "{ ok: false, error }", "next.config.mjs", "output: 'export'", '"manifestVersion": 3', "GLYPHH_APP_BASE", "never throws"])
       expect(md, `${spec} is undocumented`).toContain(spec);
     for (const gone of [
       "glyphh.app", "create_app_entry", "build_app", "deploy_app", "/api/ingest", "/api/app/data/files", "EVERYTHING RUNS ON THIS MACHINE",
