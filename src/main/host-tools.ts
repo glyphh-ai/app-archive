@@ -186,29 +186,36 @@ function registerTools(mcp: ToolRegistrar): void {
   //    spawn_agent, and a new one is spawnable from the next turn on. ─────────
   mcp.tool(
     "agents_list",
-    "The user's AGENTS — each a name, a line saying when to use it, a standing brief, and a model slot. These are what the Glyphh agent hands work to (spawn_agent), and the ONLY valid values for a task slot's agent binding and task_run's agent override. Returns [{ agent, name, description, model, hasBrief }]; `agent` is the id every other agent tool takes.",
+    "The user's SUPER POWERS — the bots on the rail. Each is a name, a line saying when to use it, a standing brief, a model, and the POWERS it holds (its powers, connections, models and folders). Glyphh hands them work with spawn_agent, and they are the only valid values for a task slot's agent binding and task_run's agent override. Returns [{ agent, name, description, model, role, powers, connections, models, folders, personality, effort, hasBrief }].",
     {},
     async () => via("agents.list", {}),
   );
   mcp.tool(
     "agent_get",
-    "One of the user's agents in full, its brief included. Returns { agent, name, description, model, hasBrief, brief }.",
-    { agent: z.string().describe("The agent's id, from agents_list") },
+    "One of the user's super powers in full: its brief and the powers it holds. Returns { agent, name, description, model, role, powers, connections, models, folders, personality, effort, hasBrief, brief }.",
+    { agent: z.string().describe("The super power's id, from agents_list") },
     async ({ agent }) => via("agents.get", { agent }),
   );
   mcp.tool(
     "agent_save",
-    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, role, created, generatedBrief, brief }.",
+    "MAKE or UPDATE one of the user's SUPER POWERS. When the user asks for a super power, this is the call — not skill_save alone. A super power is a bot on the rail: a name, WHEN TO USE IT (`description`), a standing `brief`, and the POWERS it holds: `powers` (power slugs from skills_list — build any it needs first with skill_save, then list them here), `connections` (connected-account app slugs it uses), `models` (models it may use beside its own), `folders` (the first is its working folder), `personality` 1 serious … 5 playful, `effort` (thinking: low … max). Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change one (fields you leave out are kept). OMIT `brief` and Glyphh writes one from the name and description. `model` must be one of the user's models (models_available). After making one, offer super_power_avatar for its face. Returns the super power as saved: { agent, name, description, model, role, powers, connections, models, folders, personality, effort, created, generatedBrief, brief }.",
     {
-      agent: z.string().optional().describe("The agent to update (its id from agents_list); omit to make a new one"),
-      name: z.string().optional().describe("Its name, e.g. \"Researcher\" — required for a new agent"),
+      agent: z.string().optional().describe("The super power to update (its id from agents_list); omit to make a new one"),
+      name: z.string().optional().describe("Its name, e.g. \"Video Marketer\" — required for a new super power"),
       description: z.string().optional().describe("When to use it: what it is for, in a sentence"),
       brief: z.string().optional().describe("Its standing instruction, second person. Omit to have Glyphh write it"),
       model: z.string().optional().describe("Its model slot — one of the user's models; omit for the main agent's"),
       // THE BOTS PANEL (his order, 2026-10-08): an orchestrator plans the work and hands it to the other bots.
-      role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the bots: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
+      role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the super powers: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
+      // ITS POWERS (his order, 2026-10-09): what the Edit page sets, so one built in a chat is whole.
+      powers: z.array(z.string()).optional().describe("The powers it holds, by slug from skills_list (build missing ones first with skill_save)"),
+      connections: z.array(z.string()).optional().describe("Connected-account app slugs it uses, e.g. [\"youtube_data_api\", \"slack\"]"),
+      models: z.array(z.string()).optional().describe("Models it may use beside its own, from models_available"),
+      folders: z.array(z.string()).optional().describe("Absolute folder paths; the first is its working folder, the rest it can read"),
+      personality: z.number().int().min(1).max(5).optional().describe("1 serious … 3 balanced … 5 playful"),
+      effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional().describe("How hard it thinks: low is fast, max is thorough"),
     },
-    async ({ agent, name, description, brief, model, role }) => via("agents.save", { agent, name, description, brief, model, role }),
+    async (input) => via("agents.save", input),
   );
   // A SUPER POWER'S AVATAR (his order, 2026-10-09): the Images power draws it
   // in the Glyphh mascot's style (shared/avatar-style.ts); it lands on the agent.
@@ -233,8 +240,8 @@ function registerTools(mcp: ToolRegistrar): void {
   );
   mcp.tool(
     "agent_delete",
-    "DELETE one of the user's agents (and its scheduled tasks). Only when the user asked for it.",
-    { agent: z.string().describe("The agent's id, from agents_list") },
+    "DELETE one of the user's super powers (and its scheduled tasks). Its powers stay in the library. Only when the user asked for it.",
+    { agent: z.string().describe("The super power's id, from agents_list") },
     async ({ agent }) => via("agents.delete", { agent }),
   );
   mcp.tool(

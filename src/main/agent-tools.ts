@@ -15,6 +15,12 @@
  *                                 headless (his order, 2026-10-07)
  *   agents.delete {agent}
  *
+ * A SUPER POWER IS THE AGENT PLUS ITS POWERS (his order, 2026-10-09: "the
+ * agent / glyphh skill… well versed in super powers"): a save also carries
+ * the powers it holds, the connections and models it may use, its folders,
+ * personality and thinking — what the super power's Edit page sets, so a
+ * super power built in a chat is whole the moment it lands.
+ *
  * Every save is checked the way the page checks it: a model must be one the
  * member's team carries (a slot naming anything else would be refused at spawn
  * time), and making an agent never silently overwrites one that exists.
@@ -25,14 +31,36 @@ import { deleteAgent, getAgent, listAgents, saveAgent, slugify } from "./local-a
 import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
-import { agentRoleOf, type AgentRole } from "../shared/member-library.js";
+import { listSkills } from "./skills-fs.js";
+import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, type AgentRole } from "../shared/member-library.js";
 
-interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown }
+interface SaveParams {
+  agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown;
+  powers?: unknown; connections?: unknown; models?: unknown; folders?: unknown; personality?: unknown; effort?: unknown;
+}
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; role: AgentRole; hasBrief: boolean } {
-  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
+function summary(a: ReturnType<typeof getAgent>) {
+  return {
+    agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim(),
+    powers: (a.skills ?? []).map((id) => id.slice(id.indexOf(":") + 1)), connections: a.connections ?? [], models: a.models ?? [],
+    folders: a.folders ?? [], personality: a.personality ?? null, effort: a.effort ?? null,
+  };
+}
+
+/** Power slugs (or ids) → the library ids a super power holds; an unknown one is refused by name. */
+function checkedPowers(raw: unknown): string[] {
+  const want = cleanNames(raw);
+  const have = listSkills("skill");
+  const missing: string[] = [];
+  const ids = want.map((w) => {
+    const hit = have.find((sk) => sk.id === w || sk.id.slice(sk.id.indexOf(":") + 1) === w || sk.name === w);
+    if (!hit) missing.push(w);
+    return hit?.id ?? "";
+  });
+  if (missing.length) throw new Error(`no power called ${missing.map((m) => `"${m}"`).join(", ")} — build it first with skill_save, or pick from skills_list`);
+  return [...new Set(ids)];
 }
 /** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
 function checkedRole(raw: unknown): AgentRole {
@@ -86,7 +114,22 @@ export function installAgentRelayHandlers(): void {
       brief = g.brief;
       generated = true;
     }
-    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role });
+    // ITS POWERS (2026-10-09): each field left out keeps what it has.
+    const powers = p.powers === undefined ? undefined : checkedPowers(p.powers);
+    const models = p.models === undefined ? undefined : await Promise.all(cleanNames(p.models).map((m) => checkedModel(m)));
+    const personality = p.personality === undefined ? undefined : cleanPersonality(p.personality);
+    if (p.personality !== undefined && personality === undefined) throw new Error("personality is 1 (serious) to 5 (playful)");
+    const effort = p.effort === undefined ? undefined : cleanEffort(p.effort);
+    if (p.effort !== undefined && effort === undefined) throw new Error(`effort is one of ${AGENT_EFFORTS.join(", ")}`);
+    const row = saveAgent({
+      ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role,
+      ...(powers ? { skills: powers } : {}),
+      ...(p.connections !== undefined ? { connections: cleanNames(p.connections) } : {}),
+      ...(models ? { models: models.filter(Boolean) } : {}),
+      ...(p.folders !== undefined ? { folders: cleanNames(p.folders) } : {}),
+      ...(personality !== undefined ? { personality } : {}),
+      ...(effort !== undefined ? { effort } : {}),
+    });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });
 

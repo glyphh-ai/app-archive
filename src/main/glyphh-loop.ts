@@ -173,15 +173,24 @@ async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
   return out;
 }
 
-/** The member's enabled skills, for the prompt's index (read with skill_get). */
+/** THE GLYPHH POWER LEADS THE INDEX (his order, 2026-10-09: "make sure the
+ *  agent / glyphh skill is getting to the loop and is well versed in super
+ *  powers"). It is Glyphh's own know-how — what powers and super powers are and
+ *  how to build them — so its line says when to read it; the index caps a line
+ *  at 200 characters. */
+export const GLYPHH_POWER_LINE =
+  "READ FIRST whenever the user mentions a power or a SUPER POWER (a bot on the rail), or asks to build, change or explain one: what they are, and the tools that make them.";
+
+/** The member's enabled powers, for the prompt's index (read with skill_get). */
 async function skillIndex(): Promise<LoopSkill[]> {
   try {
-    return listSkills("skill")
-      // Not the house "glyphh" skill: it is written for OUTSIDE clients over MCP
-      // (relay_ping, app_list_tools, connector_call) and would steer the loop to
-      // tools it no longer carries. The loop's own prompt says how Glyphh works.
-      .filter((sk) => sk.enabled && sk.id.slice(sk.id.indexOf(":") + 1) !== "glyphh")
-      .map((sk) => ({ slug: sk.id.slice(sk.id.indexOf(":") + 1), name: sk.name, description: sk.description }));
+    const rows = listSkills("skill")
+      .filter((sk) => sk.enabled)
+      .map((sk) => {
+        const slug = sk.id.slice(sk.id.indexOf(":") + 1);
+        return { slug, name: sk.name, description: slug === "glyphh" ? GLYPHH_POWER_LINE : sk.description };
+      });
+    return [...rows.filter((r) => r.slug === "glyphh"), ...rows.filter((r) => r.slug !== "glyphh")];
   } catch { return []; }
 }
 
