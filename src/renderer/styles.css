@@ -22446,3 +22446,6 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .powm-new-go { align-self: flex-end; }
 .powm-need { display: flex; flex-direction: column; gap: 6px; }
 .powm-built-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* Stop under the busy spinner (a power being built). */
+.powm-busy-stop { margin-top: 18px; min-width: 88px; }

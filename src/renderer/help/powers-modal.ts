@@ -74,6 +74,7 @@ interface Api extends PlusApi {
   onConnectorsConnectProgress?: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
   connectionToolsList?: (id: string) => Promise<{ ok: boolean; tools?: Array<{ name: string; description?: string; hidden?: boolean }>; error?: string }>;
   connectionToolsSet?: (id: string, hidden: string[]) => Promise<unknown>;
+  powerBuildStop?: () => Promise<unknown>;
   powerBuild?: (ask: string) => Promise<{ ok: true; data: BuiltPower } | { ok: false; error: string }>;
 }
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
@@ -172,15 +173,27 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   //    moment the sign-in window closes until the tools page has painted. ──
   const busyEl = q<HTMLElement>(".powm-busy");
   let busySpin: GlyphhSpinner | null = null;
-  function showBusy(meta: string): void {
+  let busyStop: HTMLButtonElement | null = null;
+  /** `onStop` puts a Stop under the spinner (his order, 2026-10-09: "needs to be a stop or cancel button here"). */
+  function showBusy(meta: string, onStop?: () => void): void {
     if (!busySpin) { busySpin = createGlyphhSpinner({ size: 56 }); busyEl.appendChild(busySpin.el); }
     busySpin.setMeta(meta);
+    busyStop?.remove();
+    busyStop = null;
+    if (onStop) {
+      busyStop = el("button", "action-btn secondary powm-busy-stop", "Stop");
+      busyStop.type = "button";
+      busyStop.addEventListener("click", () => { busyStop!.disabled = true; busyStop!.textContent = "Stopping…"; onStop(); });
+      busyEl.appendChild(busyStop);
+    }
     busyEl.classList.remove("hidden");
     // One overlay, this one: the app-wide one steps aside (it drops at "done", before the redirect).
     hideAppOverlay();
     setTimeout(hideAppOverlay, 0);
   }
   function hideBusy(): void {
+    busyStop?.remove();
+    busyStop = null;
     busySpin?.destroy();
     busySpin = null;
     busyEl.classList.add("hidden");
@@ -203,6 +216,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    if (busyStop) void api().powerBuildStop?.();
     returnSkillsPanel();
     hideBusy();
     onProgress = null;
@@ -754,12 +768,12 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       if (!build) return;
       showErr("");
       go.disabled = true;
-      showBusy("Building your power");
+      showBusy("Building your power", () => { void api().powerBuildStop?.(); });
       const r = await build(text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
       hideBusy();
       go.disabled = false;
       if (closed) return;
-      if (!r.ok) { showErr(r.error); return; }
+      if (!r.ok) { if (r.error !== "Stopped.") showErr(r.error); return; }
       newAsk = "";
       // Built for a super power: it is one of its powers already.
       if (sel && !sel.skills.includes(r.data.id)) sel.skills = [...sel.skills, r.data.id];

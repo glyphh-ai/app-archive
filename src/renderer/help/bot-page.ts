@@ -48,6 +48,7 @@ interface Api extends PlusApi {
   agentBriefGenerate?: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
     Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>;
   pickDirectory?: () => Promise<string | null>;
+  avatarGenerateStop?: () => Promise<unknown>;
   avatarGenerate?: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
     Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>;
   getWorkingDirRecents?: () => Promise<string[]>;
@@ -485,6 +486,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   let avatarModal: HTMLElement | null = null;
   function closeAvatarModal(): void {
     if (!avatarModal) return;
+    if (avatarModal.querySelector(".botp-avatar-stop")) void api().avatarGenerateStop?.();
     avatarModal.remove();
     avatarModal = null;
     guardWebviewsForModal(false);
@@ -526,19 +528,26 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       showErr(err, "Avatar pictures are made in the Glyphh desktop app.");
       genBtn.disabled = true;
     }
+    // GENERATE TURNS INTO STOP while it works (his order, 2026-10-09: "needs a stop button here as well during generation").
+    let generating = false;
     genBtn.addEventListener("click", async () => {
       if (!gen || genBtn.disabled) return;
+      if (generating) { genBtn.disabled = true; genBtn.textContent = "Stopping…"; void api().avatarGenerateStop?.(); return; }
       showErr(err, "");
-      genBtn.disabled = true; useBtn.disabled = true;
-      genBtn.textContent = "Generating…";
+      generating = true;
+      useBtn.disabled = true;
+      genBtn.textContent = "Stop";
+      genBtn.classList.add("botp-avatar-stop");
       preview.classList.add("busy");
       const r = await gen({ name: nameIn.value.trim(), description: descIn.value.trim(), prompt: askIn.value.trim() })
         .catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      generating = false;
       if (!avatarModal) return;
       preview.classList.remove("busy");
       genBtn.disabled = false;
+      genBtn.classList.remove("botp-avatar-stop");
       genBtn.textContent = made ? "Generate again" : "Generate";
-      if (!r.ok) { showErr(err, r.error); useBtn.disabled = !made; return; }
+      if (!r.ok) { if (r.error !== "Stopped.") showErr(err, r.error); useBtn.disabled = !made; return; }
       made = r.data.image;
       genBtn.textContent = "Generate again";
       useBtn.disabled = false;

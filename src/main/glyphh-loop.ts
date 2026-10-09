@@ -506,9 +506,9 @@ export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId);
  */
 export async function runGlyphhHeadless(
   prompt: string,
-  opts: { model?: string; workdir?: string } = {},
+  opts: { model?: string; workdir?: string; chatId?: string } = {},
 ): Promise<{ ok: boolean; text: string; error?: string }> {
-  const chatId = `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const chatId = opts.chatId || `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   let text = "";
   let error = "";
   try {
@@ -528,6 +528,8 @@ export async function runGlyphhHeadless(
 }
 
 export function stopGlyphhLoop(chatId: string): boolean { return loop.stop(chatId); }
+/** Stop a headless run started with its own chatId (the powers modal's Stop). */
+export function stopGlyphhHeadless(chatId: string): boolean { return unattendedLoop.stop(chatId); }
 /** The chat's spend so far, for the composer's context meter. */
 export function glyphhLoopUsage(chatId: string): { inTokens: number; outTokens: number; cacheRead: number } { return loop.usage(chatId); }
 /** /compact from the composer: the model summarizes and the chat continues. */
