@@ -205,8 +205,9 @@ function targetName(row: ScheduleRow): string {
 }
 
 function paintOverview(): void {
-  const list = el("schedules-list");
+  const list = el("schedules-list"); const count = el("schedules-count");
   if (!list) return;
+  if (count) count.textContent = rows.length ? String(rows.length) : "";
   const now = Date.now();
   const shown = rows
     .filter((r) => !query || `${r.name} ${targetName(r)} ${r.agentName || ""}`.toLowerCase().includes(query))
