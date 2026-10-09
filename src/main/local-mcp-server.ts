@@ -270,7 +270,14 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     try { existing = getSkill(id); } catch { existing = null; }
     const description = String(input.description ?? existing?.description ?? "").replace(/\r?\n/g, " ").trim();
     const body = String(input.prompt ?? existing?.body ?? "").trim();
-    const md = `---\nname: ${slug}\ndescription: ${description || name}\n${type === "app" ? "type: app\n" : ""}---\n\n${body || `# ${name}\n`}\n`;
+    // A SKILL'S CONNECTIONS ARE WRITTEN DOWN (his report, 2026-10-09: "shows
+    // it needs connections but i don't see the connections tab"): a skill has
+    // no manifest, so they ride its SKILL.md header, and the details page
+    // reads them back into its Connections tab.
+    const conns = (Array.isArray(input.connections) ? input.connections : String(existing?.frontmatter?.connections ?? "").split(","))
+      .map((c) => String(c).trim().toLowerCase()).filter((c) => /^[a-z0-9_.-]{1,80}$/.test(c));
+    const connLine = type === "skill" && conns.length ? `connections: ${[...new Set(conns)].join(", ")}\n` : "";
+    const md = `---\nname: ${slug}\ndescription: ${description || name}\n${type === "app" ? "type: app\n" : ""}${connLine}---\n\n${body || `# ${name}\n`}\n`;
     const files: Record<string, string> = { "SKILL.md": md, ...extra };
     if (type === "app" && !existing && !files["app.json"]) {
       files["app.json"] = JSON.stringify({

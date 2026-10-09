@@ -8,7 +8,7 @@
 import { ipcMain } from "electron";
 import { runGlyphhHeadless, stopGlyphhHeadless } from "./glyphh-loop.js";
 import { listSkills } from "./skills-fs.js";
-import { parseBuiltPower, powerBuildPrompt, POWER_ASK_MAX } from "../shared/power-build.js";
+import { lastLine, parseBuiltPower, powerBuildPrompt, powerToolLine, POWER_ASK_MAX, POWER_BUILD_LIMIT_MS } from "../shared/power-build.js";
 
 export interface PowerBuildAnswer {
   id: string; slug: string; type: "skill" | "task"; name: string; description: string; connections: string[];
@@ -25,7 +25,7 @@ export function stopPowerBuild(): boolean {
 const slugOf = (id: string): string => id.slice(id.indexOf(":") + 1);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-export async function buildPower(ask: string): Promise<PowerBuildAnswer> {
+export async function buildPower(ask: string, progress: (line: string) => void = () => {}): Promise<PowerBuildAnswer> {
   const text = String(ask ?? "").trim();
   if (!text) throw new Error("Say what the power should do.");
   if (text.length > POWER_ASK_MAX) throw new Error(`Keep it under ${POWER_ASK_MAX} characters.`);
@@ -36,9 +36,49 @@ export async function buildPower(ask: string): Promise<PowerBuildAnswer> {
   const me = { chatId: `power-build-${Date.now().toString(36)}`, stopped: false };
   building = me;
   let r: { ok: boolean; text: string; error?: string };
-  try { r = await runGlyphhHeadless(powerBuildPrompt(text), { chatId: me.chatId }); }
-  finally { if (building === me) building = null; }
+  // WHAT IT IS DOING (his report, 2026-10-09: "just spinning"): each tool it
+  // reaches for and the line it is writing, at most a few times a second.
+  let heard = "";
+  let lastSent = 0;
+  // SAVED IS DONE (his report, 2026-10-09: "it created the power but never
+  // finished"): once skill_save has answered, the build wraps up a few
+  // seconds later instead of waiting on whatever Glyphh tries next.
+  let saved = false;
+  let wrapUp: ReturnType<typeof setTimeout> | null = null;
+  let declined = 0;
+  const tell = (line: string): void => {
+    const now = Date.now();
+    if (!line || (now - lastSent < 300 && line !== "Saving the power")) return;
+    lastSent = now;
+    progress(line);
+  };
+  const limit = setTimeout(() => { me.stopped = true; stopGlyphhHeadless(me.chatId); }, POWER_BUILD_LIMIT_MS);
+  let timedOut = false;
+  try {
+    r = await runGlyphhHeadless(powerBuildPrompt(text), {
+      chatId: me.chatId,
+      declineApprovals: true,
+      onEvent: (ev) => {
+        if (ev.type === "tool" && ev.phase === "start") tell(powerToolLine(ev.name));
+        else if (ev.type === "tool" && ev.phase === "done" && !ev.failed && !saved && (/skill_save/.test(ev.name) || /skill_save/.test(String(ev.input ?? "")))) {
+          saved = true;
+          tell("Saved. Finishing up");
+          wrapUp = setTimeout(() => { stopGlyphhHeadless(me.chatId); }, 8000);
+        }
+        else if (ev.type === "thinking") tell("Thinking it through");
+        else if (ev.type === "approval") { declined++; tell("Skipped a step that needs your approval"); }
+        else if (ev.type === "delta") { heard += ev.delta; tell(lastLine(heard)); }
+      },
+    });
+  } finally {
+    clearTimeout(limit);
+    if (wrapUp) clearTimeout(wrapUp);
+    timedOut = me.stopped && Date.now() - Date.parse(started) >= POWER_BUILD_LIMIT_MS;
+    if (building === me) building = null;
+  }
+  if (timedOut) throw new Error("It was taking too long, so it was stopped after 5 minutes. Try describing it more simply.");
   if (me.stopped) throw new Error("Stopped.");
+  if (declined) console.warn("[power-build] approvals declined during the build", declined);
   if (!r.ok) throw new Error(r.error || "Glyphh couldn't build it.");
   const said = parseBuiltPower(r.text);
   // WHAT IT SAVED (his report, 2026-10-09: it saved the power and the modal
@@ -67,8 +107,9 @@ export async function buildPower(ask: string): Promise<PowerBuildAnswer> {
 
 export function registerPowerBuildIpc(): void {
   ipcMain.handle("power-build-stop", () => ({ ok: true as const, stopped: stopPowerBuild() }));
-  ipcMain.handle("power-build", async (_e, ask: string) => {
-    try { return { ok: true as const, data: await buildPower(ask) }; }
+  ipcMain.handle("power-build", async (e, ask: string) => {
+    const progress = (line: string): void => { try { if (!e.sender.isDestroyed()) e.sender.send("power-build-progress", line); } catch { /* window gone */ } };
+    try { return { ok: true as const, data: await buildPower(ask, progress) }; }
     catch (err) { return { ok: false as const, error: err instanceof Error ? err.message : String(err) }; }
   });
 }

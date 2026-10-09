@@ -44,3 +44,25 @@ export function parseBuiltPower(text: string): BuiltPower | null {
   }
   return null;
 }
+
+/** How long a build may take before it is stopped. */
+export const POWER_BUILD_LIMIT_MS = 5 * 60 * 1000;
+
+/** A tool, as the overlay says what Glyphh is doing with it. */
+export function powerToolLine(name: string): string {
+  const n = String(name ?? "").toLowerCase();
+  if (n.includes("skill_save")) return "Saving the power";
+  if (n.includes("skill") || n.includes("task")) return "Looking at your powers";
+  if (n.includes("connector") || n.includes("connection")) return "Checking your connections";
+  if (n.includes("find_tools") || n.includes("call_tool")) return "Finding the right tools";
+  if (n.includes("read") || n.includes("list") || n.includes("search")) return "Reading";
+  if (n.includes("write") || n.includes("edit")) return "Writing";
+  return "Working";
+}
+
+/** The newest whole line of what Glyphh is writing, short enough for the overlay. */
+export function lastLine(text: string, max = 70): string {
+  const lines = String(text ?? "").split(/\n+/).map((l) => l.replace(/[#*`>_]/g, "").trim()).filter(Boolean);
+  const l = lines[lines.length - 1] ?? "";
+  return l.length > max ? `${l.slice(0, max - 1)}…` : l;
+}

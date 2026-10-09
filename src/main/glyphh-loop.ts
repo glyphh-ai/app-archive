@@ -506,7 +506,13 @@ export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId);
  */
 export async function runGlyphhHeadless(
   prompt: string,
-  opts: { model?: string; workdir?: string; chatId?: string } = {},
+  opts: {
+    model?: string; workdir?: string; chatId?: string;
+    /** Every engine event, for a host that shows the run's progress. */
+    onEvent?: (ev: LoopEvent) => void;
+    /** Answer every approval "no" at once: nobody is there to answer it, and an unanswered one hangs the run. */
+    declineApprovals?: boolean;
+  } = {},
 ): Promise<{ ok: boolean; text: string; error?: string }> {
   const chatId = opts.chatId || `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   let text = "";
@@ -520,6 +526,8 @@ export async function runGlyphhHeadless(
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");
       else if (ev.type === "error") error = String((ev as { error?: string }).error ?? "");
+      else if (ev.type === "approval" && opts.declineApprovals) unattendedLoop.respondApproval((ev as { id: string }).id, false);
+      try { opts.onEvent?.(ev); } catch { /* a watcher's failure is its own */ }
     });
   } finally {
     unattendedLoop.forget(chatId);

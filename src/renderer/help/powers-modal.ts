@@ -75,6 +75,7 @@ interface Api extends PlusApi {
   connectionToolsList?: (id: string) => Promise<{ ok: boolean; tools?: Array<{ name: string; description?: string; hidden?: boolean }>; error?: string }>;
   connectionToolsSet?: (id: string, hidden: string[]) => Promise<unknown>;
   powerBuildStop?: () => Promise<unknown>;
+  onPowerBuildProgress?: (cb: (line: string) => void) => () => void;
   powerBuild?: (ask: string) => Promise<{ ok: true; data: BuiltPower } | { ok: false; error: string }>;
 }
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
@@ -769,7 +770,10 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       showErr("");
       go.disabled = true;
       showBusy("Building your power", () => { void api().powerBuildStop?.(); });
+      // What Glyphh is doing, line by line, under the spinner (his report, 2026-10-09: "just spinning").
+      const off = api().onPowerBuildProgress?.((line) => { if (line) busySpin?.setMeta(line); });
       const r = await build(text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      off?.();
       hideBusy();
       go.disabled = false;
       if (closed) return;

@@ -1191,7 +1191,12 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   if (flowHost) { unmountFlow(flowHost); flowHost.textContent = ""; }
   flowGraph = null;
   const type = typeOf(s);
-  if (type === "skill") return;
+  // A skill's connections ride its SKILL.md header (local-mcp-server.ts saveBundle).
+  if (type === "skill") {
+    const list = String(s.frontmatter?.connections ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+    await paintBundleConnections(list);
+    return;
+  }
   const read = async (rel: string): Promise<string> => {
     if (hubFiles) return hubFiles[rel] ?? "";
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
@@ -1732,7 +1737,7 @@ interface ScheduleRow { id: string; kind: string; target: string; cron: string; 
  *  are what that kind of skill actually has. */
 /* No Agents tab (his order, 2026-10-09: "remove the agents tab"). */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents", "publish"],
+  skill: ["overview", "contents", "connections", "publish"],
   app: ["overview", "contents", "skills", "tools", "connections", "releases", "publish"],
   task: ["overview", "flow", "contents", "runs", "connections", "publish"],
   plugin: ["overview", "contents", "skills", "publish"],

@@ -22,3 +22,19 @@ describe("building a power with Glyphh", () => {
     expect(parseBuiltPower('{"name":"no slug"}')).toBeNull();
   });
 });
+
+import { lastLine, powerToolLine } from "../../src/shared/power-build.js";
+describe("what the overlay says while it builds", () => {
+  it("names the step from the tool", () => {
+    expect(powerToolLine("glyphh-app__skill_save")).toBe("Saving the power");
+    expect(powerToolLine("skills_list")).toBe("Looking at your powers");
+    expect(powerToolLine("connector_tools")).toBe("Checking your connections");
+    expect(powerToolLine("find_tools")).toBe("Finding the right tools");
+    expect(powerToolLine("weird")).toBe("Working");
+  });
+  it("shows the newest line, plain and short", () => {
+    expect(lastLine("First.\n\n## **Second** line")).toBe("Second line");
+    expect(lastLine("x".repeat(100)).length).toBe(70);
+    expect(lastLine("")).toBe("");
+  });
+});
