@@ -25,17 +25,17 @@ export const WALL_WIDTH_MAX = 100;
 export const WALL_WIDTH_DEFAULT = 0;
 
 /** THE SIDEBAR TRAYS (his order, 2026-10-08: "add the left rail elements
- *  back as config in appearance"): Tabs and Workspaces under Recents, each
- *  an Appearance option. On by default — he asked for them back, and the
- *  option is how a member puts one away. Settings writes the pref, then
+ *  back as config"): Tabs and Workspaces under Recents, each an option on
+ *  General. OFF by default (his order the same night: "turn those off by
+ *  default") — a member turns one on. Settings writes the pref, then
  *  dispatches RAIL_SECTIONS_CHANGED_EVENT; the rail re-reads (help/code.ts
  *  applyRailSectionsVisibility). */
 export const RAIL_SHOW_APPS_PREF = "railShowApps";
 export const RAIL_SHOW_LAYOUTS_PREF = "railShowLayouts";
-export const RAIL_SHOW_DEFAULT = true;
+export const RAIL_SHOW_DEFAULT = false;
 export const RAIL_SECTIONS_CHANGED_EVENT = "glyphh:rail-sections-changed";
-/** A stored value → shown? Only an explicit false hides a tray. */
-export function railTrayShown(v: unknown): boolean { return v !== false; }
+/** A stored value → shown? Only an explicit true shows a tray. */
+export function railTrayShown(v: unknown): boolean { return v === true; }
 
 /** Tabs across one rail row. 0 = Auto (auto-fill at the grid's 58px floor),
  *  which is the behaviour the tray shipped with. */
