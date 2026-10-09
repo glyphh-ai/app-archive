@@ -168,14 +168,16 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     void comet.offsetWidth;
     comet.classList.add("go");
     // Particles shed along the path: each leaves where the head is when it is born.
-    for (let i = 0; i < 14; i++) {
+    // More dust (his order, 2026-10-09: "increase the number of particles").
+    const DUST = 44;
+    for (let i = 0; i < DUST; i++) {
       const p = el("span", "spn-dust");
-      const t = (i / 14) * COMET_MS;
-      p.style.setProperty("--a", `${start + (i / 14) * 360}deg`);
+      const t = (i / DUST) * COMET_MS;
+      p.style.setProperty("--a", `${start + (i / DUST) * 360 + (Math.random() - 0.5) * 6}deg`);
       p.style.setProperty("--d", `${t}ms`);
-      p.style.setProperty("--out", `${10 + Math.random() * 22}px`);
-      p.style.setProperty("--drift", `${(Math.random() - 0.5) * 30}deg`);
-      p.style.setProperty("--s", `${2 + Math.random() * 2.5}px`);
+      p.style.setProperty("--out", `${6 + Math.random() * 30}px`);
+      p.style.setProperty("--drift", `${(Math.random() - 0.5) * 40}deg`);
+      p.style.setProperty("--s", `${1.5 + Math.random() * 2.5}px`);
       hero.appendChild(p);
       window.setTimeout(() => p.remove(), t + 1200);
     }
