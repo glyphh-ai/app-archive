@@ -22775,3 +22775,18 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
   80% { transform: translateY(-2px); }
 }
 @media (prefers-reduced-motion: reduce) { .spn-ring.spn-hop .spn-face { animation: none; } }
+
+/* THE RECENTS' SUPER POWER FILTER (his order, 2026-10-09): the funnel beside
+   the search, its menu of faces and names with checks, the owner's face on
+   each row. */
+.wb-session-search { display: flex; align-items: center; gap: 6px; }
+.wb-session-search > input { flex: 1; min-width: 0; }
+.rail-filter-btn { flex: none; width: 26px; height: 26px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rail-filter-btn:hover { color: var(--text); background: var(--hover); }
+.rail-filter-btn.active { color: var(--accent); border-color: var(--accent); }
+.sp-filter-menu { min-width: 200px; }
+.sp-filter-menu .code-menu-item { display: flex; align-items: center; }
+.sp-filter-face { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+.sp-filter-face svg, .sp-filter-face img { width: 18px; height: 18px; object-fit: contain; }
+.sp-filter-menu .menu-check { width: 14px; height: 14px; color: var(--accent); display: inline-flex; }
+.wb-session-row .wb-session-owner { flex: none; margin-right: 4px; }

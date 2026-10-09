@@ -6638,8 +6638,71 @@ function openRailBotMenu(anchor: HTMLElement, b: { slug: string; name: string })
  *  search on top, the rail's grouping, rows with pin + delete icons. */
 /** The recents dropdown's one width (help/menu-place.ts caps it to the room). */
 export const SESSION_MENU_WIDTH = 360;
+/** Who a thread belongs to: a super power's slug, or Glyphh. */
+const sessOwner = (sess: RailSession): string => sess.bot ?? "glyphh";
+const RECENTS_FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
+const MENU_CHECK_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+
+/** THE SUPER POWER FILTER (his order, 2026-10-09: "use the search filter we
+ *  had… the filter is as you said each face and name… with a check"): the
+ *  funnel beside the search lists Glyphh and every super power, face and
+ *  name, a check on each that is on. Many may be on. */
+function openSuperPowerFilterMenu(anchor: HTMLElement, shown: Set<string>, changed: () => void): void {
+  document.querySelector(".sp-filter-menu")?.remove();
+  const m = document.createElement("div");
+  m.className = "code-menu loop-filter-menu sp-filter-menu";
+  const row = (key: string, name: string, mark: HTMLElement): void => {
+    const on = shown.has(key);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "code-menu-item" + (on ? " on" : "");
+    b.setAttribute("role", "menuitemcheckbox");
+    b.setAttribute("aria-checked", String(on));
+    b.appendChild(mark);
+    const label = document.createElement("span");
+    label.className = "loop-label";
+    label.textContent = name;
+    b.appendChild(label);
+    const check = document.createElement("span");
+    check.className = "menu-check";
+    check.innerHTML = on ? MENU_CHECK_SVG : "";
+    b.appendChild(check);
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (shown.has(key)) shown.delete(key); else shown.add(key);
+      changed();
+      openSuperPowerFilterMenu(anchor, shown, changed);
+    });
+    m.appendChild(b);
+  };
+  const glyphh = document.createElement("img");
+  glyphh.className = "loop-mark sp-filter-face";
+  glyphh.src = GLYPHH_MASCOT_SRC;
+  glyphh.alt = "";
+  row("glyphh", "Glyphh", glyphh);
+  for (const b of railBots) {
+    const face = document.createElement("span");
+    face.className = "loop-mark sp-filter-face";
+    face.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 18 });
+    row(b.slug, b.name, face);
+  }
+  m.addEventListener("mousedown", (e) => e.stopPropagation());
+  placeFixedMenu(anchor, m, { align: "right", side: "auto" });
+  m.style.zIndex = "10050";
+  const close = (ev: MouseEvent): void => {
+    if (!m.contains(ev.target as Node) && ev.target !== anchor && !anchor.contains(ev.target as Node)) { m.remove(); document.removeEventListener("mousedown", close, true); }
+  };
+  document.addEventListener("mousedown", close, true);
+}
+
 function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSession) => void }): void {
   document.querySelector(".wb-session-menu")?.remove();
+  // THE OPEN ONE BY DEFAULT (his order, 2026-10-09: "defaults to the super
+  // power you have open with all others off but allows you to flip it on for
+  // others… pinning keeps it across all filters").
+  const openOwner = current()?.bot ?? "glyphh";
+  const shown = new Set<string>([openOwner]);
   const menu = document.createElement("div");
   menu.className = "code-drop wb-session-menu";
   let menuQuery = "";
@@ -6653,6 +6716,20 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
+  const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "rail-filter-btn";
+  filterBtn.title = "Filter by super power";
+  filterBtn.setAttribute("aria-label", "Filter by super power");
+  filterBtn.innerHTML = RECENTS_FILTER_SVG;
+  const markFilter = (): void => { filterBtn.classList.toggle("active", !(shown.size === 1 && shown.has(openOwner))); };
+  markFilter();
+  filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+  filterBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openSuperPowerFilterMenu(filterBtn, shown, () => { markFilter(); paint(); });
+  });
+  searchWrap.appendChild(filterBtn);
   menu.appendChild(searchWrap);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
@@ -6662,20 +6739,30 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    // The search is the one filter (2026-10-09).
+    // The search, and the super powers that are on; a pinned thread shows under every filter.
     const menuFilter = sessFilter({ query: q });
-    const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter));
+    const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter) && (sessPinned(x.id) || shown.has(sessOwner(x))));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row" + (sess.locked ? " locked" : "");
       row.appendChild(sessDot(sess.id));
       row.appendChild(sessLocusEl(sess));
+      // Whose thread it is: the super power's face, or Glyphh's.
+      const owner = sessMarkEl(sess);
+      owner.classList.add("wb-session-owner");
+      row.appendChild(owner);
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
       title.textContent = sessDisplayTitle(sess.title);
       title.title = sess.title;
-      title.addEventListener("click", () => { menu.remove(); opts.onPick(sess); });
+      title.addEventListener("click", () => {
+        menu.remove();
+        // The rail follows: picking another super power's thread selects it there.
+        railPickedKey = sessOwner(sess);
+        renderRailSessions();
+        opts.onPick(sess);
+      });
       const pin = document.createElement("button");
       pin.type = "button";
       pin.className = "code-icon-btn wb-session-pin" + (sessPinned(sess.id) ? " on" : "");
@@ -6704,7 +6791,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
     if (!visible.length) {
       const empty = document.createElement("div");
       empty.className = "wb-session-empty";
-      empty.textContent = q ? "No sessions match." : "No sessions yet.";
+      empty.textContent = q ? "No sessions match." : shown.size ? "No sessions yet." : "Pick a super power in the filter.";
       listHost.appendChild(empty);
     }
   };
