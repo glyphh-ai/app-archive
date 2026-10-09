@@ -284,10 +284,20 @@ function paintRecents(): void {
   });
 }
 
-function paintChart(): void {
+let chartWait = 0;
+function paintChart(tries = 0): void {
   const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas) return;
   const Chart = (window as unknown as { Chart?: new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void } }).Chart;
-  if (!Chart) return;
+  if (!Chart) { console.warn("[schedules] the chart library is not loaded — no runs chart"); return; }
+  // THE PAGE MOVES INTO PLACE FIRST (his report, 2026-10-09: the chart box
+  // drew empty on the Schedules page): a chart made while its box is
+  // detached or zero-sized never paints. Wait, bounded, until it has a size.
+  const box = canvas.parentElement;
+  if (!canvas.isConnected || !box || box.clientWidth === 0 || box.clientHeight === 0) {
+    if (chartWait) cancelAnimationFrame(chartWait);
+    if (tries < 120) chartWait = requestAnimationFrame(() => { chartWait = 0; paintChart(tries + 1); });
+    return;
+  }
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue("--accent").trim() || "#8c3bf2";
   const danger = css.getPropertyValue("--danger").trim() || "#e5534b";

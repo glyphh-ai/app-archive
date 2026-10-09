@@ -22117,3 +22117,8 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .page-toolrow > .skills-pill:hover { background: var(--hover); color: var(--text); }
 .page-toolrow > .skills-pill > span { display: none; }
 .page-toolrow > .skills-pill svg { width: 16px; height: 16px; }
+
+/* The title row's close: a sized glyph wherever the row lands (his report,
+   2026-10-09: the Schedules page showed no close). */
+.settings-group-titlebar .settings-group-close { width: 28px; height: 28px; flex: none; }
+.settings-group-titlebar .settings-group-close svg { width: 15px; height: 15px; }
