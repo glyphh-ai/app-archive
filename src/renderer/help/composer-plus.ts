@@ -34,7 +34,7 @@ import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 export type PlusSurface = "desktop" | "web";
-export type PlusSpace = "work" | "code" | "chat" | "cowork";
+export type PlusSpace = "code";
 export type PlusRowId = "attach" | "skills" | "connectors" | "devices" | "memory" | "add-folder" | "working-folder" | "choose-folder";
 export type PlusRowKind = "action" | "submenu" | "check";
 
@@ -121,9 +121,8 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu" });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
   // The folder family is the DESKTOP's (the OS pickers), where a session has
-  // a folder to walk: Code (and cowork) — never Work or Chat (the CSS rule
-  // body[data-session-space] .plus-folder-only says the same).
-  if (st.surface === "desktop" && (st.space === "code" || st.space === "cowork")) {
+  // a folder to walk.
+  if (st.surface === "desktop") {
     if (caps.attach) rows.push({ id: "add-folder", label: "Add folder…", icon: PLUS_ICONS.folderPlus, kind: "action", desktopOnly: true, codeOnly: true, sepBefore: rows.length > 0, hint: "Give Glyphh read access to another directory" });
     if (caps.folder) {
       const name = st.workingFolder ?? null;

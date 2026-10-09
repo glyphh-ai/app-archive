@@ -244,7 +244,7 @@ export function createCloudLane(deps: CloudLaneDeps) {
         surface: "desktop",
         threadId,
         prompt,
-        mode: p.mode === "work" ? "work" : "code",
+        mode: "code",
         ...(p.model ? { model: p.model } : {}),
         ...(p.loop ? { loop: p.loop } : {}),
         ...(p.permission ? { permission: p.permission } : {}),

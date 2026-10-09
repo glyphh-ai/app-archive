@@ -23,8 +23,6 @@ export const UNATTENDED_HIDDEN: ReadonlySet<string> = new Set([
 /** The local server's door for unattended callers: the same tools, minus the screen. */
 export const UNATTENDED_MCP_PATH = "/mcp-unattended";
 
-/** Claude Code's name for one of the local server's tools, for --disallowedTools. */
-export const claudeToolId = (tool: string): string => `mcp__glyphh__${tool}`;
 
 /** A catalog family the loop built from a tab's RPA mapping (glyphh-loop.ts). */
 export const isScreenFamily = (family: string): boolean => family.startsWith("rpa: ");

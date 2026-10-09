@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appRowKind,
-  agentClock, agentKindOf, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
+  agentClock, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
   filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
   normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
   workspaceClock, workspaceId, workspaceSurfaceOf, type GridLayoutLike, type TabRowLike,
@@ -38,7 +38,7 @@ describe("workspaces", () => {
     expect(workspaceId(" Research Desk ")).toBe("research-desk");
     expect(workspaceId("")).toBe("workspace");
     const row = layoutRowOf(GRID);
-    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", type: null, gateway: null, folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
+    expect(row).toEqual({ name: "Research Desk", cols: 2, rows: 1, colWidths: [0.5, 0.5], rowHeights: [1], target: "glyphh", loop: "glyphh", modelSelections: {}, sessionMode: "new", type: null, folder: null, space: null, splits: [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true, config: { folder: "/w" } }], updatedAt: 1_700_000 });
     expect(workspaceClock(GRID)).toBe(1_700_000);
     expect(workspaceClock({ ...GRID, updatedAt: undefined })).toBe(0);
     expect(isGridLayout(GRID)).toBe(true);
@@ -57,11 +57,6 @@ describe("workspaces", () => {
     expect(layoutRowOf({ ...GRID, type: "code" }).type).toBe("code");
     expect(layoutRowOf({ ...GRID, type: "work" }).type).toBe("work");
     expect(layoutRowOf({ ...GRID, type: "" as never }).type).toBeNull();
-  });
-  it("THE GATEWAY BYPASS rides the row (his order, 2026-10-07): on, off, or null", () => {
-    expect(layoutRowOf({ ...GRID, gateway: "off" }).gateway).toBe("off");
-    expect(layoutRowOf({ ...GRID, gateway: "on" }).gateway).toBe("on");
-    expect(layoutRowOf({ ...GRID, gateway: "maybe" as never }).gateway).toBeNull();
   });
 });
 
@@ -95,25 +90,11 @@ describe("app tabs", () => {
 describe("agents", () => {
   it("buildAgentRow is local-agents' saveAgent row — the same on both surfaces", () => {
     const made = buildAgentRow({ name: "Ada Lovelace", prompt: "p", guardrails: { maxInputTokens: "12" as unknown as number, windowCalls: 0 } }, null, "2026-10-04T00:00:00.000Z");
-    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", kind: "glyphh", cli: "", role: "worker", avatar: null, skills: [], apps: [], live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
+    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", role: "worker", avatar: null, skills: [], apps: [], live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
     const edited = buildAgentRow({ live: false, guardrails: {} }, made, "2026-10-05T00:00:00.000Z");
     expect(edited).toMatchObject({ slug: "ada-lovelace", name: "Ada Lovelace", prompt: "p", live: false, guardrails: null, createdAt: "2026-10-04T00:00:00.000Z" });
     expect(agentClock(edited)).toBe(Date.parse("2026-10-05T00:00:00.000Z"));
     expect(() => buildAgentRow({}, null, "")).toThrow(/name/);
-  });
-  it("an agent RUNS AS the loop or a CLI (his order, 2026-10-07): the kind and cli ride the row; a CLI agent must name its CLI; back to glyphh drops it", () => {
-    const cli = buildAgentRow({ name: "Coder", prompt: "p", kind: "cli", cli: "claude", model: "claude-opus-5" }, null, "2026-10-07T00:00:00.000Z");
-    expect(cli).toMatchObject({ kind: "cli", cli: "claude", model: "claude-opus-5" });
-    // an edit that says nothing about the kind keeps it
-    expect(buildAgentRow({ description: "d" }, cli, "2026-10-07T01:00:00.000Z")).toMatchObject({ kind: "cli", cli: "claude", description: "d" });
-    expect(buildAgentRow({ cli: "codex" }, cli, "2026-10-07T01:00:00.000Z")).toMatchObject({ kind: "cli", cli: "codex" });
-    expect(buildAgentRow({ kind: "glyphh" }, cli, "2026-10-07T01:00:00.000Z")).toMatchObject({ kind: "glyphh", cli: "" });
-    expect(() => buildAgentRow({ name: "X", kind: "cli" }, null, "")).toThrow(/needs a cli/);
-    // a row from before the field is a Glyphh agent, and stays one
-    const old = { ...cli, kind: undefined, cli: undefined };
-    expect(buildAgentRow({ prompt: "q" }, old, "2026-10-07T02:00:00.000Z")).toMatchObject({ kind: "glyphh", cli: "" });
-    expect(agentKindOf(old)).toBe("glyphh");
-    expect(agentKindOf(cli)).toBe("cli");
   });
 });
 

@@ -66,7 +66,7 @@ export function installBotsIpc(): void {
     const fresh = !glyphhLoopHas(chatId);
     const text = fresh && brief ? `${brief}\n\n---\n\n${ask}` : ask;
     const history = fresh ? prior.map((m) => ({ role: m.role, text: m.text })) : [];
-    appendStoredMessage(chatId, { role: "user", text: ask }, { title: a.name, mode: "work", bot: a.slug });
+    appendStoredMessage(chatId, { role: "user", text: ask }, { title: a.name, mode: "code", bot: a.slug });
     const run: BotRun = { runId: null, answer: "", startedAt: Date.now() };
     running.set(a.slug, run);
     const sender = e.sender;

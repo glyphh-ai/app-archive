@@ -22,6 +22,7 @@
  */
 import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { pushToAttach } from "./attach-host.js";
 import { appendStoredMessage, runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
 import { turnText, relayPermission, markRelaySink } from "./attach-run-frames.js";
@@ -64,17 +65,18 @@ export function installAttachRunHandlers(): void {
     if (!prompt && !Array.isArray(p.messages)) throw new Error("agent.run requires { prompt } or { messages }");
     const text = turnText(p, prompt);
     const sink = makeSink(runId, chatId);
-    const mode = str(p, "mode") === "work" ? "work" : "code";
-    appendStoredMessage(chatId, { role: "user", text }, { mode, workdir: str(p, "workdir") });
+    // ONE TYPE (2026-10-08): a relayed turn with no folder works in the
+    // member's working folder (the set folder, else home).
+    const workdir = str(p, "workdir") || getWorkingDirectory();
+    appendStoredMessage(chatId, { role: "user", text }, { mode: "code", workdir });
     sink.send("glyphh-agent:prompt", { text });
     // The RELAYING client's permission and model win over this machine's own:
     // the run is theirs. Absent, the loop falls back to the org's defaults.
     void runAgentTurn(sink, {
-      chatId, prompt: text, mode,
+      chatId, prompt: text, mode: "code", workdir,
       ...(relayPermission(p.permission) ? { permission: relayPermission(p.permission) } : {}),
       ...(str(p, "model") ? { model: str(p, "model") } : {}),
       ...(str(p, "effort") ? { effort: str(p, "effort") } : {}),
-      ...(str(p, "workdir") ? { workdir: str(p, "workdir") } : {}),
     }).catch((err) => { try { sink.send("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) }); sink.send("glyphh-agent:done", { stopped: true }); } catch { /* gone */ } });
     return { runId, started: true };
   });

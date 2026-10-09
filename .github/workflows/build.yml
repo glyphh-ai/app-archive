@@ -64,23 +64,6 @@ jobs:
           cp -R .sdk-src/dist ../sdk/dist
           rm -rf .sdk-src
 
-      # ── Bundle the Glyphh CLI ───────────────────────────────────────
-      # The app carries the CLI (2026-10-01): cli@main, built against the
-      # ../sdk above, into vendor/glyphh-cli, which electron-builder ships
-      # as Resources/glyphh-cli. ../cli so its file:../sdk is that same SDK.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: glyphh-ai/cli
-          token: ${{ secrets.CLI_REPO_TOKEN || secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .cli-src
-
-      - name: Install the CLI's dependencies (file:../sdk)
-        shell: bash
-        run: |
-          rm -rf ../cli
-          mv .cli-src ../cli
-          cd ../cli
-          npm ci
 
       - name: Install dependencies
         run: npm ci
@@ -90,8 +73,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Bundle the Glyphh CLI into vendor/glyphh-cli
-        run: node scripts/bundle-cli.mjs ../cli
 
       # electron-builder's asar packer refuses files outside the app dir,
       # and node_modules/@glyphh/sdk is a SYMLINK to ../sdk (outside).
@@ -167,23 +148,6 @@ jobs:
           cp -R .sdk-src/dist ../sdk/dist
           rm -rf .sdk-src
 
-      # ── Bundle the Glyphh CLI ───────────────────────────────────────
-      # The app carries the CLI (2026-10-01): cli@main, built against the
-      # ../sdk above, into vendor/glyphh-cli, which electron-builder ships
-      # as Resources/glyphh-cli. ../cli so its file:../sdk is that same SDK.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: glyphh-ai/cli
-          token: ${{ secrets.CLI_REPO_TOKEN || secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .cli-src
-
-      - name: Install the CLI's dependencies (file:../sdk)
-        shell: bash
-        run: |
-          rm -rf ../cli
-          mv .cli-src ../cli
-          cd ../cli
-          npm ci
 
       - name: Install dependencies
         run: npm ci
@@ -193,8 +157,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Bundle the Glyphh CLI into vendor/glyphh-cli
-        run: node scripts/bundle-cli.mjs ../cli
 
       # electron-builder's asar packer refuses files outside the app dir,
       # and node_modules/@glyphh/sdk is a SYMLINK to ../sdk (outside).
@@ -328,23 +290,6 @@ jobs:
           cp -R .sdk-src/dist ../sdk/dist
           rm -rf .sdk-src
 
-      # ── Bundle the Glyphh CLI ───────────────────────────────────────
-      # The app carries the CLI (2026-10-01): cli@main, built against the
-      # ../sdk above, into vendor/glyphh-cli, which electron-builder ships
-      # as Resources/glyphh-cli. ../cli so its file:../sdk is that same SDK.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: glyphh-ai/cli
-          token: ${{ secrets.CLI_REPO_TOKEN || secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .cli-src
-
-      - name: Install the CLI's dependencies (file:../sdk)
-        shell: bash
-        run: |
-          rm -rf ../cli
-          mv .cli-src ../cli
-          cd ../cli
-          npm ci
 
       - name: Install dependencies
         run: npm ci
@@ -354,8 +299,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Bundle the Glyphh CLI into vendor/glyphh-cli
-        run: node scripts/bundle-cli.mjs ../cli
 
       # asar refuses files outside the app dir, and node_modules/@glyphh/sdk
       # is a SYMLINK to ../sdk — replace it with a real copy.
@@ -427,7 +370,6 @@ jobs:
               cd "/w/$APP_DIR"
               npm ci
               npm run build
-              node scripts/bundle-cli.mjs ../cli
               rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk
               cp ../sdk/package.json node_modules/@glyphh/sdk/package.json && cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
               npx electron-builder --linux --arm64 -c.linux.target=AppImage --publish never

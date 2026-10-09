@@ -363,7 +363,7 @@ declare global {
       skillFileWrite: (id: string, rel: string, text: string) => Promise<LibEnvelope>;
       connToolModes?: (appSlug: string, tools: string[]) => Promise<{ ok: boolean; data?: Record<string, "allow" | "ask" | "never">; error?: string }>;
       skillAgents: (id: string) => Promise<LibEnvelope>;
-      skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }) => Promise<LibEnvelope>;
+      skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) => Promise<LibEnvelope>;
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
       skillDelete: (id: string, opts?: { purge?: boolean }) => Promise<LibEnvelope>;
       appInstanceReleases: (id: string) => Promise<LibEnvelope>;
@@ -394,7 +394,7 @@ declare global {
       skillUpdate: (id: string) => Promise<LibEnvelope>;
       tasksSpecs: () => Promise<LibEnvelope>;
       taskSpec: (slug: string) => Promise<LibEnvelope>;
-      taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { kind?: "glyphh" | "cli" | null; cli?: string | null; model?: string | null }) => Promise<LibEnvelope>;
+      taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { model?: string | null }) => Promise<LibEnvelope>;
       taskRun: (slug: string, input?: unknown) => Promise<LibEnvelope>;
       taskRuns: (slug: string) => Promise<LibEnvelope>;
       taskRunGet: (id: string) => Promise<LibEnvelope>;

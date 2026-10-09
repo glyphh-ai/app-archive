@@ -24,14 +24,13 @@ import { memoryFacts, memoryCapture } from "./memory.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
-import { runCliHeadless } from "./cli-agents.js";
-import { agentKindOf } from "../shared/member-library.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 import { frameTargets, isRelaySink } from "./attach-run-frames.js";
 import { openRing, recordFrame } from "./attach-run-ring.js";
-import { attachmentImageRefs, attachmentInlineText, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
+import { attachmentImageRefs, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
 import { UNATTENDED_HIDDEN, UNATTENDED_MCP_PATH, isScreenFamily } from "./unattended-tools.js";
@@ -55,10 +54,6 @@ export interface LoopRunPayload {
   /** What the composer attached: images ride as vision blocks, files and
    *  folders as a manifest the loop's read tools open. */
   attachments?: AttachRef[];
-  /** THE THREAD'S TYPE (his order, 2026-09-29): Work or Code. It decides the
-   *  fixed belt the engine puts on the wire (CORE below; Code adds the file and
-   *  shell builtins). Everything else is found with find_tools in both. */
-  space?: "work" | "code";
 }
 
 /**
@@ -74,10 +69,10 @@ export interface LoopRunPayload {
  * desktop's design before the rebuild (per-mode packs, 8802425b; the
  * find_tools escape hatch, 095dcf48; search-first connectors, aef8d0f6).
  */
-const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> = {
-  work: new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]),
-  code: new Set(["panels_open", "panels_list", "panels_close", "rpa_screenshot", "settings_open", "skill_get"]),
-};
+// ONE BELT (his order, 2026-10-08: "just code"): the one type's belt is the
+// union of what the two carried.
+const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]);
+const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> = { work: CORE_BELT, code: CORE_BELT };
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
@@ -198,7 +193,7 @@ async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
     return 0;
   });
   const creds = await mcpCreds().catch(() => null);
-  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set([...CORE.work, ...CORE.code]) });
+  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
   if (local > 0) {
     const token = localMcpGenToken(unattended ? "glyphh-loop-unattended" : "glyphh-loop", 365).token;
     out.push({
@@ -224,9 +219,7 @@ async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
  * An agent with no prompt is not a brief, and the engine drops it; a member
  * with no agents gets no spawn tool at all.
  *
- * WHAT RUNS IT rides along (his order, 2026-10-07: "allow agents and tasks to
- * define cli or glyphh agents with models"): a `kind: "cli"` agent is one of
- * the member's CLI agents, and the engine hands it to runCliAgent below.
+ * (The CLI agents went on 2026-10-08: every agent runs on this loop.)
  */
 async function agentDefs(): Promise<LoopAgentDef[]> {
   try {
@@ -237,7 +230,6 @@ async function agentDefs(): Promise<LoopAgentDef[]> {
         name: a.name || a.slug,
         description: a.description || "",
         prompt: a.prompt,
-        ...(agentKindOf(a) === "cli" ? { kind: "cli" as const, cli: a.cli ?? "" } : {}),
         // Its own model, bare (records hold catalog ids); empty runs it on the
         // parent's model, which is the honest default for "no slot chosen".
         ...(bareModel(a.model ?? "") ? { model: bareModel(a.model) } : {}),
@@ -259,13 +251,6 @@ const loop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
-  // A CLI AGENT AS A CHILD (his order, 2026-10-07): the named CLI runs headless
-  // on this machine with the agent's brief ahead of the task, on the chat's
-  // model slot and in its folder; its printed text is the child's answer.
-  runCliAgent: async (def, task, { model, workdir, signal }) => {
-    const r = await runCliHeadless(def.cli ?? "", `${def.prompt.trim()}\n\n${task}`, { model, cwd: workdir, signal });
-    return { text: r.failed ? r.error || r.text : r.text, failed: r.failed };
-  },
   warn: (m) => console.warn(m),
 });
 /** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
@@ -281,13 +266,6 @@ const unattendedLoop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
-  // A CLI AGENT AS A CHILD (his order, 2026-10-07): the named CLI runs headless
-  // on this machine with the agent's brief ahead of the task, on the chat's
-  // model slot and in its folder; its printed text is the child's answer.
-  runCliAgent: async (def, task, { model, workdir, signal }) => {
-    const r = await runCliHeadless(def.cli ?? "", `${def.prompt.trim()}\n\n${task}`, { model, cwd: workdir, signal });
-    return { text: r.failed ? r.error || r.text : r.text, failed: r.failed };
-  },
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -411,12 +389,8 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     }
   };
   // ATTACHMENTS (the composer's paperclip, paste and drop). Images always
-  // become real vision blocks. A file reaches the turn one of two ways, and the
-  // thread's TYPE decides which (his push-back, 2026-09-29):
-  //   CODE — a path manifest: its read tools open the file themselves, which
-  //          beats pouring a large file into every turn of the conversation.
-  //   WORK — the content, inlined: that belt has no read tools, so a path would
-  //          be a promise it cannot keep.
+  // become real vision blocks; a file rides as a path manifest its read tools
+  // open themselves, which beats pouring a large file into every turn.
   // A FREE ORG RUNS TOO (his order, 2026-10-04): the server lists only the
   // free-plan models for it, and the gateway refuses any other with a 402 the
   // panel draws as the plan card. Nothing is judged here before the model.
@@ -424,14 +398,13 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
   const atts = validAttachments(p.attachments);
   const files = atts.filter((a) => a.kind !== "image");
-  const manifest = p.space === "work" ? attachmentInlineText(files) : attachmentPromptBlock(files);
+  const manifest = attachmentPromptBlock(files);
   const images = attachmentImageRefs(atts).map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType, data: im.data } }));
   const effort = LOOP_EFFORTS.find((e) => e === p.effort);
   const started = await loop.run({
     chatId: p.chatId, text: [text, manifest].filter(Boolean).join("\n\n"), model,
     ...(images.length ? { images } : {}),
     ...(effort ? { effort } : {}),
-    ...(p.space ? { space: p.space } : {}),
     ...(p.permission ? { permission: p.permission } : {}),
     ...(p.workdir ? { workdir: p.workdir } : {}),
     ...(p.workspace ? { workspace: p.workspace } : {}),
@@ -487,8 +460,9 @@ export async function runBotTurn(
   if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
   return loop.run({
     chatId: p.chatId, text: p.text, model, permission: "auto",
-    space: p.workdir ? "code" : "work",
-    ...(p.workdir ? { workdir: p.workdir } : {}),
+    // ONE TYPE (2026-10-08): every turn works in a folder — the bot's, else
+    // the member's working folder (working-directory.ts: the set folder, else home).
+    workdir: p.workdir || getWorkingDirectory(),
     ...(p.history?.length ? { history: p.history } : {}),
   }, (ev) => {
     const frame = ev as LoopFrame;
@@ -518,12 +492,9 @@ export async function runGlyphhHeadless(
   try {
     await unattendedLoop.run({
       chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
-      // THE TYPE (2026-10-07): the engine's default is Code, and a Code turn
-      // with no folder is refused ("This session has no folder") — so every
-      // headless run without one failed. A run with no folder is Work; one
-      // given a folder is Code in it.
-      space: opts.workdir ? "code" : "work",
-      ...(opts.workdir ? { workdir: opts.workdir } : {}),
+      // ONE TYPE (2026-10-08): a run with no folder of its own works in the
+      // member's working folder (the set folder, else home).
+      workdir: opts.workdir || getWorkingDirectory(),
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");
       else if (ev.type === "error") error = String((ev as { error?: string }).error ?? "");

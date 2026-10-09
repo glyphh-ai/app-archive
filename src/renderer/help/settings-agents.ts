@@ -20,17 +20,12 @@
 
 import { clearInvalid, confirmAction } from "./shared.js";
 
-/** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define cli
- *  or glyphh agents with models"): the Glyphh loop, or a CLI agent headless. */
-type AgentKind = "glyphh" | "cli";
-interface AgentRow { slug: string; name: string; description: string; prompt: string; model: string; kind: AgentKind; cli: string }
+interface AgentRow { slug: string; name: string; description: string; prompt: string; model: string }
 interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; providerSlug: string }
-interface CliAgentLite { id: string; name: string }
 
 interface Api {
   onLibrarySynced?: (cb: (info: { kind: string }) => void) => void;
-  cliAgentsList?: () => Promise<{ ok: boolean; agents?: CliAgentLite[] }>;
   libraryAgentsList?: () => Promise<Envelope>;
   libraryAgentCreate?: (input: unknown) => Promise<Envelope>;
   libraryAgentUpdate?: (ref: string, patch: unknown) => Promise<Envelope>;
@@ -48,8 +43,6 @@ const CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
 let rows: AgentRow[] = [];
 let models: LoopModel[] = [];
-/** The CLI agents an agent may run as — every CLI but the Glyphh CLI, which IS the loop. */
-let clis: CliAgentLite[] = [];
 let query = "";
 let loadError = "";
 let wired = false;
@@ -59,14 +52,11 @@ const asRows = (raw: unknown): AgentRow[] =>
     .filter((r): r is AgentRow => !!r && typeof r === "object" && typeof (r as AgentRow).slug === "string")
     .map((r) => ({
       slug: r.slug, name: r.name || r.slug, description: r.description || "", prompt: r.prompt || "", model: r.model || "",
-      // A row written before the field is a Glyphh agent.
-      kind: r.kind === "cli" ? "cli" : "glyphh", cli: r.kind === "cli" ? String(r.cli || "") : "",
     }));
 
 const modelName = (id: string): string => (!id ? "Same as the main agent" : models.find((m) => m.id === id)?.name ?? id);
-const cliName = (id: string): string => clis.find((c) => c.id === id)?.name ?? id;
-/** The list's Model column: what runs it, then the slot. */
-const runsAs = (r: AgentRow): string => (r.kind === "cli" ? `${cliName(r.cli)} · ${modelName(r.model)}` : modelName(r.model));
+/** The list's Model column: the slot. */
+const runsAs = (r: AgentRow): string => modelName(r.model);
 
 function initialIcon(name: string, size: "" | "lg" = ""): HTMLElement {
   const i = document.createElement("span");
@@ -128,7 +118,7 @@ function renderList(): void {
     desc.textContent = r.description || "No description — the main agent won't know when to use it.";
     main.append(name, desc);
     const model = document.createElement("span");
-    model.className = `conn2-type${r.model || r.kind === "cli" ? "" : " agents2-inherit"}`;
+    model.className = `conn2-type${r.model ? "" : " agents2-inherit"}`;
     model.textContent = runsAs(r);
     const status = document.createElement("span");
     status.className = "conn2-status";
@@ -188,50 +178,17 @@ function fillModels(model: HTMLSelectElement, keep: string): void {
   model.value = models.some((m) => m.id === keep) ? keep : SAME_AS_MAIN;
 }
 
-/** The "Runs as" options: the Glyphh agent, then one row per CLI agent. The
- *  value is "" for the loop and the CLI's id otherwise, so one select carries
- *  both the kind and the cli. */
-const GLYPHH_AGENT = "";
-function fillKinds(kind: HTMLSelectElement, keep: string): void {
-  kind.textContent = "";
-  const opt = (value: string, label: string): HTMLOptionElement => {
-    const o = document.createElement("option");
-    o.value = value;
-    o.textContent = label;
-    return o;
-  };
-  kind.appendChild(opt(GLYPHH_AGENT, "Glyphh agent"));
-  for (const c of clis) kind.appendChild(opt(c.id, c.name));
-  // A CLI the list no longer carries still shows, so a saved pick is never silently rewritten.
-  if (keep && !clis.some((c) => c.id === keep)) kind.appendChild(opt(keep, keep));
-  kind.value = keep;
-}
-
-/** The model slot keeps working for a CLI agent: it rides the CLI's gateway
- *  run; a CLI on its own login decides its model itself — the hint says so. */
-function paintModelHint(): void {
-  const kind = el<HTMLSelectElement>("agents2-kind");
-  const hint = el("agents2-model-hint");
-  if (!kind || !hint) return;
-  const cli = kind.value;
-  hint.textContent = cli ? `The model applies when ${cliName(cli)} runs through the Glyphh gateway; on its own login, ${cliName(cli)} uses its own model.` : "";
-  hint.classList.toggle("hidden", !cli);
-}
-
 function openEditor(row: AgentRow | null): void {
   editing = row;
   const name = el<HTMLInputElement>("agents2-name");
   const desc = el<HTMLInputElement>("agents2-desc");
-  const kind = el<HTMLSelectElement>("agents2-kind");
   const model = el<HTMLSelectElement>("agents2-model");
   const brief = el<HTMLTextAreaElement>("agents2-brief");
-  if (!name || !desc || !kind || !model || !brief) return;
+  if (!name || !desc || !model || !brief) return;
   name.value = row?.name ?? "";
   desc.value = row?.description ?? "";
   brief.value = row?.prompt ?? "";
-  fillKinds(kind, row?.kind === "cli" ? row.cli : GLYPHH_AGENT);
   fillModels(model, row?.model ?? SAME_AS_MAIN);
-  paintModelHint();
   model.title = models.length ? "" : "Your team's models couldn't be read; this agent runs on the main agent's model.";
   const del = el("agents2-delete-btn");
   if (del) del.style.display = row ? "" : "none";
@@ -246,15 +203,12 @@ function openEditor(row: AgentRow | null): void {
 async function saveAgent(): Promise<void> {
   const name = el<HTMLInputElement>("agents2-name");
   const desc = el<HTMLInputElement>("agents2-desc");
-  const kind = el<HTMLSelectElement>("agents2-kind");
   const model = el<HTMLSelectElement>("agents2-model");
   const brief = el<HTMLTextAreaElement>("agents2-brief");
   const save = el<HTMLButtonElement>("agents2-save-btn");
-  if (!name || !desc || !kind || !model || !brief) return;
-  const cli = kind.value;
+  if (!name || !desc || !model || !brief) return;
   const input = {
     name: name.value.trim(), description: desc.value.trim(), prompt: brief.value.trim(), model: model.value,
-    kind: (cli ? "cli" : "glyphh") as AgentKind, cli,
   };
   if (!input.name) {
     name.classList.add("invalid");
@@ -340,17 +294,13 @@ async function deleteAgent(): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
-  const [list, ms, cl] = await Promise.all([
+  const [list, ms] = await Promise.all([
     api().libraryAgentsList?.().catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) })),
     api().loopModels?.("glyphh", true).catch(() => null),
-    api().cliAgentsList?.().catch(() => null),
   ]);
   rows = list?.ok ? asRows(list.data) : [];
   loadError = list?.ok ? "" : (list?.error || "no answer from the app");
   models = ms?.ok ? ms.models : [];
-  // The CLI agents' own row table names them (cli-agents.ts); the Glyphh CLI
-  // is not a choice here — a Glyphh agent is the loop itself.
-  clis = (cl?.ok ? cl.agents ?? [] : []).filter((c) => c.id !== "glyphh").map((c) => ({ id: c.id, name: c.name }));
 }
 
 /** The loader navigation.ts calls when the page is shown. */
@@ -365,7 +315,6 @@ export async function loadAgentsSettings(): Promise<void> {
     el("agents2-generate")?.addEventListener("click", () => { void generateBrief(); });
     el<HTMLInputElement>("agents2-name")?.addEventListener("input", (e) => { paintHead((e.target as HTMLInputElement).value); briefError(""); });
     el<HTMLInputElement>("agents2-desc")?.addEventListener("input", () => briefError(""));
-    el<HTMLSelectElement>("agents2-kind")?.addEventListener("change", paintModelHint);
     el<HTMLInputElement>("agents2-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
     // THE SERVER MOVED THE LIST (main/model-watch.ts): an open editor's model
     // slot follows it, keeping the pick when the model is still there.

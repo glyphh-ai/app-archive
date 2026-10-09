@@ -57,23 +57,14 @@ export function sessionIsBlank(c: { messages?: unknown[]; messageCount?: number 
 
 // ── THE ONE RECENTS FILTER ───────────────────────────────────────────────
 
-/** What a recents row must say about itself to be filtered. `loopKey` is the
- *  loop the row ran on ("glyphh", "glyphh-cli", "claude", …). */
+/** What a recents row must say about itself to be filtered. */
 export interface RecentsRowLike {
   title: string;
   cwd: string;
-  mode: string;
-  loopKey: string;
   locus?: Locus;
 }
 
 export interface RecentsFilter {
-  /** The type tab; absent = every type (the CLI window's own pool). */
-  tab?: string;
-  /** The loops picked in the funnel; empty = every loop. */
-  loops: readonly string[];
-  /** The loops THIS list can hold — a filter naming none of them is no filter here. */
-  among?: ReadonlySet<string>;
   /** The place picked in the funnel; "" = every place. */
   locus: LocusFilter;
   /** The search box, matched against title and folder. */
@@ -82,9 +73,6 @@ export interface RecentsFilter {
 
 /** Does the filter keep this row? One rule for the rail and the dropdown. */
 export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
-  if (f.tab && row.mode !== f.tab) return false;
-  const loops = f.among ? f.loops.filter((k) => f.among!.has(k)) : f.loops;
-  if (loops.length && !loops.includes(row.loopKey)) return false;
   if (f.locus && (row.locus ?? "local") !== f.locus) return false;
   const q = (f.query ?? "").trim().toLowerCase();
   if (q && !`${row.title} ${row.cwd}`.toLowerCase().includes(q)) return false;
@@ -96,9 +84,8 @@ export function filterRecents<T extends RecentsRowLike>(rows: readonly T[], f: R
 }
 
 /** Is the funnel narrowing anything the list can hold? Lights the button. */
-export function recentsFilterActive(f: Pick<RecentsFilter, "loops" | "among" | "locus">): boolean {
-  const loops = f.among ? f.loops.filter((k) => f.among!.has(k)) : f.loops;
-  return loops.length > 0 || !!f.locus;
+export function recentsFilterActive(f: Pick<RecentsFilter, "locus">): boolean {
+  return !!f.locus;
 }
 
 // ── THE GRANT ────────────────────────────────────────────────────────────
@@ -176,23 +163,19 @@ export interface PickerModel {
 
 /** The default place for a new session: the desktop where there is one — the
  *  machine itself, or on the web an ATTACHED desktop — else the cloud. */
-export function defaultLocus(surface: "desktop" | "web", attached: boolean, type: "work" | "code" = "code"): Locus {
+export function defaultLocus(surface: "desktop" | "web", attached: boolean): Locus {
   if (surface === "desktop") return "local";
-  // A WORK session on the web runs in the cloud (his order, 2026-10-06: "on
-  // the work sessions in the cloud… why are they showing up under a folder
-  // on the connected device's file system?"); only a CODE session needs a
-  // folder and so follows an attached desktop. Attaching is an explicit pick.
-  if (type === "work") return "cloud";
+  // A session needs a folder and so follows an attached desktop; attaching is
+  // an explicit pick. (One type since 2026-10-08.)
   return attached ? "local" : "cloud";
 }
 
-/** The source a NEW session is born with: the pending pick, except that a
- *  Work session on the web whose pick is still the DEFAULT (the attached
- *  desktop's folder) is born in the cloud — an explicit pick always stands. */
+/** The source a NEW session is born with: the pending pick. (The Work-on-web
+ *  rule that sent a default pick to the cloud went with the type, 2026-10-08;
+ *  the extra arguments stay for the callers' contract.) */
 export function newSessionSource<S extends { kind: string }>(
-  surface: "desktop" | "web", type: "work" | "code", pending: S, resolvedDefault: S, same: (a: S, b: S) => boolean, cloud: S,
+  _surface: "desktop" | "web", pending: S, _resolvedDefault: S, _same: (a: S, b: S) => boolean, _cloud: S,
 ): S {
-  if (surface === "web" && type === "work" && pending.kind === "local" && same(pending, resolvedDefault)) return cloud;
   return pending;
 }
 

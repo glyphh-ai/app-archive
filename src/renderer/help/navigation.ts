@@ -10,9 +10,7 @@ import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
-import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
-import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
@@ -163,10 +161,9 @@ export function loadActiveSection(explicit?: string) {
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "customize") loadSettingsGroup(sec);
   else if (sec === "drips") loadDrips();
+  else if (sec === "schedules") void loadSchedulesPage();
   else if (sec === "connections") void loadConnections();
-  else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
-  else if (sec === "apps") loadApps();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
   else if (sec === "support") loadSupport();
@@ -178,9 +175,6 @@ export function loadActiveSection(explicit?: string) {
  * truth. (The old #help-nav sidebar — hidden but load-bearing — is deleted.)
  */
 export function gotoSection(section: string, sub?: string): void {
-  // "workspaces" IS the layouts section (the product word) — .dip workspaces
-  // and .dip layouts land in the same place (his rule, 2026-08-19).
-  if (section === "workspaces") section = "layouts";
   const moved = SECTION_ALIAS[section];
   if (moved) { section = moved.section; sub = sub || moved.sub; }
   // Settings is a MODAL now — intercept before the workbench section swap so
@@ -212,7 +206,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "connections"].includes(section)) {
+  if (["drips", "connections"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -402,6 +396,8 @@ function arrangeAppSettingsNav(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
+  // Settings is another thing opened: Customize and Artifacts step aside (his order, 2026-10-09).
+  (window as unknown as { __wbClosePagePanels?: () => void }).__wbClosePagePanels?.();
   // THE GROUP PAGE (his order, 2026-10-07): a Customize row is a tab of the
   // full-screen page on both surfaces, never a page of the modal — a deep
   // link, the + menu's Manage rows and every older caller land there.
@@ -904,7 +900,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "tasks") void loadTasksSettings();
-  else if (sub === "schedules") { mountSettingsSection("schedules"); void loadSchedulesPage(); }
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
@@ -925,9 +920,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "remote") void loadRemoteControl();
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
-  else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
-  else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
-  else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
@@ -1079,6 +1071,44 @@ export function openGroupTab(group: GroupPage, sub: string): void {
   if (painted) showGroupTab(group, sub);
 }
 
+/** THE PAGE'S ONE TOOLBAR (his order, 2026-10-09: "make the header of the
+ *  customize tab look more like this", Claude's Customize: tabs, Yours |
+ *  Discover, then search / filter / sort / Add on one row right above the
+ *  list). The shown tab LENDS its own controls to the head's right end —
+ *  the same nodes, listeners and ids intact — and gets them back on the
+ *  next tab, or before its panel returns to the Settings modal. */
+let lentTools: Array<{ el: HTMLElement; parent: HTMLElement; next: Node | null }> = [];
+// The workbench hands lent tools home before a section leaves for its own page.
+(window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools = () => returnGroupTools();
+function returnGroupTools(): void {
+  for (const t of lentTools.reverse()) {
+    try { t.parent.insertBefore(t.el, t.next && t.next.parentNode === t.parent ? t.next : null); } catch { /* origin gone with its panel */ }
+  }
+  lentTools = [];
+}
+function adoptGroupTools(sec: HTMLElement, panel: HTMLElement | null): void {
+  returnGroupTools();
+  const slot = sec.querySelector<HTMLElement>(".settings-group-tools");
+  if (!slot || !panel) return;
+  const head = panel.querySelector<HTMLElement>(".skills-head");
+  const after = head?.nextElementSibling as HTMLElement | null;
+  const row = after?.classList.contains("skills-tabs") ? after : null;
+  const lend: HTMLElement[] = [];
+  const search = head?.querySelector<HTMLElement>(":scope > .skills-search");
+  if (search) lend.push(search);
+  row?.querySelectorAll<HTMLElement>(":scope > .skills-pill").forEach((p) => lend.push(p));
+  const actions = head?.querySelector<HTMLElement>(":scope > .skills-head-actions");
+  if (actions) lend.push(actions);
+  else head?.querySelectorAll<HTMLElement>(":scope > button").forEach((b) => lend.push(b));
+  for (const el of lend) {
+    if (!el.parentElement) continue;
+    lentTools.push({ el, parent: el.parentElement, next: el.nextSibling });
+    // An icon-only pill keeps its words as the tooltip.
+    if (el.classList.contains("skills-pill")) el.title = el.querySelector("span")?.textContent?.trim() || el.title;
+    slot.appendChild(el);
+  }
+}
+
 function showGroupTab(group: string, sub: string, forceScope = false): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   if (!sec) return;
@@ -1088,10 +1118,13 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
   const host = sec.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
   host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
   if (host) host.scrollTop = 0;
+  returnGroupTools();
   // The page's one scope reaches the tab before it loads, so the tab paints
   // straight into Yours or Discover (his report, 2026-10-07).
   applyScopeTo(sub, groupScope, forceScope);
   loadSettingsSub(sub);
+  // After the load: a section tab (Schedules) is mounted by it, so its tools exist now.
+  adoptGroupTools(sec, host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`) ?? null);
   const label = sec.querySelector<HTMLElement>(`.settings-group-tabs > .skills-tab[data-sub="${sub}"]`)?.textContent?.trim() || sub;
   paintNoDiscover(host ?? null, sub, label, groupScope);
 }
@@ -1115,6 +1148,7 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
  * again cost the user their settings.
  */
 function returnGroupPanels(): void {
+  returnGroupTools();   // a lent search / Add goes home with its panel
   // Park adopted sections BEFORE moving their hosts: a section mounted into a
   // group panel makes that panel an ancestor of the pen it must return to.
   for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
@@ -1150,10 +1184,6 @@ function rehostOpenGroups(): void {
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
-  tabs: { host: "settings-tabs-host", section: "apps" },
-  layouts: { host: "settings-layouts-host" },
-  drips: { host: "settings-drips-host" },
-  schedules: { host: "settings-schedules-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
 };
@@ -1235,7 +1265,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", customize: "customize" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize", schedules: "schedules" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
@@ -1388,8 +1418,6 @@ export function initHelp() {
   boot("dashboard", initDashboardEvents);
   boot("org", initOrgPanel);
   boot("settings", initSettings);
-  boot("apps", initApps);
-  boot("layouts", initLayoutsEvents);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);

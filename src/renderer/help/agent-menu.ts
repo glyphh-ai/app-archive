@@ -52,27 +52,21 @@ import { surfaceCaps, surfaceHostsView, DESKTOP_TOOL_VIEWS } from "./surface.js"
 import { houseViewOf } from "./house-relay.js";
 
 export type MenuSurface = "web" | "desktop";
-export type MenuMode = "work" | "code";
-export type MenuSectionKind = "tools" | "session" | "apps" | "clis" | "workspaces";
+export type MenuSectionKind = "tools" | "session" | "apps" | "workspaces";
 
 export const CONNECT_DESKTOP_LINE = "Connect your desktop to open apps";
-/** The line under the CLI rows when the session's folder is a desktop path and no desktop is attached. */
-export const CONNECT_DESKTOP_CLI_LINE = "Connect your desktop to open a CLI on this folder";
 export const CONNECT_DESKTOP_LINK = "Settings → Devices";
 export const APPS_SECTION_LABEL = "Apps";
-export const CLIS_SECTION_LABEL = "Agents / CLIs";
 export const WORKSPACES_SECTION_LABEL = "Workspaces";
 export const TOOLS_SECTION_LABEL = "Panels";
 export const SESSION_SECTION_LABEL = "Session";
 export const NO_APPS_LINE = "No Glyphh apps installed yet";
-/** How many of a CLI's sessions list under it (newest first). */
-export const CLI_SESSIONS_PER_CLI = 5;
 
 /** THE FROZEN ORDER — one list, both surfaces. */
-export const MENU_SECTION_ORDER: ReadonlyArray<MenuSectionKind> = Object.freeze(["tools", "session", "apps", "clis", "workspaces"] as MenuSectionKind[]);
+export const MENU_SECTION_ORDER: ReadonlyArray<MenuSectionKind> = Object.freeze(["tools", "session", "apps", "workspaces"] as MenuSectionKind[]);
 
 /** The sections that open as expandable heads, collapsed on every open. */
-export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "clis", "workspaces"]);
+export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freeze(["apps", "workspaces"]);
 
 /** THE ARTIFACTS PANEL (his order, 2026-10-05) lists in the Panels section
  *  on both surfaces and for both types — last, after the type's own views.
@@ -80,8 +74,6 @@ export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freez
 export const ARTIFACTS_VIEW = "artifacts";
 /** The Code toolbelt: the old Developer-tools list, in its order, then Artifacts. */
 export const CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze([...DESKTOP_TOOL_VIEWS, ARTIFACTS_VIEW]);
-/** A Work session's panels: the Browser and the swarm, then Artifacts. */
-export const WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["preview", "agents", ARTIFACTS_VIEW]);
 
 const TOOL_LABELS: Record<string, string> = {
   files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Bots", preview: "Browser", artifacts: "Artifacts",
@@ -117,11 +109,7 @@ export interface MenuAppRow {
  *  keyed off it): a desktop path, or the cloud. */
 export type MenuLocus = "local" | "cloud";
 
-/** A CLI agent row (preload / web-contract `cliAgentsList`). */
-export interface MenuCliRow { id: string; name: string }
 
-/** A CLI session on this desktop (preload `cliSessionsList`; the web lists none). */
-export interface MenuCliSession { id: string; cli: string; title: string; cwd: string; mtime: number }
 
 /** The open session, or null on a fresh landing. */
 export interface MenuSession { pinned: boolean }
@@ -131,17 +119,13 @@ export interface MenuWorkspaceRow { name: string }
 
 export interface AgentMenuInput {
   surface: MenuSurface;
-  /** The session's type (modeOf), or the rail's active tab on a fresh landing. */
-  mode: MenuMode;
   session: MenuSession | null;
   /** attach.status's machines — is a desktop attached, and which. The
    *  desktop itself is always its own machine. */
   machines?: ReadonlyArray<MenuMachine>;
   /** The member's INSTALLED apps — the cloud instances, the one list. */
   installed?: ReadonlyArray<MenuAppRow>;
-  clis?: ReadonlyArray<MenuCliRow>;
-  cliSessions?: ReadonlyArray<MenuCliSession>;
-  /** The session's locus: a CLI on a desktop path needs that desktop. */
+  /** The session's locus. */
   locus?: MenuLocus;
   /** The member's workspaces (`layoutsList`); none → no section. */
   workspaces?: ReadonlyArray<MenuWorkspaceRow>;
@@ -161,26 +145,16 @@ export interface MenuAppsSection {
   /** A link beside the note, or null. */
   link: { label: string; settingsSub: string } | null;
 }
-export interface MenuCliEntry { id: string; name: string; sessions: MenuCliSession[] }
-export interface MenuClisSection {
-  kind: "clis"; label: string; collapsible: true; count: number; rows: MenuCliEntry[];
-  /** False when the session's folder is a desktop path and no desktop is
-   *  attached: the rows paint disabled and `note` + `link` say why. */
-  enabled: boolean;
-  note: string | null;
-  link: { label: string; settingsSub: string } | null;
-}
 export interface MenuWorkspacesSection { kind: "workspaces"; label: string; collapsible: true; count: number; rows: MenuWorkspaceRow[] }
 export interface MenuToolRow { view: string; label: string }
 export interface MenuToolsSection { kind: "tools"; label: string; rows: MenuToolRow[] }
 export type SessionAction = "rename" | "pin" | "new-panel" | "delete";
 export interface MenuSessionRow { action: SessionAction; label: string; danger: boolean }
 export interface MenuSessionSection { kind: "session"; label: string; rows: MenuSessionRow[] }
-export type MenuSection = MenuAppsSection | MenuClisSection | MenuToolsSection | MenuSessionSection | MenuWorkspacesSection;
+export type MenuSection = MenuAppsSection | MenuToolsSection | MenuSessionSection | MenuWorkspacesSection;
 
 export interface AgentMenu {
   surface: MenuSurface;
-  mode: MenuMode;
   attached: boolean;
   /** The machine a desktop open lands on: the first attached desktop. */
   machine: MenuMachine | null;
@@ -191,13 +165,13 @@ export interface AgentMenu {
 /** The tool views a session of this type offers on this surface: the one
  *  list for the type, through the surface's capabilities (the Browser needs
  *  a streamed panel). */
-export function toolViewsFor(surface: MenuSurface, mode: MenuMode): ReadonlyArray<string> {
+export function toolViewsFor(surface: MenuSurface): ReadonlyArray<string> {
   const caps = surfaceCaps(surface === "web");
-  return (mode === "work" ? WORK_TOOL_VIEWS : CODE_TOOL_VIEWS).filter((v) => surfaceHostsView(v, caps));
+  return CODE_TOOL_VIEWS.filter((v) => surfaceHostsView(v, caps));
 }
 
-export function toolRowsFor(surface: MenuSurface, mode: MenuMode): MenuToolRow[] {
-  return toolViewsFor(surface, mode).map((view) => ({ view, label: TOOL_LABELS[view] ?? view }));
+export function toolRowsFor(surface: MenuSurface): MenuToolRow[] {
+  return toolViewsFor(surface).map((view) => ({ view, label: TOOL_LABELS[view] ?? view }));
 }
 
 /** The open session's rows: Rename, Pin / Unpin, New agent panel, Delete (danger, last). */
@@ -265,16 +239,11 @@ export function workspaceRows(rows: ReadonlyArray<MenuWorkspaceRow>): MenuWorksp
   return out;
 }
 
-/** The expandable head's text: "Apps · 3", "Agents / CLIs · 6". */
+/** The expandable head's text: "Apps · 3", "Workspaces · 2". */
 export function sectionHeadLabel(label: string, count: number): string {
   return `${label} · ${count}`;
 }
 
-/** Does a CLI need a desktop that is not there? Only on a desktop path with
- *  none attached (the desktop is always its own machine). */
-export function cliNeedsDesktop(surface: MenuSurface, locus: MenuLocus | undefined, attached: boolean): boolean {
-  return surface === "web" && locus === "local" && !attached;
-}
 
 /** The menu for one open — the same sections on both surfaces. */
 export function agentMenuModel(i: AgentMenuInput): AgentMenu {
@@ -283,7 +252,7 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   // The desktop IS a desktop: its own folders are always reachable.
   const attached = i.surface === "desktop" || !!machine;
   const byKind = new Map<MenuSectionKind, MenuSection>();
-  const tools = toolRowsFor(i.surface, i.mode);
+  const tools = toolRowsFor(i.surface);
   if (tools.length) byKind.set("tools", { kind: "tools", label: TOOLS_SECTION_LABEL, rows: tools });
   const session = sessionRowsFor(i.session);
   if (session.length) byKind.set("session", { kind: "session", label: SESSION_SECTION_LABEL, rows: session });
@@ -303,34 +272,19 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
     note: null,
     link: null,
   });
-  // AGENTS / CLIs ON BOTH SURFACES (his order, 2026-10-06): a CLI opens on
-  // the session's folder — the attached desktop over remote control or the
-  // cloud workspace. A desktop path with no desktop: the rows say so.
-  const sessions = [...(i.cliSessions ?? [])].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-  const clis = (i.clis ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    sessions: machine ? sessions.filter((s) => s.cli === c.id).slice(0, CLI_SESSIONS_PER_CLI) : [],
-  }));
-  if (clis.length) {
-    const needsDesktop = cliNeedsDesktop(i.surface, i.locus, attached);
-    byKind.set("clis", {
-      kind: "clis", label: CLIS_SECTION_LABEL, collapsible: true, count: clis.length, rows: clis,
-      enabled: !needsDesktop,
-      note: needsDesktop ? CONNECT_DESKTOP_CLI_LINE : null,
-      link: needsDesktop ? { label: CONNECT_DESKTOP_LINK, settingsSub: "devices" } : null,
-    });
-  }
+
   // WORKSPACES, LAST (his order, 2026-10-05): the member's workspaces by
-  // name, one row each; with none the section is simply omitted.
+  // name, one row each. Always present since 2026-10-08 — "Create
+  // workspace…" lives at its head (his order: "agent -> dropdown -> Create
+  // Workspace").
   const spaces = workspaceRows(i.workspaces ?? []);
-  if (spaces.length) byKind.set("workspaces", { kind: "workspaces", label: WORKSPACES_SECTION_LABEL, collapsible: true, count: spaces.length, rows: spaces });
+  byKind.set("workspaces", { kind: "workspaces", label: WORKSPACES_SECTION_LABEL, collapsible: true, count: spaces.length, rows: spaces });
   const sections: MenuSection[] = [];
   for (const kind of MENU_SECTION_ORDER) {
     const s = byKind.get(kind);
     if (s) sections.push(s);
   }
-  return { surface: i.surface, mode: i.mode, attached, machine, sections };
+  return { surface: i.surface, attached, machine, sections };
 }
 
 // ── THE FOLD STATE: what is expanded in the menu on screen ─────────────────
@@ -345,10 +299,6 @@ export function menuFoldState(): FoldState {
   return new Set<string>();
 }
 
-/** The fold key of a CLI's nested sessions. */
-export function cliFoldKey(cliId: string): string {
-  return `cli:${cliId}`;
-}
 
 export function isExpanded(state: FoldState, key: string): boolean {
   return state.has(key);

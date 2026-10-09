@@ -11,7 +11,7 @@
 
 const listeners = new Map();   // channel → Set<cb>
 const prefs = new Map();
-const calls = { glyphhRun: [], setPreference: [], execCommand: [], connectorsConnect: [], connectRespond: [], cliAgentOpen: [], agentPanelOpen: [] };
+const calls = { glyphhRun: [], setPreference: [], execCommand: [], connectorsConnect: [], connectRespond: [], agentPanelOpen: [] };
 let runSeq = 0;
 
 const APPS = [
@@ -125,11 +125,7 @@ const YO_OVERRIDES = {
   localMcpStatus: () => Promise.resolve({ running: false, port: 8123 }),
   connectorsConnect: (appSlug) => { calls.connectorsConnect.push(appSlug); return Promise.resolve({ ok: true }); },
   glyphhAgentConnectRespond: (p) => { calls.connectRespond.push(JSON.parse(JSON.stringify(p))); return Promise.resolve(true); },
-  cliAgentsList: () => Promise.resolve({ ok: true, agents: JSON.parse(JSON.stringify(agentRows)) }),
-  cliAgentOpen: (id) => { calls.cliAgentOpen.push(id); return Promise.resolve({ ok: true, command: "echo " + id, cwd: "/tmp/harness" }); },
-  cliSessionsList: () => Promise.resolve({ ok: true, sessions: JSON.parse(JSON.stringify(cliSessions)) }),
   glyphhLiveList: () => Promise.resolve(JSON.parse(JSON.stringify(liveRuns))),
-  glyphhCliTranscript: (sessionId) => Promise.resolve({ ok: true, title: cliSessions.find((s) => s.id === sessionId)?.title || "Fix the rail", cwd: "/tmp/harness", turns: [{ role: "user", text: "fix the rail" }, { role: "assistant", text: "on it" }] }),
   agentPanelOpen: (p) => { calls.agentPanelOpen.push(p); return Promise.resolve(true); },
 };
 
@@ -187,6 +183,5 @@ window.__stub = {
   /** The shell relayed a solo panel's "New agent panel" (agent-panel:open). */
   panelOpen: (p) => emit("onAgentPanelOpen", p),
   seedAgents(rows) { agentRows = rows; },
-  seedCliSessions(rows) { cliSessions = rows; },
   lastRunId: () => `run-${runSeq}`,
 };

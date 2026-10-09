@@ -18,7 +18,7 @@
  * serve.mjs wires the real ones.
  */
 
-/** The allowlist — the SAME five URLs as cli-marks.ts, verbatim. */
+/** The allowlist: the marks the proxy may fetch (fixed; the favicon rule below is what app tabs ride). */
 export const WEB_ICON_URLS = Object.freeze([
   'https://claude.ai/favicon.ico',
   'https://openai.com/favicon.ico',

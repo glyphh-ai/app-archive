@@ -19,16 +19,14 @@
  *
  * NAMING (2026-09-11): this file's `LoopRow`/`loop_*` identifiers are the
  * MAIN-ERA sense of "loop" — a program with role slots — which the Tasks
- * page has always rendered ("a task IS a loop row renamed", below). His
- * current vocabulary gives "Loop" to the CLI pre-configs in cli-agents.ts.
- * The directory moved to tasks/ to end the collision; the internal type
- * names and the two SQLite tables keep the old spelling until they are
- * renamed under their own migration — do NOT read `LoopRow` here as a CLI
- * loop.
+ * page has always rendered ("a task IS a loop row renamed", below). The
+ * directory moved to tasks/; the internal type names and the two SQLite
+ * tables keep the old spelling until they are renamed under their own
+ * migration.
  *
- * EXECUTION: a scheduled (or run-now) task runs HEADLESSLY — the slotted
- * loop's CLI in print mode (claude -p / codex exec / gemini -p) with the
- * task's program as the prompt, output captured as the run record.
+ * EXECUTION: a scheduled (or run-now) task runs HEADLESSLY on the Glyphh
+ * loop (runGlyphhHeadless) with the task's program as the prompt, output
+ * captured as the run record.
  */
 
 import fs from "fs";
@@ -40,7 +38,6 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { userZone } from "./user-zone.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
-import { runCliHeadless } from "./cli-agents.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
@@ -181,14 +178,9 @@ export function touchSchedule(id: string, at: number = Date.now()): void {
 export interface ScheduleContext {
   prompt: string;
   model?: string;
-  /** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define
-   *  cli or glyphh agents with models"): "glyphh" is the loop; "cli" is the
-   *  CLI agent `cli` names, run headless (cli-agents.ts runCliHeadless). */
-  kind?: "glyphh" | "cli";
-  cli?: string;
 }
-/** An agent as a slot CHOICE — id, display name, and what runs it (2026-10-07). */
-export interface SlotAgent { id: string; name: string; kind?: "glyphh" | "cli"; cli?: string }
+/** An agent as a slot CHOICE — id and display name. */
+export interface SlotAgent { id: string; name: string }
 
 let agentContext: ((agentId: string) => ScheduleContext | null) | null = null;
 let agentChoices: (() => SlotAgent[]) | null = null;
@@ -423,15 +415,8 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
   }
-  // On the clock, unattended: a CLI agent runs its CLI headless — no panel,
-  // no terminal opening on a clock (his report, 2026-10-08: a skill schedule
-  // on a CLI agent kept popping the agent's terminal); anything else runs on
-  // the Glyphh loop.
-  if (ctx?.kind === "cli" && ctx.cli) {
-    const r = await runCliHeadless(ctx.cli, prompt, { ...(model ? { model } : {}) });
-    finish(r.failed ? "failed" : "ok", r.failed ? r.error ?? "the run failed" : null, r.text || null);
-    return;
-  }
+  // On the clock, unattended: the Glyphh loop, headless — no panel, no
+  // terminal opening on a clock (his report, 2026-10-08).
   const r = await runGlyphhHeadless(prompt, { ...(model ? { model } : {}) });
   finish(r.ok ? "ok" : "failed", r.ok ? null : r.error ?? "the run failed", r.text || null);
 }
@@ -472,8 +457,8 @@ export function registerLocalLibraryIpc(): void {
     writeRow(TASKS_DIR(), slug, row);
     return row;
   }));
-  // Roles resolve with CHOICES = the CLI AGENTS (a role's default names an
-  // agent now; the agent carries its model) — the main-era picker mechanics
+  // Roles resolve with CHOICES = the member's agents (a role's default names
+  // an agent; the agent carries its model) — the main-era picker mechanics
   // read modelId/choices unchanged.
   // Preload sends { loop } / { loopId, role, modelId } object payloads (the
   // main-era wire shape) — accept those AND bare positionals.

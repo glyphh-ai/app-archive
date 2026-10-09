@@ -301,20 +301,17 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "agent_save",
-    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. `kind` says what runs it: \"glyphh\" (default) is the Glyphh agent loop; \"cli\" runs one of the user's CLI agents headless on this machine, `cli` naming which (claude, codex, gemini, copilot, cursor). Returns { agent, name, description, model, kind, cli, created, generatedBrief, brief }.",
+    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, role, created, generatedBrief, brief }.",
     {
       agent: z.string().optional().describe("The agent to update (its id from agents_list); omit to make a new one"),
       name: z.string().optional().describe("Its name, e.g. \"Researcher\" — required for a new agent"),
       description: z.string().optional().describe("When to use it: what it is for, in a sentence"),
       brief: z.string().optional().describe("Its standing instruction, second person. Omit to have Glyphh write it"),
       model: z.string().optional().describe("Its model slot — one of the user's models; omit for the main agent's"),
-      // WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define cli or glyphh agents with models").
-      kind: z.enum(["glyphh", "cli"]).optional().describe("What runs it: \"glyphh\" (the Glyphh loop, default) or \"cli\" (a CLI agent, headless)"),
-      cli: z.string().optional().describe("For kind \"cli\": which CLI — claude, codex, gemini, copilot or cursor"),
       // THE BOTS PANEL (his order, 2026-10-08): an orchestrator plans the work and hands it to the other bots.
       role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the bots: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
     },
-    async ({ agent, name, description, brief, model, kind, cli, role }) => via("agents.save", { agent, name, description, brief, model, kind, cli, role }),
+    async ({ agent, name, description, brief, model, role }) => via("agents.save", { agent, name, description, brief, model, role }),
   );
   mcp.tool(
     "agent_delete",
@@ -418,8 +415,8 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "settings_open",
-    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, schedules, tabs, workspaces, drips, models, members, billing, general, appearance, mcp.",
-    { page: z.string().describe("Which page: skills | connections | plugins | tasks | schedules | tabs | layouts | drips | general | appearance | mcp | models | members | billing") },
+    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, models, members, billing, general, appearance, mcp.",
+    { page: z.string().describe("Which page: skills | connections | plugins | tasks | general | appearance | mcp | models | members | billing") },
     async ({ page }) => via("settings.open", { page }),
   );
 

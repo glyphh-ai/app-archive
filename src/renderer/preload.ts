@@ -409,12 +409,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   memoryTurnUpdate: (input: { source: string; title?: string; summary?: string; details: string[] }) => ipcRenderer.invoke("memory-turn-update", input) as Promise<{ ok: boolean; chunks?: number; error?: string }>,
   memoryCurateNow: () => ipcRenderer.invoke("memory-curate-now") as Promise<{ ok: boolean; error?: string }>,
   memoryTurnForget: (source: string) => ipcRenderer.invoke("memory-turn-forget", source) as Promise<{ ok: boolean; deleted?: number; error?: string }>,
-  // CLI agents (his order, 2026-09-30) — the vendor CLIs and the Glyphh CLI, in their own window.
-  cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli: string; cmd: string; mcp: boolean; session: "keep" | "new" | "last"; command: string; gatewayCapable: boolean }>; hasPlan?: boolean; gatewayDefault?: boolean; error?: string }>,
-  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean; gateway?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; gateway?: boolean; error?: string; missing?: { cli: string; name: string; bin: string; install: string; login: string; note?: string } }>,
-  cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
-  cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  onCliSessionsChanged: (callback: () => void) => { ipcRenderer.on("cli-sessions-changed", () => callback()); },
   embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,
   embeddingsConfigSet: (input: { model?: string }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; model?: string; error?: string }>,
 
@@ -670,9 +664,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   },
   onResetWorkspaceGesture: (cb: () => void) => {
     ipcRenderer.on("home:reset-workspace", () => cb());
-  },
-  onOpenCommandCenter: (cb: () => void) => {
-    ipcRenderer.on("home:open-cc", () => cb());
   },
   onGotoSection: (cb: (section: string) => void) => {
     ipcRenderer.on("home:goto-section", (_e, section: string) => cb(section));
@@ -1077,7 +1068,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // TASKS (2026-09-17): bundles the desktop runs itself (task-runner.ts) and the SCHEDULES lane over them.
   tasksSpecs: () => ipcRenderer.invoke("tasks-specs") as Promise<LibEnvelope>,
   taskSpec: (slug: string) => ipcRenderer.invoke("task-spec", slug) as Promise<LibEnvelope>,
-  taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { kind?: "glyphh" | "cli" | null; cli?: string | null; model?: string | null }) => ipcRenderer.invoke("task-slot-set", slug, slot, agentId, lane ?? {}) as Promise<LibEnvelope>,
+  taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { model?: string | null }) => ipcRenderer.invoke("task-slot-set", slug, slot, agentId, lane ?? {}) as Promise<LibEnvelope>,
   taskRun: (slug: string, input?: unknown) => ipcRenderer.invoke("task-run", slug, input) as Promise<LibEnvelope>,
   taskRuns: (slug: string) => ipcRenderer.invoke("task-runs", slug) as Promise<LibEnvelope>,
   taskRunGet: (id: string) => ipcRenderer.invoke("task-run-get", id) as Promise<LibEnvelope>,
@@ -1101,7 +1092,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,
   /** A bundle's own agents (agents/*.md, or a task's slots) and what they run on. */
   skillAgents: (id: string) => ipcRenderer.invoke("skill-agents", id) as Promise<LibEnvelope>,
-  skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }) =>
+  skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) =>
     ipcRenderer.invoke("skill-agent-set", id, ref, patch) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
   skillDelete: (id: string, opts?: { purge?: boolean }) => ipcRenderer.invoke("skill-delete", id, opts ?? {}) as Promise<LibEnvelope>,
@@ -1140,8 +1131,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillStandings: () => ipcRenderer.invoke("skill-standings") as Promise<LibEnvelope>,
   skillShares: () => ipcRenderer.invoke("skill-shares") as Promise<LibEnvelope>,
   runGet: (id: string) => ipcRenderer.invoke("run-get", id) as Promise<LibEnvelope>,
-  /** Open a terminal on the command that signs a vendor CLI back in. */
-  cliLogin: (cli: string) => ipcRenderer.invoke("cli-login", cli) as Promise<LibEnvelope>,
   skillWithdraw: (id: string) => ipcRenderer.invoke("skill-withdraw", id) as Promise<LibEnvelope>,
   skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => ipcRenderer.invoke("skill-categories-set", itemId, kind, ids) as Promise<LibEnvelope>,
   skillUpdate: (id: string) => ipcRenderer.invoke("skill-update", id) as Promise<LibEnvelope>,
@@ -1192,6 +1181,25 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
   /** A solo panel asks the shell to open a workbench tool beside it. */
   agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  /** The shell says how far this panel's top row must clear the window controls (2026-10-09). */
+  onAgentPanelClearStrip: (callback: (p: { px: number }) => void) => {
+    ipcRenderer.on("agent-panel:clear-strip", (_event, p) => callback(p ?? { px: 0 }));
+  },
+  /** The panel's row drag acts on ITS card in the shell (2026-10-09). */
+  agentPanelDrag: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => ipcRenderer.send("agent-panel-drag", p),
+  onAgentPanelDrag: (callback: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => {
+    ipcRenderer.on("agent-panel:drag", (_event, p) => callback(p));
+  },
+  /** A panel's "Create workspace…" opens the SHELL's modal — the arrangement is the shell's. */
+  agentPanelCreateWorkspace: () => ipcRenderer.invoke("agent-panel-create-workspace") as Promise<boolean>,
+  onAgentPanelCreateWorkspace: (callback: () => void) => {
+    ipcRenderer.on("agent-panel:create-workspace", () => callback());
+  },
+  /** A workspace a panel opens lands in the shell's grid, never inside the panel. */
+  agentPanelOpenLayout: (p: { name: string }) => ipcRenderer.invoke("agent-panel-open-layout", p) as Promise<boolean>,
+  onAgentPanelOpenLayout: (callback: (p: { name: string }) => void) => {
+    ipcRenderer.on("agent-panel:open-layout", (_event, p) => callback(p ?? { name: "" }));
+  },
   /** A file a panel opens goes to the shell's workbench, never inside the panel. */
   agentPanelOpenFile: (p: { path: string; mode?: "open" | "browse" | "edit" }) => ipcRenderer.invoke("agent-panel-open-file", p) as Promise<boolean>,
   agentPanelOpenSettings: (sub: string) => ipcRenderer.invoke("agent-panel-open-settings", { sub }) as Promise<boolean>,

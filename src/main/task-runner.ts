@@ -36,14 +36,12 @@ import { onUserChange } from "./user-scope.js";
 import { noteLibrarySave } from "./library-events.js";
 import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 import { dispatchRelayMethod } from "./relay-client.js";
-import { pickSlotAgent, type SlotKind, type SlotRosterEntry } from "./task-slot-pick.js";
-import { runCliHeadless } from "./cli-agents.js";
+import { pickSlotAgent, type SlotRosterEntry } from "./task-slot-pick.js";
 import { mcpCreds } from "./gateway-token.js";
 import { answerDecision } from "./task-decide.js";
 
-/** A slot's lane: the Glyphh loop or a vendor CLI (his order, 2026-10-07:
- *  "allow agents and tasks to define cli or glyphh agents with models"). */
-export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null; kind?: SlotKind; cli?: string }
+/** A slot: the agent it names and the model it runs on (every slot runs on the Glyphh loop). */
+export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
 export interface TaskManifest {
   name: string;
   icon?: string;
@@ -57,7 +55,7 @@ export interface TaskManifest {
 }
 export interface TaskSpec {
   slug: string; name: string; description: string; program: string; icon: string | null;
-  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string; kind?: SlotKind; cli?: string }>;
+  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
   connections: string[]; schedule: string | null; enabled: boolean; dir: string;
 }
 export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "decide" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
@@ -93,7 +91,7 @@ function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
   if (m.icon) { try { icon = fs.readFileSync(path.join(dir, m.icon), "utf-8"); } catch { icon = null; } }
   return {
     slug, name: m.name || slug, description, program: m.program, icon,
-    slots: Object.entries(m.slots ?? {}).map(([name, s]) => ({ name, ...(s.label ? { label: s.label } : {}), ...(s.description ? { description: s.description } : {}), agent: s.agent ?? null, ...(s.model ? { model: s.model } : {}), ...slotLane(s) })),
+    slots: Object.entries(m.slots ?? {}).map(([name, s]) => ({ name, ...(s.label ? { label: s.label } : {}), ...(s.description ? { description: s.description } : {}), agent: s.agent ?? null, ...(s.model ? { model: s.model } : {}), })),
     connections: connDepNames(m.dependencies?.connections),
     schedule: m.schedule ?? null, enabled, dir,
   };
@@ -115,18 +113,10 @@ export function getTaskSpec(slug: string): TaskSpec {
   return hit;
 }
 
-/** The lane a slot declares, kept only when it says something: `kind` is
- *  "glyphh" or "cli", and `cli` is the CLI id when the lane is a CLI. */
-function slotLane(s: { kind?: unknown; cli?: unknown }): { kind?: SlotKind; cli?: string } {
-  const kind = s.kind === "cli" || s.kind === "glyphh" ? s.kind : undefined;
-  const cli = typeof s.cli === "string" && s.cli.trim() ? s.cli.trim() : undefined;
-  return { ...(kind ? { kind } : {}), ...(cli ? { cli } : {}) };
-}
-
 /** The MCP authoring lane: a task written by an agent lands as a bundle. */
 export function saveTaskSpec(input: {
   slug?: string; name: string; description?: string; program?: string;
-  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null; kind?: SlotKind; cli?: string }>;
+  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null }>;
   connections?: Array<ConnDep | string>; schedule?: string | null;
 }): TaskSpec {
   const name = String(input.name ?? "").trim();
@@ -137,10 +127,10 @@ export function saveTaskSpec(input: {
   if (Array.isArray(input.slots) && input.slots.length) {
     input.slots.forEach((sl, i) => {
       const n = String(sl.name ?? `slot-${i + 1}`).toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-      slots[n] = { label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`), ...(sl.description ? { description: String(sl.description) } : {}), agent: sl.agent ? String(sl.agent) : null, ...(sl.model ? { model: String(sl.model) } : {}), ...slotLane(sl) };
+      slots[n] = { label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`), ...(sl.description ? { description: String(sl.description) } : {}), agent: sl.agent ? String(sl.agent) : null, ...(sl.model ? { model: String(sl.model) } : {}), };
     });
   } else if (existing) {
-    for (const s of existing.slots) slots[s.name] = { label: s.label, description: s.description, agent: s.agent, ...(s.model ? { model: s.model } : {}), ...slotLane(s) };
+    for (const s of existing.slots) slots[s.name] = { label: s.label, description: s.description, agent: s.agent, ...(s.model ? { model: s.model } : {}), };
   } else {
     slots.main = { label: "Main", description: "The agent this task runs through.", agent: null };
   }
@@ -201,15 +191,13 @@ function promptProgram(prompt: string, slot: string): string {
   return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
 }
 
-/** Slot → agent (+ its lane and model), written into task.json (the
- *  install-time fill). `lane` fields given as "" or null are cleared. */
-export function setTaskSlot(slug: string, slot: string, agentId: string | null, lane: { kind?: SlotKind | null; cli?: string | null; model?: string | null } = {}): TaskSpec {
+/** Slot → agent (+ its model), written into task.json (the install-time
+ *  fill). A model given as "" or null is cleared. */
+export function setTaskSlot(slug: string, slot: string, agentId: string | null, lane: { model?: string | null } = {}): TaskSpec {
   const t = getTaskSpec(slug);
   const m = readManifest(t.dir);
   if (!m.slots?.[slot]) throw new Error(`task "${slug}" has no slot "${slot}"`);
   const cur: TaskSlot = { ...m.slots[slot], agent: agentId || null };
-  if (lane.kind !== undefined) { if (lane.kind === "cli" || lane.kind === "glyphh") cur.kind = lane.kind; else delete cur.kind; }
-  if (lane.cli !== undefined) { if (lane.cli) cur.cli = String(lane.cli); else delete cur.cli; }
   if (lane.model !== undefined) { if (lane.model) cur.model = String(lane.model); else delete cur.model; }
   m.slots[slot] = cur;
   writeManifest(t.dir, m);
@@ -296,7 +284,7 @@ const summarize = (v: unknown, max = 4000): unknown => {
 /** Who fills a slot: the one decision in task-slot-pick.ts (his order,
  *  2026-10-07). The slot's model beats the agent's; an unbound slot is the
  *  default Glyphh agent, never silently the roster's first; a slot naming a
- *  vanished agent fails the run by name; a CLI agent runs through its CLI. */
+ *  vanished agent fails the run by name. */
 function resolveSlotAgent(spec: TaskSpec, slot: string): ReturnType<typeof pickSlotAgent> {
   const s = spec.slots.find((x) => x.name === slot);
   if (!s) throw new Error(`no slot "${slot}" on task "${spec.slug}"`);
@@ -322,18 +310,9 @@ async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { s
   const model = opts.model ?? who.model;
   const ask = opts.schema ? `${prompt}\n\nReply with only JSON matching this shape, no prose:\n${JSON.stringify(opts.schema)}` : prompt;
   const full = standing ? `${standing}\n\n${ask}` : ask;
-  let text: string;
-  if (who.kind === "cli") {
-    // A CLI AGENT RUNS THROUGH ITS CLI (his order, 2026-10-07), headless, in
-    // the bundle's folder, and dies with the run.
-    const r = await runCliHeadless(String(who.cli), full, { ...(model ? { model: String(model) } : {}), cwd: spec.dir, ...(signal ? { signal } : {}) });
-    if (r.failed) throw new Error(r.error || `${agentName} could not finish this step`);
-    text = r.text;
-  } else {
-    const r = await runGlyphhHeadless(full, { ...(model ? { model: String(model) } : {}) });
-    if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
-    text = r.text;
-  }
+  const r = await runGlyphhHeadless(full, { ...(model ? { model: String(model) } : {}) });
+  if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
+  const text = r.text;
   return { text, ...(opts.schema ? { json: firstJson(text) } : {}), agent: agentName };
 }
 
@@ -595,7 +574,7 @@ export function registerTaskRunnerIpc(): void {
   setTaskRunner((slug, scheduleId, input) => { runTask(slug, input, { kind: "schedule", scheduleId }); });
   ipcMain.handle("tasks-specs", () => env(() => listTaskSpecs()));
   ipcMain.handle("task-spec", (_e, slug: string) => env(() => getTaskSpec(String(slug))));
-  ipcMain.handle("task-slot-set", (_e, slug: string, slot: string, agentId: string | null, lane?: { kind?: SlotKind | null; cli?: string | null; model?: string | null }) =>
+  ipcMain.handle("task-slot-set", (_e, slug: string, slot: string, agentId: string | null, lane?: { model?: string | null }) =>
     env(() => setTaskSlot(String(slug), String(slot), agentId ? String(agentId) : null, lane && typeof lane === "object" ? lane : {})));
   ipcMain.handle("task-run", (_e, slug: string, input?: unknown) => env(() => runTask(String(slug), input ?? {})));
   ipcMain.handle("task-runs", (_e, slug: string) => env(() => listTaskRuns(String(slug))));

@@ -101,7 +101,7 @@ export function threadIndexOf(c: RelayChat): Omit<PushThreadInput, "messages"> &
   const folder = c.workdir || (typeof src.path === "string" ? src.path : "");
   return {
     title: c.title?.trim() || "New session",
-    mode: c.mode === "work" || c.mode === "chat" ? "work" : "code",
+    mode: "code",
     source: { ...src, kind: "local", ...(folder ? { path: folder } : {}), locus: "local" },
     updatedAt: c.updatedAt ?? c.createdAt ?? Date.now(),
   };

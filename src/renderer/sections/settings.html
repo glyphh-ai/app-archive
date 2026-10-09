@@ -60,10 +60,6 @@
               <button class="settings-nav-item not-on-platform" data-sub="artifacts"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Artifacts</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="tabs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2"/></svg><span>Tabs</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="layouts"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 12v9"/></svg><span>Workspaces</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="drips"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg><span>Drips</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="schedules"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Schedules</span></button>
               <!-- Tasks moved onto Skills (2026-09-17), same as Apps: hidden, not gone. -->
               <button class="settings-nav-item not-on-platform hidden" data-sub="tasks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg><span>Tasks</span></button>
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
@@ -104,17 +100,6 @@
                     <select id="set-default-model" class="settings-input"></select>
                   </div>
                 </div>
-
-                <h3 class="settings-subheading">CLI agents</h3>
-                <label class="settings-toggle set-pref-row" id="cli-gateway-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Use Glyphh models in my CLIs</div>
-                    <div class="set-pref-desc" id="cli-gateway-desc">Claude Code, Codex and Gemini run on your organization's Glyphh models instead of their own login. A workspace slot can override this. Copilot and Cursor always use their own login.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-cli-gateway" />
-                  <span class="toggle-switch"></span>
-                </label>
-
 
                 <h3 class="settings-subheading">App</h3>
 
@@ -458,49 +443,19 @@
                   </button>
                 </div>
 
-                <h3 class="settings-subheading">Dock</h3>
-                <!-- SHOW THE DOCK (his order, 2026-10-04): pref `dockEnabled`,
-                     default OFF (DOCK_ENABLED_DEFAULT in help/dock-band.ts —
-                     the dock is turned on on purpose), shared by desktop and
-                     web. Off removes the dock entirely (not merely hidden while
-                     panels are open); the rows below it govern a dock that is
-                     shown. help/settings.ts + help/dock-band.ts. -->
-                <label class="settings-toggle set-pref-row" id="show-dock-row">
+                <!-- THE SIDEBAR (his order, 2026-10-08): the Tabs option is gone;
+                     Workspaces is ON by default — pref railShowLayouts
+                     (help/wall-prefs.ts). The rail re-reads on
+                     glyphh:rail-sections-changed. -->
+                <h3 class="settings-subheading">Sidebar</h3>
+                <label class="settings-toggle set-pref-row" id="rail-layouts-row">
                   <div class="set-pref-text">
-                    <div class="set-pref-title">Show the dock</div>
-                    <div class="set-pref-desc">The row of shortcuts at the top of the command center. Off removes it; New session, Settings, the command center and Close all stay in the sidebar and on the keyboard.</div>
+                    <div class="set-pref-title">Show Workspaces in the sidebar</div>
+                    <div class="set-pref-desc">The Workspaces tray at the foot of the sidebar — click a workspace to open it, + to save what is on screen as one.</div>
                   </div>
-                  <input type="checkbox" id="toggle-show-dock" />
+                  <input type="checkbox" id="settings-rail-layouts" />
                   <span class="toggle-switch"></span>
                 </label>
-                <label class="settings-toggle set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Hide the dock</div>
-                    <div class="set-pref-desc">The dock stays hidden while panels are open. Open the wall with the Echo icon in the sidebar.</div>
-                  </div>
-                  <input type="checkbox" id="settings-autohide-dock" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Dock reveal delay</div>
-                    <div class="set-pref-desc">How long the pointer rests at the top edge before a hidden dock drops down.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-dock-reveal" min="0" max="1500" step="50" />
-                    <span id="settings-dock-reveal-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Dock zoom</div>
-                    <div class="set-pref-desc">How much the dock arches up under the cursor.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-dock-zoom" min="1" max="1.5" step="0.05" />
-                    <span id="settings-dock-zoom-val" class="settings-hint"></span>
-                  </div>
-                </div>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Icon zoom</div>
@@ -509,81 +464,6 @@
                   <div class="set-pref-value">
                     <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
                     <span id="settings-icon-zoom-val" class="settings-hint"></span>
-                  </div>
-                </div>
-
-                <h3 class="settings-subheading">Command center</h3>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Icon size</div>
-                    <div class="set-pref-desc">The size of the app icons on the launcher pages.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-icon-size" min="48" max="104" step="4" />
-                    <span id="settings-echo-icon-size-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Apps per page</div>
-                    <div class="set-pref-desc">How many icons each launcher page holds.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-per-page" min="16" max="96" step="8" />
-                    <span id="settings-echo-per-page-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Tiles per row</div>
-                    <div class="set-pref-desc">How many app tiles each row of a launcher page holds.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-cols" min="3" max="14" step="1" />
-                    <span id="settings-echo-cols-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Wall width</div>
-                    <div class="set-pref-desc">How wide the tile layout runs. 0% is the tightest; 100% fills the page, with a little air at the sides.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-echo-wall-width" min="0" max="100" step="5" />
-                    <span id="settings-echo-wall-width-val" class="settings-hint"></span>
-                  </div>
-                </div>
-                </div>
-
-                <!-- THE SIDEBAR TRAYS (his order, 2026-10-08; on Appearance, his word): Tabs and Workspaces
-                     under Recents, each an option — prefs railShowApps /
-                     railShowLayouts (help/wall-prefs.ts), on by default. The
-                     rail re-reads on glyphh:rail-sections-changed. -->
-                <h3 class="settings-subheading">Sidebar</h3>
-                <label class="settings-toggle set-pref-row" id="rail-apps-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show Tabs in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Tabs tray under Recents — search and click to open a tab, without the command center.</div>
-                  </div>
-                  <input type="checkbox" id="settings-rail-apps" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <label class="settings-toggle set-pref-row" id="rail-layouts-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show Workspaces in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Workspaces tray under Recents — click a workspace to open it.</div>
-                  </div>
-                  <input type="checkbox" id="settings-rail-layouts" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Tabs per row</div>
-                    <div class="set-pref-desc">How many tabs each row of the sidebar's Tabs tray holds. Auto fits as many as the rail's width allows.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
-                    <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
                   </div>
                 </div>
 
@@ -1168,19 +1048,11 @@
                   <label class="settings-label" for="agents2-desc">When to use it</label>
                   <input type="text" id="agents2-desc" class="settings-input" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
 
-                  <!-- RUNS AS (his order, 2026-10-07: "allow agents and tasks to
-                       define cli or glyphh agents with models"): the Glyphh
-                       loop, or one of the CLI agents run headless. -->
-                  <label class="settings-label" for="agents2-kind">Runs as</label>
-                  <div class="settings-inline">
-                    <select id="agents2-kind" class="settings-input" style="width:auto;"></select>
-                  </div>
 
                   <label class="settings-label" for="agents2-model">Model</label>
                   <div class="settings-inline">
                     <select id="agents2-model" class="settings-input" style="width:auto;"></select>
                   </div>
-                  <div id="agents2-model-hint" class="settings-hint hidden"></div>
 
                   <!-- The brief's head carries the WAND (his order, 2026-09-29): it
                        writes the brief on the member's default model from what
@@ -2238,7 +2110,7 @@
                 <div id="skills-list-view">
                   <div class="skills-head">
                     <h2>Skills</h2>
-                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="skills-search" type="text" placeholder="Search skills and apps" spellcheck="false" autocomplete="off" /></div>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="skills-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" /></div>
                     <button id="skills-add" class="action-btn primary" type="button">Add ▾</button>
                   </div>
                   <div class="skills-tabs">
@@ -2572,18 +2444,6 @@
 
               <!-- Layouts — the layout builder/library management page moved in
                    (the rail keeps its quick-launch tray). Same whole-node adoption. -->
-              <div class="settings-panel settings-panel-section" data-sub="layouts">
-                <div id="settings-layouts-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="drips">
-                <div id="settings-drips-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="schedules">
-                <div id="settings-schedules-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="tabs">
-                <div id="settings-tabs-host"></div>
-              </div>
 
             </div>
           </div>

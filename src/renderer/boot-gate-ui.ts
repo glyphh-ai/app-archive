@@ -71,8 +71,8 @@ let bootCb: BootGateCallbacks | null = null;
  *  navigates straight there via the same callback. */
 export function webShowFirstRun(onComplete?: () => void): void {
   // 2026-08-27: the static card tutorial is retired as the first-run door —
-  // the WALL TOUR (wall-tour.ts) orients new users on the live UI instead,
-  // gated by the server-side `wallTourDone` pref. First run just enters the
+  // (the wall tour that once followed it went with the wall, 2026-10-08).
+  // First run just enters the
   // app; the tour fires once the wall paints. (showTutorial stays for any
   // explicit re-entry point — hidden, not deleted.)
   webEnterApp(onComplete);
@@ -342,8 +342,8 @@ export function initBootGate(cb: BootGateCallbacks): void {
     // "the old flow showed up again on desktop — are there two flows?"). Yes,
     // there were: web moved to the wall tour on 2026-08-27 while desktop kept
     // calling the static card carousel here, keyed off the per-DEVICE
-    // hasSeenTutorial pref. The tour (wall-tour.ts, fired by the workbench)
-    // is gated by the per-USER server pref wallTourDone, so it follows the
+    // hasSeenTutorial pref. (The wall tour that once followed is gone,
+    // 2026-10-08.) The tutorial pref follows the
     // account across machines. Desktop now enters the app like web does.
 
     cb.onBootReady(data);

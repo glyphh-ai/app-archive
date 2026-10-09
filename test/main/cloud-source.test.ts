@@ -55,11 +55,6 @@ describe("the send gate", () => {
     expect(webCloudSendBlock({ ...base, surface: "desktop" })).toBe("");
     expect(webCloudSendBlock({ ...base, connected: true, picks: [two[0]] })).toBe("");
   });
-  it("never holds a WORK session (his report, 2026-10-05: the page would not submit)", () => {
-    const base = { surface: "web" as const, locus: "cloud" as const, born: false, connected: false, picks: [] };
-    expect(webCloudSendBlock({ ...base, type: "work" })).toBe("");
-    expect(webCloudSendBlock({ ...base, type: "code" })).toBe("Connect GitHub to start a cloud session");
-  });
 });
 
 describe("the two chips", () => {
@@ -83,12 +78,6 @@ describe("the two chips", () => {
     expect(desk.env.label).toBe("Chris's MacBook");
     expect(desk.repo.shown).toBe(false);
   });
-  it("never show the repo chip on a WORK session, even in the cloud (his report, 2026-10-05: a web Work session asked him to connect GitHub)", () => {
-    const work = cloudChipsModel({ locus: "cloud", type: "work", born: false, connected: false, picks: [], lockedHint: LOCUS_LOCKED_HINT });
-    expect(work.repo.shown).toBe(false);
-    const code = cloudChipsModel({ locus: "cloud", type: "code", born: false, connected: false, picks: [], lockedHint: LOCUS_LOCKED_HINT });
-    expect(code.repo.shown).toBe(true);
-  });
   it("are read-only on a born session, and say why", () => {
     const born = cloudChipsModel({ locus: "cloud", born: true, connected: false, picks: two, lockedHint: LOCUS_LOCKED_HINT });
     expect(born.env).toMatchObject({ locked: true, title: LOCUS_LOCKED_HINT.cloud });
@@ -99,17 +88,13 @@ describe("the two chips", () => {
 });
 
 describe("the composer's chip set (his report, 2026-10-05: Work → Code → + New)", () => {
-  it("is empty for a Work session, whatever the place", () => {
-    expect(composerChipSet({ surface: "web", type: "work", locus: "cloud", attached: true })).toEqual({ environment: false, repo: false, folder: false });
-    expect(composerChipSet({ surface: "desktop", type: "work", locus: "local", attached: true })).toEqual({ environment: false, repo: false, folder: false });
-  });
-  it("comes back for a Code session: the web's cloud pair, or the environment + folder on an attached desktop", () => {
-    expect(composerChipSet({ surface: "web", type: "code", locus: "cloud", attached: false })).toEqual({ environment: true, repo: true, folder: false });
-    expect(composerChipSet({ surface: "web", type: "code", locus: "local", attached: true })).toEqual({ environment: true, repo: false, folder: true });
-    expect(composerChipSet({ surface: "web", type: "code", locus: "local", attached: false })).toEqual({ environment: true, repo: false, folder: false });
+  it("the web's cloud pair, or the environment + folder on an attached desktop", () => {
+    expect(composerChipSet({ surface: "web", locus: "cloud", attached: false })).toEqual({ environment: true, repo: true, folder: false });
+    expect(composerChipSet({ surface: "web", locus: "local", attached: true })).toEqual({ environment: true, repo: false, folder: true });
+    expect(composerChipSet({ surface: "web", locus: "local", attached: false })).toEqual({ environment: true, repo: false, folder: false });
   });
   it("keeps the desktop app's one folder chip", () => {
-    expect(composerChipSet({ surface: "desktop", type: "code", locus: "local", attached: true })).toEqual({ environment: false, repo: false, folder: true });
+    expect(composerChipSet({ surface: "desktop", locus: "local", attached: true })).toEqual({ environment: false, repo: false, folder: true });
   });
 });
 

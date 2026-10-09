@@ -67,14 +67,12 @@ export type SurfaceTileIn = {
   cloud?: boolean;
   /** a house built-in row (the glyphh launcher set; carries no appId) */
   houseDefault?: boolean;
-  /** a CLI agent's tile (kind "tool" on the wall) */
-  cliAgent?: unknown;
   /** a dock nav slot's app (a section tile traded onto the pages) */
   navApp?: { archetype?: string; execPath?: string | null } | null;
 };
 
 /** THE ONE RULE FOR THE WALL AND THE DOCK: a surface hosts every layout,
- *  every section, the Glyphh agent, every CLI agent, every dock control (New
+ *  every section, the Glyphh agent, every dock control (New
  *  tab opens a browser tab on the web) and every tool view it can host — the
  *  Browser needs a streamed panel. An APP tile: the desktop (native windows)
  *  hosts every one. A surface WITHOUT native windows hosts ONLY what it can
@@ -91,7 +89,7 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
     case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
     case "agent": return true;
     case "tool":
-      if (t.cliAgent || t.navKey) return true;
+      if (t.navKey) return true;
       return !!t.toolView && surfaceHostsView(t.toolView, caps);
     case "app": {
       if (caps.nativeWindows) return true;
@@ -104,24 +102,6 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
 
 // ── WHAT THE HOME SHELL BOOTS INTO ─────────────────────────────────────────
 
-/** What the home shell can boot into. */
-export type BootSurface = "agent" | "wall" | "dock" | "echo";
-
-/** The desktop boots the whole command center. */
-export const DESKTOP_BOOT_SURFACES: ReadonlyArray<BootSurface> = Object.freeze(["wall", "dock", "echo", "agent"]);
-
-/** THE WEB'S PAGE IS THE AGENT (his order, 2026-10-05): the wall and the dock
- *  are BUILT on the web — the same wall, the same dock — but do not paint at
- *  boot; the rail's Echo icon lifts them over the seated agent. */
-export function webBootSurfaces(web: boolean): ReadonlyArray<BootSurface> {
-  return web ? Object.freeze(["agent"] as BootSurface[]) : DESKTOP_BOOT_SURFACES;
-}
-
-/** Does this surface paint at boot? */
-export function bootsSurface(web: boolean, surface: BootSurface): boolean {
-  return webBootSurfaces(web).includes(surface);
-}
-
 // ── SETTINGS: THE GROUP PAGES ──────────────────────────────────────────────
 
 /** ONE PAGE (his report, 2026-10-07: "The Build and Customize tabs are
@@ -131,14 +111,16 @@ export function bootsSurface(web: boolean, surface: BootSurface): boolean {
  *  plugins. Connections sits beside them (WEB_GROUP_ROWS). */
 export const WEB_BUILD_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "tasks", "plugins"]);
 
-/** The shape half: Tabs, Workspaces, Drips, Schedules. */
-export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze(["tabs", "layouts", "drips", "schedules"]);
+/** The shape half: empty now. (Tabs, Workspaces, Drips and Schedules left the
+ *  page, his orders 2026-10-09: workspaces live in the rail's tray and its +,
+ *  Schedules is a page of its own from the rail.) */
+export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze([]);
 
 /** THE ONE PAGE'S TAB ORDER (his report, 2026-10-07): Skills, Agents, Apps,
  *  Connections, Plugins, Tabs, Workspaces, Drips, Schedules — Tasks stays a
  *  hidden row (2026-09-17) and so never paints a tab. The Settings nav lists
  *  its rows in this order under the one Customize header. */
-export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tabs", "layouts", "drips", "schedules", "tasks"]);
+export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]);
 
 /** The tabs with a Discover half (a hub / a directory). The page's one
  *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead
@@ -174,6 +156,8 @@ export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp
 export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
   { sub: "artifacts", label: "Artifacts" },
   { sub: "customize", label: "Customize" },
+  // A page of its own from the rail (his order, 2026-10-09).
+  { sub: "schedules", label: "Schedules" },
 ]);
 
 /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts -> new
@@ -187,21 +171,19 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  = close), an X on the right. Closing restores exactly what was showing.
  *  Customize takes this path on the desktop too (GROUP_PAGES); Artifacts
  *  stays an ordinary work panel there. */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize"]);
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize", "schedules"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
-/** THE GROUP PAGE IS A PAGE ON BOTH SURFACES (his order, 2026-10-07: "the
- *  desktop app should handle the Build and customize pages the same as they
- *  are handled in the web: they render as pages and remove the like pages
- *  from settings to make it more manageable"). ONE page since his report the
- *  same day ("it should just be one tab"): Customize opens full screen on the
- *  desktop as on the web; Artifacts is the web's alone (a work panel on the
- *  desktop). */
+/** THE GROUP PAGE (his order, 2026-10-07): ONE Customize page. Customize and
+ *  Artifacts open FULL SCREEN on BOTH surfaces, over the panels, one at a time
+ *  — only a close, no expand (his order, 2026-10-09: "i still want customize
+ *  and artifacts to open full screen. Closing each other and over the top of
+ *  the other panels"). */
 export const GROUP_PAGES: ReadonlyArray<string> = Object.freeze(["customize"]);
 export type GroupPage = "customize";
-export function panelOpensFullScreen(key: string, web: boolean): boolean {
-  return web ? webPanelOpensFullScreen(key) : GROUP_PAGES.includes(key);
+export function panelOpensFullScreen(key: string, _web: boolean): boolean {
+  return webPanelOpensFullScreen(key);
 }
 /** A DEAD PAGE KEY RESOLVES TO THE ONE PAGE (his report, 2026-10-07): a saved
  *  dock slot, a wall card, a remembered rail section or an older caller
@@ -216,7 +198,7 @@ export function groupOfSub(sub: string): GroupPage | null {
   return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize", schedules: "Schedules" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
@@ -237,16 +219,6 @@ export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
 
-/** EVERY LAUNCH LANDS ON WORK → NEW, desktop and web alike (his order,
- *  2026-10-07: "when the app first starts it is not loading work → new on the
- *  desktop and the web the same thing. I must must do that"). The saved tab
- *  still follows a switch made while running (the rail, a panel's dropdown),
- *  but it never decides the landing: a fresh start is Work, a new session.
- *  (Until 10-07 a saved pick won and the desktop started on Code.) */
-export function defaultTypeTab(_web: boolean, _saved: unknown): "work" | "code" {
-  return "work";
-}
-
 /** + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05: "no matter
  *  what page is up clicking new in the left rail closes whatever is open and
  *  shows the new session page"): the full-screen page, every open work
@@ -256,23 +228,9 @@ export function webNewClosesEverything(web: boolean): boolean {
   return web;
 }
 
-/** THE RAIL HEADER ON THE WEB IS THE DESKTOP'S (his order, 2026-10-05:
- *  "the left rail in web should work the same as the app. The icons should
- *  stay with the logo fixed in the same spot… In the web instead of the
- *  traffic lights you keep the logo in that spot."): the wordmark sits where
- *  the desktop's traffic lights sit, then the SAME two icons in the same
- *  order — Collapse, then Echo — at the same x whether the rail is open or
- *  collapsed, so a hand that knows where they are never misses. The
- *  desktop's own Echo buttons (#rail-echo-btn and the collapsed strip's
- *  twin) stay on the web. */
+/** THE WORDMARK holds the chrome spot on the web (the traffic lights' spot on
+ *  the desktop; his order, 2026-10-05). */
 export const WEB_RAIL_WORDMARK = ".app-rail-logo";
-export const WEB_RAIL_ECHO_BUTTONS: ReadonlyArray<string> = Object.freeze(["#rail-echo-btn", "#rail-echo-btn-strip"]);
-/** The rail header's order on both hosts: the chrome spot (traffic lights on
- *  the desktop, the wordmark on the web), then Collapse, then Echo. */
-export const RAIL_HEADER_ORDER: ReadonlyArray<string> = Object.freeze(["chrome", "collapse", "echo"]);
-export function webRailHeaderOrder(web: boolean): ReadonlyArray<string> {
-  return web ? RAIL_HEADER_ORDER : RAIL_HEADER_ORDER;
-}
 /** Does the wordmark hold the chrome spot here? Web only. */
 export function webRailWordmark(web: boolean): boolean {
   return web;
@@ -283,9 +241,8 @@ export function webRailWordmark(web: boolean): boolean {
  *  full-screen page now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-more-toggle",
-  // The Tabs and Workspaces trays (back as Appearance options, 2026-10-08)
-  // are the desktop's: the browser cannot render a tab row.
-  "#rail-apps-head", "#rail-apps-body", "#rail-layouts-head", "#rail-layouts-body",
+  // The Workspaces tray (2026-10-08) is the desktop's: workspaces are kept there.
+  "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body",
 ]);
 
 /** Settings rows for a CAPABILITY the browser lacks: the streamed web
@@ -293,7 +250,7 @@ export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
  *  reveal) show on the web: the web's Echo carries the dock. */
 export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
   "#streamed-panels-row",
-  "#rail-apps-row", "#rail-layouts-row",
+  "#rail-layouts-row",
 ]);
 
 // ── THE TOOL VIEWS ─────────────────────────────────────────────────────────
@@ -367,7 +324,7 @@ export type LayoutCellIn = { panelId: string };
  *  "web" = a URL tab, "native" = a desktop binary. */
 export type LayoutApp = { slug: string; id?: string; name?: string; kind?: string };
 /** `agent` = the layout's Glyphh agent cell (tool:coding), kept as is. */
-export type LayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" } | { kind: "cli"; id: string };
+export type LayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" };
 /** The layout's own Glyphh agent cell. */
 export const LAYOUT_AGENT_CELL = "tool:coding";
 export type LayoutPlan = { keep: LayoutKeep[]; skipped: string[] };
@@ -375,8 +332,8 @@ export type LayoutPlan = { keep: LayoutKeep[]; skipped: string[] };
 /** THE CAPABILITY RULE PER CELL, on both surfaces: a tool cell opens when
  *  the surface hosts its view (the Browser needs a streamed panel); a Glyphh
  *  app cell opens; a URL tab cell is an embedded page — a streamed panel; a
- *  native app cell needs a native window; a CLI agent cell opens on the
- *  session's folder; the Glyphh agent's own cell is kept as is. An id no row
+ *  native app cell needs a native window; the Glyphh agent's own cell is
+ *  kept as is. An id no row
  *  answers to is named. With desktop caps nothing is skipped but an unknown
  *  id. Each skip is one line. */
 export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: ReadonlyArray<LayoutApp>, caps: Readonly<SurfaceCaps>): LayoutPlan {
@@ -390,7 +347,6 @@ export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: Rea
     const id = String(c?.panelId ?? "").trim();
     if (!id) { skipped.push("an empty cell"); continue; }
     if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
-    if (id.toLowerCase().startsWith("agent:")) { keep.push({ kind: "cli", id: id.slice(6) }); continue; }
     if (id.startsWith("tool:")) {
       // a saved cell may name a view by its older alias (the open does the same)
       const raw = id.slice(5);

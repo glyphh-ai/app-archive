@@ -207,12 +207,12 @@ function targetName(row: ScheduleRow): string {
 function paintOverview(): void {
   const list = el("schedules-list"); const count = el("schedules-count");
   if (!list) return;
+  if (count) count.textContent = rows.length ? String(rows.length) : "";
   const now = Date.now();
   const shown = rows
     .filter((r) => !query || `${r.name} ${targetName(r)} ${r.agentName || ""}`.toLowerCase().includes(query))
     .map((r) => ({ r, next: r.enabled ? cronNext(r.cron, new Date(), zone) : null }))
     .sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
-  if (count) count.textContent = rows.length ? String(rows.length) : "";
   list.textContent = "";
   if (!shown.length) {
     list.innerHTML = `<div class="crud-empty">${query ? "No schedules match." : "Nothing on the clock yet. Add one here, or give a task a schedule and it shows up on this page."}</div>`;
@@ -284,10 +284,20 @@ function paintRecents(): void {
   });
 }
 
-function paintChart(): void {
+let chartWait = 0;
+function paintChart(tries = 0): void {
   const canvas = el<HTMLCanvasElement>("schedules-chart"); if (!canvas) return;
   const Chart = (window as unknown as { Chart?: new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void } }).Chart;
-  if (!Chart) return;
+  if (!Chart) { console.warn("[schedules] the chart library is not loaded — no runs chart"); return; }
+  // THE PAGE MOVES INTO PLACE FIRST (his report, 2026-10-09: the chart box
+  // drew empty on the Schedules page): a chart made while its box is
+  // detached or zero-sized never paints. Wait, bounded, until it has a size.
+  const box = canvas.parentElement;
+  if (!canvas.isConnected || !box || box.clientWidth === 0 || box.clientHeight === 0) {
+    if (chartWait) cancelAnimationFrame(chartWait);
+    if (tries < 120) chartWait = requestAnimationFrame(() => { chartWait = 0; paintChart(tries + 1); });
+    return;
+  }
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue("--accent").trim() || "#8c3bf2";
   const danger = css.getPropertyValue("--danger").trim() || "#e5534b";
@@ -359,7 +369,6 @@ async function openEditor(row: ScheduleRow | null): Promise<void> {
   editing = row;
   el("schedules-overview")?.classList.add("hidden");
   el("schedules-head")?.classList.add("hidden");
-  el("schedules-toolbar")?.classList.add("hidden");
   el("schedule-editor")?.classList.remove("hidden");
   el("schedule-form-error")?.classList.add("hidden");
   const head = el("schedule-detail-head"); if (head) head.textContent = row ? row.name : "New schedule";
@@ -379,7 +388,6 @@ function closeEditor(): void {
   el("schedule-editor")?.classList.add("hidden");
   el("schedules-overview")?.classList.remove("hidden");
   el("schedules-head")?.classList.remove("hidden");
-  el("schedules-toolbar")?.classList.remove("hidden");
 }
 
 async function paintRuns(id: string): Promise<void> {

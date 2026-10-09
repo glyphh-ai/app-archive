@@ -100,14 +100,6 @@ files:
   - "!node_modules/kuzu/kuzu-source/**"
   - "!node_modules/kuzu/prebuilt/**"
 
-# THE GLYPHH CLI SHIPS INSIDE THE APP (2026-10-01): CI bundles cli@main beside
-# the sdk@main it vendors (scripts/bundle-cli.mjs → vendor/glyphh-cli: one
-# self-contained file, no node_modules). The app runs it with its own binary as
-# Node, so no install, and every app update is a CLI + SDK update.
-extraResources:
-  - from: vendor/glyphh-cli
-    to: glyphh-cli
-
 asarUnpack:
   - dist/main/bridge-tui.js
   - node_modules/better-sqlite3/**/*

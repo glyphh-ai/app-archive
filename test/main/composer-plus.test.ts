@@ -17,25 +17,25 @@ const DESKTOP_HAS = new Set(["glyphhPickAttachments", "pickWorkingDir", "skillsL
 const WEB_HAS = new Set(["skillsList", "skillSetEnabled", "connectionsList", "mcpConnectionsList", "mcpConnectionsUpdate", "attachDevicesList", "getPreference", "setPreference"]);
 const desktop = plusCapsOf((n) => DESKTOP_HAS.has(n));
 const web = plusCapsOf((n) => WEB_HAS.has(n));
-const st = (over: Partial<PlusState> = {}): PlusState => ({ surface: "desktop", space: "work", memoryOn: true, ...over });
+const st = (over: Partial<PlusState> = {}): PlusState => ({ surface: "desktop", space: "code", memoryOn: true, ...over });
 
 describe("the rows, per surface", () => {
-  it("desktop Work: attach ⌘U, Skills › Connectors › Devices ›, Memory ✓ — each with an icon", () => {
+  it("desktop: attach ⌘U, Skills › Connectors › Devices ›, Memory ✓ — each with an icon — then the folder family", () => {
     const rows = plusMenuRows(desktop, st());
-    expect(rows.map((r) => r.id)).toEqual(["attach", "skills", "connectors", "devices", "memory"]);
+    expect(rows.slice(0, 5).map((r) => r.id)).toEqual(["attach", "skills", "connectors", "devices", "memory"]);
     for (const r of rows) expect(r.icon).toMatch(/^<svg/);
     expect(rows[0]).toMatchObject({ label: ATTACH_LABEL, shortcut: ATTACH_SHORTCUT, kind: "action" });
     expect(rows.filter((r) => r.kind === "submenu").map((r) => r.label)).toEqual(["Skills", "Connectors", "Devices"]);
     expect(rows[4]).toMatchObject({ kind: "check", checked: true });
   });
-  it("desktop Code adds the folder family behind the OS pickers", () => {
-    const rows = plusMenuRows(desktop, st({ space: "code", workingFolder: "app" }));
+  it("desktop: the folder family behind the OS pickers (one type since 2026-10-08)", () => {
+    const rows = plusMenuRows(desktop, st({ workingFolder: "app" }));
     expect(rows.map((r) => r.id)).toEqual(["attach", "skills", "connectors", "devices", "memory", "add-folder", "working-folder", "choose-folder"]);
     expect(rows.find((r) => r.id === "working-folder")?.label).toBe("Working folder: app");
     expect(rows.filter((r) => r.desktopOnly).every((r) => r.codeOnly)).toBe(true);
   });
   it("the web never lists a native row — no attach picker, no folder rows, even in Code", () => {
-    const rows = plusMenuRows(web, st({ surface: "web", space: "code" }));
+    const rows = plusMenuRows(web, st({ surface: "web" }));
     expect(rows.map((r) => r.id)).toEqual(["skills", "connectors", "devices", "memory"]);
     expect(rows.some((r) => r.desktopOnly)).toBe(false);
     expect(rows[0].sepBefore).toBe(false);

@@ -112,8 +112,6 @@ import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
-import { registerCliAgentsIpc } from "./cli-agents.js";
-import { startCliSessionWatch } from "./cli-session-watch.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
@@ -468,8 +466,7 @@ async function boot() {
     registerGitIpc();
     // Dead ends for every retired agent-era channel (see agent-stubs.ts).
     registerAgentStubs();
-    // The Glyphh Agent panel's engine — a bridge over the claude CLI
-    // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
+    // The Glyphh Agent panel's engine (the Glyphh loop).
     registerAgentIpc();
     registerRemoteControlIpc();
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
@@ -504,8 +501,7 @@ async function boot() {
     }
   });
 
-  // ⌘⇧Space anywhere on the system: front Glyphh and open the command
-  // center (the renderer's opener applies the desktop-overlay preference).
+  // ⌘⇧Space anywhere on the system: front Glyphh.
   globalShortcut.register("CommandOrControl+Shift+Space", () => {
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -513,7 +509,6 @@ async function boot() {
         mainWindow.show();
         mainWindow.focus();
       }
-      sendToHomeShell("home:open-cc");
     } catch { /* window mid-teardown */ }
   });
 
@@ -906,15 +901,6 @@ async function boot() {
           // panel <webview> the host document never sees the chord — the
           // application menu fires regardless of which guest holds the keys.
           {
-            label: "Command Center",
-            accelerator: "CmdOrCtrl+Shift+.",
-            click: () => {
-              for (const wc of webContents.getAllWebContents()) {
-                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:open-cc"); } catch { /* mid-teardown */ }
-              }
-            },
-          },
-          {
             label: "New Session",
             accelerator: "CmdOrCtrl+Shift+N",
             click: () => {
@@ -1110,9 +1096,6 @@ async function boot() {
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerConnToolModesIpc();
-  // THE CLI AGENTS (his order, 2026-09-30): their own window, beside the Glyphh loop.
-  registerCliAgentsIpc();
-  startCliSessionWatch();
   registerLocalAgentsIpc();
   registerHubIpc();
   registerTaskRunnerIpc();

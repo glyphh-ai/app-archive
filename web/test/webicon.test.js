@@ -11,7 +11,6 @@ import {
   WEB_ICON_MAX_AGE, WEB_ICON_TTL_MS, WEB_ICON_MAX_BYTES,
   isPlainHost, faviconUrlForHost, faviconUrlForPage, faviconHostOf,
 } from '../webicon.mjs';
-import { CLI_MARK_URLS } from '../../src/renderer/help/cli-marks.ts';
 
 const CLAUDE = 'https://claude.ai/favicon.ico';
 
@@ -24,9 +23,6 @@ function fakeFetch(bytes = new Uint8Array([0, 0, 1, 0]), type = 'image/x-icon', 
 }
 
 describe('the allowlist', () => {
-  it('is the renderer\'s CLI mark table, verbatim — add a mark in both places', () => {
-    expect([...WEB_ICON_URLS].sort()).toEqual(Object.values(CLI_MARK_URLS).sort());
-  });
   it('matches exact URLs only — no hosts, no prefixes, no near misses', () => {
     expect(isAllowedIconUrl(CLAUDE)).toBe(true);
     expect(isAllowedIconUrl('https://claude.ai/favicon.ico?x=1')).toBe(false);

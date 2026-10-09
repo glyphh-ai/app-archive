@@ -1,14 +1,10 @@
 /**
  * work-landing.test.ts — the Work landing's pure rules (his order,
  * 2026-10-05: Claude's new-chat screen on web and app — an Ada-themed
- * greeting on load, and an Output chip whose only live row is Artifact).
+ * greeting on load). The Output chip is gone (his order, 2026-10-09).
  */
 import { describe, expect, it } from "vitest";
 import { GREETINGS, GREETING_MAX_CHARS, greetingBucket, greetingHash, pickGreeting, firstNameOf, renderGreeting } from "../../src/renderer/help/landing-greeting";
-import {
-  ARTIFACT_STANDING_LINE, OUTPUT_FORMATS, isStoredOutputFormat, liveOutputFormats,
-  outputChipLabel, outputFormatOf, outputStandingLine,
-} from "../../src/renderer/help/output-format";
 
 describe("greeting buckets", () => {
   it("cuts the day at 5, 10, 14, 17 and 22", () => {
@@ -109,60 +105,5 @@ describe("the pick", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 64; i++) seen.add(pickGreeting(`c${i.toString(36)}`, 7));
     expect(seen.size).toBe(GREETINGS.morning.length);
-  });
-});
-
-describe("the output formats", () => {
-  it("renders Auto and one live row, Artifact", () => {
-    expect(liveOutputFormats().map((f) => f.id)).toEqual(["auto", "artifact"]);
-    const artifact = liveOutputFormats()[1];
-    expect(artifact.label).toBe("Artifact");
-    expect(artifact.hint).toBe("Let Glyphh pick the format");
-  });
-
-  it("lists Docs, Slides and Design for later, not live", () => {
-    const later = OUTPUT_FORMATS.filter((f) => !f.available).map((f) => f.id);
-    expect(later).toEqual(["docs", "slides", "design"]);
-  });
-
-  it("carries an icon on every row", () => {
-    for (const f of OUTPUT_FORMATS) expect(f.icon).toMatch(/^<svg /);
-  });
-
-  it("stores only the live picks; anything else reads as Auto", () => {
-    expect(isStoredOutputFormat("auto")).toBe(true);
-    expect(isStoredOutputFormat("artifact")).toBe(true);
-    expect(isStoredOutputFormat("docs")).toBe(false);
-    expect(isStoredOutputFormat(undefined)).toBe(false);
-    expect(outputFormatOf("slides")).toBe("auto");
-    expect(outputFormatOf(undefined)).toBe("auto");
-    expect(outputFormatOf("artifact")).toBe("artifact");
-  });
-
-  it("names the chip: Output on Auto, the pick otherwise", () => {
-    expect(outputChipLabel(undefined)).toBe("Output");
-    expect(outputChipLabel("auto")).toBe("Output");
-    expect(outputChipLabel("artifact")).toBe("Artifact");
-  });
-});
-
-describe("the standing line", () => {
-  it("is one line, naming the artifact_publish tool and the link", () => {
-    expect(ARTIFACT_STANDING_LINE).toBe("Deliver the result as an artifact: build it and publish it with the artifact_publish tool, then report its link.");
-    expect(ARTIFACT_STANDING_LINE).not.toMatch(/\n/);
-  });
-
-  it("rides only an Artifact pick", () => {
-    expect(outputStandingLine("artifact")).toBe(ARTIFACT_STANDING_LINE);
-    expect(outputStandingLine("auto")).toBe("");
-    expect(outputStandingLine(undefined)).toBe("");
-    expect(outputStandingLine("docs")).toBe("");
-  });
-
-  it("joins the voice brief the way the composer does", () => {
-    const join = (brief: string, pick: unknown): string => [brief, outputStandingLine(pick)].filter(Boolean).join("\n\n");
-    expect(join("", "auto")).toBe("");
-    expect(join("", "artifact")).toBe(ARTIFACT_STANDING_LINE);
-    expect(join("Keep it short.", "artifact")).toBe(`Keep it short.\n\n${ARTIFACT_STANDING_LINE}`);
   });
 });
