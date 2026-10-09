@@ -1059,6 +1059,14 @@ contextBridge.exposeInMainWorld("glyphh", {
     return () => { ipcRenderer.removeListener("power-build-progress", l); };
   },
   avatarGenerateStop: () => ipcRenderer.invoke("avatar-generate-stop") as Promise<{ ok: boolean; stopped: boolean }>,
+  /** THE RAIL'S + (2026-10-09): Glyphh builds a whole super power — its powers, its face (main/super-power-build-ipc.ts). */
+  superPowerBuild: (ask: string) => ipcRenderer.invoke("super-power-build", ask) as Promise<{ ok: true; data: { agent: string; name: string; description: string; powers: Array<{ id: string; name: string }>; connections: string[]; avatar: { variant: number; color: string; image?: string } | null; avatarError: string | null } } | { ok: false; error: string }>,
+  superPowerBuildStop: () => ipcRenderer.invoke("super-power-build-stop") as Promise<{ ok: boolean; stopped: boolean }>,
+  onSuperPowerBuildProgress: (cb: (beat: { stage: string; line: string }) => void) => {
+    const l = (_e: Electron.IpcRendererEvent, b: { stage: string; line: string }) => cb(b);
+    ipcRenderer.on("super-power-build-progress", l);
+    return () => { ipcRenderer.removeListener("super-power-build-progress", l); };
+  },
   powerBuild: (ask: string) => ipcRenderer.invoke("power-build", ask) as Promise<{ ok: true; data: { id: string; slug: string; type: "skill" | "task"; name: string; description: string; connections: string[] } } | { ok: false; error: string }>,
   /** A super power's avatar from the Images power (main/powers.ts generateAvatar). */
   avatarGenerate: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>

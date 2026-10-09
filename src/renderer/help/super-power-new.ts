@@ -1,0 +1,346 @@
+/**
+ * super-power-new.ts — THE NEW SUPER POWER MODAL (his order, 2026-10-09: "a new
+ * button next to super powers that opens a new super power modal that has
+ * prompt etc. something super super cool that gets the user pumped about super
+ * powers. Make the ui look awesome, needs to fit the edit super power feel and
+ * powers modal").
+ *
+ * Three screens in one box, the powers modal's frame:
+ *   ask    a cast of cats cycling in a glowing ring, the prompt, idea chips
+ *   build  the ring spins up; five stages light in turn (main sends each beat:
+ *          main/super-power-build-ipc.ts), the line Glyphh is on, and Stop
+ *   done   its new face, its name, the powers it holds, the connections it
+ *          still needs; Talk to it, Open its page, Build another
+ */
+
+import { AVATAR_VARIANTS, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
+import { escapeHtml, guardWebviewsForModal } from "./shared.js";
+import { readConnectorRows, type PlusApi } from "./composer-plus.js";
+import { openPowersModal } from "./powers-modal.js";
+
+type Stage = "plan" | "powers" | "connect" | "life" | "face";
+interface Beat { stage: Stage; line: string }
+interface Built {
+  agent: string; name: string; description: string;
+  powers: Array<{ id: string; name: string }>;
+  connections: string[];
+  avatar: BotAvatar | null;
+  avatarError: string | null;
+}
+interface Api extends PlusApi {
+  superPowerBuild?: (ask: string) => Promise<{ ok: true; data: Built } | { ok: false; error: string }>;
+  superPowerBuildStop?: () => Promise<{ ok: boolean; stopped: boolean }>;
+  onSuperPowerBuildProgress?: (cb: (b: Beat) => void) => () => void;
+}
+const api = (): Api => (window as unknown as { glyphh?: Api }).glyphh ?? {};
+
+/** The stages, in the order they light. */
+const STAGES: ReadonlyArray<{ key: Stage; label: string }> = [
+  { key: "plan", label: "Dreaming it up" },
+  { key: "powers", label: "Forging its powers" },
+  { key: "connect", label: "Wiring its connections" },
+  { key: "life", label: "Bringing it to life" },
+  { key: "face", label: "Drawing its face" },
+];
+
+/** Ideas, one click to fill the prompt. */
+const IDEAS: ReadonlyArray<{ label: string; ask: string }> = [
+  { label: "YouTube → social clips", ask: "Takes a full-length YouTube video and turns it into marketing content: short clip ideas with timestamps, posts for LinkedIn, X and Instagram, and a newsletter blurb." },
+  { label: "UI / UX engineer", ask: "Writes clean, accessible UI and UX code: components, layouts and styles that follow our design tokens, with keyboard support and tests." },
+  { label: "Inbox triage", ask: "Every weekday morning, reads my unread Gmail, sorts what needs a reply, drafts the easy ones and gives me a short briefing." },
+  { label: "Competitor watch", ask: "Researches our competitors every week: pricing, launches and reviews, and writes me a one-page summary with what changed." },
+  { label: "Meeting prep", ask: "Before each meeting on my calendar, pulls together who is attending, our last emails with them and three talking points." },
+];
+
+/** What the prompt box whispers while it is empty, one after another. */
+const WHISPERS: ReadonlyArray<string> = [
+  "A super power that turns my long videos into a week of social posts…",
+  "A super power that reviews my pull requests like a senior engineer…",
+  "A super power that reads my inbox at 8am and tells me what matters…",
+  "A super power that writes on-brand landing pages from a one-line brief…",
+];
+
+const S = 'viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"';
+const CLOSE_SVG = `<svg ${S} stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+const BOLT_SVG = `<svg ${S} stroke-width="2"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`;
+const CHECK_SVG = `<svg ${S} stroke-width="2.6"><path d="m5 12 5 5L20 7"/></svg>`;
+const SPARK_SVG = `<svg ${S} stroke-width="2"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>`;
+
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+export interface NewSuperPowerOptions {
+  /** Open its conversation (help/code.ts: the rail's own opener). */
+  onTalk?: (agent: string, name: string) => void;
+  /** Open its Edit page. */
+  onOpenPage?: (agent: string) => void;
+}
+
+let openModal: { close: () => void } | null = null;
+
+export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
+  openModal?.close();
+  let closed = false;
+  let building = false;
+  let ask = "";
+  let timers: number[] = [];
+  const clearTimers = (): void => { for (const t of timers) clearInterval(t); timers = []; };
+
+  const overlay = el("div", "confirm-overlay powm spn");
+  overlay.innerHTML = `
+    <div class="confirm-box powm-box spn-box" role="dialog" aria-modal="true" aria-label="New super power">
+      <div class="confirm-head powm-head"><h3>New super power</h3>
+        <button class="ws-icon-btn powm-x" type="button" title="Close" aria-label="Close">${CLOSE_SVG}</button></div>
+      <div class="confirm-body powm-body spn-body"></div>
+      <div class="crud-form-error powm-error hidden"></div>
+      <div class="confirm-foot powm-foot spn-foot"></div>
+    </div>`;
+  const q = <T extends HTMLElement>(s: string): T => overlay.querySelector<T>(s)!;
+  const body = q<HTMLElement>(".spn-body");
+  const foot = q<HTMLElement>(".spn-foot");
+  const errEl = q<HTMLElement>(".powm-error");
+  const showErr = (msg: string): void => { errEl.textContent = msg; errEl.classList.toggle("hidden", !msg); };
+
+  function close(): void {
+    if (closed) return;
+    if (building) void api().superPowerBuildStop?.();
+    closed = true;
+    clearTimers();
+    offBeat?.();
+    document.removeEventListener("keydown", onKey, true);
+    guardWebviewsForModal(false);
+    overlay.remove();
+    if (openModal?.close === close) openModal = null;
+  }
+  function onKey(e: KeyboardEvent): void {
+    if (e.key === "Escape" && !building) { e.preventDefault(); close(); }
+  }
+  q<HTMLButtonElement>(".powm-x").addEventListener("click", close);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay && !building) close(); });
+
+  // ── THE HERO: a cat in a glowing ring. On the ask screen the cast cycles
+  //    through every face; building, the ring spins up; done, its own face
+  //    lands with a burst. ──
+  const hero = el("div", "spn-hero");
+  const ring = el("div", "spn-ring");
+  const face = el("div", "spn-face");
+  const sparks = el("div", "spn-sparks");
+  for (let i = 0; i < 10; i++) {
+    const s = el("span", "spn-spark");
+    s.style.setProperty("--a", `${i * 36}deg`);
+    s.style.setProperty("--d", `${(i % 5) * 0.35}s`);
+    sparks.appendChild(s);
+  }
+  ring.append(face);
+  hero.append(sparks, ring);
+  let castAt = Math.floor(Math.random() * AVATAR_VARIANTS.length);
+  const paintCast = (mood: "playful" | "thinking" | "generating"): void => {
+    const v = AVATAR_VARIANTS[castAt % AVATAR_VARIANTS.length]!;
+    face.innerHTML = botAvatarSvg({ variant: v.id, color: "#0b0a0f" }, mood, { size: 112 });
+    face.classList.remove("spn-face-in");
+    void face.offsetWidth;
+    face.classList.add("spn-face-in");
+  };
+  const cycleCast = (mood: "playful" | "thinking" | "generating", ms: number): void => {
+    clearTimers();
+    paintCast(mood);
+    timers.push(window.setInterval(() => { castAt++; paintCast(mood); }, ms));
+  };
+
+  // ── ASK ──
+  function paintAsk(): void {
+    building = false;
+    hero.className = "spn-hero";
+    cycleCast("playful", 1400);
+    body.textContent = "";
+    foot.textContent = "";
+    body.appendChild(hero);
+    const title = el("div", "spn-title");
+    title.innerHTML = `Give Glyphh a new <span class="spn-glow">super power</span>`;
+    const sub = el("p", "spn-sub", "Describe the job. Glyphh plans it, forges the powers it needs, wires its connections and gives it a face. It lands on your rail, ready to go.");
+    const box = el("div", "spn-ask-wrap");
+    const field = el("textarea", "settings-input spn-ask");
+    field.rows = 4;
+    field.maxLength = 2000;
+    field.value = ask;
+    let w = 0;
+    field.placeholder = WHISPERS[0]!;
+    timers.push(window.setInterval(() => { w = (w + 1) % WHISPERS.length; field.placeholder = WHISPERS[w]!; }, 3200));
+    field.addEventListener("input", () => { ask = field.value; go.disabled = !field.value.trim(); });
+    field.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void build(); }
+    });
+    box.appendChild(field);
+    const ideas = el("div", "spn-ideas");
+    ideas.appendChild(el("span", "spn-ideas-label", "Try one"));
+    for (const idea of IDEAS) {
+      const chip = el("button", "spn-idea", idea.label);
+      chip.type = "button";
+      chip.addEventListener("click", () => { ask = idea.ask; field.value = idea.ask; go.disabled = false; field.focus(); });
+      ideas.appendChild(chip);
+    }
+    body.append(title, sub, box, ideas);
+
+    const cancel = el("button", "action-btn secondary", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", close);
+    const go = el("button", "action-btn primary spn-go");
+    go.type = "button";
+    go.innerHTML = `${BOLT_SVG}<span>Build my super power</span>`;
+    go.disabled = !ask.trim();
+    if (!api().superPowerBuild) {
+      go.disabled = true;
+      body.appendChild(el("div", "powm-note", "Building super powers needs the Glyphh desktop app."));
+    }
+    go.addEventListener("click", () => { void build(); });
+    foot.append(el("span", "spn-hint", "⌘↵ to build"), cancel, go);
+    setTimeout(() => field.focus(), 30);
+  }
+
+  // ── BUILD ──
+  let offBeat: (() => void) | null = null;
+  async function build(): Promise<void> {
+    const text = ask.trim();
+    const run = api().superPowerBuild;
+    if (!text || !run || building) return;
+    showErr("");
+    building = true;
+    hero.className = "spn-hero spn-building";
+    cycleCast("thinking", 700);
+    body.textContent = "";
+    foot.textContent = "";
+    body.appendChild(hero);
+    body.appendChild(el("div", "spn-title", "Building your super power"));
+    const quote = el("p", "spn-sub spn-quote", `“${text.length > 160 ? `${text.slice(0, 159)}…` : text}”`);
+    body.appendChild(quote);
+    const list = el("ol", "spn-stages");
+    const rows = new Map<Stage, HTMLLIElement>();
+    for (const s of STAGES) {
+      const li = el("li", "spn-stage");
+      li.innerHTML = `<span class="spn-dot"></span><span class="spn-stage-label">${escapeHtml(s.label)}</span>`;
+      rows.set(s.key, li);
+      list.appendChild(li);
+    }
+    body.appendChild(list);
+    const line = el("div", "spn-line", "Reading what you asked for");
+    body.appendChild(line);
+    const light = (stage: Stage): void => {
+      const at = STAGES.findIndex((s) => s.key === stage);
+      STAGES.forEach((s, i) => {
+        const li = rows.get(s.key)!;
+        const done = i < at;
+        li.classList.toggle("done", done);
+        li.classList.toggle("active", i === at);
+        li.querySelector(".spn-dot")!.innerHTML = done ? CHECK_SVG : "";
+      });
+      if (stage === "face") cycleCast("generating", 450);
+    };
+    light("plan");
+    const stop = el("button", "action-btn secondary", "Stop");
+    stop.type = "button";
+    stop.addEventListener("click", () => { stop.disabled = true; stop.textContent = "Stopping…"; void api().superPowerBuildStop?.(); });
+    foot.append(el("span", "spn-hint", "This takes a minute or two"), stop);
+
+    offBeat = api().onSuperPowerBuildProgress?.((b) => {
+      if (closed) return;
+      if (b.stage) light(b.stage);
+      if (b.line) line.textContent = b.line;
+    }) ?? null;
+    const r = await run(text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+    offBeat?.();
+    offBeat = null;
+    building = false;
+    if (closed) return;
+    if (!r.ok) {
+      paintAsk();
+      if (r.error !== "Stopped.") showErr(r.error);
+      return;
+    }
+    ask = "";
+    paintDone(r.data);
+  }
+
+  // ── DONE ──
+  function paintDone(b: Built): void {
+    clearTimers();
+    hero.className = "spn-hero spn-born";
+    face.innerHTML = botAvatarSvg(b.avatar ?? { variant: AVATAR_VARIANTS[castAt % AVATAR_VARIANTS.length]!.id, color: "#0b0a0f" }, "done", { size: 112, title: b.name });
+    face.classList.remove("spn-face-in");
+    void face.offsetWidth;
+    face.classList.add("spn-face-in");
+    body.textContent = "";
+    foot.textContent = "";
+    body.appendChild(hero);
+    const kicker = el("div", "spn-kicker");
+    kicker.innerHTML = `${SPARK_SVG}<span>New super power unlocked</span>`;
+    body.append(kicker, el("div", "spn-name", b.name), el("p", "spn-sub", b.description || ""));
+    if (b.avatarError) body.appendChild(el("div", "powm-note", "Its face couldn't be drawn this time, so it wears the classic cat. Draw a new one from its page."));
+
+    const sec = (label: string): HTMLElement => {
+      const wrap = el("div", "spn-sec");
+      wrap.appendChild(el("div", "conn2-h3 spn-sec-h", label));
+      body.appendChild(wrap);
+      return wrap;
+    };
+    const powers = sec("Its powers");
+    const chips = el("div", "spn-chips");
+    if (!b.powers.length) chips.appendChild(el("span", "powm-note", "None yet: it runs on Glyphh's own know-how."));
+    for (const p of b.powers) {
+      const c = el("span", "spn-chip");
+      c.innerHTML = `${BOLT_SVG}<span>${escapeHtml(p.name)}</span>`;
+      chips.appendChild(c);
+    }
+    powers.appendChild(chips);
+
+    if (b.connections.length) {
+      const conns = sec("Its connections");
+      const list = el("div", "spn-chips");
+      conns.appendChild(list);
+      const note = el("div", "powm-note");
+      conns.appendChild(note);
+      void readConnectorRows(api()).then((rows) => {
+        if (closed) return;
+        const have = new Set(rows.filter((r) => r.kind === "account" && r.on).map((r) => r.slug));
+        let missing = 0;
+        for (const slug of b.connections) {
+          const ok = have.has(slug);
+          if (!ok) missing++;
+          const c = el("span", `spn-chip ${ok ? "on" : "off"}`);
+          c.innerHTML = `${ok ? CHECK_SVG : ""}<span>${escapeHtml(slug.replace(/_/g, " "))}</span>`;
+          list.appendChild(c);
+        }
+        if (missing) {
+          note.textContent = `Connect ${missing === 1 ? "it" : `these ${missing}`} so it can do its job.`;
+          const connect = el("button", "action-btn secondary spn-connect", "Connect");
+          connect.type = "button";
+          connect.addEventListener("click", () => { close(); openPowersModal({ tab: "connections" }); });
+          conns.appendChild(connect);
+        } else {
+          note.textContent = "All connected. It's ready.";
+        }
+      }).catch(() => { /* the chips stay unmarked */ });
+    }
+
+    const again = el("button", "action-btn secondary", "Build another");
+    again.type = "button";
+    again.addEventListener("click", () => paintAsk());
+    const page = el("button", "action-btn secondary", "Open its page");
+    page.type = "button";
+    page.addEventListener("click", () => { close(); opts.onOpenPage?.(b.agent); });
+    const talk = el("button", "action-btn primary spn-go");
+    talk.type = "button";
+    talk.innerHTML = `${BOLT_SVG}<span>Talk to it</span>`;
+    talk.addEventListener("click", () => { close(); opts.onTalk?.(b.agent, b.name); });
+    foot.append(again, page, talk);
+  }
+
+  document.addEventListener("keydown", onKey, true);
+  guardWebviewsForModal(true);
+  document.body.appendChild(overlay);
+  openModal = { close };
+  paintAsk();
+}

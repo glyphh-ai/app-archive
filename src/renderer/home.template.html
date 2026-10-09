@@ -124,7 +124,11 @@
              chat in the Glyphh UI; the threads live in the recents dropdown at the
              agent's top right. The powers themselves live in the + box. -->
         <div id="rail-recents-body" class="app-rail-section-body rail-sp-body" data-rail-section="recents">
-          <div class="code-history-sec rail-sp-head">Super powers</div>
+          <!-- THE + (his order, 2026-10-09: "a new button next to super powers that
+               opens a new super power modal"): help/super-power-new.ts. -->
+          <div class="code-history-sec rail-sp-head"><span>Super powers</span>
+            <button id="rail-sp-new" class="rail-sp-new" type="button" title="New super power" aria-label="New super power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
           <div class="app-rail-search">
             <input id="rail-sp-search" class="rail-recents-search" type="text" placeholder="Search super powers…" spellcheck="false" autocomplete="off" />
           </div>

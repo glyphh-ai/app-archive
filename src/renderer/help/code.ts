@@ -26,6 +26,7 @@ import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openPowersModal } from "./powers-modal.js";
+import { openNewSuperPowerModal } from "./super-power-new.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -6904,6 +6905,20 @@ function initRailApps(): void {
   initRailSections();
   initWorkspacesVsplit();
   el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
+  // THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
+  // to it opens its conversation the way its rail row does.
+  el("rail-sp-new")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openNewSuperPowerModal({
+      onTalk: (slug, name) => {
+        railPickedKey = slug;
+        renderRailSessions();
+        leaveWorkspace();
+        sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
+      },
+      onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
+    });
+  });
   el<HTMLInputElement>("rail-sp-search")?.addEventListener("input", () => renderRailSessions());
   // ONE CREATE DOOR (his order, 2026-10-08): the rail's +, the agent menu's
   // "Create workspace…". A panel is its own document — it asks the shell,

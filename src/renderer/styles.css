@@ -22467,3 +22467,99 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 
 /* Stop under the busy spinner (a power being built). */
 .powm-busy-stop { margin-top: 18px; min-width: 88px; }
+
+/* ── NEW SUPER POWER (his order, 2026-10-09: "something super super cool that
+   gets the user pumped about super powers… fit the edit super power feel and
+   powers modal"): the powers modal's box, a cat in a glowing ring, the prompt
+   and idea chips; building, the ring spins up and five stages light; done,
+   its own face lands with a burst. help/super-power-new.ts. ── */
+.confirm-overlay .confirm-box.spn-box { height: auto; min-height: min(560px, calc(100vh - 80px)); }
+.spn-body { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 8px 28px 6px; overflow-y: auto; }
+.spn-body > * { flex-shrink: 0; }
+.spn-hero { position: relative; width: 168px; height: 168px; margin: 4px auto 2px; display: flex; align-items: center; justify-content: center; }
+.spn-ring {
+  position: relative; width: 148px; height: 148px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 22%, var(--surface)) 0%, var(--surface) 68%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 85%, transparent), 0 0 34px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.spn-ring::before {
+  content: ""; position: absolute; inset: -9px; border-radius: 50%; padding: 3px;
+  background: conic-gradient(from 0deg, transparent 0deg, var(--accent) 90deg, transparent 180deg, color-mix(in srgb, var(--accent) 60%, #fff) 270deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: spn-spin 6s linear infinite; opacity: 0.85;
+}
+.spn-building .spn-ring::before { animation-duration: 1.1s; opacity: 1; }
+.spn-building .spn-ring { animation: spn-pulse 1.6s ease-in-out infinite; }
+.spn-face { width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; }
+.spn-face svg, .spn-face img { width: 112px; height: 112px; object-fit: contain; }
+.spn-face-in { animation: spn-pop 0.42s cubic-bezier(.2, 1.4, .4, 1); }
+.spn-sparks { position: absolute; inset: 0; pointer-events: none; }
+.spn-spark {
+  position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent); opacity: 0;
+  transform: rotate(var(--a)) translateY(-78px);
+  animation: spn-twinkle 2.6s ease-in-out var(--d) infinite;
+}
+.spn-born .spn-spark { animation: spn-burst 1.1s cubic-bezier(.15, .8, .3, 1) var(--d) 1 both; }
+.spn-born .spn-ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 90%, transparent), 0 0 54px 0 color-mix(in srgb, var(--accent) 80%, transparent); }
+.spn-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.2; color: var(--text); }
+.spn-glow { color: var(--accent-text); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent); }
+.spn-sub { margin: 0; max-width: 520px; font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.spn-quote { font-style: italic; }
+.spn-ask-wrap { width: 100%; margin-top: 6px; }
+.spn-ask { width: 100%; box-sizing: border-box; min-height: 104px; resize: vertical; font-size: 14px; line-height: 1.5; text-align: left; border-radius: 12px; }
+.spn-ask:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.spn-ideas { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+.spn-ideas-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+.spn-idea {
+  font: inherit; font-size: 12px; color: var(--text-2); background: var(--hover); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 11px; cursor: pointer; transition: border-color .15s, color .15s, transform .15s;
+}
+.spn-idea:hover { color: var(--text); border-color: var(--accent); transform: translateY(-1px); }
+.spn-foot { align-items: center; }
+.spn-hint { flex: 1; text-align: left; font-size: 12px; color: var(--text-3); }
+.spn-go { display: inline-flex; align-items: center; gap: 7px; }
+.spn-go svg { width: 15px; height: 15px; }
+.spn-stages { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; text-align: left; min-width: 240px; }
+.spn-stage { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-3); transition: color .2s; }
+.spn-dot { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 1.5px solid var(--border); display: inline-flex; align-items: center; justify-content: center; }
+.spn-dot svg { width: 11px; height: 11px; }
+.spn-stage.active { color: var(--text); font-weight: 600; }
+.spn-stage.active .spn-dot { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); animation: spn-pulse 1.2s ease-in-out infinite; }
+.spn-stage.done { color: var(--text-2); }
+.spn-stage.done .spn-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.spn-line { min-height: 18px; max-width: 520px; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spn-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); }
+.spn-kicker svg { width: 14px; height: 14px; }
+.spn-name { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--text); }
+.spn-sec { width: 100%; text-align: left; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.spn-sec-h { margin: 0; }
+.spn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.spn-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); text-transform: capitalize;
+  background: var(--hover); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
+}
+.spn-chip svg { width: 12px; height: 12px; color: var(--accent-text); }
+.spn-chip.off { color: var(--text-2); border-style: dashed; }
+.spn-connect { align-self: flex-start; }
+@keyframes spn-spin { to { transform: rotate(360deg); } }
+@keyframes spn-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes spn-pop { 0% { transform: scale(.6) rotate(-8deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+@keyframes spn-twinkle { 0%, 100% { opacity: 0; } 50% { opacity: .9; } }
+@keyframes spn-burst {
+  0% { opacity: 1; transform: rotate(var(--a)) translateY(-40px) scale(1.4); }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(-96px) scale(.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spn-ring::before, .spn-building .spn-ring, .spn-spark, .spn-face-in, .spn-stage.active .spn-dot { animation: none; }
+}
+
+/* The rail's + beside SUPER POWERS. */
+.rail-sp-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.rail-sp-new {
+  width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-2);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.rail-sp-new:hover { background: var(--hover); color: var(--text); }
+.rail-sp-new svg { width: 14px; height: 14px; }
