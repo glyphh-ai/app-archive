@@ -20920,7 +20920,7 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 /* ── THE FIXED SIDEBAR (his order, 2026-09-16): the rail is the one fixed
    panel, full height at the left, carrying the only header on the page. The
    content side starts at the very top; work panels bring their own heads. ── */
-body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w-open: 264px; --rail-w: var(--rail-w-open); }
+body { --titlebar-h: 0px; --rail-top-h: var(--panel-row-h, 46px); --rail-w-open: 264px; --rail-w: var(--rail-w-open); }
 /* Collapsed: the sidebar leaves entirely (content takes the width); hovering
    the strip's icon PEEKS it back as an overlay in its old place. */
 body.rail-collapsed { --rail-w: 0px; }
@@ -21993,7 +21993,7 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    the panel's own top row; that row pads by the head's footprint
    (--card-pad-l / --card-pad-r, measured in code-workbench.ts trackHeadPads).
    A panel with no top row of its own gets the head's row as its first. ── */
-.echo-card { --card-row-h: 32px; }
+.echo-card { --card-row-h: var(--panel-row-h); }
 .echo-card > .echo-card-head {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
   height: var(--card-row-h); box-sizing: border-box;
@@ -22023,3 +22023,49 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .echo-card.echo-agent-host > .echo-card-head { display: none; }
 .code-agent-head { user-select: none; }
 .code-card-expand { flex: none; }
+
+/* ── ONE TOP ROW ON EVERY PANEL (his order, 2026-10-09: "all workpanel and
+   app headers have to share the same padding and the lines must extend to
+   the extents on all headers"). One height (--panel-row-h, the agent row's
+   46px), no vertical padding of their own, and one full-width 1px rule in
+   the same colour at the same depth. A tab row stretches its tabs so the
+   active tab's underline sits on that rule. ── */
+:root { --panel-row-h: 46px; }
+.echo-card .ws-app-chrome,
+.echo-card .ws-file-search,
+.echo-card .ws-terminal-tabs,
+.echo-card .ws-monaco-tabs,
+.echo-card .ws-diff-toolbar,
+.echo-card .ws-preview-tabs {
+  height: var(--panel-row-h) !important;
+  min-height: var(--panel-row-h) !important;
+  max-height: var(--panel-row-h);
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.echo-card .ws-terminal-tabs,
+.echo-card .ws-monaco-tabs { align-items: stretch; }
+.echo-card .ws-preview-tabs { align-items: flex-end; }
+/* The floating head draws the rule too: it lands on the row's own rule, and
+   is the rule for a panel with no top row of its own. */
+.echo-card > .echo-card-head { border-bottom: 1px solid var(--border); }
+/* The agent's row: the same height, the same rule, in its own window and as
+   a workspace seat. */
+.code-agent-head {
+  height: var(--panel-row-h);
+  min-height: var(--panel-row-h) !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+/* The strip over the traffic lights is the same row (his order, 2026-10-09:
+   "the space over the traffic lights has to be the same height as well"):
+   --rail-top-h follows --panel-row-h, and the drawn lights centre in it. */
+html:not(.glyphh-web) #panel-wc { height: var(--rail-top-h); }
