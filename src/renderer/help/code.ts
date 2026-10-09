@@ -8157,6 +8157,42 @@ export function initCode(): void {
     }
     void home;
   }
+  // THE AGENT'S ROW IS ITS CARD'S HEAD (his order, 2026-10-09: "remove the
+  // headers off all work panels"): ⤢ expands the card, and pressing the row
+  // drags it. A panel (its own document) asks the shell through main; the
+  // in-document agent calls the workbench directly.
+  {
+    const solo = (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
+    const g = window.glyphh as unknown as {
+      agentPanelExpand?: () => Promise<boolean>;
+      agentPanelDrag?: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void;
+    };
+    el("code-card-expand")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (solo) void g.agentPanelExpand?.();
+      else (window as unknown as { __wbToggleAgentExpand?: () => void }).__wbToggleAgentExpand?.();
+    });
+    const row = document.querySelector<HTMLElement>(".code-agent-head");
+    row?.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;
+      if ((ev.target as HTMLElement).closest("button, input, textarea, select, a, .code-menu, .code-drop")) return;
+      if (!solo) { (window as unknown as { __wbAgentHeadDrag?: (x: number, y: number) => void }).__wbAgentHeadDrag?.(ev.clientX, ev.clientY); return; }
+      if (!g.agentPanelDrag) return;
+      g.agentPanelDrag({ phase: "down", cx: ev.clientX, cy: ev.clientY, sx: ev.screenX, sy: ev.screenY });
+      let queued: MouseEvent | null = null;
+      const move = (mv: MouseEvent): void => {
+        if (!queued) requestAnimationFrame(() => { const q = queued; queued = null; if (q) g.agentPanelDrag!({ phase: "move", cx: q.clientX, cy: q.clientY, sx: q.screenX, sy: q.screenY }); });
+        queued = mv;
+      };
+      const up = (u: MouseEvent): void => {
+        document.removeEventListener("mousemove", move, true);
+        document.removeEventListener("mouseup", up, true);
+        g.agentPanelDrag!({ phase: "up", cx: u.clientX, cy: u.clientY, sx: u.screenX, sy: u.screenY });
+      };
+      document.addEventListener("mousemove", move, true);
+      document.addEventListener("mouseup", up, true);
+    });
+  }
   // ONE COMBINED HISTORY (his order, 2026-09-14: "make them all one
   // thing") — the head's clock opens the SAME dropdown the rail and the
   // terminal head show, refreshed from the CLI stores; a pick adopts into

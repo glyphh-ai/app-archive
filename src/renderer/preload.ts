@@ -1181,6 +1181,15 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
   /** A solo panel asks the shell to open a workbench tool beside it. */
   agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  /** The panel's ⤢ and its row's drag act on ITS card in the shell (2026-10-09). */
+  agentPanelExpand: () => ipcRenderer.invoke("agent-panel-expand") as Promise<boolean>,
+  onAgentPanelExpand: (callback: (p: { wcId: number }) => void) => {
+    ipcRenderer.on("agent-panel:expand", (_event, p) => callback(p ?? { wcId: -1 }));
+  },
+  agentPanelDrag: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => ipcRenderer.send("agent-panel-drag", p),
+  onAgentPanelDrag: (callback: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => {
+    ipcRenderer.on("agent-panel:drag", (_event, p) => callback(p));
+  },
   /** A panel's "Create workspace…" opens the SHELL's modal — the arrangement is the shell's. */
   agentPanelCreateWorkspace: () => ipcRenderer.invoke("agent-panel-create-workspace") as Promise<boolean>,
   onAgentPanelCreateWorkspace: (callback: () => void) => {

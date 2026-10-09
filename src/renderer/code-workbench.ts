@@ -3349,6 +3349,81 @@ async function init(): Promise<void> {
     // 2026-09-26: a second agent opened UNDER the first) — it owns its column
     // and is never reflowed under another card; a new one lands to the right.
     const isAgentEntry = (e: TileEntry): boolean => e.tile.kind === "agent" || /^agent(-panel)?:/.test(e.tile.slug || "");
+    /** The floating head's footprint, as two CSS vars the panel's top row
+     *  pads by: the title on the left, the buttons on the right. */
+    const trackHeadPads = (card: HTMLElement): void => {
+      const head = card.querySelector<HTMLElement>(".echo-card-head");
+      const title = head?.querySelector<HTMLElement>("span");
+      if (!head || !title) return;
+      const measure = (): void => {
+        const left = title.offsetLeft + title.offsetWidth + 12;
+        const btns = [...head.children].filter((c): c is HTMLElement => c instanceof HTMLElement && c.tagName === "BUTTON" && c.offsetParent !== null);
+        const right = btns.reduce((w, b) => w + b.offsetWidth + 6, 0) + 8;
+        card.style.setProperty("--card-pad-l", `${Math.round(left)}px`);
+        card.style.setProperty("--card-pad-r", `${Math.round(right)}px`);
+      };
+      new ResizeObserver(measure).observe(title);
+      new MutationObserver(measure).observe(head, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["style", "class"] });
+      requestAnimationFrame(measure);
+    };
+    /** Expand or restore a card (the head's ⤢, and the agent row's). */
+    const toggleCardExpand = (card: HTMLElement): void => {
+      if (card.classList.contains("expanded")) collapseCard(card); else expandCard(card);
+      layoutCards();
+    };
+    /** The card hosting an agent panel's webview, by its webContents id. */
+    const entryForWebContents = (wcId: number): TileEntry | null => {
+      for (const x of openList) {
+        const wv = x.card?.querySelector("webview") as WebviewEl | null;
+        let id: number | undefined;
+        try { id = wv?.getWebContentsId?.(); } catch { id = undefined; }
+        if (id === wcId) return x;
+      }
+      return null;
+    };
+    /** THE AGENT'S ROW DRIVES ITS CARD: a press there starts the card's own
+     *  drag (the head's mousedown handler, fed the same point). */
+    const startCardDragAt = (card: HTMLElement, clientX: number, clientY: number): void => {
+      const head = card.querySelector<HTMLElement>(".echo-card-head");
+      head?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+    };
+    const inDocAgentCard = (): HTMLElement | null =>
+      openList.find((x) => !!x.card?.isConnected && x.tile.kind === "agent")?.card ?? null;
+    (window as unknown as { __wbToggleAgentExpand?: () => void }).__wbToggleAgentExpand = () => {
+      const card = inDocAgentCard();
+      if (card) toggleCardExpand(card);
+    };
+    (window as unknown as { __wbAgentHeadDrag?: (x: number, y: number) => void }).__wbAgentHeadDrag = (x, y) => {
+      const card = inDocAgentCard();
+      if (card) startCardDragAt(card, x, y);
+    };
+    // An agent PANEL (its own webview) asks through main: expand, and the
+    // drag it forwards — the press, then every move in screen points, mapped
+    // onto this document from where the press landed.
+    {
+      const g = (window as unknown as { glyphh?: {
+        onAgentPanelExpand?: (cb: (p: { wcId: number }) => void) => void;
+        onAgentPanelDrag?: (cb: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => void;
+      } }).glyphh;
+      g?.onAgentPanelExpand?.((p) => { const x = entryForWebContents(p.wcId); if (x?.card) toggleCardExpand(x.card); });
+      let fwd: { x0: number; y0: number; sx0: number; sy0: number } | null = null;
+      g?.onAgentPanelDrag?.((p) => {
+        if (p.phase === "down") {
+          const x = entryForWebContents(p.wcId);
+          const wv = x?.card?.querySelector("webview");
+          if (!x?.card || !wv) return;
+          const r = wv.getBoundingClientRect();
+          fwd = { x0: r.left + p.cx, y0: r.top + p.cy, sx0: p.sx, sy0: p.sy };
+          document.body.classList.add("echo-drag");
+          startCardDragAt(x.card, fwd.x0, fwd.y0);
+          return;
+        }
+        if (!fwd) return;
+        const clientX = fwd.x0 + (p.sx - fwd.sx0), clientY = fwd.y0 + (p.sy - fwd.sy0);
+        document.dispatchEvent(new MouseEvent(p.phase === "up" ? "mouseup" : "mousemove", { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
+        if (p.phase === "up") { fwd = null; document.body.classList.remove("echo-drag"); }
+      });
+    }
     const wireCardDrag = (e: TileEntry, card: HTMLElement, head: HTMLElement): void => {
       head.addEventListener("pointerdown", (ev) => {
         if (ev.button !== 0) return;
@@ -3561,7 +3636,7 @@ async function init(): Promise<void> {
       }
       // Degenerate windows (tiny stage, mid-boot measures) — keep a usable box.
       if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
-      const side = 7;
+      const side = 0;   // SNUG to the rail and the window's edge (his report, 2026-10-09)
       return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
     }
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
@@ -4223,6 +4298,15 @@ async function init(): Promise<void> {
           ${agentCard ? "" : `<button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>`}
         </div><div class="echo-card-body"></div>`;
       card.querySelector("span")!.textContent = e.tile.name;
+      // NO HEADER ROW (his order, 2026-10-09: "remove the headers off all work
+      // panels, move the title down to the next row of each panel"). The head
+      // floats over the panel's own top row — title far left, the row's own
+      // controls, then expand and close — and that row is padded to make room
+      // (--card-pad-l / --card-pad-r, measured here). The agent has no shell
+      // head at all: its own session row carries expand and is its drag
+      // handle (help/code.ts).
+      if (agentCard) card.classList.add("echo-agent-host");
+      else trackHeadPads(card);
       const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
       expandBtn.addEventListener("click", () => {
         if (card.classList.contains("expanded")) { collapseCard(card); layoutCards(); return; }

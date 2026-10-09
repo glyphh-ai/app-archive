@@ -106,6 +106,17 @@ export function registerAgentLiveIpc(): void {
     sendToHomeShell("agent-panel:open-layout", { name });
     return true;
   });
+  // A PANEL'S ROW IS ITS CARD'S HEAD (his order, 2026-10-09): its ⤢ and its
+  // drag act on the panel's card in the shell, found by this webContents id.
+  ipcMain.handle("agent-panel-expand", (e) => {
+    sendToHomeShell("agent-panel:expand", { wcId: e.sender.id });
+    return true;
+  });
+  ipcMain.on("agent-panel-drag", (e, p: { phase?: string; cx?: number; cy?: number; sx?: number; sy?: number } | undefined) => {
+    const phase = p?.phase === "down" || p?.phase === "up" ? p.phase : "move";
+    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    sendToHomeShell("agent-panel:drag", { wcId: e.sender.id, phase, cx: n(p?.cx), cy: n(p?.cy), sx: n(p?.sx), sy: n(p?.sy) });
+  });
   // CREATE WORKSPACE from a panel's menu (his order, 2026-10-08): the modal
   // and the arrangement it saves are the SHELL's.
   ipcMain.handle("agent-panel-create-workspace", (e) => {

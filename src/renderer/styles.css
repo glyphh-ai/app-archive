@@ -21964,7 +21964,13 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    panels. They should all fit snug now"): no seams, no band inset (the
    workbench's gap/margin are 0), so the cards lose their float — square
    corners, no shadow; a 1px rule still parts neighbours. */
-.echo-card.placed:not(.expanded) { border-radius: 0; box-shadow: none; }
+.echo-card.placed:not(.expanded) { border-radius: 0; border: none; box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border); }
+/* One 1px seam between neighbours (each card draws its right and bottom
+   rule; the outer edges clip) — nothing framing the surface itself: the
+   column that hosts it drops its own side borders (his report, 2026-10-09:
+   "there is still a border to the right of the left-rail and the left of
+   the right edge of the app"). */
+.ws-right-rail:has(> .ws-rail-slot[data-view="echo"]) { border-left: none; border-right: none; }
 
 /* ── CREATE WORKSPACE modal (help/workspace-create.ts) ── */
 .wsc-overlay { z-index: 10050; }
@@ -21978,3 +21984,40 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .wsc-dir .action-btn { flex: none; }
 .wsc-error { font-size: 12px; color: var(--danger, #ff7a70); }
 .wsc-error.hidden { display: none; }
+
+/* ── NO HEADER ROW ON WORK PANELS (his order, 2026-10-09: "remove the headers
+   off all work panels, move the title down to the next row of each panel —
+   title (far left), existing content, expand, close"). The head floats over
+   the panel's own top row; that row pads by the head's footprint
+   (--card-pad-l / --card-pad-r, measured in code-workbench.ts trackHeadPads).
+   A panel with no top row of its own gets the head's row as its first. ── */
+.echo-card { --card-row-h: 32px; }
+.echo-card > .echo-card-head {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  height: var(--card-row-h); box-sizing: border-box;
+  padding: 0 6px 0 10px; border-bottom: none; background: transparent;
+  pointer-events: none;
+}
+.echo-card > .echo-card-head > * { pointer-events: auto; }
+.echo-card > .echo-card-head::after { display: none; }
+.echo-card > .echo-card-head span { flex: 0 1 auto; max-width: 38%; cursor: grab; color: var(--text); }
+.echo-card > .echo-card-head > button:first-of-type { margin-left: auto; }
+.echo-card .ws-app-chrome,
+.echo-card .ws-file-search,
+.echo-card .ws-terminal-tabs,
+.echo-card .ws-monaco-tabs,
+.echo-card .ws-diff-toolbar,
+.echo-card .ws-preview-tabs {
+  padding-left: var(--card-pad-l, 96px) !important;
+  padding-right: var(--card-pad-r, 64px) !important;
+  min-height: var(--card-row-h);
+  box-sizing: border-box;
+}
+.echo-card:not(.echo-agent-host):not(:has(.ws-app-chrome:not([style*="display: none"]), .ws-file-search, .ws-terminal-tabs, .ws-monaco-tabs, .ws-diff-toolbar, .ws-preview-tabs)) > .echo-card-body {
+  padding-top: var(--card-row-h);
+  box-sizing: border-box;
+}
+/* The agent's card has no shell head: its own session row is the head. */
+.echo-card.echo-agent-host > .echo-card-head { display: none; }
+.code-agent-head { user-select: none; }
+.code-card-expand { flex: none; }
