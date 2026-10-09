@@ -197,19 +197,13 @@ describe("settings — the one Customize page is the same on both surfaces; only
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
   });
-  it("the rail's menu is Artifacts, Customize, Schedules (his orders, 2026-10-05, 2026-10-07, 2026-10-09)", () => {
-    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize", "Schedules"]);
-    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize", "schedules"]);
-    expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain("build");
-    for (const sub of ["connections-cfg", "devices"]) {
-      expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
-      expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
-    }
+  it("the rail has no menu rows (his order, 2026-10-09): + New, Glyphh, then Super powers", () => {
+    expect([...WEB_RAIL_LINKS]).toEqual([]);
   });
   it("the hidden settings rows are ONLY a capability the browser lacks (streamed panels); the dock's rows show; the rail hides only More", () => {
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row", "#rail-layouts-row"]);
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
-    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body"]);
+    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
   });
 });
@@ -217,7 +211,6 @@ describe("settings — the one Customize page is the same on both surfaces; only
 describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
   it("exactly the rail's two open full screen on the web", () => {
     expect([...webFullScreenPanels]).toEqual(["artifacts", "customize", "schedules"]);
-    expect(webFullScreenPanels.map((k) => k)).toEqual(WEB_RAIL_LINKS.map((l) => l.sub));
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {

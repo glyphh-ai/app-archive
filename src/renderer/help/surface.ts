@@ -147,18 +147,10 @@ export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
  *  browser lacks (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
 export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
 
-/** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
- *  customize webpanels should be what is shown in the left rail", then
- *  "remove connections and devices from the left rail on web"): Artifacts,
- *  Customize — each opens FULL SCREEN (webPanelOpensFullScreen). Build folded
- *  into Customize (his report, 2026-10-07). Connections and Devices stay
- *  reachable inside Settings. The desktop's rail keeps the same two. */
-export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
-  { sub: "artifacts", label: "Artifacts" },
-  { sub: "customize", label: "Customize" },
-  // A page of its own from the rail (his order, 2026-10-09).
-  { sub: "schedules", label: "Schedules" },
-]);
+/** THE RAIL'S MENU: none (his order, 2026-10-09: "remove the other items…
+ *  the entire top left rail"). The rail is + New, Glyphh, then Super powers;
+ *  the full-screen pages open from elsewhere (the + box, the agent's menu). */
+export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([]);
 
 /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts -> new
  *  web panel -> open an artifact it opens full screen in place of anything
@@ -240,7 +232,6 @@ export function webRailWordmark(web: boolean): boolean {
  *  web-surface.ts). Customize left this list on 2026-10-05: it is the rail's
  *  full-screen page now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
-  "#rail-more-toggle",
   // The Workspaces tray (2026-10-08) is the desktop's: workspaces are kept there.
   "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body",
 ]);

@@ -1259,60 +1259,7 @@ export function initHelp() {
     });
   });
 
-  // ── App rail (Code-primary surface) ─────────────────────────────────────
-  // Three rail links — Connections / Apps / Layouts — each opens the SETTINGS
-  // MODAL at its section (the pages live in the modal; the rail is otherwise
-  // + New session and Recents only).
-  // Rail items open IN THE WORKBENCH (section cards) — the rail is the
-  // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize", schedules: "schedules" };
-  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const sub = btn.dataset.settingsSub!;
-      // THE ARTIFACTS PANEL (his order, 2026-10-05): the rail's Artifacts
-      // opens the work panel — an ordinary card on the desktop, full screen
-      // on the web (code-workbench.ts __wbOpenTool) — never the Settings page.
-      if (sub === "artifacts") { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("artifacts"); return; }
-      const wb = RAIL_WB_SECTIONS[sub];
-      if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
-      else openSettingsModal(sub);
-    });
-  });
-  // The More fly-out — second-tier rail destinations, every one a WORKBENCH
-  // surface: Loops/Skills open as section cards, Browser as the preview
-  // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
-  const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
-    { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
-  ];
-  const moreToggle = document.getElementById("rail-more-toggle");
-  let moreMenu: HTMLDivElement | null = null;
-  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; moreToggle?.classList.remove("open"); document.removeEventListener("click", onMoreOutside, true); };
-  const onMoreOutside = (ev: MouseEvent): void => {
-    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
-  };
-  moreToggle?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (moreMenu) { closeMore(); return; }
-    const menu = document.createElement("div");
-    menu.id = "rail-more-menu";
-    menu.className = "code-menu rail-more-menu";
-    for (const it of MORE_ITEMS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "app-rail-nav-item";
-      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
-      b.addEventListener("click", () => { closeMore(); it.open(); });
-      menu.appendChild(b);
-    }
-    document.body.appendChild(menu);
-    moreMenu = menu;
-    const r = moreToggle.getBoundingClientRect();
-    menu.style.left = `${r.right + 6}px`;
-    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
-    moreToggle.classList.add("open");
-    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
-  });
+  // (The rail's nav rows and the More fly-out are gone, his order 2026-10-09.)
   // (Artifacts rides the same data-settings-sub path — every rail link opens
   // the settings modal; the files PAGE stays reachable via gotoSection for
   // other callers, and closing the modal parks the adopted node back.)
