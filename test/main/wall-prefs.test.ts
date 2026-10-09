@@ -7,12 +7,12 @@ import {
 } from "../../src/renderer/help/wall-prefs.js";
 
 describe("the sidebar trays' option (his order, 2026-10-08)", () => {
-  it("is on by default, and only an explicit false puts a tray away", () => {
-    expect(RAIL_SHOW_DEFAULT).toBe(true);
-    expect(railTrayShown(undefined)).toBe(true);
-    expect(railTrayShown(null)).toBe(true);
-    expect(railTrayShown(true)).toBe(true);
+  it("is off by default, and only an explicit true shows a tray", () => {
+    expect(RAIL_SHOW_DEFAULT).toBe(false);
+    expect(railTrayShown(undefined)).toBe(false);
+    expect(railTrayShown(null)).toBe(false);
     expect(railTrayShown(false)).toBe(false);
+    expect(railTrayShown(true)).toBe(true);
   });
 });
 
