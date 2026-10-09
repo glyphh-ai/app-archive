@@ -688,6 +688,30 @@ function markHeadsUnderStrip(): void {
     }
   }
   heads.forEach((h) => h.classList.toggle("clears-strip", under.has(h)));
+  clearStripInAgentPanels(collapsed, stripW, topH);
+}
+/** AN AGENT PANEL IS ITS OWN DOCUMENT (his report, 2026-10-09: the top-left
+ *  panel's "New session" sat under the traffic lights and the rail icon once
+ *  the card header was gone). Its row is out of reach of the heads above, so
+ *  the shell measures the panel's card and tells the panel how far its row
+ *  must clear — only when that changes. */
+function clearStripInAgentPanels(collapsed: boolean, stripW: number, topH: number): void {
+  for (const card of Array.from(document.querySelectorAll<HTMLElement>(".echo-card.echo-agent-host"))) {
+    const wv = card.querySelector("webview") as (HTMLElement & { send?: (ch: string, ...a: unknown[]) => void }) | null;
+    if (!wv?.send) continue;
+    const r = card.getBoundingClientRect();
+    const px = collapsed && r.width > 0 && r.top < topH && r.left < stripW ? Math.round(stripW - r.left) : 0;
+    if (card.dataset.stripClear === String(px)) continue;
+    try { wv.send("agent-panel:clear-strip", { px }); card.dataset.stripClear = String(px); } catch { /* not loaded yet: dom-ready re-asks */ }
+  }
+}
+/** A freshly loaded agent panel asks again (its first word may have been lost). */
+function reclearStripFor(card: HTMLElement): void {
+  delete card.dataset.stripClear;
+  const collapsed = document.body.classList.contains("rail-collapsed");
+  const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
+  const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
+  clearStripInAgentPanels(collapsed, stripW, topH);
 }
 {
   let raf = 0;
@@ -706,7 +730,11 @@ function markHeadsUnderStrip(): void {
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { watchRails(); schedule(); });
     else { const t = setInterval(() => { if (watchRails()) { clearInterval(t); schedule(); } }, 250); }
   }
-  document.addEventListener("transitionend", (e) => { if ((e.target as HTMLElement)?.id === "app-rail") schedule(); });
+  // The rail sliding, and a card settling into a new place (a drag, a reflow).
+  document.addEventListener("transitionend", (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.id === "app-rail" || t?.classList?.contains("echo-card")) schedule();
+  });
   schedule();
 }
 
@@ -4305,7 +4333,11 @@ async function init(): Promise<void> {
       // (--card-pad-l / --card-pad-r, measured here). The agent has no shell
       // head at all: its own session row carries expand and is its drag
       // handle (help/code.ts).
-      if (agentCard) card.classList.add("echo-agent-host");
+      if (agentCard) {
+        card.classList.add("echo-agent-host");
+        // Once its document is up, the panel learns whether it sits under the window controls.
+        requestAnimationFrame(() => card.querySelector("webview")?.addEventListener("dom-ready", () => reclearStripFor(card)));
+      }
       else trackHeadPads(card);
       const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
       expandBtn.addEventListener("click", () => {

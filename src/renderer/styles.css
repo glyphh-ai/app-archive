@@ -20936,6 +20936,8 @@ body { --rail-strip-w: 148px; }
 body.rail-collapsed .echo-card-head.clears-strip,
 body.rail-collapsed .ws-rail-slot-header.clears-strip,
 body.rail-collapsed .code-agent-head.clears-strip { padding-left: var(--rail-strip-w) !important; }
+/* An agent PANEL (its own document) clears by what the shell measured (2026-10-09). */
+.code-agent-head.panel-clears-strip { padding-left: calc(var(--panel-strip-clear, 0px) + 8px) !important; }
 #rail-collapsed-strip.hidden { display: none; }
 #rail-collapsed-strip .app-rail-drag { display: none; }
 body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }

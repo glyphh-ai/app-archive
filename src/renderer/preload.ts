@@ -1181,6 +1181,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
   /** A solo panel asks the shell to open a workbench tool beside it. */
   agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  /** The shell says how far this panel's top row must clear the window controls (2026-10-09). */
+  onAgentPanelClearStrip: (callback: (p: { px: number }) => void) => {
+    ipcRenderer.on("agent-panel:clear-strip", (_event, p) => callback(p ?? { px: 0 }));
+  },
   /** The panel's ⤢ and its row's drag act on ITS card in the shell (2026-10-09). */
   agentPanelExpand: () => ipcRenderer.invoke("agent-panel-expand") as Promise<boolean>,
   onAgentPanelExpand: (callback: (p: { wcId: number }) => void) => {

@@ -8167,6 +8167,15 @@ export function initCode(): void {
       agentPanelExpand?: () => Promise<boolean>;
       agentPanelDrag?: (p: { phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void;
     };
+    // THE WINDOW CONTROLS (his report, 2026-10-09): a panel at the top left
+    // under a collapsed rail clears the traffic lights and the rail icon by
+    // the width the shell measured.
+    (window.glyphh as unknown as { onAgentPanelClearStrip?: (cb: (p: { px: number }) => void) => void })
+      .onAgentPanelClearStrip?.((p) => {
+        const px = Math.max(0, Math.round(Number(p?.px) || 0));
+        document.documentElement.style.setProperty("--panel-strip-clear", `${px}px`);
+        document.querySelector(".code-agent-head")?.classList.toggle("panel-clears-strip", px > 0);
+      });
     el("code-card-expand")?.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (solo) void g.agentPanelExpand?.();
