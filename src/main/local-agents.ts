@@ -61,6 +61,10 @@ export interface AgentRow {
   skills: string[];
   /** App slugs this agent may drive. */
   apps: string[];
+  /** Its powers (shared/member-library.ts AgentRowLike): folders, connections, extra models. */
+  folders?: string[];
+  connections?: string[];
+  models?: string[];
   /** Armed — false parks every task without deleting its schedule. */
   live: boolean;
   guardrails: GuardrailsPolicy | null;
@@ -134,6 +138,7 @@ interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
+  folders?: string[]; connections?: string[]; models?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 

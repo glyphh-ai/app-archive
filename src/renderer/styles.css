@@ -22149,3 +22149,50 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
 .agents2-face { display: inline-flex; align-items: center; justify-content: center; height: 54px; border: 1px solid var(--border); border-radius: 10px; background: none; cursor: pointer; padding: 0; }
 .agents2-face:hover { background: var(--hover); }
 .agents2-face.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ── EDIT BOT (his order, 2026-10-09): one page, Customize's title row; the
+   form on the left, the bot's powers on the right, + Add a power opens the
+   modal. ── */
+.botp-host { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+.botp { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; color: var(--text); }
+.botp > .settings-group-titlebar { flex: none; margin-bottom: 0; }
+.botp-grid {
+  flex: 1; min-height: 0; overflow: auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 400px); gap: 40px;
+  padding: 20px 28px 40px; box-sizing: border-box; align-items: start;
+}
+.botp-form { min-width: 0; max-width: 680px; display: flex; flex-direction: column; }
+.botp-form .settings-label { margin-top: 14px; }
+.botp-form .edit-head { margin-bottom: 4px; }
+.botp-powers { min-width: 0; position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; }
+.botp-powers-head { display: flex; align-items: center; gap: 8px; }
+.botp-powers-title { margin: 0; flex: 1; font: 600 16px var(--font-display, inherit); color: var(--text); }
+.botp-power-list { display: flex; flex-direction: column; gap: 16px; }
+.botp-group { display: flex; flex-direction: column; gap: 4px; }
+.botp-group-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px 2px; }
+.botp-group-count { color: var(--text-3, var(--text-2)); font-weight: 500; }
+.botp-power, .botp-choice {
+  display: flex; align-items: center; gap: 10px; min-height: 44px;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;
+}
+.botp-power-icon { width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--text-2); overflow: hidden; }
+.botp-power-icon svg { width: 18px; height: 18px; }
+.botp-power-icon img { width: 22px; height: 22px; object-fit: contain; }
+.botp-power-main { flex: 1; min-width: 0; }
+.botp-power-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.botp-power-sub { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.botp-power-tag { flex: none; font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--hover); border-radius: 9px; padding: 2px 8px; }
+.botp-power-remove { width: 26px; height: 26px; flex: none; opacity: .6; }
+.botp-power-remove:hover { opacity: 1; color: var(--danger); }
+.botp-power-remove svg { width: 13px; height: 13px; }
+.botp-empty { padding: 14px 2px; }
+/* The modal: four tabs, one list, Done. */
+.botp-modal-box { width: min(560px, calc(100vw - 48px)); max-height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column; }
+.botp-modal-tabs { padding: 0 18px; margin: 0; flex: none; }
+.botp-modal-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.botp-pick { align-self: flex-start; margin-bottom: 6px; }
+.botp-choice-btn { flex: none; min-width: 72px; }
+@media (max-width: 900px) {
+  .botp-grid { grid-template-columns: minmax(0, 1fr); }
+  .botp-powers { position: static; }
+}

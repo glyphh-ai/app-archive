@@ -47,6 +47,7 @@ function forgetWorkspaceMemory(name: string): void {
 import { webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines, GROUP_PAGE_ALIASES } from "./help/surface.js";
 import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
+import { mountBotPage } from "./help/bot-page.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { Terminal } from "@xterm/xterm";
@@ -5864,7 +5865,7 @@ async function init(): Promise<void> {
     // their section page the way openSectionCard does. Desktop: never. ──
     let webFullHost: HTMLElement | null = null;
     let webFullKey: string | null = null;
-    let webFullPanel: ArtifactsPanelHandle | null = null;
+    let webFullPanel: Pick<ArtifactsPanelHandle, "back" | "destroy"> | null = null;
     /** A PINNED dock (auto-hide off) parks across the top of the page; the
      *  page starts under its band — the same measure the cards reserve
      *  (measureDock + cardBandTop) — so nothing draws over it. A tucked or
@@ -5920,11 +5921,23 @@ async function init(): Promise<void> {
       scheduleAgentSync();
     };
     (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen = () => { if (webFullHost) closeWebFullPanel(); };
+    // EDIT BOT (his order, 2026-10-09): the rail's ⋮ → Edit bot opens the
+    // bot's page full screen, over the panels, like Customize.
+    (window as unknown as { __wbOpenBotPage?: (slug: string) => void }).__wbOpenBotPage = (slug: string) => {
+      const s = String(slug ?? "").trim();
+      if (!s) return;
+      if (webFullHost) closeWebFullPanel();
+      webFullBot = s;
+      openWebFullPanel("bot");
+    };
+    /** The bot the "bot" page edits (set by __wbOpenBotPage just before it opens). */
+    let webFullBot = "";
     const openWebFullPanel = (rawKey: string): void => {
       // A dead page key (build) opens the one page it folded into (KEY_ALIASES).
       const key = legacyKey(rawKey);
       if (!panelOpensFullScreen(key, IS_WEB_TARGET)) return;
-      if (webFullKey === key) return;
+      if (key === "bot" && !webFullBot) return;   // the page is always about one bot
+      if (webFullKey === key && key !== "bot") return;
       if (webFullHost) closeWebFullPanel();
       const host = document.createElement("div");
       host.className = "web-full-panel";
@@ -5952,6 +5965,11 @@ async function init(): Promise<void> {
       if (key === "artifacts") {
         host.classList.add("own-head");   // its own rows are the header (his order, 2026-10-09)
         webFullPanel = mountArtifactsPanel(panelBody, { onSentToAgent: closeWebFullPanel, onClose: closeWebFullPanel });
+        return;
+      }
+      if (key === "bot") {
+        host.classList.add("own-head");   // Customize's title row is its header
+        webFullPanel = mountBotPage(panelBody, { slug: webFullBot, onClose: closeWebFullPanel });
         return;
       }
       (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();

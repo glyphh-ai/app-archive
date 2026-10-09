@@ -163,7 +163,9 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  = close), an X on the right. Closing restores exactly what was showing.
  *  Customize takes this path on the desktop too (GROUP_PAGES); Artifacts
  *  stays an ordinary work panel there. */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize", "schedules"]);
+/** "bot" is the bot's edit page (his order, 2026-10-09: "editing a bot should
+ *  be a page just like customize"), opened from the rail's ⋮ → Edit bot. */
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize", "schedules", "bot"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
@@ -190,7 +192,7 @@ export function groupOfSub(sub: string): GroupPage | null {
   return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize", schedules: "Schedules" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize", schedules: "Schedules", bot: "Edit bot" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }

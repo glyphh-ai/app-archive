@@ -382,6 +382,14 @@ export interface AgentRowLike {
   avatar?: BotAvatarLike | null;
   skills: string[];
   apps: string[];
+  /** THE BOT'S POWERS (his order, 2026-10-09: "the list of powers this bot
+   *  has: folder(s), connections, models"). Folders it works in (the first
+   *  is its working folder; the rest it can read), the connections it uses
+   *  (connector slugs), and the models it may use beside the one it runs on
+   *  (`model`). A row without them has none. */
+  folders?: string[];
+  connections?: string[];
+  models?: string[];
   live: boolean;
   guardrails: GuardrailsPolicyLike | null;
   createdAt: string;
@@ -395,7 +403,19 @@ export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
+  folders?: string[]; connections?: string[]; models?: string[];
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
+}
+
+/** A list of names as stored: trimmed, no blanks, no repeats, order kept. */
+export function cleanNames(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    const t = String(x ?? "").trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
 }
 
 /** A row's role, "worker" for every row that predates the field. */
@@ -455,6 +475,9 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     avatar,
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
     apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
+    folders: Array.isArray(input.folders) ? cleanNames(input.folders) : cleanNames(existing?.folders),
+    connections: Array.isArray(input.connections) ? cleanNames(input.connections) : cleanNames(existing?.connections),
+    models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
     live: input.live === undefined ? existing?.live ?? true : !!input.live,
     guardrails: input.guardrails === undefined ? existing?.guardrails ?? null : cleanGuardrails(input.guardrails),
     createdAt: existing?.createdAt ?? nowIso,
