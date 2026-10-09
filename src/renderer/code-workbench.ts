@@ -651,7 +651,7 @@ function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
   if (!collapsed && !headsMarked) return;
   headsMarked = collapsed;
-  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head"));
+  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar"));
   if (!collapsed) { heads.forEach((h) => h.classList.remove("clears-strip")); return; }
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
@@ -665,7 +665,7 @@ function markHeadsUnderStrip(): void {
   }
   for (const [x, y] of [[12, Math.round(topH / 2)], [Math.round(stripW - 8), Math.round(topH / 2)]]) {
     for (const el of document.elementsFromPoint(x, y)) {
-      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head");
+      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head, .web-full-head, .settings-group-titlebar");
       if (h) { under.add(h); break; }
     }
   }
@@ -5935,6 +5935,14 @@ async function init(): Promise<void> {
       }
       const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${key}"]`);
       if (!sec) return;
+      // A page that brings its own title row (Customize) is its own header:
+      // the full-screen "‹ Title / ✕" row steps aside (his order, 2026-10-09).
+      const ownBar = sec.querySelector<HTMLElement>(".settings-group-titlebar");
+      if (ownBar) {
+        host.classList.add("own-head");
+        const x = ownBar.querySelector<HTMLElement>(".settings-group-close");
+        if (x && !x.dataset.wired) { x.dataset.wired = "1"; x.addEventListener("click", () => closeWebFullPanel()); }
+      }
       panelBody.classList.add("ws-section-body");
       sec.classList.add("active", "wb-hosted");
       panelBody.appendChild(sec);

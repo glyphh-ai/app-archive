@@ -22018,7 +22018,7 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
   min-height: var(--card-row-h);
   box-sizing: border-box;
 }
-.echo-card:not(.echo-agent-host):not(:has(.ws-app-chrome:not([style*="display: none"]), .ws-file-search, .ws-terminal-tabs, .ws-monaco-tabs, .ws-diff-toolbar, .ws-preview-tabs, .settings-group-title)) > .echo-card-body {
+.echo-card:not(.echo-agent-host):not(:has(.ws-app-chrome:not([style*="display: none"]), .ws-file-search, .ws-terminal-tabs, .ws-monaco-tabs, .ws-diff-toolbar, .ws-preview-tabs, .settings-group-titlebar)) > .echo-card-body {
   padding-top: var(--card-row-h);
   box-sizing: border-box;
 }
@@ -22077,17 +22077,22 @@ html:not(.glyphh-web) #panel-wc { height: var(--rail-top-h); }
    shown tab's search / filter / sort / Add at its right end, right above the
    list. A tab's own heading row steps aside on this page; its secondary row
    (counts, Updates) stays. ── */
-/* The title IS the panel's top row: 46px, the full-width rule, the panel's
-   ⤢ / ✕ on its right (the floating head hides its own copy of the name). */
-.settings-group-title {
-  margin: 0 0 14px; padding: 0 28px;
-  height: var(--panel-row-h, 46px); line-height: var(--panel-row-h, 46px); box-sizing: border-box;
+/* The title IS the panel's top row: 46px, the full-width rule. In a card the
+   panel's ⤢ / ✕ float on its right (the head hides its copy of the name);
+   full screen it is the page's only header and carries its own ✕. */
+.settings-group-titlebar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 14px; padding: 0 12px 0 28px;
+  height: var(--panel-row-h, 46px); box-sizing: border-box;
   border-bottom: 1px solid var(--border);
-  font: 600 20px var(--font-display, inherit); color: var(--text);
 }
-.echo-card:has(.settings-group-title) > .echo-card-head span { visibility: hidden; }
-.echo-card .settings-group-title { padding-right: var(--card-pad-r, 64px); }
-html.glyphh-web .settings-group-title { display: none; }
+.settings-group-title { margin: 0; font: 600 20px var(--font-display, inherit); color: var(--text); flex: 1 1 auto; min-width: 0; }
+.settings-group-close { display: none; }
+.web-full-panel .settings-group-close { display: inline-flex; }
+.web-full-panel.own-head > .web-full-head { display: none; }
+.echo-card:has(.settings-group-titlebar) > .echo-card-head span { visibility: hidden; }
+.echo-card .settings-group-titlebar { padding-right: var(--card-pad-r, 64px); }
+body.rail-collapsed .settings-group-titlebar.clears-strip { padding-left: var(--rail-strip-w) !important; }
 .ws-section-body > .help-section.settings-group { padding-top: 0; }
 .settings-group-head { padding: 0 28px 14px; }
 .settings-group-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }

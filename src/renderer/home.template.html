@@ -254,7 +254,12 @@
                reference): the title, then one row — the tabs, Yours | Discover,
                and on the right the shown tab's own search / filter / sort / Add
                (navigation.ts adoptGroupTools), right above the list. -->
-          <h1 class="settings-group-title">Customize</h1>
+          <div class="settings-group-titlebar">
+            <h1 class="settings-group-title">Customize</h1>
+            <!-- Full screen, this row IS the page's header (his order, 2026-10-09:
+                 "Remove the top one with the <- Customize"), so it carries the close. -->
+            <button type="button" class="ws-icon-btn settings-group-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+          </div>
           <div class="settings-group-head">
             <div class="skills-tabs settings-group-tabs" role="tablist"></div>
             <div class="skills-tabs settings-group-scope" role="tablist">
