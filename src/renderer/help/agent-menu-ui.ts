@@ -28,29 +28,24 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { toolViewIcon } from "./layouts.js";
 import { toast } from "./toast.js";
 import {
-  agentMenuModel, appRowOpen, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
-  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
+  agentMenuModel, appRowOpen, menuFoldState, isExpanded, toggleFold, sectionHeadLabel,
+  type AgentMenu, type FoldState, type MenuAppRow, type MenuMachine, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
 
 interface MenuApi {
   attachStatus?: () => Promise<{ attached: boolean; machines: MenuMachine[] }>;
-  cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
   layoutsList?: () => Promise<Array<{ name?: string }>>;
 }
-type RailSessionLike = MenuCliSession & { origin?: "cli"; locked?: boolean };
+type RailSessionLike = { id: string; cli: string; title: string; cwd: string; mtime: number; origin?: "cli"; locked?: boolean };
 export interface AgentMenuDoors {
   /** The session on screen (null on a fresh landing). */
   session: () => MenuSession | null;
   /** The old kebab's actions. */
   onSession: (action: SessionAction) => void;
-  /** WEB: the rail's open for a desktop CLI session (resume on the desktop, grant card when locked). */
-  openCliSession?: (sess: RailSessionLike) => void;
 }
 interface ShellDoors {
-  __wbOpenAgentCli?: (id: string) => void;
   __wbOpenTool?: (view: string) => void;
   __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
   __glyphhOpenSettings?: (sub?: string) => void;
-  __glyphhCliSessions?: () => Promise<RailSessionLike[]>;
 }
 
 const api = (): MenuApi => ((window as unknown as { glyphh?: unknown }).glyphh ?? {}) as MenuApi;
@@ -80,7 +75,6 @@ const CHEV = `<svg class="wam-chev" viewBox="0 0 24 24"><polyline points="9 6 15
 /** The last read (machines, apps, CLIs, sessions, workspaces) — painted at once on the next open. */
 type SurfaceRead = { machines: MenuMachine[]; installed: MenuAppRow[]; sessions: RailSessionLike[]; workspaces: MenuWorkspaceRow[] };
 let lastRead: SurfaceRead | null = null;
-let clisCache: MenuCliRow[] = [];
 
 /** THE INSTALLED APPS (his order, 2026-10-05): panelAppsList — the server's
  *  tab rows and every instance, the one list — mapped to menu rows. Every
@@ -110,15 +104,13 @@ export function installedRowsOf(rows: ReadonlyArray<InstalledAppLike>, desktopSl
 /** The reads, in parallel, on both surfaces; a door the host lacks reads an empty. */
 async function readSurface(): Promise<SurfaceRead> {
   const a = api();
-  const [status, installed, clis, sessions, layouts] = await Promise.all([
+  const [status, installed, layouts] = await Promise.all([
     hostHas("attachStatus") ? a.attachStatus!().catch(() => null) : Promise.resolve(null),
     hostHas("panelAppsList") ? (a as unknown as { panelAppsList?: () => Promise<InstalledAppLike[]> }).panelAppsList!().catch(() => null) : Promise.resolve(null),
-    hostHas("cliAgentsList") ? a.cliAgentsList!().catch(() => null) : Promise.resolve(null),
-    (shell().__glyphhCliSessions?.() ?? Promise.resolve([] as RailSessionLike[])).catch(() => [] as RailSessionLike[]),
     // THE WORKSPACES (his order, 2026-10-05): the member library's rows, by name.
     hostHas("layoutsList") ? a.layoutsList!().catch(() => null) : Promise.resolve(null),
   ]);
-  if (clis?.ok && clis.agents.length) clisCache = clis.agents.map((c) => ({ id: c.id, name: c.name }));
+  const sessions: RailSessionLike[] = [];
   const machines = status?.machines ?? [];
   const workspaces = (Array.isArray(layouts) ? layouts : []).map((l) => ({ name: String(l?.name ?? "") }));
   return { machines, installed: installedRowsOf(Array.isArray(installed) ? installed : [], new Set(), machines[0] ?? null), sessions, workspaces };
@@ -131,8 +123,6 @@ function modelFor(doors: AgentMenuDoors, web: SurfaceRead | null): AgentMenu {
     session: doors.session(),
     machines: web?.machines ?? [],
     installed: web?.installed ?? [],
-    clis: clisCache,
-    cliSessions: web?.sessions ?? [],
     locus: menuLocusOf(src),
     workspaces: web?.workspaces ?? [],
   });
@@ -238,49 +228,6 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
           (shell() as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void }).__wbOpenApp?.({ slug: a.slug, name: a.name, url: "", glyphh: true, cloud: true });
         });
         menu.appendChild(b);
-      }
-      if (s.note) menu.appendChild(under(noteLine(s.note, s.link, close), open));
-    } else if (s.kind === "clis") {
-      const open = fold(s.kind, s.label, s.count);
-      for (const c of s.rows) {
-        const b = under(row(IC.cli, c.name, "wam-cli wam-sub"), open) as HTMLButtonElement;
-        // A CLI OPENS ON THE SESSION'S FOLDER (his order, 2026-10-06): a
-        // desktop path with no desktop attached → the row says so, disabled.
-        b.title = s.enabled ? `Open ${c.name} on this session's folder` : s.note || "";
-        b.disabled = !s.enabled;
-        b.addEventListener("click", () => {
-          if (!s.enabled) return;
-          close();
-          const door = shell().__wbOpenAgentCli;
-          if (!door) { console.warn("[agent-menu] no CLI door — the workbench has not booted"); return; }
-          door(c.id);
-        });
-        // The CLI's desktop sessions nest under its row behind ITS OWN
-        // chevron (collapsed): the row still opens the CLI, the chevron only folds.
-        const key = cliFoldKey(c.id);
-        const nested = isExpanded(folds, key);
-        if (c.sessions.length) {
-          const chev = document.createElement("span");
-          chev.className = "wam-fold-btn";
-          chev.setAttribute("role", "button");
-          chev.setAttribute("tabindex", "0");
-          chev.dataset.fold = key;
-          chev.setAttribute("aria-expanded", nested ? "true" : "false");
-          chev.title = `${c.sessions.length} session${c.sessions.length === 1 ? "" : "s"} on ${m.machine?.name || "your desktop"}`;
-          chev.innerHTML = `<span class="wam-count">${c.sessions.length}</span>${CHEV}`;
-          const flip = (ev: Event): void => { ev.stopPropagation(); ev.preventDefault(); toggleFold(folds, key); repaint(key); };
-          chev.addEventListener("click", flip);
-          chev.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") flip(ev); });
-          b.appendChild(chev);
-        }
-        menu.appendChild(b);
-        for (const sess of c.sessions) {
-          const full = sessions.find((x) => x.id === sess.id) ?? { ...sess, origin: "cli" as const };
-          const sb = under(row(IC.session, sess.title || sess.cwd || sess.id, "wam-sub wam-sub2" + (full.locked ? " locked" : "")), open && nested);
-          sb.title = `Resume on ${m.machine?.name || "your desktop"}${sess.cwd ? ` · ${sess.cwd}` : ""}`;
-          sb.addEventListener("click", () => { close(); doors.openCliSession?.({ ...full, origin: "cli" }); });
-          menu.appendChild(sb);
-        }
       }
       if (s.note) menu.appendChild(under(noteLine(s.note, s.link, close), open));
     } else if (s.kind === "workspaces") {

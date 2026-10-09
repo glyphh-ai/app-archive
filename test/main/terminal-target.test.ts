@@ -7,7 +7,7 @@
  * CLI tile hands the worker is the bare binary, never main's machine line.
  */
 import { describe, expect, it } from "vitest";
-import { cloudScope, isCloudSource, podCliCommand, terminalTransport } from "../../src/renderer/help/terminal-target";
+import { cloudScope, isCloudSource, terminalTransport } from "../../src/renderer/help/terminal-target";
 
 const space = { kind: "cloud-space", space: "th-space", dir: "packages/web" };
 const born = { kind: "cloud-new" };
@@ -71,23 +71,3 @@ describe("the helpers", () => {
   });
 });
 
-describe("the line a cloud CLI tile hands the worker", () => {
-  it("is the bare binary — no cd, no env, no MCP wiring", () => {
-    expect(podCliCommand("claude")).toBe("claude");
-    expect(podCliCommand("gemini")).toBe("gemini");
-    expect(podCliCommand("cursor")).toBe("cursor-agent");
-    expect(podCliCommand("codex")).toBe("codex -c check_for_update_on_startup=false");
-    expect(podCliCommand("glyphh")).toBe("glyphh --trust");
-  });
-  it("carries the CLI's own resume and prompt flags", () => {
-    expect(podCliCommand("claude", { resume: true })).toBe("claude --continue");
-    expect(podCliCommand("claude", { resume: "abc'1" })).toBe("claude --resume 'abc1'");
-    expect(podCliCommand("codex", { resume: true })).toBe("codex -c check_for_update_on_startup=false resume --last");
-    expect(podCliCommand("gemini", { resume: true, prompt: "hi" })).toBe("gemini --resume latest -i 'hi'");
-    expect(podCliCommand("claude", { prompt: "it's here" })).toBe("claude 'it'\\''s here'");
-    expect(podCliCommand("copilot", { prompt: "x" })).toBe("copilot");
-  });
-  it("names nothing the pod does not carry", () => {
-    expect(podCliCommand("vim")).toBeNull();
-  });
-});

@@ -85,9 +85,6 @@ describe('window.glyphhWeb.has — feature detection the Proxy cannot give', () 
     expect(has('pickWorkingDir')).toBe(false);
     expect(has('localMcpSetEnabled')).toBe(false);
     expect(has('remoteControlGet')).toBe(false);
-    // The CLIs' own sessions are the ONE read off a desktop (his order,
-    // 2026-10-07): the Code rail lists them; nothing else is read over the relay.
-    expect(has('cliSessionsList')).toBe(true);
     expect(has('desktopAppsList')).toBe(false);
     expect(has('desktopPanelOpen')).toBe(false);
     expect(has('attachDevicesList')).toBe(true);

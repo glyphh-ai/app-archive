@@ -12,8 +12,6 @@
  *   machine.appOpen  {app}     → launch one by (fuzzy) name
  *   machine.openUrl  {url}     → open an http(s) url in the default browser
  *   scrape.page {url, wait?}   → load a URL headlessly, return title/text/html
- *   cliSessions.list {}        → the vendor CLIs' own sessions on this machine (Claude, Codex,
- *                                Gemini, Copilot, Cursor, the Glyphh CLI): the rows the desktop's
  *                                cli-sessions-list IPC lists, read-only, each with its resume handle —
  *                                the ONE read that rides the relay (his order, 2026-10-07): a CLI's
  *                                sessions live on this machine and nowhere else
@@ -39,7 +37,6 @@ import { homedir } from "node:os";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
-import { listCliSessions } from "./cli-agents.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
 import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
@@ -66,10 +63,6 @@ export function gitStateOf(dir: string): { isRepo: boolean; branch?: string } {
 }
 
 export function installAttachHandlers(): void {
-  registerRelayHandler("cliSessions.list", async () => ({
-    sessions: listCliSessions().map((r) => ({ id: r.id, cli: r.cli, title: r.title, cwd: r.cwd, mtime: r.mtime, updatedAt: r.mtime, resume: r.id })),
-  }));
-
   // INSTALL A BUNDLE IN THE CLOUD — the local MCP's app_install. A .glyphh
   // ({ path } on this machine, { url }, or { bundleBase64 }) is validated here
   // and becomes (or updates) the member's instance; its tab names it.

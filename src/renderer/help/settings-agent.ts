@@ -41,33 +41,8 @@ let wired = false;
  * the answer moving with the team instead of freezing whatever was true the
  * day this page was last opened.
  */
-/**
- * THE CLI AGENTS' GATEWAY DEFAULT (his order, 2026-09-30: "if the user is
- * paying for glyphh we allow them to pass the gateway to the agent but we need
- * some way to allow them to set that they either want that or they don't").
- * Off by default; a workspace slot can override it. Free has no gateway for a
- * CLI, so the switch is shown off and locked there.
- */
-export async function loadCliGatewaySetting(): Promise<void> {
-  const box = el<HTMLInputElement>("toggle-cli-gateway");
-  const desc = el("cli-gateway-desc");
-  if (!box) return;
-  // WEB: the CLIs run in the worker's terminal and sign in on their own there
-  // (his order, 2026-10-04) — the gateway env is written by the DESKTOP main
-  // process at open time (cli-agents.ts), which a browser tab has no part of.
-  // The switch would persist a pref nothing on web reads: hide the row.
-  if (onWeb()) { el("cli-gateway-row")?.classList.add("hidden"); return; }
-  const g = window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; hasPlan?: boolean; gatewayDefault?: boolean }> };
-  const r = await g.cliAgentsList?.().catch(() => null);
-  const paid = r?.hasPlan !== false;
-  box.checked = paid && !!r?.gatewayDefault;
-  box.disabled = !paid;
-  if (!paid && desc) desc.textContent = "Needs a paid plan. On Free, your CLIs run on their own login and can still drive your workspace.";
-  box.onchange = () => { api().setPreference?.("cliGateway", box.checked); };
-}
 
 export async function loadAgentDefaults(): Promise<void> {
-  void loadCliGatewaySetting();
   const modelSel = el<HTMLSelectElement>("set-default-model");
   const hint = el("set-default-hint");
   if (!modelSel) return;

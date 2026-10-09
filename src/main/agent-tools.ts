@@ -25,35 +25,20 @@ import { deleteAgent, getAgent, listAgents, saveAgent, slugify } from "./local-a
 import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
-import { AGENT_CLI_IDS, CLI_NAMES, isCliId } from "./cli-ids.js";
-import { agentKindOf, agentRoleOf, type AgentKind, type AgentRole } from "../shared/member-library.js";
+import { agentRoleOf, type AgentRole } from "../shared/member-library.js";
 
-interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; kind?: unknown; cli?: unknown; role?: unknown }
+interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; kind: AgentKind; cli: string | null; role: AgentRole; hasBrief: boolean } {
-  const kind = agentKindOf(a);
-  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, kind, cli: kind === "cli" ? a.cli || null : null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
+function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; role: AgentRole; hasBrief: boolean } {
+  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
 }
 /** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
 function checkedRole(raw: unknown): AgentRole {
   const r = str(raw);
   if (r === "orchestrator" || r === "worker") return r;
   throw new Error(`role must be "orchestrator" or "worker", not "${r}"`);
-}
-
-/** WHAT RUNS IT (his order, 2026-10-07): "glyphh" or "cli"; a CLI agent names
- *  one of the CLI agents — every CLI but the Glyphh CLI, which IS the loop. */
-function checkedKind(raw: unknown): AgentKind {
-  const k = str(raw);
-  if (k === "glyphh" || k === "cli") return k;
-  throw new Error(`kind must be "glyphh" or "cli", not "${k}"`);
-}
-function checkedCli(raw: unknown): string {
-  const c = str(raw);
-  if (isCliId(c) && c !== "glyphh") return c;
-  throw new Error(`cli must be one of: ${AGENT_CLI_IDS.map((id) => `${id} (${CLI_NAMES[id]})`).join(", ")}`);
 }
 
 async function checkedModel(raw: string): Promise<string> {
@@ -90,9 +75,6 @@ export function installAgentRelayHandlers(): void {
     }
     const description = p.description === undefined ? existing?.description ?? "" : str(p.description);
     const model = p.model === undefined ? existing?.model ?? "" : await checkedModel(str(p.model));
-    const kind = p.kind === undefined ? agentKindOf(existing) : checkedKind(p.kind);
-    const cli = kind !== "cli" ? "" : p.cli === undefined ? (existing?.cli || "") : checkedCli(p.cli);
-    if (kind === "cli" && !cli) throw new Error(`a CLI agent needs a cli — one of: ${AGENT_CLI_IDS.join(", ")}`);
     const role = p.role === undefined ? agentRoleOf(existing) : checkedRole(p.role);
     let brief = p.brief === undefined ? existing?.prompt ?? "" : str(p.brief);
     let generated = false;
@@ -104,7 +86,7 @@ export function installAgentRelayHandlers(): void {
       brief = g.brief;
       generated = true;
     }
-    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, kind, cli, role });
+    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });
 

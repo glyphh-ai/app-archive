@@ -505,16 +505,6 @@ describe('THE WEB CUT (2026-10-05) — the agent menu reaches the attached deskt
     expect(c.desktopPanelOpen).toBeUndefined();
   });
 
-  it('cliSessionsList: the ONE read off a desktop — every attached machine\'s cliSessions.list, flat; a dead machine drops; none → empty (his order, 2026-10-07)', async () => {
-    const attach = attachFor({
-      m1: { 'cliSessions.list': { sessions: [{ id: 's1', cli: 'claude', title: 'fix', cwd: '/w', mtime: 2, updatedAt: 2, resume: 's1' }] } },
-      m2: { 'cliSessions.list': new Error('went away') },
-    });
-    const c = buildContract({ ...authedClient(), attach }, deps);
-    expect(await c.cliSessionsList()).toEqual({ ok: true, sessions: [{ id: 's1', cli: 'claude', title: 'fix', cwd: '/w', mtime: 2, updatedAt: 2, resume: 's1' }] });
-    expect(attach.dispatch).toHaveBeenCalledWith('cliSessions.list', {}, { machineId: 'm1' });
-    expect(await buildContract(authedClient(), deps).cliSessionsList()).toEqual({ ok: true, sessions: [] });
-  });
 });
 
 // ── THE CLOUD SESSION'S CHIPS (his report, 2026-10-05): git + environments ──

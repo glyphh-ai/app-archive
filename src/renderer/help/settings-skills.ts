@@ -1439,8 +1439,7 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
       agentSel.innerHTML = `<option value="">Default Glyphh agent</option>${a.loop ? `<option value="${escapeHtml(a.loop)}" selected>${escapeHtml(a.loop)}</option>` : ""}`;
       agentSel.addEventListener("change", () => {
         const picked = roster.find((x) => x.id === agentSel.value || x.slug === agentSel.value);
-        const lane = picked ? { kind: picked.kind ?? "glyphh", cli: picked.kind === "cli" ? picked.cli ?? "" : "" } : { kind: "" as const, cli: "" };
-        void setAgent(s, a, { loop: agentSel.value, ...lane }, `${a.name} runs as ${picked ? agentLabel(picked) : "the default Glyphh agent"}`);
+        void setAgent(s, a, { loop: agentSel.value }, `${a.name} runs as ${picked ? agentLabel(picked) : "the default Glyphh agent"}`);
       });
       right.appendChild(agentSel);
       fillAgentChoices(agentSel, a.loop, roster);
@@ -1471,11 +1470,8 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
 interface AgentModelRow { id: string; name: string; providerSlug: string }
 let agentModels: Promise<AgentModelRow[]> | null = null;
 
-/** "Name (Glyphh)" / "Name (Claude)": the lane rides on the label. */
-const CLI_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor", glyphh: "Glyphh CLI" };
 function agentLabel(a: RosterAgentRow): string {
-  const lane = a.kind === "cli" && a.cli ? (CLI_LABELS[a.cli] ?? a.cli.charAt(0).toUpperCase() + a.cli.slice(1)) : "Glyphh";
-  return `${a.name} (${lane})`;
+  return a.name;
 }
 
 /** The member's agents (Settings → Build → Agents), each labelled by its lane. */
@@ -1515,7 +1511,7 @@ async function fillModelChoices(sel: HTMLSelectElement, chosen: string): Promise
 interface TaskRunRow { id: string; trigger: string; startedAt: string; durationMs: number | null; status: string; error: string | null; input: unknown; result: unknown; journal: { checkpoints: Record<string, unknown>; events: Array<Record<string, unknown> & { t: string; kind: string }> } }
 let openRunId: string | null = null;
 
-async function setAgent(s: SkillDetail, a: BundleAgentRow, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }, said: string): Promise<void> {
+async function setAgent(s: SkillDetail, a: BundleAgentRow, patch: { loop?: string; model?: string }, said: string): Promise<void> {
   const r = await api().skillAgentSet(s.id, a.ref, patch) as Env<BundleAgentRow[]>;
   if (!r.ok) { fail(r.error || "Couldn't change that agent."); return; }
   notice(said);
@@ -1714,10 +1710,9 @@ function filesNow(): SkillFile[] {
 
 type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow" | "releases" | "publish";
 /** One agent a bundle ships: agents/<name>.md, or a task's slot under the older name. */
-interface BundleAgentRow { ref: string; name: string; description: string; loop: string; model: string; kind?: "glyphh" | "cli"; cli?: string; source: "file" | "slot" }
-/** One of the member's agents as the slot picker lists it (library-agents-list;
- *  kind/cli come with the agents lane, 2026-10-07). */
-interface RosterAgentRow { id: string; slug?: string; name: string; kind?: "glyphh" | "cli"; cli?: string }
+interface BundleAgentRow { ref: string; name: string; description: string; loop: string; model: string; source: "file" | "slot" }
+/** One of the member's agents as the slot picker lists it (library-agents-list). */
+interface RosterAgentRow { id: string; slug?: string; name: string }
 interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */

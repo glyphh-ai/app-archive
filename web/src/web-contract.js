@@ -36,9 +36,6 @@ import { BUILTIN_EFFECT_LIST } from '../../src/shared/drip-effects';
 import { WS_STATE_PREF, WS_STATE_BUDGET, trimWsState } from '../../src/shared/ui-state-trim';
 // DOM-free at import time; only running a recipe touches the document.
 import { runDripRecipe, stopAllDrips } from './drip-web-runner.js';
-// The CLI agent window on web: the command is computed HERE (the worker's pty
-// starts it); main's cli-agent-open has no web counterpart (cli-agents-web.js).
-import { listWebCliAgents, openWebCliAgent } from './cli-agents-web.js';
 import { webIconProxyPath } from '../webicon.mjs';
 // The workbench locus tracker: every session-cache load/save below feeds it, so
 // window.wb can route Files/Diff/Editor to the CURRENT session's workspace
@@ -166,23 +163,6 @@ export function buildContract(client, deps) {
     catch (err) { return libError(err); }
   };
 
-  /** THE ONE READ THAT RIDES THE RELAY (his order, 2026-10-07): a vendor CLI's
-   *  own sessions (claude, codex, …) live on the desktop and nowhere else, so
-   *  the CODE rail lists them off every attached machine. Nothing attached, a
-   *  machine that fails to answer → `[]`, never a throw. */
-  const desktopCliSessions = async () => {
-    const attach = client.attach;
-    if (!attach || typeof attach.status !== 'function') return [];
-    try {
-      const st = await attach.status();
-      const machines = Array.isArray(st?.machines) ? st.machines : [];
-      const lists = await Promise.all(machines.map((m) =>
-        attach.dispatch('cliSessions.list', {}, { machineId: m.id })
-          .then((r) => (Array.isArray(r?.sessions) ? r.sessions : []))
-          .catch(() => [])));
-      return lists.flat();
-    } catch { return []; }
-  };
 
   // THE MEMBER LIBRARY IS THE ONE LIST (his order, 2026-10-06): every record
   // is on the server; a desktop syncs its rows there and the web reads them
@@ -1009,12 +989,6 @@ export function buildContract(client, deps) {
      *  subscription, so `has('onModelsChanged')` is honest. */
     onModelsChanged: () => () => {},
 
-    // ── The CLI agent window (his order, 2026-10-04) ───────────────────────────────
-    // The tiles exist on web too; an open yields the command the WORKER's terminal
-    // starts (POST /api/harness/pty { command }) — no gateway, no local MCP, the CLI
-    // signs in on its own in the worker. `missing` is never reported here (only
-    // the worker knows what it has installed).
-    cliAgentsList: async () => ({ ok: true, agents: listWebCliAgents(), gatewayDefault: false }),
     // WHERE THE MEMBER STANDS ON MONEY (his report, 2026-10-07: the usage ring
     // said "not available" on the web — the page had no door). The same
     // server read the desktop's main/spend-state.ts makes, the same shape.
@@ -1028,11 +1002,6 @@ export function buildContract(client, deps) {
         return { ok: false, hasPlan: true, plan: '', canManage: false, tightest: null };
       }
     },
-    // THE DESKTOP'S CLI SESSIONS, for the Code rail and the agent window's
-    // recents (his order, 2026-10-07): a CLI's sessions are the machine's own
-    // stores, read off the attached desktop (`cliSessions.list`, attach-
-    // handlers.ts) in preload's cliSessionsList shape. No desktop → none.
-    cliSessionsList: async () => ({ ok: true, sessions: await desktopCliSessions() }),
     // ── Is a desktop attached, and which (attach.status, the server's own
     // answer). The one thing the web asks about a desktop: a Code session on a
     // desktop folder runs there over the relay. No attach client, nothing
@@ -1137,7 +1106,6 @@ export function buildContract(client, deps) {
       } catch { return ""; }
     },
     iconForRow, // an app row's tile src on the web (web-icons.js): its carried bytes, else its favicon via /webicon
-    cliAgentOpen: async (id, overrides) => openWebCliAgent(id, overrides ?? {}),
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),
     localMcpStatus: async () => ({ running: false, port: null }),

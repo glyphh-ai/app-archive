@@ -6286,7 +6286,9 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
    on every dark theme, wherever it appears — the Copilot loop's tiles, the
    rail, the library rows, a connector's icon. Each theme says whether a mark
    like that should flip, so one rule covers all of them. */
-img[src*="github.com"], img[src*="githubassets"], img[data-mark-src*="github.com"], img.cli-mark-copilot { filter: invert(var(--mark-invert, 0)); }
+img[src*="github.com"],
+img[src*="githubassets"],
+img[data-mark-src*="github.com"] { filter: invert(var(--mark-invert, 0)); }
 
 /* A share's verdict, on the bundle: waiting, declined, live. */
 .skill-share-chip.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
@@ -20420,11 +20422,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 /* Agent terminal header (his spec, 2026-09-11): the tab row becomes the
    session-name row with the shared control cluster — identical to the chat
    head. Plain terminals keep their tabs; this styles only the agent face. */
-.ws-agent-termhead { display: flex; align-items: center; gap: 4px; padding: 3px 8px; }
-.ws-agent-term-title {
-  font-size: 12px; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
-}
+
+
 /* The agent terminal head's recents IS the chat head's dropdown —
    .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
    own on purpose: one surface, two places it can be opened from. */
@@ -21072,13 +21071,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .memory-disclosure li { font-size: 13px; color: var(--text-2); line-height: 1.55; margin: 4px 0; }
 
 /* THE CLI INSTALLER (2026-09-20): full screen over everything; no close. */
-#cli-installer-overlay { position: fixed; inset: 0; z-index: 1000000; display: flex; flex-direction: column; background: var(--bg, #1a1a1c); padding: 38px 18px 18px; }
-#cli-installer-overlay .cli-installer-host { flex: 1; min-height: 0; position: relative; }
-#cli-installer-overlay.booting .cli-installer-host { visibility: hidden; }
-#cli-installer-overlay .xterm { height: 100%; }
-#cli-installer-overlay .ws-terminal-tabs { display: none; }
-#cli-installer-overlay .cli-installer-quit { position: absolute; top: 8px; right: 12px; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--muted, #c4c4c4); font-size: 22px; line-height: 1; cursor: pointer; opacity: .45; }
-#cli-installer-overlay .cli-installer-quit:hover { opacity: 1; background: var(--panel, #252528); color: var(--ink, #f1f1f1); }
+
+
 /* The recents loop filter: wide enough for a name, a mark and a check on one line. */
 .code-menu.loop-filter-menu { min-width: 220px; }
 .code-menu.loop-filter-menu .code-menu-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -21086,7 +21080,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .code-menu.loop-filter-menu .code-menu-item { justify-content: flex-start; text-align: left; }
 .code-menu.loop-filter-menu .code-sess-mark { flex: none; width: 16px; height: 16px; margin: 0 4px 0 0; }
 .code-menu.loop-filter-menu .code-sess-mark img { width: 16px; height: 16px; }
-.code-sess-mark img.cli-mark-glyphh-cli { border-radius: 0; }
+
 .code-menu.loop-filter-menu .menu-check { flex: none; display: inline-flex; }
 .code-menu.loop-filter-menu .menu-check { flex: none; }
 
@@ -21134,14 +21128,11 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    (chat or CLI) drops its head, border and shadow so the panel's edge is the
    agent's edge. Tool cards opened beside it keep their heads. ── */
 
-[data-home-scope="solo-tool"] .echo-card.echo-agent-card,
-[data-home-scope="solo-tool"] .echo-card.echo-cli-card { border: 0; border-radius: 0; box-shadow: none; }
-[data-home-scope="solo-tool"] .echo-card.echo-agent-card > .echo-card-head,
-[data-home-scope="solo-tool"] .echo-card.echo-cli-card > .echo-card-head { display: none; }
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card { border: 0; border-radius: 0; box-shadow: none; }
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card > .echo-card-head { display: none; }
 /* The solo agent card appears in place — no slide-in from an entrance rect
    inside a panel that is itself just arriving. */
-[data-home-scope="solo-tool"] .echo-card.echo-agent-card,
-[data-home-scope="solo-tool"] .echo-card.echo-cli-card { transition: none; }
+[data-home-scope="solo-tool"] .echo-card.echo-agent-card { transition: none; }
 /* A guest paints nothing until its page loads; the panel behind it is the
    surface colour, never black, while an agent panel boots. */
 .echo-card webview { background: var(--surface); }
@@ -21787,15 +21778,7 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
    the standard modal, asked before a CLI tile from the Echo opens. */
-.run-place-box { width: min(360px, 92vw); }
-.run-place-head { display: flex; align-items: center; gap: 8px; }
-.run-place-back.hidden { display: none; }
-.run-place-list { padding: 4px 6px 10px; max-height: min(60vh, 420px); overflow-y: auto; }
-.run-place-list .ws-sec-label { padding: 10px 10px 4px; }
-.run-place-list .code-drop-item { padding: 8px 10px; border-radius: 8px; color: var(--text); }
-.run-place-list .code-drop-item:hover:not(:disabled) { background: var(--hover); }
-.run-place-list .code-drop-item.selected { color: var(--text); }
-.run-place-list .code-drop-item .drop-hint { color: var(--text-3); }
+
 
 /* ══ THE DEVELOPER'S DESK + THE REVIEW DESK (his asks, 2026-10-07) ══════════
    Releases (an app instance's) and Publish (the hub) tabs on a library item;
@@ -21870,15 +21853,8 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 
 /* THE CLI CARD'S FOLDER CHIP (his order, 2026-10-07): the folder the CLI runs
    in and its branch, beside the card title; the folder is a button. */
-.echo-card-head .echo-card-folder, .echo-card-head .echo-card-branch {
-  display: inline-flex; align-items: center; gap: 5px; flex: none; max-width: 220px;
-  padding: 2px 7px; border: 1px solid transparent; border-radius: 6px; background: none;
-  color: var(--text-2); font: 500 11.5px var(--font-body, inherit); white-space: nowrap; cursor: pointer;
-}
-.echo-card-head .echo-card-folder:hover { background: var(--hover); color: var(--text); }
-.echo-card-head .echo-card-folder svg, .echo-card-head .echo-card-branch svg { width: 12px; height: 12px; flex: none; }
-.echo-card-head .echo-card-folder span, .echo-card-head .echo-card-branch span { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
-.echo-card-head .echo-card-branch { color: var(--text-3); font-family: var(--font-mono); font-size: 11px; cursor: default; }
+
+
 /* RPA ON A TAB, the right side (restored 2026-10-08): the tab's live page
    beside the commands, which Pick and Test act on. */
 .app-tab-right[data-tab="rpa"] { gap: 0; border-left: 1px solid var(--border-2); min-height: 0; overflow: hidden; }

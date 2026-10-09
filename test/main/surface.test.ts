@@ -100,19 +100,19 @@ describe("WORKSPACE CELLS: the same capability rule per cell (surfaceLayoutCells
   ];
   const cell = (panelId: string) => ({ panelId });
   it("with desktop caps nothing is skipped but an unknown id and an empty cell", () => {
-    const plan = surfaceLayoutCells([cell("tool:files"), cell("tool:preview"), cell("tool:artifacts"), cell("CRM"), cell("gmail"), cell("notes"), cell("agent:claude"), cell("tool:coding"), cell("ghost"), cell("")], apps, DESKTOP_CAPS);
+    const plan = surfaceLayoutCells([cell("tool:files"), cell("tool:preview"), cell("tool:artifacts"), cell("CRM"), cell("gmail"), cell("notes"), cell("tool:coding"), cell("ghost"), cell("")], apps, DESKTOP_CAPS);
     expect(plan.keep).toEqual([
       { kind: "tool", view: "files" }, { kind: "tool", view: "preview" }, { kind: "tool", view: "artifacts" },
       { kind: "app", slug: "crm", name: "CRM" }, { kind: "app", slug: "gmail", name: "Gmail" }, { kind: "app", slug: "notes", name: "Notes" },
-      { kind: "cli", id: "claude" }, { kind: "agent" },
+      { kind: "agent" },
     ]);
     expect(plan.skipped).toEqual(['the app "ghost" (not in your library)', "an empty cell"]);
   });
   it("with browser caps the Browser, an embedded URL tab and a native app are skipped, each named by the capability it needs; the rest opens", () => {
-    const plan = surfaceLayoutCells([cell("tool:files"), cell("tool:terminal"), cell("tool:preview"), cell("tool:artifacts"), cell("CRM"), cell("gmail"), cell("notes"), cell("agent:claude"), cell("tool:coding")], apps, BROWSER_CAPS);
+    const plan = surfaceLayoutCells([cell("tool:files"), cell("tool:terminal"), cell("tool:preview"), cell("tool:artifacts"), cell("CRM"), cell("gmail"), cell("notes"), cell("tool:coding")], apps, BROWSER_CAPS);
     expect(plan.keep).toEqual([
       { kind: "tool", view: "files" }, { kind: "tool", view: "terminal" }, { kind: "tool", view: "artifacts" },
-      { kind: "app", slug: "crm", name: "CRM" }, { kind: "cli", id: "claude" }, { kind: "agent" },
+      { kind: "app", slug: "crm", name: "CRM" }, { kind: "agent" },
     ]);
     expect(plan.skipped).toEqual([
       "the preview panel (needs a streamed panel)",

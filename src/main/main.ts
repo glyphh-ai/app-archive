@@ -112,8 +112,6 @@ import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
-import { registerCliAgentsIpc } from "./cli-agents.js";
-import { startCliSessionWatch } from "./cli-session-watch.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
@@ -468,8 +466,7 @@ async function boot() {
     registerGitIpc();
     // Dead ends for every retired agent-era channel (see agent-stubs.ts).
     registerAgentStubs();
-    // The Glyphh Agent panel's engine — a bridge over the claude CLI
-    // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
+    // The Glyphh Agent panel's engine (the Glyphh loop).
     registerAgentIpc();
     registerRemoteControlIpc();
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
@@ -1099,9 +1096,6 @@ async function boot() {
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerConnToolModesIpc();
-  // THE CLI AGENTS (his order, 2026-09-30): their own window, beside the Glyphh loop.
-  registerCliAgentsIpc();
-  startCliSessionWatch();
   registerLocalAgentsIpc();
   registerHubIpc();
   registerTaskRunnerIpc();

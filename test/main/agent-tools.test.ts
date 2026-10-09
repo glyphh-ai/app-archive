@@ -7,7 +7,7 @@ vi.mock("../../src/main/relay-client", () => ({
   registerRelayHandler: (name: string, fn: (p: unknown) => unknown) => { handlers.set(name, fn); },
 }));
 
-interface Row { id: string; slug: string; name: string; description: string; prompt: string; model: string; kind?: "glyphh" | "cli"; cli?: string; role?: "orchestrator" | "worker" }
+interface Row { id: string; slug: string; name: string; description: string; prompt: string; model: string; role?: "orchestrator" | "worker" }
 const rows = new Map<string, Row>();
 const slugify = (n: string): string => n.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 vi.mock("../../src/main/local-agents", () => ({
@@ -16,7 +16,7 @@ vi.mock("../../src/main/local-agents", () => ({
   getAgent: (ref: string) => { const r = rows.get(ref); if (!r) throw new Error(`agent "${ref}" not found`); return r; },
   saveAgent: (i: Partial<Row> & { slug?: string }) => {
     const slug = slugify(i.slug || i.name || "");
-    const r = { id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", kind: i.kind ?? "glyphh", cli: i.cli ?? "", role: i.role ?? "worker" };
+    const r = { id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", role: i.role ?? "worker" };
     rows.set(slug, r);
     return r;
   },
@@ -64,7 +64,7 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
 
   it("lists, reads and deletes by id — and says so when there is no such agent", async () => {
     await call("agents.save", { name: "Writer", brief: "You write." });
-    expect(await call("agents.list", {})).toEqual([{ agent: "writer", name: "Writer", description: "", model: null, kind: "glyphh", cli: null, role: "worker", hasBrief: true }]);
+    expect(await call("agents.list", {})).toEqual([{ agent: "writer", name: "Writer", description: "", model: null, role: "worker", hasBrief: true }]);
     expect(await call("agents.get", { agent: "writer" })).toMatchObject({ brief: "You write." });
     expect(await call("agents.delete", { agent: "writer" })).toEqual({ agent: "writer", deleted: true });
     expect(() => handlers.get("agents.delete")!({ agent: "writer" })).toThrow(/not found/);
@@ -77,26 +77,9 @@ describe("agent tools — what runs it (his order, 2026-10-07: cli or glyphh age
 
   it("an agent is a Glyphh agent unless told otherwise, and says so", async () => {
     const r = await call("agents.save", { name: "Researcher", brief: "b" }) as Record<string, unknown>;
-    expect(r).toMatchObject({ kind: "glyphh", cli: null });
-    expect(rows.get("researcher")).toMatchObject({ kind: "glyphh", cli: "" });
   });
 
-  it("a CLI agent names one of the CLI agents — never the Glyphh CLI, never a stranger", async () => {
-    const r = await call("agents.save", { name: "Coder", brief: "b", kind: "cli", cli: "claude", model: "claude-opus-5" }) as Record<string, unknown>;
-    expect(r).toMatchObject({ kind: "cli", cli: "claude", model: "claude-opus-5" });
-    await expect(call("agents.save", { name: "A", brief: "b", kind: "cli", cli: "glyphh" })).rejects.toThrow(/cli must be one of: claude \(Claude\), codex/);
-    await expect(call("agents.save", { name: "B", brief: "b", kind: "cli", cli: "vim" })).rejects.toThrow(/cli must be one of/);
-    await expect(call("agents.save", { name: "C", brief: "b", kind: "cli" })).rejects.toThrow(/needs a cli/);
-    await expect(call("agents.save", { name: "D", brief: "b", kind: "shell" })).rejects.toThrow(/kind must be/);
-    expect([...rows.keys()]).toEqual(["coder"]);
-  });
 
-  it("an update keeps the kind and cli it was not told to change; back to glyphh drops the cli", async () => {
-    await call("agents.save", { name: "Coder", brief: "b", kind: "cli", cli: "codex" });
-    expect(await call("agents.save", { agent: "coder", description: "writes code" })).toMatchObject({ kind: "cli", cli: "codex" });
-    expect(await call("agents.save", { agent: "coder", kind: "glyphh" })).toMatchObject({ kind: "glyphh", cli: null });
-    expect(rows.get("coder")).toMatchObject({ kind: "glyphh", cli: "" });
-  });
 });
 
 describe("agent tools — the Bots panel's role (his order, 2026-10-08)", () => {

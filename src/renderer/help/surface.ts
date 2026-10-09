@@ -67,14 +67,12 @@ export type SurfaceTileIn = {
   cloud?: boolean;
   /** a house built-in row (the glyphh launcher set; carries no appId) */
   houseDefault?: boolean;
-  /** a CLI agent's tile (kind "tool" on the wall) */
-  cliAgent?: unknown;
   /** a dock nav slot's app (a section tile traded onto the pages) */
   navApp?: { archetype?: string; execPath?: string | null } | null;
 };
 
 /** THE ONE RULE FOR THE WALL AND THE DOCK: a surface hosts every layout,
- *  every section, the Glyphh agent, every CLI agent, every dock control (New
+ *  every section, the Glyphh agent, every dock control (New
  *  tab opens a browser tab on the web) and every tool view it can host — the
  *  Browser needs a streamed panel. An APP tile: the desktop (native windows)
  *  hosts every one. A surface WITHOUT native windows hosts ONLY what it can
@@ -91,7 +89,7 @@ export function surfaceHostsTile(t: SurfaceTileIn, caps: Readonly<SurfaceCaps>):
     case "folder": return true;   // emptied of its members by the caller; an empty folder leaves
     case "agent": return true;
     case "tool":
-      if (t.cliAgent || t.navKey) return true;
+      if (t.navKey) return true;
       return !!t.toolView && surfaceHostsView(t.toolView, caps);
     case "app": {
       if (caps.nativeWindows) return true;
@@ -325,7 +323,7 @@ export type LayoutCellIn = { panelId: string };
  *  "web" = a URL tab, "native" = a desktop binary. */
 export type LayoutApp = { slug: string; id?: string; name?: string; kind?: string };
 /** `agent` = the layout's Glyphh agent cell (tool:coding), kept as is. */
-export type LayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" } | { kind: "cli"; id: string };
+export type LayoutKeep = { kind: "tool"; view: string } | { kind: "app"; slug: string; name: string } | { kind: "agent" };
 /** The layout's own Glyphh agent cell. */
 export const LAYOUT_AGENT_CELL = "tool:coding";
 export type LayoutPlan = { keep: LayoutKeep[]; skipped: string[] };
@@ -333,8 +331,8 @@ export type LayoutPlan = { keep: LayoutKeep[]; skipped: string[] };
 /** THE CAPABILITY RULE PER CELL, on both surfaces: a tool cell opens when
  *  the surface hosts its view (the Browser needs a streamed panel); a Glyphh
  *  app cell opens; a URL tab cell is an embedded page — a streamed panel; a
- *  native app cell needs a native window; a CLI agent cell opens on the
- *  session's folder; the Glyphh agent's own cell is kept as is. An id no row
+ *  native app cell needs a native window; the Glyphh agent's own cell is
+ *  kept as is. An id no row
  *  answers to is named. With desktop caps nothing is skipped but an unknown
  *  id. Each skip is one line. */
 export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: ReadonlyArray<LayoutApp>, caps: Readonly<SurfaceCaps>): LayoutPlan {
@@ -348,7 +346,6 @@ export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: Rea
     const id = String(c?.panelId ?? "").trim();
     if (!id) { skipped.push("an empty cell"); continue; }
     if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
-    if (id.toLowerCase().startsWith("agent:")) { keep.push({ kind: "cli", id: id.slice(6) }); continue; }
     if (id.startsWith("tool:")) {
       // a saved cell may name a view by its older alias (the open does the same)
       const raw = id.slice(5);

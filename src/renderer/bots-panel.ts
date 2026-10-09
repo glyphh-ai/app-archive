@@ -56,7 +56,7 @@ interface SubAgentRun {
 /** An agent record as the library lists it (main/local-agents.ts AgentRow). */
 interface Bot {
   id: string; slug: string; name: string; description: string; prompt: string; model: string;
-  kind?: "glyphh" | "cli"; cli?: string; role?: "orchestrator" | "worker"; avatar?: BotAvatar | null; live: boolean;
+  role?: "orchestrator" | "worker"; avatar?: BotAvatar | null; live: boolean;
 }
 interface ThreadMsg { role: "user" | "assistant"; text: string; at: number }
 interface Envelope { ok: boolean; data?: unknown; error?: string }
@@ -72,7 +72,6 @@ interface BotsApi {
   botsStop?: (agent: string) => Promise<{ ok: true; stopped: boolean }>;
   botsOrchestratorBrief?: () => Promise<string>;
   onBotsFrame?: (cb: (d: { bot: string; type: string; runId: string; [k: string]: unknown }) => void) => () => void;
-  cliAgentsList?: () => Promise<{ ok: boolean; agents?: Array<{ id: string; name: string }> }>;
 }
 const api = (): BotsApi => ((window as unknown as { glyphh?: BotsApi }).glyphh ?? {});
 
@@ -213,8 +212,7 @@ export function mountBotsPanel(body: HTMLElement): () => void {
     if (last && last.endedAt && Date.now() - last.endedAt < 8000) return moodOf(last.status);
     return "idle";
   };
-  const runsAs = (b: Bot): string => (b.kind === "cli" ? (cliNames.get(b.cli ?? "") ?? b.cli ?? "CLI") : "Glyphh");
-  const cliNames = new Map<string, string>();
+  const runsAs = (_b: Bot): string => "Glyphh";
 
   function openEditor(): void {
     (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("agents");
@@ -567,7 +565,6 @@ export function mountBotsPanel(body: HTMLElement): () => void {
   };
 
   void api().subAgentsList?.().then((raw) => { if (!alive()) return; fromMain = Array.isArray(raw) ? raw : []; merge(); }).catch(() => undefined);
-  void api().cliAgentsList?.().then((r) => { for (const c of r?.agents ?? []) cliNames.set(c.id, c.name); if (alive()) paintAll(); }).catch(() => undefined);
   void loadBots();
   // The elapsed clocks and the cats' moods tick in place.
   tick = window.setInterval(() => {

@@ -82,7 +82,6 @@ export interface GridLayoutLike {
   cells: GridCellLike[];
   folderMode?: "single" | "multi";
   target?: "glyphh" | "desktop";
-  view?: "glyphh" | "cli";
   loop?: string;
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
@@ -90,11 +89,6 @@ export interface GridLayoutLike {
    *  session this workspace creates carries, unless its own agent cell names
    *  one. Absent = follow the panels (a dev panel makes it Code). */
   type?: "work" | "code";
-  /** THE GATEWAY BYPASS (his order, 2026-10-07): what the workspace's CLI
-   *  agent cells ride when they say nothing themselves — the Glyphh gateway
-   *  on the org's models ("on"), or the member's own login and subscription
-   *  ("off"). Absent = the member's default in Settings. */
-  gateway?: "on" | "off";
   folder?: string;
   space?: "chat" | "cowork" | "code";
   /** Epoch ms — the writer's clock (added 2026-10-04; absent on older files). */
@@ -133,7 +127,6 @@ export interface LayoutRowLike {
   /** THE TYPE (his report, 2026-10-07: "the type overall is not persisting on
    *  save" — the save wrote it, this row never carried it back). */
   type: "work" | "code" | null;
-  gateway: "on" | "off" | null;
   folder: string | null;
   space: "chat" | "cowork" | "code" | null;
   splits: GridCellLike[];
@@ -158,7 +151,6 @@ export function layoutRowOf(l: GridLayoutLike): LayoutRowLike {
     modelSelections: l.modelSelections ?? {},
     sessionMode: l.sessionMode ?? "keep",
     type: l.type === "work" || l.type === "code" ? l.type : null,
-    gateway: l.gateway === "on" || l.gateway === "off" ? l.gateway : null,
     folder: l.folder ?? null,
     space: l.space ?? null,
     splits: cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, sticky: c.sticky, config: c.config })),
@@ -381,13 +373,6 @@ export interface AgentRowLike {
   prompt: string;
   provider: string;
   model: string;
-  /** WHAT RUNS IT (his order, 2026-10-07: "allow agents and tasks to define
-   *  cli or glyphh agents with models"): "glyphh" (the default, and what a
-   *  row written before the field means) is the Glyphh loop with the model
-   *  slot; "cli" is one of the member's CLI agents run headless, `cli`
-   *  naming which (a cli-agents.ts id: claude, codex, gemini, …). */
-  kind?: AgentKind;
-  cli?: string;
   /** THE BOTS PANEL (his order, 2026-10-08): an ORCHESTRATOR plans the work
    *  and hands it to the swarm (the other bots, through spawn_agent); a
    *  WORKER does one kind of work. A row without the field is a worker. */
@@ -403,19 +388,16 @@ export interface AgentRowLike {
   updatedAt: string;
 }
 
-export type AgentKind = "glyphh" | "cli";
 export type AgentRole = "orchestrator" | "worker";
 export interface BotAvatarLike { variant: number; color: string }
 
 export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; kind?: AgentKind; cli?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
+  provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
 }
 
-/** A row's kind, "glyphh" for every row that predates the field. */
-export const agentKindOf = (a: Pick<AgentRowLike, "kind"> | null | undefined): AgentKind => (a?.kind === "cli" ? "cli" : "glyphh");
 /** A row's role, "worker" for every row that predates the field. */
 export const agentRoleOf = (a: Pick<AgentRowLike, "role"> | null | undefined): AgentRole => (a?.role === "orchestrator" ? "orchestrator" : "worker");
 
@@ -458,11 +440,6 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
   const name = String(input.name ?? existing?.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
   const slug = agentSlug(String(input.slug || existing?.slug || name));
-  // Runs as (his order, 2026-10-07): a CLI agent must name its CLI; a Glyphh
-  // agent carries none, so a switch back never leaves a stale id behind.
-  const kind: AgentKind = input.kind === undefined ? agentKindOf(existing) : agentKindOf(input);
-  const cli = kind === "cli" ? String(input.cli ?? existing?.cli ?? "").trim() : "";
-  if (kind === "cli" && !cli) throw new Error("a CLI agent needs a cli (claude, codex, gemini, …)");
   const role: AgentRole = input.role === undefined ? agentRoleOf(existing) : agentRoleOf(input);
   const avatar = input.avatar === undefined ? cleanAvatar(existing?.avatar) : cleanAvatar(input.avatar);
   return {
@@ -473,8 +450,6 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
     provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
     model: String(input.model ?? existing?.model ?? ""),
-    kind,
-    cli,
     role,
     avatar,
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],

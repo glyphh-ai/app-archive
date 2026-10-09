@@ -53,7 +53,6 @@ export interface RemoteControlView extends RemoteControlSetting {
  *  paths, so remoteTable builds them around the grant guard (relay-fs.ts). */
 const PASS_THROUGH = [
   "relay.ping",
-  "cliSessions.list",
   // THE GATEWAY'S WINDOW TOOLS (his order, 2026-10-04: both surfaces drive each
   // other's panels through the relay). panels_* / layouts_open / settings_open
   // on the gateway's /mcp dispatch these to this machine; they are the SAME
