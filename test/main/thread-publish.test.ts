@@ -74,7 +74,7 @@ describe("the index", () => {
   });
 
   it("threadIndexOf folds the type and the folder; projectMessage caps the text and drops non-messages", () => {
-    expect(threadIndexOf({ id: "x", title: "  ", mode: "chat", source: { kind: "local", path: "/p", extra: 1 } })).toMatchObject({ title: "New session", mode: "work", source: { kind: "local", path: "/p", extra: 1, locus: "local" } });
+    expect(threadIndexOf({ id: "x", title: "  ", mode: "chat", source: { kind: "local", path: "/p", extra: 1 } })).toMatchObject({ title: "New session", mode: "code", source: { kind: "local", path: "/p", extra: 1, locus: "local" } });
     expect(projectMessage({ role: "user", text: "x".repeat(70_000), at: 5 })).toMatchObject({ role: "user", at: 5 });
     expect((projectMessage({ role: "user", text: "x".repeat(70_000) }) as { text: string }).text.length).toBe(60_001);
     expect(projectMessage({ text: "no role" })).toBeNull();

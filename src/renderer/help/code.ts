@@ -60,7 +60,6 @@ import { panelFsRoute } from "./panel-fs-route.js";
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
 import type { RunPlace, RunPlaceInput } from "./run-place-modal.js";
-import { folderChipLabel, folderChipRows } from "./run-place.js";
 import { deviceChecked, toggleDeviceIn, folderSteerLine, selfMachineId } from "./devices-pick.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
@@ -79,7 +78,6 @@ import { greeting } from "./dashboard.js";
 import { pickGreeting, firstNameOf } from "./landing-greeting.js";
 import { liveOutputFormats, outputFormatOf, outputChipLabel, outputStandingLine, appOutputId, appOutputKey, isAppOutput, noteOutputAppUse, orderedOutputApps, type OutputApp, type StoredOutputFormat } from "./output-format.js";
 import { artifactStandingLine } from "./artifact-rules.js";
-import { defaultTypeTab } from "./surface.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -154,20 +152,8 @@ interface CodeChat {
   artifactRef?: { id: string; name: string };
 }
 
-/** THE TWO TYPES. `modeOf` is the single choke point every call site reads:
- *  a thread's own stamp, folded to the two that exist (the retired `cowork`
- *  space was the tool-using one, so it reads as Code) and defaulting to Code
- *  for anything written before the types came back. */
-export type SessionType = "work" | "code";
-function modeOf(c: CodeChat): SessionType {
-  // The legacy stamps both mean the non-dev space: `chat` (zero tools) and
-  // `cowork` (connectors and apps) fold into Work.
-  return c.mode === "work" || c.mode === "chat" || c.mode === "cowork" ? "work" : "code";
-}
-/** THE ACTIVE TAB (his order, 2026-09-29): what the rail lists, what + New
- *  creates, and — through modeOf on the new thread — how big a toolbelt its
- *  turns carry. Persisted per device. */
-const TYPE_TAB_PREF = "railTypeTab";
+/** The head's session glyph — one type, one mark. */
+const SESSION_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 4 12 9 18"/><polyline points="15 6 20 12 15 18"/></svg>`;
 /** This desktop's host name and whether it is attached (remote control on) —
  *  what a cloud turn's folder steer says (folderSteerLine). Read at boot and
  *  whenever remote control changes; empty on the web. */
@@ -187,80 +173,10 @@ async function readSelfDevice(): Promise<void> {
     selfDeviceId = list ? selfMachineId(deviceRowsOf(list).devices, selfHostname) : null;
   } catch { /* the steer then names no host */ }
 }
-let typeTab: SessionType = "code";
-const TYPE_GLYPH: Record<SessionType, string> = {
-  work: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M2.5 12h19"/></svg>`,
-  code: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 4 12 9 18"/><polyline points="15 6 20 12 15 18"/></svg>`,
-};
-const TYPE_LABEL: Record<SessionType, string> = { work: "Work", code: "Code" };
-/** Switch the active type: both lists follow, + New's face follows, and the
- *  choice is remembered. ONE writer, so the rail and the panel's dropdown can
- *  never disagree about which type is showing. */
-function setTypeTab(t: SessionType): void { applyType(t); }
-/** THE ONE TYPE DOOR (his report, 2026-10-08: "switching to a new one still
- *  requires the user to flip back and forth to get the glyphh code version
- *  to show"). Every writer lands here — the rail's tab, a workspace's stamp,
- *  the boot of a panel, another document's change — and the whole face
- *  repaints from it. `force` repaints even when the type did not move (a
- *  workspace re-stamping Code onto a panel that already says Code, a fresh
- *  panel's first paint); `persist` writes the choice for every other document
- *  (never from a panel echoing the shell, never from the listener). */
-function applyType(t: SessionType, opts: { persist?: boolean; force?: boolean } = {}): void {
-  const changed = typeTab !== t;
-  if (!changed && !opts.force) return;
-  typeTab = t;
-  // The write is announced to every other document by main (preference-changed),
-  // so the rail, each open agent panel and its recents dropdown all move
-  // together — one choice, not one per window (his report, 2026-09-29).
-  if (opts.persist !== false && changed) void window.glyphh.setPreference?.(TYPE_TAB_PREF, t);
-  rebirthBlankSession();
-  applyTypeTab();
-  paintChips();              // the mode chip: renderHistory's own paint never fires in a panel
-  applySessionFolder(current());   // what a session switch does, so the dev chrome follows
-}
-/** A BLANK session follows the type switch (his report, 2026-10-06: sitting
- *  on New → Code and switching to Work left the Code composer and chip, on
- *  the web and the desktop alike). A session with a transcript keeps its
- *  birth type — its turns were written with that toolbelt. The blank one is
- *  reborn: its mode, and its source the way newChat stamps it (a Work
- *  session on the web lands in the cloud; Code follows the pending pick). */
-function rebirthBlankSession(): void {
-  const c = current();
-  if (!c || !sessionIsBlank(c) || modeOf(c) === typeTab) return;
-  c.mode = typeTab;
-  c.source = newSessionSource(onWebTarget() ? "web" : "desktop", typeTab, pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
-  if (c.source.kind === "local" && c.source.path) c.workdir = c.source.path;
-  else delete c.workdir;
-  void saveStore();
-}
-/** Repaint everything the active type governs, in THIS document. */
-function applyTypeTab(): void {
-  paintTypeTabs();
-  renderHistory();
-  renderRailSessions();
-  syncSpaceAttrs();
-  // The composer's prompt names the type, and the gate is what writes it.
-  paintComposerGate();
-  // The reborn blank session shows its new face: the thread, the source chip,
-  // the folder gate (each a no-op when nothing changed).
-  renderThread();
-  repaintSourceUi();
-  void checkWorkdirGate();
-}
-/** Paint the rail's tab pair + the New button from the active type. */
-function paintTypeTabs(): void {
-  document.querySelectorAll<HTMLElement>("#rail-type-tabs .rail-type-tab").forEach((b) => {
-    const on = b.dataset.type === typeTab;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-  });
-  const btn = el("code-new-chat");
-  if (btn) btn.title = `New ${TYPE_LABEL[typeTab]} session`;
-  // WORK IS ONE LIST (his order, 2026-10-07): cloud Glyphh sessions, nothing
-  // to filter by loop or place, no section head. Code keeps the funnel: the
-  // desktop's CLI sessions join it over the relay.
-  el("recent-sessions-filter")?.classList.toggle("hidden", typeTab === "work");
-}
+/** ONE TYPE (his order, 2026-10-08: "just code that is it"): every thread
+ *  carries the one toolbelt; the stored `mode` is written "code" for the
+ *  thread contract and never read for a decision. */
+const SESSION_MODE = "code" as const;
 
 const STORE_KEY = "codeChats";
 const CURRENT_KEY = "codeCurrentChat";
@@ -664,94 +580,6 @@ function chipMenuKeys(menu: HTMLElement, chipId: string, e: KeyboardEvent): void
   else if (e.key === "ArrowDown") { e.preventDefault(); rows[(at + 1 + rows.length) % rows.length].focus(); }
   else if (e.key === "ArrowUp") { e.preventDefault(); rows[(at - 1 + rows.length) % rows.length].focus(); }
   else if (e.key === "Enter" && at >= 0) { e.preventDefault(); rows[at].click(); }
-}
-
-// ── The Folder chip (his order, 2026-10-07, Claude's "Project or folder") ──
-// Under the desktop's box, left of Output: the session's folder — a recent
-// one, or any folder through the OS picker. The folder IS the thread's
-// sandbox (threadFolder / setThreadFolder, the one truth); a cloud session
-// that ran on this desktop over the relay shows the folder it ran in (the
-// rail's record of the thread). The web has no local folders: hidden there.
-function chipFolderOf(c: CodeChat | null | undefined = current()): string {
-  const own = threadFolder(c);
-  if (own) return own;
-  return (c && railSessions.find((s) => s.id === c.id)?.cwd) || "";
-}
-function paintFolderChip(): void {
-  const wrap = el("code-folder-wrap");
-  const chip = el("code-folder-chip");
-  if (!wrap || !chip) return;
-  // WORK ONLY (his order, 2026-10-07): Code's folder lives in the row above
-  // the box; the web has no local folders.
-  const c = current();
-  const work = (c ? modeOf(c) : typeTab) === "work";
-  if (onWebTarget() || !work) { wrap.classList.add("hidden"); return; }
-  wrap.classList.remove("hidden");
-  const folder = chipFolderOf();
-  const label = chip.querySelector<HTMLElement>("span");
-  if (label) label.textContent = folderChipLabel(folder);
-  chip.classList.toggle("picked", !!folder);
-  chip.title = folder ? `Folder — ${folder}` : "Folder — pick where this session works";
-}
-async function pickChipFolder(dir: string): Promise<void> {
-  if (!dir) return;
-  setThreadFolder(dir);
-  paintFolderChip();
-  repaintSourceUi();
-  await checkWorkdirGate();
-}
-async function renderFolderMenu(): Promise<void> {
-  const menu = el("code-folder-menu");
-  if (!menu) return;
-  menu.textContent = "";
-  const head = document.createElement("div");
-  head.className = "code-drop-head";
-  head.textContent = "Folder";
-  menu.appendChild(head);
-  const search = document.createElement("input");
-  search.type = "text";
-  search.className = "loop-drop-search repo-drop-search ws-locus-search";
-  search.placeholder = "Search folders…";
-  search.spellcheck = false;
-  search.autocomplete = "off";
-  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-  search.addEventListener("click", (ev) => ev.stopPropagation());
-  menu.appendChild(search);
-  const list = document.createElement("div");
-  list.className = "ws-locus-list";
-  menu.appendChild(list);
-  // THE LAST FIVE the desktop remembers, then the folders the rail's threads
-  // ran in — the places this member actually works.
-  const w = wb() as (ReturnType<typeof wb> & { getCwdRecents?: () => Promise<string[]> }) | undefined;
-  const remembered = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
-  if (!menu.isConnected) return;
-  const rows = folderChipRows(chipFolderOf(), [...remembered, ...recentDesktopFolders()]);
-  const paint = (): void => {
-    list.textContent = "";
-    const q = search.value.trim().toLowerCase();
-    const shown = rows.filter((r) => !q || r.label.toLowerCase().includes(q) || r.sub.toLowerCase().includes(q));
-    for (const r of shown) {
-      const item = drillItem(r.label, r.sub, r.selected ? CHECK : "");
-      item.classList.add("code-folder-item");
-      if (r.selected) item.classList.add("selected");
-      item.setAttribute("role", "menuitemradio");
-      item.setAttribute("aria-checked", r.selected ? "true" : "false");
-      item.addEventListener("click", (e) => { e.stopPropagation(); menu.classList.add("hidden"); void pickChipFolder(r.path); el("code-folder-chip")?.focus(); });
-      list.appendChild(item);
-    }
-    if (!shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">${rows.length ? "No folder matches." : "No recent folders yet."}</div>`);
-    const add = drillItem("Add folder…", "Choose any folder on this desktop", "");
-    add.classList.add("code-folder-add");
-    add.setAttribute("role", "menuitem");
-    add.addEventListener("click", (e) => {
-      e.stopPropagation();
-      menu.classList.add("hidden");
-      void wb()?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) void pickChipFolder(dir); });
-    });
-    list.appendChild(add);
-  };
-  search.addEventListener("input", paint);
-  paint();
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
@@ -1235,32 +1063,6 @@ function initComposerControls(): void {
     mm?.classList.toggle("hidden");
     if (mm && !mm.classList.contains("hidden")) openChipDropUp(mm);
   });
-  // The Folder chip's drop-up (his order, 2026-10-07) — the Output chip's
-  // open rule: one picker at a time, placed by openChipDropUp.
-  const folderWrap = el("code-folder-wrap");
-  if (folderWrap) {
-    const fmenu = document.createElement("div");
-    fmenu.id = "code-folder-menu";
-    fmenu.className = "code-drop-up code-folder-menu hidden";
-    fmenu.setAttribute("role", "menu");
-    folderWrap.appendChild(fmenu);
-    fmenu.addEventListener("keydown", (e) => chipMenuKeys(fmenu, "code-folder-chip", e));
-    el("code-folder-chip")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const opening = fmenu.classList.contains("hidden");
-      if (!opening) { fmenu.classList.add("hidden"); return; }
-      void renderFolderMenu().then(() => {
-        if (!fmenu.isConnected) return;
-        fmenu.classList.remove("hidden");
-        openChipDropUp(fmenu);
-        fmenu.querySelector<HTMLInputElement>("input")?.focus();
-      });
-    });
-    el("code-folder-chip")?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown" && fmenu.classList.contains("hidden")) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
-    });
-    paintFolderChip();
-  }
   // The Output chip's drop-up (his order, 2026-10-05) — the same open rule
   // as the model picker: one picker at a time, placed by openChipDropUp.
   const outputWrap = el("code-output-wrap");
@@ -2038,10 +1840,6 @@ const input = () => el<HTMLTextAreaElement>("code-input");
 // ── Session store ────────────────────────────────────────────────────────
 let storeLoaded = false;
 let storeLoading: Promise<void> | null = null;
-/** THIS DOCUMENT IS AN AGENT PANEL (home.html?solo=tool:coding) — an instance
- *  the shell opened, not the shell itself. */
-const IS_AGENT_PANEL = typeof window !== "undefined"
-  && (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
 /** Sessions live on the SERVER THREADS SURFACE (thread-store.ts), with the
  *  surface's local persistence as the offline cache — hydrate reconciles the
  *  two by LWW at boot (the cache's pre-cutover history migrates up once).
@@ -2139,8 +1937,8 @@ function ensureCodeSection(): void {
   /** Resolves once the persisted sessions are in memory (boot races the
    *  workspace reopen; a "last" resume must not read an empty list). */
   ready: (): Promise<void> => loadStore(),
-  list: (): Array<{ id: string; title: string; createdAt: number; mode: SessionType }> =>
-    chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, mode: modeOf(c) })),
+  list: (): Array<{ id: string; title: string; createdAt: number; mode: "code" }> =>
+    chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, mode: SESSION_MODE })),
   currentId: (): string | null => currentId,
   currentTitle: (): string => current()?.title ?? "New session",
   switch: (id: string): void => {
@@ -2206,14 +2004,6 @@ function ensureCodeSection(): void {
   /** A LAYOUT used to bind its own loop here; there is one loop now, so the
    *  stamp is accepted and ignored (the contract stays — layouts still call it). */
   stampLoop: (_loop: string): void => { /* one loop, nothing to bind */ },
-  /** A LAYOUT's TYPE (Work | Code; his order, 2026-10-07) binds to the
-   *  session the layout creates, exactly as its model slots do: the rail's
-   *  type follows, so + New and the fresh record carry it; the blank session
-   *  is reborn under it; a session with a transcript keeps its birth type. */
-  stampType: (t: SessionType): void => {
-    if (t !== "work" && t !== "code") return;
-    applyType(t, { force: true });   // a re-stamp of the same type still repaints (2026-10-08)
-  },
   /** A LAYOUT's model slots bind to the session it opens with — this session
    *  only; other sessions keep running their own casts untouched. */
   stampModels: (models: Record<string, string>): void => {
@@ -2344,9 +2134,8 @@ function syncSpaceAttrs(): void {
   // TWO TYPES AGAIN (his order, 2026-09-29): the open thread's own type styles
   // the surface, and the rail's tab styles the lists. A Chat thread hides the
   // dev chrome the CSS keys off this attribute.
-  const c = current();
-  document.body.dataset.sessionSpace = c ? modeOf(c) : typeTab;
-  document.body.dataset.railSpace = typeTab;
+  document.body.dataset.sessionSpace = SESSION_MODE;
+  document.body.dataset.railSpace = SESSION_MODE;
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
   announceWbLocus();
@@ -2420,7 +2209,7 @@ function newChat(): void {
   // is retained only for the pod/thread-store contract and is always "code".
   // BORN IN THE ACTIVE TYPE (his order, 2026-09-29) — a birth property, never
   // flipped afterwards: a thread's transcript was written with its toolbelt.
-  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: typeTab, permission: defaultMode };
+  const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
   // The Output pick made on the lazy landing is this session's (his order, 2026-10-05).
@@ -2429,9 +2218,7 @@ function newChat(): void {
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
-  // A Work session on the web is born in the cloud unless the member picked a
-  // place (session-locus.ts newSessionSource; his order, 2026-10-06).
-  c.source = newSessionSource(onWebTarget() ? "web" : "desktop", typeTab, pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
+  c.source = newSessionSource(onWebTarget() ? "web" : "desktop", pendingSource, resolvedDefaultSource, sameSource, { kind: "cloud-new" });
   if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
   // Still nothing? Adopt the workbench's LIVE folder — a thread is tied to
   // its folder from birth (his rule, 2026-08-30), never left floating on
@@ -2493,7 +2280,7 @@ function leaveSessionToLanding(): void {
  * (The optional arg is a legacy space hint from the workbench bridge — ignored
  * now that there is one session type.)
  */
-function forgetCurrentSession(_space?: "chat" | "cowork" | "code"): void {
+function forgetCurrentSession(): void {
   const cur = current();
   // BOTH the in-memory resume target and its persisted twin — clearing only
   // the first let the session come back on the next launch.
@@ -2645,9 +2432,8 @@ function paintSessionHeadLocus(): void {
   back.classList.toggle("headless", !c);
   back.closest(".code-agent-head")?.classList.toggle("head-landing", !c);
   if (!c) { locus.innerHTML = ""; return; }
-  const t = modeOf(c);
-  locus.innerHTML = TYPE_GLYPH[t];
-  locus.title = `${TYPE_LABEL[t]} session`;
+  locus.innerHTML = SESSION_GLYPH;
+  locus.title = "Session";
 }
 
 /** Rename the current session inline in the head (Enter commits, Esc cancels). */
@@ -2713,10 +2499,7 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const q = recentsQuery.trim().toLowerCase();
-  // THE TAB IS THE FILTER (his order, 2026-09-29: "switching the tabs shows
-  // the two respective lists").
   const visible = chats
-    .filter((c) => modeOf(c) === typeTab)
     .filter((c) => !q || c.title.toLowerCase().includes(q));
   // All sessions, not just rows surviving the filter — a search that matches
   // nothing must keep its own box on screen to be cleared.
@@ -3102,37 +2885,7 @@ function renderThread(): void {
   const c = current();
   // A server-adopted thread paints as soon as its lazily-fetched messages land.
   if (c) hydrateMessagesIfNeeded(c.id);
-  // THE WORK LANDING (his order, 2026-10-05: Claude's new-chat screen, on web
-  // and app): the mark in the accent colour + one Ada-themed, time-of-day
-  // greeting, hugging the composer. ONLY while the thread has no message and
-  // nothing streams — the first send repaints the thread as today, and the
-  // composer never moves. Code keeps the landing below, untouched.
-  const workLanding = (!c || !c.messages.length) && (c ? modeOf(c) : typeTab) === "work" && !(c && liveRuns.has(c.id));
-  // THE LANDING IS CENTRED (his order, 2026-10-05: "in the middle of the page
-  // centered for new"): the agent column centres the greeting AND the
-  // composer while nothing has been said; the first send lays it out as today.
-  document.querySelector(".code-agent")?.classList.toggle("work-landing", workLanding);
-  if (workLanding) {
-    const ghost = document.createElement("div");
-    ghost.className = "code-ghost code-ghost-work";
-    const mark = document.createElement("div");
-    mark.className = "code-ghost-mark code-ghost-mark-accent";
-    // THE standard mark, exactly as the Code landing paints it (his report,
-    // 2026-10-05: the accent artwork read as inverted on light).
-    mark.innerHTML = `<img src="brand/glyphh-mark.png" alt="" draggable="false" />`;
-    const title = document.createElement("div");
-    title.className = "code-ghost-title code-ghost-greeting";
-    // Picked per session id (the landing's own seed before one is born), so
-    // a repaint never flickers to another line.
-    // The reader's FIRST NAME is in the line (his order, 2026-10-05); it
-    // backfills in place once dashboardData resolves (ensureGhostName).
-    title.textContent = pickGreeting(c?.id ?? landingSeed, undefined, firstNameOf(ghostName));
-    title.dataset.seed = c?.id ?? landingSeed;
-    ensureGhostName();
-    ghost.append(mark, title);
-    inner.appendChild(ghost);
-    return;
-  }
+  document.querySelector(".code-agent")?.classList.remove("work-landing");
   // EVERY agent's empty thread is the SAME: the mascot + a line. Code used to
   // render its own two-column landing here, so the coding agent looked like a
   // different product from Chat and Work — the + New Session screen is where
@@ -3721,7 +3474,7 @@ function cloudSendBlockNow(): string {
   if (!onWebTarget()) return "";
   const src = activeSource();
   const c = current();
-  return webCloudSendBlock({ surface: "web", type: c ? modeOf(c) : typeTab, locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
+  return webCloudSendBlock({ surface: "web", locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
 }
 
 /** The source for the ACTIVE surface — the current session's stamped source,
@@ -3858,7 +3611,6 @@ function mountSourceChip(): void {
   if (!onWebTarget() || cloudChips) return;
   cloudChips = createCloudChips({
     getSource: activeSource,
-    getType: () => { const c = current(); return c ? modeOf(c) : typeTab; },
     onPick: pickSource,
     bornLocus,
     machines: () => threadStore.attachedMachines(),
@@ -3884,7 +3636,7 @@ function readyPlaceholder(): string {
   // The prompt names what the type is FOR (his choice, 2026-09-29): Work drives
   // apps and accounts, Code builds and fixes.
   const c = current();
-  return (c ? modeOf(c) : typeTab) === "work" ? "Describe what to do…" : "Describe what to build or fix…";
+  return "Describe what to build or fix…";
 }
 
 /** Nothing to run with: the org allows no model on the gateway lane. Kept
@@ -4186,7 +3938,6 @@ function paintSourceReach(): void {
 function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
-  paintFolderChip();
   const cloud = activeSource().kind !== "local";
   // A CLOUD source browses the POD workspace with the folder chip (his ask,
   // 2026-08-20) — only the + (a machine mkdir) has nothing to do there.
@@ -4223,7 +3974,7 @@ function paintSourceDependents(): void {
   // surface, the type in view, the locus and whether a desktop is attached.
   if (onWebTarget() && cloudChips) {
     const c3 = current();
-    const set = composerChipSet({ surface: "web", type: c3 ? modeOf(c3) : typeTab, locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
+    const set = composerChipSet({ surface: "web", locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
     cloudChips.refresh();
     const [envEl, repoEl] = cloudChips.els;
     envEl.classList.toggle("hidden", !set.environment);
@@ -4659,19 +4410,8 @@ function flushPendingNotes(tries = 0): void {
 }
 
 function queueAttachments(refs: AttachRef[]): void {
-  // WORK TAKES FILES AND PHOTOS TOO (his push-back, 2026-09-29) — what changes
-  // is HOW they reach the turn: an image as a vision block, a file's text
-  // inlined into the message (main's attachmentInlineText), because a Work belt
-  // has no read tools to open a path with. A FOLDER is the one thing it cannot
-  // take: there is nothing to inline and nothing to walk it with.
-  const c = current();
-  const work = (c ? modeOf(c) : typeTab) === "work";
-  const taken = work ? refs.filter((r) => r.kind !== "folder") : refs;
-  if (work && taken.length < refs.length) {
-    toastOk("A Work session can't take a folder — attach the files, or start a Code session.");
-  }
   // Same path twice = once (re-dropping a folder shouldn't stack chips).
-  for (const r of taken) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
+  for (const r of refs) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
   paintAttachChips();
 }
 
@@ -4716,11 +4456,7 @@ function wireComposerAttachments(): void {
       surface: onWeb() ? "web" : "desktop",
       has: hostHas,
       api: window.glyphh as unknown as PlusApi,
-      space: () => {
-        const c = current();
-        const space = (c ? modeOf(c) : typeTab) as string;
-        return (space === "code" || space === "chat" || space === "cowork") ? space : "work";
-      },
+      space: () => SESSION_MODE,
       attachFiles: () => { void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); }); },
       // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea
       // (Work has no tool to walk one with; the row is Code-only).
@@ -5363,7 +5099,7 @@ function send(): void {
   const launch = async (retried: boolean): Promise<void> => {
     const folder = await withFolder();
     // The dial rides every turn on a model that takes one (his order, 2026-10-04).
-    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(modelTakesEffort() ? { effort: currentEffort() } : {}) })
+    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: SESSION_MODE, permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(modelTakesEffort() ? { effort: currentEffort() } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -6423,11 +6159,11 @@ function sessLoopKey(sess: RailSession): string {
 /** The rail's and the dropdown's one filter. `among` is the loops the list
  *  can hold: a loop filter naming none of them is no filter there; `tab`
  *  absent = every type (the CLI window's own pool). */
-function sessFilter(opts: { tab?: SessionType; among?: ReadonlySet<string>; query?: string }): RecentsFilter {
-  return { ...(opts.tab ? { tab: opts.tab } : {}), loops: loopFilter, ...(opts.among ? { among: opts.among } : {}), locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
+function sessFilter(opts: { among?: ReadonlySet<string>; query?: string }): RecentsFilter {
+  return { loops: loopFilter, ...(opts.among ? { among: opts.among } : {}), locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
 }
 function sessFilterRow(sess: RailSession): RecentsRowLike {
-  return { title: sess.title, cwd: sess.cwd, mode: sess.mode, loopKey: sessLoopKey(sess), locus: sess.locus ?? "local" };
+  return { title: sess.title, cwd: sess.cwd, loopKey: sessLoopKey(sess), locus: sess.locus ?? "local" };
 }
 function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
   return recentsKeeps(sessFilterRow(sess), f);
@@ -6477,8 +6213,8 @@ function openLoopFilterMenu(anchor: HTMLElement, keys: readonly string[] = LOOP_
   for (const o of shown) {
     const on = loopFilter.includes(o.key);
     const probe: RailSession = o.key === "glyphh"
-      ? { id: "", cli: GLYPHH_LOOP, title: "", cwd: "", mtime: 0, mode: "code" }
-      : { id: "", cli: o.key === "glyphh-cli" ? GLYPHH_LOOP : o.key, title: "", cwd: "", mtime: 0, mode: "code", origin: "cli" };
+      ? { id: "", cli: GLYPHH_LOOP, title: "", cwd: "", mtime: 0 }
+      : { id: "", cli: o.key === "glyphh-cli" ? GLYPHH_LOOP : o.key, title: "", cwd: "", mtime: 0, origin: "cli" };
     const mark = sessMarkEl(probe);
     mark.classList.add("loop-mark");
     row(o.name, on, mark, () => setLoopFilter(on ? loopFilter.filter((x) => x !== o.key) : [...loopFilter, o.key]));
@@ -6570,7 +6306,7 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession {
-  id: string; cli: string; title: string; cwd: string; mtime: number; mode: SessionType; origin?: "cli";
+  id: string; cli: string; title: string; cwd: string; mtime: number; origin?: "cli";
   /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
    *  bot's cat and opens the Bots panel on it, never the agent panel. */
   bot?: string;
@@ -6741,7 +6477,7 @@ async function loadRailSessions(): Promise<void> {
         // A thread's own space. Every NEW session is born in Code (modeOf); the
         // older Chat and Work threads keep theirs, which is what makes the glyph
         // worth reading.
-        mode: modeOf(c),
+        mode: SESSION_MODE,
         locus,
         ...(c.bot ? { bot: c.bot } : {}),
         ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
@@ -6770,7 +6506,7 @@ async function loadCliSessions(): Promise<RailSession[]> {
   // locked when their folder is not one the desktop granted.
   const surface = onWebTarget() ? "web" : "desktop";
   return (r?.ok ? r.sessions : []).map((x) => ({
-    ...x, mode: "code" as SessionType, origin: "cli" as const, locus: "local" as const,
+    ...x, origin: "cli" as const, locus: "local" as const,
     ...(sessionLocked({ locus: "local", cwd: x.cwd }, surface, threadStore.attachedMachines()) ? { locked: true } : {}),
   }));
 }
@@ -6825,15 +6561,12 @@ interface SessGroup { label: string; title: string; rows: RailSession[] }
 
 /** THE RAIL'S PARADIGM (main, 2026-08-20): Pinned first (only when any
  *  exist), then one group per folder, each most-recently-touched down. */
-function sessSections(items: RailSession[], byDay = false): SessGroup[] {
+function sessSections(items: RailSession[]): SessGroup[] {
   const byTouch = (a: RailSession, b: RailSession): number => b.mtime - a.mtime;
   const pinned = items.filter((x) => sessPinned(x.id)).sort(byTouch);
   const rest = items.filter((x) => !sessPinned(x.id)).sort(byTouch);
   const out: SessGroup[] = [];
   if (pinned.length) out.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
-  // WORK GROUPS BY DAY (his order, 2026-10-07): Today, Yesterday, Older — in
-  // the rail and the recents dropdown, on the app and the web.
-  if (byDay) return [...out, ...groupByDate(rest, (r) => r.mtime).map((g) => ({ label: g.label, title: g.label, rows: g.rows }))];
   const byKey = new Map<string, SessGroup>();
   for (const c of rest) {
     // Cloud sessions share ONE group: each has its own folder named "workspace",
@@ -6894,7 +6627,7 @@ async function openGlyphhSession(id: string): Promise<void> {
     toastOk("That session could not be opened.");
     return;
   }
-  console.warn("[sess] open", JSON.stringify({ id, mode: modeOf(chat), turns: chat.messages?.length ?? 0 }));
+  console.warn("[sess] open", JSON.stringify({ id, mode: SESSION_MODE, turns: chat.messages?.length ?? 0 }));
   selectChat(chat);
   // A thread adopted as metadata carries no turns until fetched; renderThread
   // asks too, but asking here means the history lands even if the thread is
@@ -6906,7 +6639,7 @@ async function openGlyphhSession(id: string): Promise<void> {
   // report: a recent "loads correctly in the agent panel BUT it also opens
   // another instance of the agent"). Front the seat and stop.
   if ((window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat?.()) return;
-  const loop = agentForSess({ id, cli: GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat), mode: modeOf(chat) });
+  const loop = agentForSess({ id, cli: GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat) });
   if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
 }
 
@@ -7039,7 +6772,7 @@ function renderRailSessions(): void {
   // list and the dropdown were filtered; this one, the one he was looking at,
   // was not.
   // ONE FILTER with the dropdown (his order, 2026-10-04): type, loop, place, search.
-  const railFilter = sessFilter({ tab: typeTab, query: q });
+  const railFilter = sessFilter({ query: q });
   const items = [...railSessions, ...railCliSessions].filter((x) => sessFilterKeeps(x, railFilter));
   const painted = JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null });
   if (painted !== railPaintedLog) { railPaintedLog = painted; console.warn("[rail] painted", painted); }
@@ -7047,13 +6780,11 @@ function renderRailSessions(): void {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "wb-session-empty";
-    // Name the type: an empty tab must read as "none of these yet", never as a
-    // list that failed to load.
-    empty.textContent = q ? "No sessions match." : `No ${TYPE_LABEL[typeTab]} sessions yet.`;
+    empty.textContent = q ? "No sessions match." : "No sessions yet.";
     host.appendChild(empty);
     return;
   }
-  for (const sec of sessSections(items, typeTab === "work")) {
+  for (const sec of sessSections(items)) {
     host.appendChild(sessSectionHead(sec.label, sec.title));
     for (const sess of sec.rows) {
       const row = document.createElement("div");
@@ -7137,33 +6868,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
     paint();
   };
   document.addEventListener("glyphh:loop-filter-changed", onFilter);
-  // THIS DROPDOWN'S OWN TOGGLE (his order, 2026-09-29: "the agent recents
-  // toggle should not toggle the entire app's list, only its recents list").
-  // It OPENS on the active type, then lives and dies with the menu: looking
-  // through the other type's sessions here is a look, not a change of what the
-  // rail lists or what + New would create.
-  let menuTab: SessionType = typeTab;
-  const tabs = document.createElement("div");
-  tabs.className = "rail-type-tabs wb-session-tabs";
-  const mkTab = (t: SessionType): HTMLButtonElement => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "rail-type-tab" + (menuTab === t ? " active" : "");
-    b.innerHTML = `${TYPE_GLYPH[t]}<span>${TYPE_LABEL[t]}</span>`;
-    b.addEventListener("mousedown", (e) => e.stopPropagation());
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      menuTab = t;
-      tabs.querySelectorAll<HTMLElement>(".rail-type-tab").forEach((el2) => el2.classList.toggle("active", el2.dataset.type === t));
-      paint();
-    });
-    b.dataset.type = t;
-    return b;
-  };
-  tabs.append(mkTab("work"), mkTab("code"));
   menu.appendChild(searchWrap);
-  // The CLI window hands its own list: every CLI's sessions, no type tabs.
-  if (!opts.pool) menu.appendChild(tabs);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
@@ -7172,11 +6877,8 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    // WORK IS ONE LIST (his order, 2026-10-07): no funnel, no section head.
-    filterBtn.classList.toggle("hidden", !opts.pool && menuTab === "work");
-    // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function,
-    // the same prefs; only the type tab is this menu's own.
-    const menuFilter = sessFilter({ ...(opts.pool ? {} : { tab: menuTab }), among: menuKeys, query: q });
+    // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function, the same prefs.
+    const menuFilter = sessFilter({ among: menuKeys, query: q });
     const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
@@ -7213,7 +6915,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
       row.append(title, pin, del);
       return row;
     };
-    for (const sec of sessSections(visible, !opts.pool && menuTab === "work")) {
+    for (const sec of sessSections(visible)) {
       listHost.appendChild(sessSectionHead(sec.label, sec.title));
       for (const c of sec.rows) listHost.appendChild(mkRow(c));
     }
@@ -7886,40 +7588,19 @@ export function initCode(): void {
     renderHistory();   // the search box follows the disclosure
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
-  // THE TYPE TABS (his order, 2026-09-29): the tab is the type — it filters
-  // Recents, it is what + New creates, and it decides the toolbelt.
-  for (const b of Array.from(document.querySelectorAll<HTMLElement>("#rail-type-tabs .rail-type-tab"))) {
-    b.addEventListener("click", () => { const t = b.dataset.type; if (t === "work" || t === "code") setTypeTab(t); });
-  }
-  // EVERY LAUNCH LANDS ON WORK → NEW (his order, 2026-10-07; surface.ts
-  // defaultTypeTab): the saved tab is read for the record but never decides
-  // the landing. A switch made while running still writes it.
   void readSelfDevice();
   window.addEventListener("focus", () => { void readSelfDevice(); });
-  void window.glyphh.getPreference?.(TYPE_TAB_PREF, "").then((v) => {
-    // AN AGENT PANEL BOOTS ON THE SHELL'S TYPE (his report, 2026-10-08): the
-    // shell hands it over in the panel's URL, because a preference change
-    // only reaches a panel that is already listening, and a panel opened
-    // while the rail already said Code never heard it — so every new panel
-    // and every workspace cell came up Work. The shell itself lands on the
-    // default and writes it, so the pref and the rail never disagree.
-    const fromUrl = IS_AGENT_PANEL ? new URLSearchParams(window.location.search).get("type") : null;
-    const boot: SessionType = fromUrl === "code" || fromUrl === "work" ? fromUrl : defaultTypeTab(onWebTarget(), v);
-    applyType(boot, { persist: !IS_AGENT_PANEL, force: true });
-    if (!IS_AGENT_PANEL && !onWebTarget()) void window.glyphh.setPreference?.(TYPE_TAB_PREF, boot);
-    void loadRailSessions();
-  }).catch(() => paintTypeTabs());
-  // ANOTHER DOCUMENT MOVED THE TAB (the shell's rail, or a panel's own recents
-  // dropdown): follow it here rather than waiting for a reload.
+  // ONE TYPE (his order, 2026-10-08): the face paints once at boot — there is
+  // no tab to follow and nothing another document can switch.
+  syncSpaceAttrs();
+  paintComposerGate();
+  void loadRailSessions();
   (window.glyphh as unknown as { onPreferenceChanged?: (cb: (key: string, value: unknown) => void) => void })
     .onPreferenceChanged?.((key, value) => {
       // Settings → General's default model moved: the next session starts on it.
       if (key === "defaultModel") { defaultModelPref = String(value || "") || null; try { paintModelChip(); } catch { /* */ } return; }
       // Another panel turned the effort dial: this chip follows.
-      if (key === EFFORT_PREF) { if (isEffort(value)) { effort = value; try { paintLevelChip(); } catch { /* */ } } return; }
-      if (key !== TYPE_TAB_PREF) return;
-      const t: SessionType = value === "work" ? "work" : "code";
-      applyType(t, { persist: false });
+      if (key === EFFORT_PREF) { if (isEffort(value)) { effort = value; try { paintLevelChip(); } catch { /* */ } } }
     });
   // The sidebar's own header: collapse (persisted) and the Echo launcher.
   const setRailCollapsed = (on: boolean, persist: boolean): void => {
@@ -8285,18 +7966,12 @@ export function initCode(): void {
   // CC pins the wall over open cards; reset clears back to the command
   // center. The latter two only show while panels cover the wall (the
   // workbench drives body.echo-cc-needed).
-  // THE CHIPS FOLLOW THE TYPE (his order, 2026-10-07 — Claude's composer for
-  // Work, Claude Code on the web for Code; "just MOVE THE CHIPS"). The box
-  // holds the input; the quiet row UNDER it holds the words. Work keeps the
-  // + at the input's left and the voice pair (mic + caret, speak toggle) at
-  // its right; everything else sits in the row — Output left, model ·
-  // effort · mode (+ Stop while speaking) right. Code seats the + and the
-  // voice controls under the box too: + · mic · mode · Output left, model ·
-  // effort right. One rule for every host (docked cell, the centre pill,
-  // the web's flow card): no chip lands in the box but Work's + and voice
-  // pair. appendChild moves keep listeners; a node already in its seat is
-  // left alone (moving it would blur a focused chip). The workbench calls
-  // this global after re-homing the agent; the type switch calls it too.
+  // THE CHIPS' SEATS (his order, 2026-10-07, one type since 2026-10-08): the
+  // box holds the input; the quiet row UNDER it holds the words — + · mic ·
+  // mode · Output left, model · effort right. One rule for every host (docked
+  // cell, the centre pill, the web's flow card). appendChild moves keep
+  // listeners; a node already in its seat is left alone (moving it would blur
+  // a focused chip). The workbench calls this global after re-homing the agent.
   const seatMic = (): void => {
     const mic = el("code-mic-wrap");
     const plus = el("code-plus-wrap");
@@ -8308,14 +7983,10 @@ export function initCode(): void {
     const wave = el("code-rec-wave");
     if (!wrap || !left || !right || !wave) return;
     const mode = el("code-mode-wrap");
-    const folder = el("code-folder-wrap");
     const output = el("code-output-wrap");
-    paintFolderChip();   // Work shows it, Code never does
     const level = el("code-level-wrap");
     const model = el("code-model-wrap");
     const stop = el("code-speak-wrap");
-    const c = current();
-    const work = (c ? modeOf(c) : typeTab) === "work";
     // Put `nodes` at the head of `parent` in this order, moving only what is
     // out of place (a pass over a settled row touches nothing).
     const order = (parent: Element, nodes: Array<HTMLElement | null>): void => {
@@ -8327,19 +7998,9 @@ export function initCode(): void {
         prev = n;
       }
     };
-    // Seat `node` in `parent` right before `before`, only when it is not there.
-    const seatBefore = (node: HTMLElement | null, parent: Element, before: Element): void => {
-      if (node && (node.parentElement !== parent || node.nextElementSibling !== before)) parent.insertBefore(node, before);
-    };
-    if (work) {
-      order(wrap, [plus]);
-      seatBefore(mic, wrap, wave);
-      order(left, [folder, output]);
-      order(right, [model, level, mode, stop]);
-    } else {
-      order(left, [plus, mic, mode, output]);
-      order(right, [model, level, stop]);
-    }
+    void wrap; void wave;
+    order(left, [plus, mic, mode, output]);
+    order(right, [model, level, stop]);
   };
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic = seatMic;
   seatMic();
@@ -8661,7 +8322,6 @@ export function initCode(): void {
     if (moreBtn && menu) {
       mountAgentMenu(menu, moreBtn, {
         session: () => { const c = current(); return c ? { pinned: !!c.pinned } : null; },
-        mode: () => { const c = current(); return c ? modeOf(c) : typeTab; },
         onSession: (action) => {
           const c = current();
           if (!c) return;
@@ -8920,7 +8580,7 @@ export function openRunSession(run: {
  *  ignored: every session is the Code agent now.) */
 // The workbench bundle (a separate esbuild output) reaches this through the
 // window hook below — the Tasks page's prompt cards seed the composer with it.
-export function seedNewSession(text: string, _space?: "chat" | "cowork" | "code"): void {
+export function seedNewSession(text: string): void {
   // No record until the user actually SENDS — the seed just fills the
   // composer on a cleared selection.
   currentId = "";

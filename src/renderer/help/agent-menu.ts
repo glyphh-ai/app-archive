@@ -52,7 +52,6 @@ import { surfaceCaps, surfaceHostsView, DESKTOP_TOOL_VIEWS } from "./surface.js"
 import { houseViewOf } from "./house-relay.js";
 
 export type MenuSurface = "web" | "desktop";
-export type MenuMode = "work" | "code";
 export type MenuSectionKind = "tools" | "session" | "apps" | "clis" | "workspaces";
 
 export const CONNECT_DESKTOP_LINE = "Connect your desktop to open apps";
@@ -80,8 +79,6 @@ export const COLLAPSIBLE_SECTIONS: ReadonlyArray<MenuSectionKind> = Object.freez
 export const ARTIFACTS_VIEW = "artifacts";
 /** The Code toolbelt: the old Developer-tools list, in its order, then Artifacts. */
 export const CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze([...DESKTOP_TOOL_VIEWS, ARTIFACTS_VIEW]);
-/** A Work session's panels: the Browser and the swarm, then Artifacts. */
-export const WORK_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["preview", "agents", ARTIFACTS_VIEW]);
 
 const TOOL_LABELS: Record<string, string> = {
   files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Bots", preview: "Browser", artifacts: "Artifacts",
@@ -131,8 +128,6 @@ export interface MenuWorkspaceRow { name: string }
 
 export interface AgentMenuInput {
   surface: MenuSurface;
-  /** The session's type (modeOf), or the rail's active tab on a fresh landing. */
-  mode: MenuMode;
   session: MenuSession | null;
   /** attach.status's machines — is a desktop attached, and which. The
    *  desktop itself is always its own machine. */
@@ -180,7 +175,6 @@ export type MenuSection = MenuAppsSection | MenuClisSection | MenuToolsSection |
 
 export interface AgentMenu {
   surface: MenuSurface;
-  mode: MenuMode;
   attached: boolean;
   /** The machine a desktop open lands on: the first attached desktop. */
   machine: MenuMachine | null;
@@ -191,13 +185,13 @@ export interface AgentMenu {
 /** The tool views a session of this type offers on this surface: the one
  *  list for the type, through the surface's capabilities (the Browser needs
  *  a streamed panel). */
-export function toolViewsFor(surface: MenuSurface, mode: MenuMode): ReadonlyArray<string> {
+export function toolViewsFor(surface: MenuSurface): ReadonlyArray<string> {
   const caps = surfaceCaps(surface === "web");
-  return (mode === "work" ? WORK_TOOL_VIEWS : CODE_TOOL_VIEWS).filter((v) => surfaceHostsView(v, caps));
+  return CODE_TOOL_VIEWS.filter((v) => surfaceHostsView(v, caps));
 }
 
-export function toolRowsFor(surface: MenuSurface, mode: MenuMode): MenuToolRow[] {
-  return toolViewsFor(surface, mode).map((view) => ({ view, label: TOOL_LABELS[view] ?? view }));
+export function toolRowsFor(surface: MenuSurface): MenuToolRow[] {
+  return toolViewsFor(surface).map((view) => ({ view, label: TOOL_LABELS[view] ?? view }));
 }
 
 /** The open session's rows: Rename, Pin / Unpin, New agent panel, Delete (danger, last). */
@@ -283,7 +277,7 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   // The desktop IS a desktop: its own folders are always reachable.
   const attached = i.surface === "desktop" || !!machine;
   const byKind = new Map<MenuSectionKind, MenuSection>();
-  const tools = toolRowsFor(i.surface, i.mode);
+  const tools = toolRowsFor(i.surface);
   if (tools.length) byKind.set("tools", { kind: "tools", label: TOOLS_SECTION_LABEL, rows: tools });
   const session = sessionRowsFor(i.session);
   if (session.length) byKind.set("session", { kind: "session", label: SESSION_SECTION_LABEL, rows: session });
@@ -330,7 +324,7 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
     const s = byKind.get(kind);
     if (s) sections.push(s);
   }
-  return { surface: i.surface, mode: i.mode, attached, machine, sections };
+  return { surface: i.surface, attached, machine, sections };
 }
 
 // ── THE FOLD STATE: what is expanded in the menu on screen ─────────────────

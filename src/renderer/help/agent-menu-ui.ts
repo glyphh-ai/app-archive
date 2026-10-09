@@ -29,7 +29,7 @@ import { toolViewIcon } from "./layouts.js";
 import { toast } from "./toast.js";
 import {
   agentMenuModel, appRowOpen, menuFoldState, cliFoldKey, isExpanded, toggleFold, sectionHeadLabel,
-  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuMode, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
+  type AgentMenu, type FoldState, type MenuAppRow, type MenuCliRow, type MenuCliSession, type MenuMachine, type MenuSession, type MenuWorkspaceRow, type SessionAction, menuLocusOf } from "./agent-menu.js";
 
 interface MenuApi {
   attachStatus?: () => Promise<{ attached: boolean; machines: MenuMachine[] }>;
@@ -38,9 +38,8 @@ interface MenuApi {
 }
 type RailSessionLike = MenuCliSession & { origin?: "cli"; locked?: boolean };
 export interface AgentMenuDoors {
-  /** The session on screen (null on a fresh landing) and its type. */
+  /** The session on screen (null on a fresh landing). */
   session: () => MenuSession | null;
-  mode: () => MenuMode;
   /** The old kebab's actions. */
   onSession: (action: SessionAction) => void;
   /** WEB: the rail's open for a desktop CLI session (resume on the desktop, grant card when locked). */
@@ -129,7 +128,6 @@ function modelFor(doors: AgentMenuDoors, web: SurfaceRead | null): AgentMenu {
   const src = (shell() as unknown as { __glyphhActiveSource?: () => { kind?: unknown } | null }).__glyphhActiveSource?.() ?? null;
   return agentMenuModel({
     surface: onWeb() ? "web" : "desktop",
-    mode: doors.mode(),
     session: doors.session(),
     machines: web?.machines ?? [],
     installed: web?.installed ?? [],

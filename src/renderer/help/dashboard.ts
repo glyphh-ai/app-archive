@@ -759,7 +759,7 @@ const STARTERS: Starter[] = [
 /** Open the starter's workspace, then seed its prompt. */
 async function runStarter(s: Starter): Promise<void> {
   if (s.layout) await openStarterLayout(s.layout);
-  seedNewSession(s.skill ? s.skill.seed : s.seed, s.space);
+  seedNewSession(s.skill ? s.skill.seed : s.seed);
 }
 
 function renderStarters(): void {

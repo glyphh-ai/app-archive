@@ -1148,60 +1148,12 @@ async function init(): Promise<void> {
   let echoActiveLayout: { name: string; mode: "keep" | "new" | "last" } | null = null;
   function namedLayoutKey(name: string): string { return `workbench:namedlayout:${name.trim().toLowerCase()}`; }
   /** The chat session last used while this named layout was active. */
-  /** The layout↔session binding is PER SPACE — a layout remembers the
-   *  session it rode in EACH space, so opening it from Work never resumes
-   *  (or steals) its Code session. The un-suffixed legacy key is read as a
-   *  fallback, validated against the space before use. */
-  function activeSpace(): "chat" | "cowork" | "code" {
-    const v = document.body.dataset.railSpace;
-    return v === "code" ? "code" : v === "chat" ? "chat" : "cowork";
-  }
-  /** THE LAYOUT decides its space, not the tab it was opened from: explicit
-   *  `space` wins; otherwise dev tool panels make it a Code layout, anything
-   *  else is Work. One layout, one space — dual use means two layouts. */
-  const DEV_PANEL_RE = /^tool:(coding|terminal|editor|diff|git)/;
-  /** The rail tabs' own glyphs (24-box stroke paths) — drawn as tile badges. */
-  const SPACE_GLYPHS: Record<"chat" | "cowork" | "code", string[]> = {
-    chat: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
-    cowork: [
-      "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
-      "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
-    ],
-    code: ["M16 18 L22 12 L16 6", "M8 6 L2 12 L8 18"],
-  };
-  /** Auto-derived space (no explicit pick) wears a sparkle, not the derived
-   *  space's glyph — so "I chose Code" and "it looks like Code" read apart. */
-  const AUTO_GLYPH = [
-    "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
-    "M18.5 15.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z",
-  ];
-  /** THE WORKSPACE'S TYPE (his order, 2026-10-07: "workspaces need to carry a
-   *  custom field for each agent window for type re: code or work, and the
-   *  overall workspace the same, following the same rules as the other agent
-   *  settings"): the Glyphh agent cell's own type beats the workspace's, and
-   *  either binds only to a session the layout CREATES (stampLayoutModels).
-   *  null = no opinion; the panels decide the space as before. */
-  function workspaceType(cfg: CellConfig | undefined, row: { type?: string | null } | null | undefined): "work" | "code" | null {
-    const t = cfg?.type ?? row?.type;
-    return t === "work" || t === "code" ? t : null;
-  }
-  function layoutSpace(row?: { space?: string | null; type?: string | null; splits?: Array<{ panelId: string; config?: CellConfig }> } | null): "chat" | "cowork" | "code" {
-    // An explicit type names the space outright: Work is the non-dev space.
-    const typed = workspaceType(row?.splits?.find((p) => p.panelId === "tool:coding")?.config, row);
-    if (typed) return typed === "code" ? "code" : "cowork";
-    const s = row?.space;
-    if (s === "chat" || s === "cowork" || s === "code") return s;
-    return (row?.splits ?? []).some((p) => DEV_PANEL_RE.test(String(p.panelId || ""))) ? "code" : "cowork";
-  }
-  /** Opening a layout activates ITS space — the rail tab follows the layout
-   *  (help/code.ts listens and re-scopes lists/menus without navigating). */
-  function activateLayoutSpace(row: Parameters<typeof layoutSpace>[0]): "chat" | "cowork" | "code" {
-    const space = layoutSpace(row);
-    window.dispatchEvent(new CustomEvent("glyphh:activate-space", { detail: space }));
-    return space;
-  }
-  function layoutSessionKey(name: string, space: string = activeSpace()): string {
-    return `workbench:layoutsession:${name.trim().toLowerCase()}:${space}`;
+  /** ONE TYPE (his order, 2026-10-08): the layout↔session binding is keyed
+   *  by the layout alone. (A space suffix keyed it per type until then; the
+   *  un-suffixed legacy key is read as a fallback.) */
+  const ONE_SPACE = "code";
+  function layoutSessionKey(name: string): string {
+    return `workbench:layoutsession:${name.trim().toLowerCase()}:${ONE_SPACE}`;
   }
   function layoutSessionKeyLegacy(name: string): string { return `workbench:layoutsession:${name.trim().toLowerCase()}`; }
   function saveLayout(): void {
@@ -4842,9 +4794,7 @@ async function init(): Promise<void> {
           const riding = echoActiveLayout?.name;
           const cur = sess?.currentId?.();
           if (riding && cur && echoActiveLayout?.mode === "last") {
-            const listed = sess?.list?.()?.find((c) => c.id === cur);
-            const space = listed?.mode === "code" ? "code" : listed?.mode === "chat" ? "chat" : "cowork";
-            try { uiStateSet(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
+            try { uiStateSet(layoutSessionKey(riding), cur); } catch { /* best effort */ }
           }
         }
         // B3: OPEN = WIPE-THEN-MOUNT — a layout open first tears down whatever
@@ -4897,14 +4847,6 @@ async function init(): Promise<void> {
         const codingCfg = (codingCell?.config || {}) as CellConfig;
         const codingLoop = codingCell ? surfaceOf(codingCell).loop : "";
         const codingFolder = codingCfg.folder || "";
-        const codingType = workspaceType(codingCfg, layout);
-        // THE TYPE IS STAMPED BEFORE A CELL OPENS (his report, 2026-10-08): the
-        // agent cell is a panel of its own and takes the type from the shell's
-        // rail at open, so the rail must already say it.
-        if (codingType) {
-          type StampApi = { stampType?(t: "work" | "code"): void };
-          (window as unknown as { __agentSessions?: StampApi }).__agentSessions?.stampType?.(codingType);
-        }
         let seatedAgent = false;
         for (const cell of cells) {
           const { id, loop: cellLoop } = surfaceOf(cell);
@@ -5135,7 +5077,6 @@ async function init(): Promise<void> {
         {
           type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void; stampType?(t: "work" | "code"): void };
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-          const space = activateLayoutSpace(layout);
           const mode = sessionModeOverride ?? layout.sessionMode ?? "keep";
           sessionModeOverride = null;
           // The layout's LOOP + MODEL SLOTS follow the SESSION contract (his
@@ -5147,12 +5088,6 @@ async function init(): Promise<void> {
             if (codingLoop || layout.loop) sess?.stampLoop?.(codingLoop || layout.loop!);
             if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
           };
-          // THE TYPE IS THE SURFACE'S, NOT THE SESSION'S (his report, 2026-10-07:
-          // "the tab on the left rail must adjust to what that workspace calls
-          // out so that the new agent renders properly"): a workspace that names
-          // Work or Code moves the rail's type tab the moment it opens, in every
-          // session mode — before a new session is born, so it is born right.
-          if (codingType) sess?.stampType?.(codingType);
           if (sess && mode === "new") {
             sess.startNew();
             stampLayoutModels();
@@ -5166,16 +5101,14 @@ async function init(): Promise<void> {
               try { await (sess as unknown as { ready?: () => Promise<void> }).ready?.(); } catch { /* same */ }
               let last: string | null = null;
               try {
-                last = uiStateGet(layoutSessionKey(layout.name, space))
+                last = uiStateGet(layoutSessionKey(layout.name))
                   ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
               } catch { last = null; }
               // resume ONLY a session that belongs to THIS space — the same
               // layout opened from another tab rode a different conversation
               const target = last ? sess.list().find((c) => c.id === last) : undefined;
-              const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
-              if (target && spaceOfMode((target as { mode?: string }).mode) === space) {
+              if (target) {
                 if (sess.currentId() !== target.id) sess.switch(target.id);
-                if (codingType) sess.stampType?.(codingType);   // the workspace's type over the resumed session's
               } else {
                 sess.startNew();
                 stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
@@ -5504,11 +5437,7 @@ async function init(): Promise<void> {
       const id = `${Date.now().toString(36)}-${++agentInstances}`;
       // The host's theme rides along so the panel's first frame is already the right colour.
       const theme = document.documentElement.getAttribute("data-theme") || "";
-      // The shell's TYPE rides along too (his report, 2026-10-08): a panel is
-      // its own document and boots on it — a preference change only reaches a
-      // panel already listening.
-      const type = document.body.dataset.railSpace || "";
-      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}${theme ? `&theme=${encodeURIComponent(theme)}` : ""}${type ? `&type=${encodeURIComponent(type)}` : ""}&instance=${encodeURIComponent(id)}`, window.location.href).href;
+      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}${theme ? `&theme=${encodeURIComponent(theme)}` : ""}&instance=${encodeURIComponent(id)}`, window.location.href).href;
       return { name: "Glyphh", slug: `agent-panel:${id}`, kind: "app", url, workbench: true };
     };
     const isAgentInstance = (e: TileEntry): boolean => (e.tile.slug || "").startsWith("agent-panel:");
@@ -9533,7 +9462,6 @@ async function init(): Promise<void> {
       void (async () => {
         type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string, weak?: boolean): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void; stampType?(t: "work" | "code"): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
-        const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
         // The agent cell's own loop + folder beat the workspace's (his order, 2026-09-16).
         const codingCfg = (cells.find((c) => c.tool === "coding")?.config || {}) as CellConfig;
@@ -9550,19 +9478,15 @@ async function init(): Promise<void> {
           if (codingCfg.loop || layout.loop) sess?.stampLoop?.(codingCfg.loop || layout.loop!);
           if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
         };
-        // THE TYPE applies in every mode (his report, 2026-10-07) — first, so a new session is born right.
-        const t = workspaceType(codingCfg, layout);
-        if (t) sess?.stampType?.(t);
         if (!sess || mode === "keep") { stampFolder(); return; }
         if (mode === "new") { sess.startNew(); stampConfig(); stampFolder(); return; }
         let last: string | null = null;
         try {
-          last = uiStateGet(layoutSessionKey(layout.name, space))
+          last = uiStateGet(layoutSessionKey(layout.name))
             ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
         } catch { /* no memory */ }
         const target = last ? (sess.list() as Array<{ id: string; mode?: string }>).find((c) => c.id === last) : undefined;
-        const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
-        if (target && spaceOfMode(target.mode) === space) sess.switch(target.id);
+        if (target) sess.switch(target.id);
         else { sess.startNew(); stampConfig(); }   // no remembered session — the fresh one takes the layout's config
         stampFolder();
       })();
@@ -9956,10 +9880,7 @@ async function init(): Promise<void> {
     const cur = sess?.currentId?.();
     const riding = echoActiveLayout?.name ?? activeLayoutName;
     if (riding && cur) {
-      type Listed = { id: string; mode?: string };
-      const listed = ((sess as unknown as { list?: () => Listed[] }).list?.() ?? []).find((c) => c.id === cur);
-      const space = listed?.mode === "code" ? "code" : listed?.mode === "chat" ? "chat" : "cowork";
-      try { uiStateSet(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
+      try { uiStateSet(layoutSessionKey(riding), cur); } catch { /* best effort */ }
     }
   });
 

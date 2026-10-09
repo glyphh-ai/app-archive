@@ -480,12 +480,9 @@ export async function ensureRuntime(
   return unavailable("open", new Error("this build cannot run turns (SDK harnessViaApi missing)"));
 }
 
-/** The session's effective TYPE for the pod — the mirror of code.ts's modeOf:
- *  Work or Code, with the legacy chat flag and the retired `cowork`/`chat`
- *  stamps reading as Work (his order, 2026-09-29). */
-function modeFor(chat: RemoteChat): "work" | "code" {
-  const m = chat.mode ?? (chat.chat ? "work" : "code");
-  return m === "code" ? "code" : "work";
+/** The session's type for the pod: one type (his order, 2026-10-08). */
+function modeFor(_chat: RemoteChat): "code" {
+  return "code";
 }
 
 /** The stream callbacks — mirror code.ts's CURRENT (glyphhRun) run event model so

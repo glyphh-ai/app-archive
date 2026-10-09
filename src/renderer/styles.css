@@ -1752,7 +1752,7 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
    report, 2026-10-05: "these should all be to the far left of the header"). */
 /* A WORK session on the web has no ⋮ at all (his order, 2026-10-05: "in web
    for work the three dots should not be there at all"). */
-html.glyphh-web body[data-session-space="work"] #code-tools-more { display: none !important; }
+
 /* The wordmark at the rail's top-left, WEB ONLY and BIG (his order, 2026-10-05):
    the console's own file; the desktop keeps its traffic lights there. */
 .app-rail-logo { display: none; }
@@ -3596,8 +3596,8 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
 /* Under-title line — one span per space, the rail tab picks which shows. */
 .dash-subtitle { margin: 4px 0 0; font-size: 15px; color: var(--text-2); }
 .dash-subtitle span { display: none; }
-body[data-rail-space="chat"] .dash-sub-chat { display: inline; }
-body[data-rail-space="cowork"] .dash-sub-cowork { display: inline; }
+
+
 body[data-rail-space="code"] .dash-sub-code { display: inline; }
 
 /* The landing's chip row above the composer's top-left. It shows in EVERY
@@ -3702,18 +3702,7 @@ body.chat-only .dash-two-col { display: none; }
    it still have the + button to add files and photos etc") — a Work attachment
    arrives as CONTENT instead of as a path, which is the honest way to hand a
    file to a belt with no reader. Code keeps everything. */
-body[data-session-space="work"] #code-workdir-btn,
-body[data-session-space="work"] #code-workdir-add,
-body[data-session-space="work"] #code-workdir-branch-wrap,
-body[data-session-space="work"] .plus-folder-only,
-body[data-session-space="work"] .code-view-toggles,
-body[data-session-space="chat"] #code-workdir-btn,
-body[data-session-space="chat"] #code-workdir-add,
-body[data-session-space="chat"] #code-workdir-branch-wrap,
-body[data-session-space="chat"] .plus-folder-only,
-body[data-session-space="chat"] .code-view-toggles,
-body[data-session-space="cowork"] #code-workdir-branch-wrap,
-body[data-session-space="cowork"] .code-view-toggles { display: none !important; }
+
 /* A locked chip reads disabled but still catches clicks so it can
    close other open popups. */
 .code-chip.is-locked { opacity: 0.55; cursor: default; }
@@ -14442,31 +14431,20 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 /* The greeting row sits LEFT-ALIGNED to the input (his order, 2026-10-05):
    it spans the same 780px band the input's content does, so the mark's left
    edge is the input's left edge; the mark is big, the file untouched. */
-.code-ghost.code-ghost-work {
-  /* Centred over the input (his order, 2026-10-05: "center this for new work sessions"). */
-  flex-direction: row;
-  justify-content: center;
-  gap: 18px;
-  width: 100%;
-  margin: 0;
-  padding: 0 0 18px;
-  transform: none;
-}
+
 /* The fresh Work landing centres greeting + composer in the page (his order,
    2026-10-05): the thread stops stretching and the column centres its two
    children; the first send drops the class and the layout is today's. */
-.code-agent.work-landing { justify-content: center; }
+
 /* The landing's input shows TWO rows before anything is typed (his order, 2026-10-05:
    "add one more row to the new on the work page"); autoGrow still takes over past that. */
-.code-agent.work-landing .code-input { min-height: 60px; }
-.code-agent.work-landing .code-thread { flex: 0 0 auto; overflow: visible; }
-.code-agent.work-landing .code-thread-inner { min-height: 0; }
+
+
 /* The agent card on the web is a GRID (head / thread / composer): a fourth,
    equal row below the composer takes half the free space and the greeting
    sits at the thread's foot, so greeting + composer meet in the middle. */
-.ws-agent-holder > .code-agent.work-landing { grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr); }
-.ws-agent-holder .code-agent.work-landing > .code-thread { display: flex; flex-direction: column; justify-content: flex-end; }
-.ws-agent-holder .code-agent.work-landing .code-thread-inner { min-height: 0; flex: 0 0 auto; }
+
+
 .code-ghost-mark.code-ghost-mark-accent {
   width: 58px;
   height: 70px;             /* the mark's own 165×200 ratio */
@@ -14988,12 +14966,8 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    icon column. */
 /* THE FOLDER CHIP (his order, 2026-10-07): the Output chip's face with a
    folder glyph; its drop-up carries a search over the recents + Add folder. */
-.code-chip.code-folder-chip { display: inline-flex; align-items: center; gap: 5px; }
-.code-chip.code-folder-chip svg { flex: none; }
-.code-chip.code-folder-chip.picked { color: var(--text); border-color: var(--border-3); }
-.code-folder-menu { min-width: 260px; max-width: 340px; }
-.code-folder-menu .ws-locus-list { max-height: min(48vh, 360px); overflow-y: auto; }
-.code-folder-menu .code-folder-add { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; }
+
+
 .code-chip.code-output-chip { display: inline-flex; align-items: center; gap: 5px; }
 .code-chip.code-output-chip svg { flex: none; }
 .code-chip.code-output-chip.picked { color: var(--text); border-color: var(--border-3); }
@@ -16269,39 +16243,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    top of the rail: the active tab is the type + New creates and the type the
    Recents list shows. Reads at the icon-strip width too — the labels go, the
    glyphs stay. */
-.rail-type-tabs {
-  display: flex;
-  gap: 4px;
-  margin: 10px 12px 0;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-2, rgba(255, 255, 255, 0.03));
-}
-.rail-type-tab {
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-dim, #9aa0aa);
-  font: inherit;
-  /* The rail's own reading size (his order, 2026-09-29: "make the text for work
-     and code bigger") — the nav rows below use 13px, and a tab that names the
-     whole list should not read smaller than a destination. */
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.rail-type-tab svg { width: 15px; height: 15px; flex: none; }
-.rail-type-tab:hover { color: var(--text); }
-.rail-type-tab.active { background: var(--surface-3, rgba(255, 255, 255, 0.08)); color: var(--text); }
-#app-rail.rail-icons .rail-type-tabs { margin: 8px 6px 0; }
-#app-rail.rail-icons .rail-type-tab span { display: none; }
+
 
 /* The recents dropdown's copy of the pair sits UNDER its search and reads a
    size down from the rail's (his order, 2026-09-29: "move the tabs under the
@@ -16312,13 +16254,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   justify-content: center;
   align-self: center;
 }
-.wb-session-tabs .rail-type-tab {
-  flex: 0 0 auto;
-  gap: 5px;
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.wb-session-tabs .rail-type-tab svg { width: 13px; height: 13px; }
+
 
 /* + New is a rail ROW now (his order + screenshot, 2026-09-29), so it takes
    the nav item's own geometry — no filled-button scale, no stretch. */
@@ -17117,7 +17053,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Page dots — just UNDER the icon grid (code-workbench positions top). */
 
 
-
 /* Page arrows — either side of the icon lists. */
 
 
@@ -17766,7 +17701,6 @@ body:not(.composer-on-home) .code-input,
 
 /* CHAT has no workspace: no folder, no tools — the MODEL and its effort stay,
    and the source chip stays as the inert "Cloud" label. */
-body[data-session-space="chat"] #code-plus-wrap { display: none !important; }
 
 
 .app-rail-tile .tile-name { color: var(--text-2); }
@@ -18045,7 +17979,7 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
   min-width: 0;
   color: var(--text-3);
 }
-body[data-session-space="work"] .code-composer > .code-source-slot { display: none; }
+
 
 /* The row ABOVE the input card: [drips][recents][+] on the left, then the
    status line — whose caret sits at the far right — filling the rest. */
@@ -21822,7 +21756,7 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 /* ── THE USAGE RING (his order, 2026-10-07, Code only): bottom-right of the
    chip row, a ring whose arc fills with the budget nearest its line; the
    popover above it lists the plan, that budget and the context window. ── */
-body[data-session-space="work"] #code-usage-wrap { display: none; }
+
 #code-usage-wrap { flex: 0 0 auto; margin-left: auto; }
 .code-composer-bar .code-chip.code-usage-chip { display: inline-flex; align-items: center; padding: 2px 3px; }
 .code-usage-ring { width: 16px; height: 16px; transform: rotate(-90deg); display: block; }
@@ -21844,15 +21778,12 @@ body[data-session-space="work"] #code-usage-wrap { display: none; }
 .usage-fill.hot { background: var(--warning); }
 .usage-billing { margin-top: 12px; width: 100%; }
 
-/* NO OUTPUT IN CODE (his order, 2026-10-07): the Output pick is Work's. */
-body[data-session-space="code"] #code-output-wrap { display: none; }
-
 /* THE CODE LAYOUT (his order, 2026-10-07): the environment / directory / git /
    new-folder chips ride their own row ABOVE the box, always — the Glyphh
    mascot at that row's far right. */
 .code-source-mascot { display: none; flex: 0 0 auto; margin-left: 8px; width: 24px; height: 24px; opacity: 0.9; }
 .code-source-mascot img { width: 24px; height: 24px; display: block; }
-body[data-session-space="code"] .code-source-slot .code-source-mascot { display: inline-flex; }
+.code-source-slot .code-source-mascot { display: inline-flex; }
 
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
    the standard modal, asked before a CLI tile from the Echo opens. */

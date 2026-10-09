@@ -6,16 +6,15 @@
  * opening on the session's folder, the rows saying so when a desktop path has
  * no desktop; Workspaces = the one list; the Browser row only where a
  * streamed panel can be). Apps, Agents / CLIs and Workspaces are expandable
- * sections, COLLAPSED on every open. Work never lists Files / Terminal /
- * Editor / Diff, the Session section exists only for an open session, and no
- * section is ever empty.
+ * sections, COLLAPSED on every open. The Session section exists only for an
+ * open session, and no section is ever empty.
  */
 import { describe, it, expect } from "vitest";
 import {
   agentMenuModel, appRowOpen, toolViewsFor, toolRowsFor, sessionRowsFor, glyphhAppsOnly, sectionHeadLabel,
   menuFoldState, toggleFold, isExpanded, cliFoldKey, cliNeedsDesktop,
   CONNECT_DESKTOP_CLI_LINE, CONNECT_DESKTOP_LINK, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL,
-  CLI_SESSIONS_PER_CLI, CODE_TOOL_VIEWS, WORK_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
+  CLI_SESSIONS_PER_CLI, CODE_TOOL_VIEWS, MENU_SECTION_ORDER, COLLAPSIBLE_SECTIONS, GLYPHH_APP_KIND,
   WORKSPACES_SECTION_LABEL, workspaceRows,
   type MenuAppRow, type MenuCliSession, type MenuSection, menuLocusOf } from "../../src/renderer/help/agent-menu.js";
 import { WEB_TOOL_VIEWS, DESKTOP_TOOL_VIEWS } from "../../src/renderer/help/surface.js";
@@ -47,14 +46,14 @@ describe("ONE MENU ON BOTH SURFACES (his order, 2026-10-06) — one frozen list"
   });
   it("a full menu on each surface paints in exactly that order, the same labels", () => {
     for (const surface of ["web", "desktop"] as const) {
-      const m = agentMenuModel({ surface, mode: "code", session: { pinned: false }, machines: [MAC], installed: [cloudApp], clis: CLIS, cliSessions: [], locus: "local", workspaces: SPACES });
+      const m = agentMenuModel({ surface, session: { pinned: false }, machines: [MAC], installed: [cloudApp], clis: CLIS, cliSessions: [], locus: "local", workspaces: SPACES });
       expect(kinds(m)).toEqual([...MENU_SECTION_ORDER]);
       expect(m.sections.map((s) => s.label)).toEqual([TOOLS_SECTION_LABEL, SESSION_SECTION_LABEL, APPS_SECTION_LABEL, CLIS_SECTION_LABEL, WORKSPACES_SECTION_LABEL]);
     }
   });
   it("the rows are identical on both surfaces but for the Browser — a streamed panel the browser does not reach", () => {
-    const desk = agentMenuModel({ surface: "desktop", mode: "code", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
-    const web = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
+    const desk = agentMenuModel({ surface: "desktop", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
+    const web = agentMenuModel({ surface: "web", session: { pinned: false }, installed: [cloudApp], clis: CLIS, workspaces: SPACES });
     const labels = (m: { sections: MenuSection[] }): string[] => m.sections.flatMap((s) => s.rows.map((r) => ("label" in r ? r.label : "name" in r ? r.name : "")));
     expect(labels(desk)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Bots", "Artifacts", "Rename", "Pin", "New agent panel", "Delete", "CRM", ...CLIS.map((c) => c.name), "Dev", "Writing"]);
     expect(labels(web)).toEqual(labels(desk).filter((l) => l !== "Browser"));
@@ -64,7 +63,7 @@ describe("ONE MENU ON BOTH SURFACES (his order, 2026-10-06) — one frozen list"
 describe("EXPANDABLE SECTIONS, COLLAPSED ON OPEN (his review, 2026-10-05)", () => {
   it("Apps, Agents / CLIs and Workspaces are the collapsible ones, with a count on the head", () => {
     expect([...COLLAPSIBLE_SECTIONS]).toEqual(["apps", "clis", "workspaces"]);
-    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], installed: apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)], locus: "local" });
+    const m = agentMenuModel({ surface: "web", session: null, machines: [MAC], installed: apps, clis: CLIS, cliSessions: [sess("a", "claude", 1)], locus: "local" });
     const a = section(m, "apps")!;
     const c = section(m, "clis")!;
     expect(a.collapsible).toBe(true);
@@ -105,7 +104,7 @@ describe("APPS = THE INSTALLED GLYPHH APPS, THE ONE LIST (his orders, 2026-10-05
   });
   it("the cloud instances list on both surfaces, enabled, no note, no link — with or without a desktop", () => {
     for (const surface of ["web", "desktop"] as const) for (const machines of [[], [MAC]]) {
-      const m = agentMenuModel({ surface, mode: "code", session: null, machines, installed: [cloudApp], clis: CLIS, cliSessions: [] });
+      const m = agentMenuModel({ surface, session: null, machines, installed: [cloudApp], clis: CLIS, cliSessions: [] });
       const a = section(m, "apps")!;
       expect(a.enabled).toBe(true);
       expect(a.rows.map((r) => r.slug)).toEqual(["crm"]);
@@ -116,16 +115,16 @@ describe("APPS = THE INSTALLED GLYPHH APPS, THE ONE LIST (his orders, 2026-10-05
     }
   });
   it("the installed list is the ONE list: an attached desktop adds nothing to it (his order, 2026-10-06)", () => {
-    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], installed: [cloudApp, { ...cloudApp, slug: "slides", name: "Slides" }], clis: CLIS, cliSessions: [] });
+    const m = agentMenuModel({ surface: "web", session: null, machines: [MAC], installed: [cloudApp, { ...cloudApp, slug: "slides", name: "Slides" }], clis: CLIS, cliSessions: [] });
     const a = section(m, "apps")!;
     expect(a.rows.map((r) => r.slug)).toEqual(["crm", "slides"]);
     expect(a.rows.every((r) => r.cloud)).toBe(true);
-    const none = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], clis: CLIS, cliSessions: [] });
+    const none = agentMenuModel({ surface: "web", session: null, machines: [MAC], clis: CLIS, cliSessions: [] });
     expect(section(none, "apps")!.rows).toEqual([]);
   });
   it("with nothing installed anywhere the fold says 'Apps · 0' — no line under it (his order, 2026-10-05)", () => {
     for (const surface of ["web", "desktop"] as const) {
-      const a = section(agentMenuModel({ surface, mode: "code", session: null, machines: [], installed: [], clis: CLIS, cliSessions: [] }), "apps")!;
+      const a = section(agentMenuModel({ surface, session: null, machines: [], installed: [], clis: CLIS, cliSessions: [] }), "apps")!;
       expect(a.enabled).toBe(true);
       expect(a.rows).toEqual([]);
       expect(a.count).toBe(0);
@@ -135,7 +134,7 @@ describe("APPS = THE INSTALLED GLYPHH APPS, THE ONE LIST (his orders, 2026-10-05
   });
   it("one row per slug; a row without a slug is dropped; the first machine is the menu's", () => {
     const mm = agentMenuModel({
-      surface: "web", mode: "code", session: null,
+      surface: "web", session: null,
       machines: [MAC, { id: "m2", name: "Other" }],
       installed: [...apps, { slug: "Slides", name: "Slides", kind: "glyphh", machineId: "", machineName: "the cloud", cloud: true }, { slug: "", name: "ghost", kind: "glyphh", machineId: "", machineName: "" }],
       clis: CLIS, cliSessions: [],
@@ -148,7 +147,7 @@ describe("APPS = THE INSTALLED GLYPHH APPS, THE ONE LIST (his orders, 2026-10-05
 describe("AGENTS / CLIs ON BOTH SURFACES (his order, 2026-10-06: a CLI opens on the session's folder)", () => {
   it("every CLI is listed, in order, on both surfaces and on either locus", () => {
     for (const surface of ["web", "desktop"] as const) for (const locus of ["local", "cloud"] as const) {
-      const m = agentMenuModel({ surface, mode: "code", session: null, machines: [MAC], clis: CLIS, cliSessions: [], locus });
+      const m = agentMenuModel({ surface, session: null, machines: [MAC], clis: CLIS, cliSessions: [], locus });
       const c = section(m, "clis")!;
       expect(c.rows.map((x) => x.id)).toEqual(["claude", "codex", "gemini", "copilot", "cursor", "glyphh"]);
       expect(c.enabled).toBe(true);
@@ -162,24 +161,24 @@ describe("AGENTS / CLIs ON BOTH SURFACES (his order, 2026-10-06: a CLI opens on 
     expect(cliNeedsDesktop("web", "cloud", false)).toBe(false);
     expect(cliNeedsDesktop("web", undefined, false)).toBe(false);
     expect(cliNeedsDesktop("desktop", "local", false)).toBe(false);   // the desktop is its own machine
-    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], clis: CLIS, cliSessions: [sess("a", "claude", 3)], locus: "local" });
+    const m = agentMenuModel({ surface: "web", session: null, machines: [], clis: CLIS, cliSessions: [sess("a", "claude", 3)], locus: "local" });
     const c = section(m, "clis")!;
     expect(c.rows.map((x) => x.id)).toHaveLength(6);
     expect(c.enabled).toBe(false);
     expect(c.note).toBe(CONNECT_DESKTOP_CLI_LINE);
     expect(c.link).toEqual({ label: CONNECT_DESKTOP_LINK, settingsSub: "devices" });
     expect(c.rows[0]!.sessions).toEqual([]);   // no desktop → no desktop sessions
-    const desk = agentMenuModel({ surface: "desktop", mode: "code", session: null, machines: [], clis: CLIS, cliSessions: [], locus: "local" });
+    const desk = agentMenuModel({ surface: "desktop", session: null, machines: [], clis: CLIS, cliSessions: [], locus: "local" });
     expect(section(desk, "clis")!.enabled).toBe(true);
     expect(desk.attached).toBe(true);
   });
   it("a cloud locus never needs a desktop — the CLI runs on the cloud workspace", () => {
-    const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [], clis: CLIS, cliSessions: [], locus: "cloud" });
+    const m = agentMenuModel({ surface: "web", session: null, machines: [], clis: CLIS, cliSessions: [], locus: "cloud" });
     expect(section(m, "clis")!.enabled).toBe(true);
     expect(m.attached).toBe(false);
   });
   it("with a desktop attached, its sessions nest under each CLI, newest first, capped", () => {
-    const m = agentMenuModel({ surface: "web", mode: "code", session: { pinned: false }, machines: [MAC], clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)], locus: "local" });
+    const m = agentMenuModel({ surface: "web", session: { pinned: false }, machines: [MAC], clis: CLIS, cliSessions: [sess("a", "claude", 3), sess("b", "codex", 2), sess("c", "claude", 1)], locus: "local" });
     expect(m.attached).toBe(true);
     expect(m.machine).toEqual(MAC);
     const c = section(m, "clis")!;
@@ -187,13 +186,13 @@ describe("AGENTS / CLIs ON BOTH SURFACES (his order, 2026-10-06: a CLI opens on 
     expect(c.rows[1]!.sessions.map((s) => s.id)).toEqual(["b"]);
     expect(c.rows[2]!.sessions).toEqual([]);
     const many = Array.from({ length: 12 }, (_, i) => sess(`x${i}`, "claude", i));
-    const mm = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps: [], clis: CLIS, cliSessions: many, locus: "local" });
+    const mm = agentMenuModel({ surface: "web", session: null, machines: [MAC], apps: [], clis: CLIS, cliSessions: many, locus: "local" });
     expect(section(mm, "clis")!.rows[0]!.sessions.length).toBe(CLI_SESSIONS_PER_CLI);
     expect(section(mm, "clis")!.rows[0]!.sessions[0]!.id).toBe("x11");
   });
   it("no CLI rows yet → no section rather than heading nothing", () => {
     for (const surface of ["web", "desktop"] as const) {
-      const m = agentMenuModel({ surface, mode: "work", session: null, machines: [], apps: [], clis: [], cliSessions: [] });
+      const m = agentMenuModel({ surface, session: null, machines: [], apps: [], clis: [], cliSessions: [] });
       expect(kinds(m)).toEqual(["tools", "apps"]);
     }
   });
@@ -224,7 +223,7 @@ describe("WHERE AN APPS ROW OPENS — the same rule on both surfaces", () => {
     expect(appRowOpen({ kind: "native", tool: "gdesign" }, "web")).toEqual({ open: "panel" });
   });
   it("the model carries the row's tool through to the painter", () => {
-    const m = agentMenuModel({ surface: "web", mode: "work", session: null, machines: [MAC], installed: [{ ...house, machineId: "", machineName: "the cloud", cloud: true }, ...apps] });
+    const m = agentMenuModel({ surface: "web", session: null, machines: [MAC], installed: [{ ...house, machineId: "", machineName: "the cloud", cloud: true }, ...apps] });
     const rows = section(m, "apps")!.rows;
     expect(rows.find((r) => r.slug === "design")?.tool).toBe("gdesign");
     expect(rows.find((r) => r.slug === "crm")?.tool).toBeUndefined();
@@ -239,19 +238,9 @@ describe("WHERE AN APPS ROW OPENS — the same rule on both surfaces", () => {
 describe("the session's type decides the panels — one list through the caps", () => {
   it("Code: the one Developer-tools list, Browser included on the desktop, then Artifacts", () => {
     expect([...CODE_TOOL_VIEWS]).toEqual([...DESKTOP_TOOL_VIEWS, "artifacts"]);
-    expect([...toolViewsFor("desktop", "code")]).toEqual([...CODE_TOOL_VIEWS]);
-    expect([...toolViewsFor("web", "code")]).toEqual([...WEB_TOOL_VIEWS, "artifacts"]);
-    expect(toolRowsFor("desktop", "code").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Bots", "Artifacts"]);
-  });
-  it("Work never lists Files / Terminal / Editor / Diff — on either surface", () => {
-    expect([...WORK_TOOL_VIEWS]).toEqual(["preview", "agents", "artifacts"]);
-    for (const surface of ["web", "desktop"] as const) {
-      const views = toolViewsFor(surface, "work");
-      for (const v of ["files", "terminal", "monaco", "diff"]) expect(views).not.toContain(v);
-      expect(views).toContain("agents");
-    }
-    expect([...toolViewsFor("desktop", "work")]).toEqual(["preview", "agents", "artifacts"]);
-    expect([...toolViewsFor("web", "work")]).toEqual(["agents", "artifacts"]);
+    expect([...toolViewsFor("desktop")]).toEqual([...CODE_TOOL_VIEWS]);
+    expect([...toolViewsFor("web")]).toEqual([...WEB_TOOL_VIEWS, "artifacts"]);
+    expect(toolRowsFor("desktop").map((t) => t.label)).toEqual(["Files", "Terminal", "Editor", "Browser", "Diff", "Plan", "Bots", "Artifacts"]);
   });
   it("⋮ Panels lists Artifacts on both surfaces and for both types, last (his order, 2026-10-05)", () => {
     for (const surface of ["web", "desktop"] as const) for (const mode of ["work", "code"] as const) {
@@ -265,7 +254,7 @@ describe("the session's type decides the panels — one list through the caps", 
     expect(sessionRowsFor({ pinned: false }).map((r) => `${r.action}:${r.label}${r.danger ? "!" : ""}`))
       .toEqual(["rename:Rename", "pin:Pin", "new-panel:New agent panel", "delete:Delete!"]);
     expect(sessionRowsFor({ pinned: true })[1]!.label).toBe("Unpin");
-    const fresh = agentMenuModel({ surface: "desktop", mode: "work", session: null });
+    const fresh = agentMenuModel({ surface: "desktop", session: null });
     expect(kinds(fresh)).toEqual(["tools", "apps"]);
   });
   it("never an empty dropdown, never an empty section — every combination", () => {
@@ -292,7 +281,7 @@ describe("the session's type decides the panels — one list through the caps", 
 describe("WORKSPACES — the one list, the last fold on both surfaces", () => {
   it("lists the member's workspaces by name, collapsible with a count, LAST — on either surface, with or without a desktop, on either locus", () => {
     for (const surface of ["web", "desktop"] as const) for (const machines of [[MAC], []]) for (const locus of ["local", "cloud"] as const) {
-      const m = agentMenuModel({ surface, mode: "work", session: null, machines, apps: [], clis: CLIS, cliSessions: [], locus, workspaces: SPACES });
+      const m = agentMenuModel({ surface, session: null, machines, apps: [], clis: CLIS, cliSessions: [], locus, workspaces: SPACES });
       const w = section(m, "workspaces")!;
       expect(w).toBeDefined();
       expect(w.collapsible).toBe(true);
@@ -305,7 +294,7 @@ describe("WORKSPACES — the one list, the last fold on both surfaces", () => {
   });
   it("no workspaces → no section (never an empty fold)", () => {
     for (const workspaces of [[], undefined, [{ name: "" }, { name: "   " }]]) {
-      const m = agentMenuModel({ surface: "web", mode: "code", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [], workspaces });
+      const m = agentMenuModel({ surface: "web", session: null, machines: [MAC], apps, clis: CLIS, cliSessions: [], workspaces });
       expect(section(m, "workspaces")).toBeUndefined();
     }
   });

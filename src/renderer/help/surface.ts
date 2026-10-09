@@ -219,16 +219,6 @@ export function webGroupPanelKept(sub: string): boolean {
   return WEB_GROUP_ROWS.includes(sub);
 }
 
-/** EVERY LAUNCH LANDS ON WORK → NEW, desktop and web alike (his order,
- *  2026-10-07: "when the app first starts it is not loading work → new on the
- *  desktop and the web the same thing. I must must do that"). The saved tab
- *  still follows a switch made while running (the rail, a panel's dropdown),
- *  but it never decides the landing: a fresh start is Work, a new session.
- *  (Until 10-07 a saved pick won and the desktop started on Code.) */
-export function defaultTypeTab(_web: boolean, _saved: unknown): "work" | "code" {
-  return "work";
-}
-
 /** + NEW ON THE WEB CLOSES EVERYTHING (his order, 2026-10-05: "no matter
  *  what page is up clicking new in the left rail closes whatever is open and
  *  shows the new session page"): the full-screen page, every open work

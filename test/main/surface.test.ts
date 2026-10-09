@@ -14,7 +14,7 @@ import {
   WEB_BUILD_SUBS, WEB_CUSTOMIZE_SUBS, WEB_KEPT_SUBS, WEB_HIDDEN_NAV_GROUPS, WEB_HIDDEN_RAIL, WEB_HIDDEN_SETTINGS_ROWS, WEB_RAIL_LINKS,
   DESKTOP_TOOL_VIEWS, toolViewsHosted, WEB_TOOL_VIEWS, webToolAllowed, webToolReachable, WEB_UNREACHABLE_VIEWS,
   agentCardMovable, webNewSessionInPlace,
-  webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, defaultTypeTab,
+  webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, 
   WEB_RAIL_WORDMARK, webRailWordmark, webCloseAllOpensNew,
   workspaceOpenClosesHosts,
   CUSTOMIZE_TAB_ORDER, DISCOVER_SUBS, subHasDiscover, GROUP_PAGE_ALIASES, groupPageKey } from "../../src/renderer/help/surface.js";
@@ -258,9 +258,6 @@ describe("his explicit orders about the web's page — not world splits", () => 
   it("+ New on the web closes everything first; the desktop keeps its panels (his order, 2026-10-05)", () => {
     expect(webNewClosesEverything(true)).toBe(true);
     expect(webNewClosesEverything(false)).toBe(false);
-  });
-  it("every launch lands on Work, desktop and web alike, whatever tab was saved (his order, 2026-10-07)", () => {
-    for (const web of [true, false]) for (const saved of ["", undefined, "code", "work", "wat"]) expect(defaultTypeTab(web, saved)).toBe("work");
   });
   it("the rail header's order is the desktop's on both; the wordmark holds the chrome spot on the web only", () => {
     expect(WEB_RAIL_WORDMARK).toBe(".app-rail-logo");

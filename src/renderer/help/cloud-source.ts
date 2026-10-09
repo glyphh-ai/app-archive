@@ -84,11 +84,7 @@ export function cloudSendBlock(connected: boolean, picks: readonly RepoPick[]): 
 /** The same gate as the composer applies it: only an UNBORN cloud session on
  *  the WEB is gated (a born one already runs; a desktop session's gate is its
  *  folder; the desktop app never hits it). */
-export function webCloudSendBlock(input: { surface: "web" | "desktop"; locus: Locus; born: boolean; connected: boolean; picks: readonly RepoPick[]; type?: "work" | "code" }): string {
-  // A WORK session needs no repository (his report, 2026-10-05: "the page
-  // won't submit" — the gate held a chat-only Work session on the web for
-  // GitHub). Only a Code session in the cloud checks out a repository.
-  if (input.type === "work") return "";
+export function webCloudSendBlock(input: { surface: "web" | "desktop"; locus: Locus; born: boolean; connected: boolean; picks: readonly RepoPick[] }): string {
   if (input.surface !== "web" || input.locus !== "cloud" || input.born) return "";
   return cloudSendBlock(input.connected, input.picks);
 }
@@ -155,10 +151,6 @@ export function folderChipLabel(path: string): string {
  */
 export function cloudChipsModel(input: {
   locus: Locus;
-  /** The session type in view: a WORK session never shows the repo chip
-   *  (his report, 2026-10-05: a web Work session asked him to connect
-   *  GitHub — repositories are a Code session's). Defaults to code. */
-  type?: "work" | "code";
   born: boolean;
   machineName?: string;
   environmentName?: string;
@@ -174,7 +166,7 @@ export function cloudChipsModel(input: {
       title: lock || (input.locus === "cloud" ? "The cloud environment this session runs in" : "The desktop this session runs on"),
     },
     repo: {
-      shown: input.locus === "cloud" && input.type !== "work",
+      shown: input.locus === "cloud",
       label: repoChipLabel(input.picks, input.connected || (input.born && input.picks.length > 0)),
       locked: input.born,
       title: lock || "The GitHub repositories this cloud session checks out",
@@ -385,8 +377,7 @@ export function gitCompleteError(err: unknown): string {
  *     ATTACHED desktop — a desktop that is not attached has no folder a
  *     turn could use (session-locus.ts defaultWebFolder).
  */
-export function composerChipSet(input: { surface: "web" | "desktop"; type: "work" | "code"; locus: Locus; attached: boolean }): { environment: boolean; repo: boolean; folder: boolean } {
-  if (input.type === "work") return { environment: false, repo: false, folder: false };
+export function composerChipSet(input: { surface: "web" | "desktop"; locus: Locus; attached: boolean }): { environment: boolean; repo: boolean; folder: boolean } {
   if (input.surface === "desktop") return { environment: false, repo: false, folder: true };
   if (input.locus === "cloud") return { environment: true, repo: true, folder: false };
   return { environment: true, repo: false, folder: input.attached };

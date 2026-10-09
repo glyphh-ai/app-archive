@@ -197,7 +197,7 @@ export function upsertStoredChat(chatId: string, patch: { title?: string; mode?:
   if (!chat) {
     chat = {
       id: chatId, title: patch.title?.trim() || "New session", createdAt: now, updatedAt: now,
-      mode: patch.mode === "work" ? "work" : "code", messages: patch.messages ?? [],
+      mode: "code", messages: patch.messages ?? [],
       ...(patch.workdir ? { workdir: patch.workdir, source: { kind: "local", path: patch.workdir } } : {}),
       ...(patch.bot ? { bot: patch.bot } : {}),
     };
@@ -267,14 +267,13 @@ export interface RunPayload {
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
  *  executor's fake WebContents that forwards frames up the socket (attach-run.ts). */
 export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<{ runId: string }> {
-  // A CODE TURN RUNS IN ITS THREAD'S FOLDER OR NOT AT ALL (his rule,
-  // 2026-09-29: "The agent should work from the selected folder period!!! that
-  // is a hard hard constraint, it is sandboxed to that folder"). There is no
-  // fallback: a turn without a folder used to run in the engine's last folder
-  // or the home directory, silently. NO_WORKDIR is the composer's cue to ask.
-  const work = p.mode === "work" || p.mode === "chat" || p.mode === "cowork";
+  // A TURN RUNS IN ITS THREAD'S FOLDER OR NOT AT ALL (his rule, 2026-09-29:
+  // "The agent should work from the selected folder period!!! that is a hard
+  // hard constraint, it is sandboxed to that folder"). There is no fallback:
+  // NO_WORKDIR is the composer's cue to ask. One type since 2026-10-08: every
+  // turn is this kind of turn.
   const folder = String(p.workdir ?? "").trim();
-  if (!work && !folder) throw new Error("NO_WORKDIR: this session has no folder yet");
+  if (!folder) throw new Error("NO_WORKDIR: this session has no folder yet");
   if (folder) {
     let ok = false;
     try { ok = statSync(folder).isDirectory(); } catch { ok = false; }
@@ -296,10 +295,6 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
     ...(p.workdir ? { workdir: p.workdir } : {}),
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.attachments?.length ? { attachments: p.attachments } : {}),
-    // THE TYPE IS THE TOOLBELT (his order, 2026-09-29): a Work thread's turns
-    // go out with the gateway's two lookup tools instead of every definition
-    // this desktop lends. Anything but "work" is a Code thread.
-    space: p.mode === "work" ? "work" : "code",
     history: chat?.messages ?? [],
   }, text);
 }

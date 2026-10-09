@@ -14,13 +14,13 @@ import {
 } from "../../src/renderer/help/session-locus";
 
 const row = (p: Partial<RecentsRowLike> & { title: string }): RecentsRowLike =>
-  ({ cwd: "", mode: "code", loopKey: "glyphh", locus: "local", ...p });
+  ({ cwd: "", loopKey: "glyphh", locus: "local", ...p });
 
 const rows: RecentsRowLike[] = [
   row({ title: "fix the sync bug", cwd: "/Users/me/code/app", loopKey: "glyphh", locus: "local" }),
   row({ title: "blog post", loopKey: "glyphh", locus: "cloud" }),
   row({ title: "claude refactor", cwd: "/Users/me/code/app", loopKey: "claude", locus: "local" }),
-  row({ title: "triage mail", mode: "work", loopKey: "glyphh", locus: "local" }),
+  row({ title: "triage mail", loopKey: "glyphh", locus: "local" }),
 ];
 
 describe("the one recents filter", () => {
@@ -37,9 +37,8 @@ describe("the one recents filter", () => {
     expect(recentsFilterActive({ loops: [], locus: "cloud" })).toBe(true);
   });
 
-  it("applies the type tab and the search exactly as the rail does", () => {
-    expect(filterRecents(rows, { tab: "work", loops: [], locus: "" }).map((r) => r.title)).toEqual(["triage mail"]);
-    expect(filterRecents(rows, { tab: "code", loops: [], locus: "", query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
+  it("applies the search exactly as the rail does", () => {
+    expect(filterRecents(rows, { loops: [], locus: "", query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
   });
 
   it("a loop filter naming none of the loops a list can hold is no filter there (the CLI window)", () => {
@@ -89,25 +88,22 @@ describe("the grant", () => {
 describe("the picker", () => {
   const spaces = [{ id: "t1", updatedAt: 1, top: ["src"] }];
 
-  it("defaults to the desktop where there is one, else the cloud — a WORK session on the web is the cloud's (his order, 2026-10-06)", () => {
+  it("defaults to the desktop where there is one, else the cloud", () => {
     expect(defaultLocus("desktop", false)).toBe("local");
     expect(defaultLocus("web", true)).toBe("local");
     expect(defaultLocus("web", false)).toBe("cloud");
-    expect(defaultLocus("web", true, "work")).toBe("cloud");
-    expect(defaultLocus("web", true, "code")).toBe("local");
-    expect(defaultLocus("desktop", true, "work")).toBe("local");
+    expect(defaultLocus("desktop", true)).toBe("local");
   });
 
-  it("a new Work session on the web is born in the cloud unless the member picked a place; Code follows the attached desktop", () => {
+  it("a new session is born with the pending pick, on either surface (one type since 2026-10-08)", () => {
     type S = { kind: string; path?: string };
     const same = (a: S, b: S) => a.kind === b.kind && a.path === b.path;
     const cloud: S = { kind: "cloud-new" };
     const deskDefault: S = { kind: "local", path: "/Users/me/yo" };
-    expect(newSessionSource("web", "work", deskDefault, deskDefault, same, cloud)).toBe(cloud);
-    expect(newSessionSource("web", "code", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
+    expect(newSessionSource("web", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
     const picked: S = { kind: "local", path: "/Users/me/other" };
-    expect(newSessionSource("web", "work", picked, deskDefault, same, cloud)).toBe(picked);
-    expect(newSessionSource("desktop", "work", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
+    expect(newSessionSource("web", picked, deskDefault, same, cloud)).toBe(picked);
+    expect(newSessionSource("desktop", deskDefault, deskDefault, same, cloud)).toBe(deskDefault);
   });
 
   it("on the desktop: 'On this desktop' then 'In the cloud'", () => {
