@@ -110,6 +110,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     if (building) void api().superPowerBuildStop?.();
     closed = true;
     clearTimers();
+    clearTimeout(cometTimer);
     offBeat?.();
     document.removeEventListener("keydown", onKey, true);
     guardWebviewsForModal(false);
@@ -136,7 +137,39 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     sparks.appendChild(s);
   }
   ring.append(face);
-  hero.append(sparks, ring);
+  // THE COMET (his order, 2026-10-09: "randomly do a flashy of white / theme
+  // primary color around the outside of the circle with tiny particles as it
+  // goes around"): at a random moment a bright head sweeps once round the
+  // ring, white or the accent, shedding particles that drift outward.
+  const comet = el("div", "spn-comet");
+  comet.innerHTML = `<span class="spn-comet-head"></span>${Array.from({ length: 7 }, (_, i) => `<span class="spn-comet-trail" style="--i:${i + 1}"></span>`).join("")}`;
+  hero.append(sparks, comet, ring);
+  const COMET_MS = 1500;
+  let cometTimer = 0;
+  const launchComet = (): void => {
+    if (closed) return;
+    const white = Math.random() < 0.5;
+    hero.style.setProperty("--comet", white ? "#ffffff" : "var(--accent)");
+    const start = Math.floor(Math.random() * 360);
+    hero.style.setProperty("--comet-from", `${start}deg`);
+    comet.classList.remove("go");
+    void comet.offsetWidth;
+    comet.classList.add("go");
+    // Particles shed along the path: each leaves where the head is when it is born.
+    for (let i = 0; i < 14; i++) {
+      const p = el("span", "spn-dust");
+      const t = (i / 14) * COMET_MS;
+      p.style.setProperty("--a", `${start + (i / 14) * 360}deg`);
+      p.style.setProperty("--d", `${t}ms`);
+      p.style.setProperty("--out", `${10 + Math.random() * 22}px`);
+      p.style.setProperty("--drift", `${(Math.random() - 0.5) * 30}deg`);
+      p.style.setProperty("--s", `${2 + Math.random() * 2.5}px`);
+      hero.appendChild(p);
+      window.setTimeout(() => p.remove(), t + 1200);
+    }
+    cometTimer = window.setTimeout(launchComet, 3500 + Math.random() * 5000);
+  };
+  cometTimer = window.setTimeout(launchComet, 900 + Math.random() * 1500);
   let castAt = Math.floor(Math.random() * AVATAR_VARIANTS.length);
   const paintCast = (mood: "playful" | "thinking" | "generating"): void => {
     const v = AVATAR_VARIANTS[castAt % AVATAR_VARIANTS.length]!;
@@ -155,7 +188,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   function paintAsk(): void {
     building = false;
     hero.className = "spn-hero";
-    cycleCast("playful", 1400);
+    cycleCast("playful", 3600);
     body.textContent = "";
     foot.textContent = "";
     body.appendChild(hero);
@@ -210,7 +243,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     showErr("");
     building = true;
     hero.className = "spn-hero spn-building";
-    cycleCast("thinking", 700);
+    cycleCast("thinking", 2600);
     body.textContent = "";
     foot.textContent = "";
     body.appendChild(hero);
@@ -237,7 +270,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
         li.classList.toggle("active", i === at);
         li.querySelector(".spn-dot")!.innerHTML = done ? CHECK_SVG : "";
       });
-      if (stage === "face") cycleCast("generating", 450);
+      if (stage === "face") cycleCast("generating", 1500);
     };
     light("plan");
     const stop = el("button", "action-btn secondary", "Stop");

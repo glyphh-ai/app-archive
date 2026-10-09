@@ -140,7 +140,11 @@ export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { 
     up: `${ringEl}${pupil(94, 80)}`,
     big: `${ringEl}${pupil(88, 94, 19)}`,
     sleepy: `<path d="M45 104 C60 96 100 90 121 97 C118 116 100 126 86 122 C70 118 47 112 45 104 Z" fill="none" stroke="${white}" stroke-width="8"/><circle class="eye" cx="92" cy="107" r="9" fill="${white}"/>`,
-    wink: `<path d="M50 102 C70 82 100 80 118 96" fill="none" stroke="${white}" stroke-width="10" stroke-linecap="round"/><path d="M58 112 C74 104 96 104 110 110" fill="none" stroke="${white}" stroke-width="5" stroke-linecap="round"/>`,
+    // A REAL WINK (his note, 2026-10-09: "the wink one needs to actually wink"):
+    // the eye shut in a happy curve, three lashes, and a little sparkle.
+    wink: `${ringEl}<path d="M66 96 Q92 114 118 96" fill="none" stroke="${white}" stroke-width="9" stroke-linecap="round"/>`
+      + `<path d="M75 106 L70 114 M92 110 L92 119 M109 106 L114 114" stroke="${white}" stroke-width="5" stroke-linecap="round"/>`
+      + `<path d="M104 70 L106.5 76.5 L113 79 L106.5 81.5 L104 88 L101.5 81.5 L95 79 L101.5 76.5 Z" fill="${white}"/>`,
     star: `${ringEl}<path class="eye" d="M93 77 L97.8 87.6 L109 88.3 L100.4 95.6 L103 106.8 L93 100.8 L83 106.8 L85.6 95.6 L77 88.3 L88.2 87.6 Z" fill="${white}"/>`,
   };
   const antenna = v.extra === "antenna";
