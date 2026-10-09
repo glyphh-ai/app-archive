@@ -6747,18 +6747,24 @@ async function runTeamTurn(req: { id: string; team: string; member: string; name
   }
   const done = await finished;
   teamRuns.delete(req.id);
-  card.status = done.stopped ? "stopped" : done.text.trim() ? "done" : "failed";
+  // A REFUSAL IS NOT AN ANSWER (his report, 2026-10-09: the card said "Done ·
+  // 1s" over "That model isn't reachable right now"): the card says it failed,
+  // the member's thread keeps the refusal, and Glyphh is told — it never
+  // speaks as the member.
+  const refused = !!done.text.trim() && !!turnError(done.text);
+  card.status = done.stopped ? "stopped" : refused || !done.text.trim() ? "failed" : "done";
   card.endedAt = Date.now();
   // THEIR ANSWER, AS THEMSELVES, in the team thread — and aloud, in their own
   // voice, after whoever is speaking (voice mode on in this team's thread only).
-  if (done.text.trim()) {
+  if (card.status === "done") {
     team.messages.push({ role: "assistant", text: done.text, at: Date.now(), speaker: req.member });
     void speakTeamLine(done.text, railBotVoices.get(req.member) ?? null, team.id);
   }
   void saveStore();
   renderHistory();
   renderThread();
-  reply(done.text.trim() ? { ok: true, text: done.text } : { ok: false, text: "", error: done.stopped ? `${req.name} was stopped` : `${req.name} didn't answer` });
+  reply(card.status === "done" ? { ok: true, text: done.text }
+    : { ok: false, text: "", error: done.stopped ? `${req.name} was stopped` : refused ? `${req.name} couldn't run: ${done.text.slice(0, 300)}` : `${req.name} didn't answer` });
 }
 
 /** THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
