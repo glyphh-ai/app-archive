@@ -6010,6 +6010,20 @@ function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
   return recentsKeeps(sessFilterRow(sess), f);
 }
 
+/** A TEAM's mark: up to three members' faces, overlapping. */
+function teamMarkEl(team: readonly string[]): HTMLSpanElement {
+  const mark = document.createElement("span");
+  mark.className = "code-sess-mark team-mark";
+  mark.title = `Team: ${team.map((s) => railBots.find((b) => b.slug === s)?.name ?? s).join(", ")}`;
+  for (const slug of team.slice(0, 3)) {
+    const f = document.createElement("span");
+    f.className = "team-mark-face";
+    f.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 16 });
+    mark.appendChild(f);
+  }
+  return mark;
+}
+
 /** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
   const mark = document.createElement("span");
@@ -6056,6 +6070,9 @@ interface RailSession {
   /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
    *  bot's cat and opens the Bots panel on it, never the agent panel. */
   bot?: string;
+  /** A TEAM THREAD (his order, 2026-10-09: "recents that were team / swarms
+   *  need an icon"): its members, whose faces the row wears. */
+  team?: string[];
   /** Where the thread runs (his rule, 2026-10-04): the desktop, or the cloud. */
   locus?: Locus;
   /** WEB ONLY: a desktop session whose folder the attached desktop has not
@@ -6273,6 +6290,7 @@ async function loadRailSessions(): Promise<void> {
         mode: SESSION_MODE,
         locus,
         ...(c.bot ? { bot: c.bot } : {}),
+        ...(c.members?.length ? { team: [...c.members] } : {}),
         ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
       };
     })
@@ -7085,8 +7103,9 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
       row.className = "wb-session-row" + (sess.locked ? " locked" : "");
       row.appendChild(sessDot(sess.id));
       row.appendChild(sessLocusEl(sess));
-      // Whose thread it is: the super power's face, or Glyphh's.
-      const owner = sessMarkEl(sess);
+      // Whose thread it is: the super power's face, or Glyphh's — a TEAM
+      // thread wears its members' faces, stacked.
+      const owner = sess.team?.length ? teamMarkEl(sess.team) : sessMarkEl(sess);
       owner.classList.add("wb-session-owner");
       row.appendChild(owner);
       const title = document.createElement("button");

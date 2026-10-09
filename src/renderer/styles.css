@@ -22893,3 +22893,9 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .board-note-text { font-size: 12.5px; color: var(--text); white-space: pre-wrap; }
 .board-note-add { display: flex; gap: 8px; margin-top: 10px; }
 .board-note-add input { flex: 1; min-width: 0; }
+
+/* A team thread's mark in recents (2026-10-09): its members' faces, stacked. */
+.code-sess-mark.team-mark { display: inline-flex; align-items: center; width: auto; }
+.team-mark-face { width: 16px; height: 16px; display: inline-flex; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--surface); }
+.team-mark-face + .team-mark-face { margin-left: -6px; }
+.team-mark-face svg { width: 16px; height: 16px; }
