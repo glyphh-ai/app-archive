@@ -364,23 +364,41 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     b.addEventListener("click", (e) => { e.stopPropagation(); void connect(a, b); });
     return b;
   }
-  /** A directory app's details, under ‹ Connections (his order, 2026-10-09:
-   *  "connections needs this too"). */
+  /** A directory app's details, under ‹ Connections — CUSTOMIZE'S OWN PAGE
+   *  (his report, 2026-10-09: "the connector details are not showing the
+   *  description and connector tools like the customize -> connections ->
+   *  discover -> details did"): the hero, the Pipedream line, Tools, and the
+   *  metadata grid, in settings-connections.ts openDetail's classes. Once
+   *  connected, the app opens its tool permissions instead. */
   function paintAppDetail(a: CatalogApp): void {
     bar.appendChild(backButton("Connections", () => { connView = { kind: "discover" }; paint(); }));
     const done = conns.some((c) => c.appSlug === a.id && c.connected !== false);
-    const head = el("div", "powm-detail-head");
-    head.innerHTML = appIcon(a, "conn2-icon lg");
-    const titles = el("div", "powm-detail-titles");
-    titles.append(el("div", "powm-detail-name", a.name), el("div", "powm-detail-sub", done ? "Connected" : "Not connected"));
-    head.append(titles, connectButton(a, done, connecting.has(a.id)));
-    body.appendChild(head);
-    body.appendChild(el("p", "powm-detail-desc", a.description || "No description yet."));
-    if (a.categories?.length) {
-      const facts = el("div", "powm-facts");
-      factRow(facts, "Categories", a.categories.join(", "));
-      body.appendChild(facts);
+    const hero = el("div", "conn2-hero powm-hero");
+    hero.innerHTML = `${appIcon(a, "conn2-icon xl")}<div class="conn2-hero-main"><div class="conn2-hero-name"></div><div class="conn2-hero-desc"></div></div><div class="conn2-hero-actions"></div>`;
+    (hero.querySelector(".conn2-hero-name") as HTMLElement).textContent = a.name;
+    (hero.querySelector(".conn2-hero-desc") as HTMLElement).textContent = a.description || "";
+    (hero.querySelector(".conn2-hero-actions") as HTMLElement).appendChild(connectButton(a, done, connecting.has(a.id)));
+    body.appendChild(hero);
+    const detail = el("div", "conn2-detail-body");
+    detail.appendChild(el("p", "conn2-about", `${a.name} through Pipedream Connect: ${done
+      ? "your account is authorized and its tools are exposed to your agents through the gateway."
+      : "connect your account and its tools become available to your agents through the gateway."}`));
+    detail.appendChild(el("h3", "conn2-h3", "Tools"));
+    const chips = el("div", "conn2-tool-chips");
+    chips.appendChild(el("span", "conn2-chip-muted", "Connect to see this connector's tools."));
+    detail.appendChild(chips);
+    const meta = el("div", "conn2-meta");
+    const rows: Array<[string, string]> = [
+      ["Made by", "Pipedream"], ["Type", "Web"], ["Sign-in", "Required"],
+      ...(a.categories?.length ? [["Categories", a.categories.join(", ")] as [string, string]] : []),
+    ];
+    for (const [k, v] of rows) {
+      const cell = el("div", "conn2-meta-cell");
+      cell.append(el("div", "conn2-meta-k", k), el("div", "conn2-meta-v", v));
+      meta.appendChild(cell);
     }
+    detail.appendChild(meta);
+    body.appendChild(detail);
   }
   function factRow(host: HTMLElement, label: string, value: string): void {
     if (!value) return;

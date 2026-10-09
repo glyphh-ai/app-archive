@@ -22419,3 +22419,4 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .powm-model-img { width: 20px; height: 20px; object-fit: contain; display: block; }
 .powm-row .powm-icon:has(.powm-model-img), .powm-detail-icon:has(.powm-model-img) { background: #fff; border-radius: 6px; }
 .powm-detail-icon .powm-model-img { width: 28px; height: 28px; }
+.powm-body .powm-hero { margin: 0 0 14px; padding: 24px 20px; gap: 18px; }
