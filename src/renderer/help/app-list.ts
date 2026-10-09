@@ -25,8 +25,6 @@ export interface AppRowLite {
   appArchetype?: string | null;
 }
 
-/** The org's house apps, as `appsDefaults()` returns them. */
-export interface HouseDefault { id: string; slug: string; name: string; url: string | null }
 
 /**
  * Is this row an APP on the wall?
@@ -43,24 +41,11 @@ export const wallAppRow = (a: { url?: string | null; appArchetype?: string | nul
 const keyOf = (a: { slug?: string | null; id: string }): string => (a.slug || a.id).toLowerCase();
 
 /**
- * The visible app set: the user's own rows, plus the house defaults that
- * neither collide with a user row nor sit in `ccHiddenDefaults`.
- *
- * Default rows carry NO appId (`id: ""`) so callers can tell them apart —
- * they are not deletable or editable.
+ * The visible app set: the member's own rows. (No house defaults join them:
+ * nothing is a default app for anyone, his order 2026-10-09.)
  */
-export function visibleAppRows<T extends AppRowLite>(
-  rows: T[] | null | undefined,
-  houseDefaults: HouseDefault[] | null | undefined,
-  hiddenDefaults: unknown[] | null | undefined,
-): Array<T | AppRowLite> {
-  const userRows = (rows || []).filter(wallAppRow);
-  const userSlugs = new Set(userRows.map(keyOf));
-  const hidden = new Set((Array.isArray(hiddenDefaults) ? hiddenDefaults : []).map((x) => String(x).toLowerCase()));
-  const defaults: AppRowLite[] = (houseDefaults || [])
-    .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hidden.has(d.slug.toLowerCase()))
-    .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
-  const all = [...userRows, ...defaults] as Array<T | AppRowLite>;
+export function visibleAppRows<T extends AppRowLite>(rows: T[] | null | undefined): T[] {
+  const all = (rows || []).filter(wallAppRow);
   // Glyphh apps lead — the org's own work before anything vendored in.
   all.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
   return all;

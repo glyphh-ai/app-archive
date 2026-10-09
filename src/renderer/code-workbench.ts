@@ -25,7 +25,7 @@ import { panelFsRoute, type PanelFsRoute } from "./help/panel-fs-route.js";
 import { createCloudWb, createWbRouter, type CloudFsLaneApi } from "./help/wb-cloud.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
-import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
+import { wallAppRow, visibleAppRows } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 import { hostHas } from "./help/web-surface.js";
@@ -2674,7 +2674,6 @@ async function init(): Promise<void> {
     type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null; iconUrl?: string | null; requiredConnections?: { slug: string; actAs: string; connected: boolean }[]; owned?: boolean };
     type Yo = {
       panelAppsList?: () => Promise<PanelRowLite[]>;
-      appsDefaults?: () => Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>;
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
@@ -2688,9 +2687,7 @@ async function init(): Promise<void> {
       // Read the saved wall state HERE, atomically at boot, before the agent
       // card or anything else can schedule a save that overwrites it.
       yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
-      yoApi?.appsDefaults?.().catch(() => []) ?? [],
-      yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
-    ]).then(async ([rows, layouts, savedWall, houseDefaults, hiddenPref]) => {
+    ]).then(async ([rows, layouts, savedWall]) => {
       await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
@@ -2703,11 +2700,7 @@ async function init(): Promise<void> {
       // capability filter (help/surface.ts surfaceHostsTile) paints it below —
       // on the web the saved TAB rows (URL tabs, native apps, bundles) stay
       // off the wall (his report, 2026-10-06).
-      const appsAll = visibleAppRows(
-        rows as PanelRowLite[] | null,
-        houseDefaults as HouseDefault[] | null,
-        hiddenPref as unknown[] | null,
-      ) as PanelRowLite[];
+      const appsAll = visibleAppRows(rows as PanelRowLite[] | null) as PanelRowLite[];
       echoRows = (rows || []);
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [

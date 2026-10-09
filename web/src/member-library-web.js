@@ -403,9 +403,6 @@ export function buildMemberLibrary(client, deps = {}) {
   const appInstancesUpdateAll = async () => {
     try { return ok(await appInstances.updateAll()); } catch (err) { return fail(err); }
   };
-  const appInstancesInstallDefaults = async () => {
-    try { return ok(await appInstances.installDefaults()); } catch (err) { return fail(err); }
-  };
   const skillSetEnabled = async (pageId, on) => {
     try {
       const { ref, item } = await bundleItem(pageId);
@@ -915,8 +912,7 @@ export function buildMemberLibrary(client, deps = {}) {
     layoutsList, layoutsSaveGrid, layoutsDelete,
     panelAppsList, panelAppsCreate, panelAppsUpdate, panelAppsDelete,
     glyphhAppPreviewOpen, glyphhAppPreviewClear, skillTab,
-    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin, appInstanceUpdate, appInstancesUpdateAll, appInstancesInstallDefaults,
-    appInstanceReleases, skillComments, skillCommentAdd, skillLifecycle, skillSubmitPublic, skillWithdrawPublic, libraryQueue, libraryDecide, libraryVersionFiles,
+    skillsList, skillGet, skillFileRead, skillFileWrite, skillCreate, skillDelete, skillSetEnabled, appInstancePin, appInstanceUpdate, appInstancesUpdateAll, appInstanceReleases, skillComments, skillCommentAdd, skillLifecycle, skillSubmitPublic, skillWithdrawPublic, libraryQueue, libraryDecide, libraryVersionFiles,
     // A bundle's own agents (agents/*.md) are read off the folder on the desktop; the record carries none.
     skillAgents: emptyList,
     skillAgentSet: needsDesktop,

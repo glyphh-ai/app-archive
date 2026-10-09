@@ -40,7 +40,6 @@ function fakeClient({ instances = [ORG, MINE], token = 'tok-1', library = fakeLi
         const up = path.match(/^\/api\/app-instances\/([^/]+)\/update$/);
         if (up) { const inst = instances.find((i) => i.key === decodeURIComponent(up[1])); return { ...inst, release: (inst.release ?? 0) + 1, version: inst.update?.headVersion ?? null, update: null }; }
         if (path === '/api/app-instances/update-all') return { updated: instances.filter((i) => i.update?.available), failed: [] };
-        if (path === '/api/app-instances/defaults/install') return { installed: instances.filter((i) => i.kind === 'personal'), failed: [{ slug: 'broken', error: 'no release' }] };
         throw new Error(`unexpected POST ${path}`);
       }),
       del: vi.fn(async (path) => { dels.push(path); }),
@@ -225,14 +224,14 @@ describe('APPS CARRY A VERSION (2026-10-07): Update, Update All and the defaults
     expect(client.posts.map((p) => p.path)).toContain('/api/app-instances/notes~u1/update');
     expect(await lib.appInstanceUpdate('app-instance:missing')).toMatchObject({ ok: false, error: expect.stringMatching(/no cloud app/) });
   });
-  it('updateAll answers what moved; installDefaults counts what landed and what failed', async () => {
+  it('updateAll answers what moved; nothing installs by default (2026-10-09)', async () => {
     const client = fakeClient({ instances: [ORG, STALE] });
     const lib = buildMemberLibrary(client, { document: fakeDoc(), secure: true });
     const all = await lib.appInstancesUpdateAll();
     expect(all.ok).toBe(true);
     expect(all.data.updated.map((i) => i.key)).toEqual(['notes~u1']);
     expect(all.data.failed).toEqual([]);
-    expect(await lib.appInstancesInstallDefaults()).toEqual({ ok: true, data: { installed: 1, failed: 1 } });
-    expect(client.posts.map((p) => p.path)).toEqual(['/api/app-instances/update-all', '/api/app-instances/defaults/install']);
+    expect(lib.appInstancesInstallDefaults).toBeUndefined();
+    expect(client.posts.map((p) => p.path)).toEqual(['/api/app-instances/update-all']);
   });
 });

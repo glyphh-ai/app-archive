@@ -34,21 +34,3 @@ export async function refreshBuildBadge(): Promise<number> {
   paintBuildBadge(n);
   return n;
 }
-
-let defaultsAsked = false;
-/** The defaults, once per renderer life, after the workbench painted: the
- *  server installs what the manifests flag minus the org's overrides and what
- *  the member already holds or removed, and anything that landed announces
- *  itself (glyphh:apps-changed → the wall, the rail and the Apps page re-read). */
-export function installDefaultsInBackground(delayMs = 4000): void {
-  if (defaultsAsked || !hostHas("appInstancesInstallDefaults")) return;
-  defaultsAsked = true;
-  const run = async () => {
-    const r = await window.glyphh.appInstancesInstallDefaults().catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<{ installed: number; failed: number }>;
-    if (!r.ok) { console.warn("[apps] default install didn't answer:", r.error); return; }
-    if (r.data?.installed) document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-    void refreshBuildBadge();
-  };
-  const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
-  setTimeout(() => { if (idle) idle(() => void run(), { timeout: 10_000 }); else void run(); }, delayMs);
-}

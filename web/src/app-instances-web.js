@@ -138,7 +138,7 @@ export function buildAppInstancesWeb(client, deps = {}) {
 
   // APPS CARRY A VERSION (his order, 2026-10-07): the same doors the desktop's
   // main answers (app-instances.ts updateInstance / updateAllInstances /
-  // installDefaultApps), on the server's routes.
+  // ), on the server's routes.
   const update = async (id) => {
     const inst = await find(id);
     const live = await client.http.post(`/api/app-instances/${encodeURIComponent(inst.key)}/update`, {});
@@ -150,12 +150,7 @@ export function buildAppInstancesWeb(client, deps = {}) {
     cached = null;
     return { updated: r?.updated ?? [], failed: r?.failed ?? [] };
   };
-  const installDefaults = async () => {
-    const r = await client.http.post('/api/app-instances/defaults/install', {});
-    const installed = r?.installed?.length ?? 0;
-    if (installed) cached = null;
-    return { installed, failed: r?.failed?.length ?? 0 };
-  };
+
 
   /** THE RELEASES TAB + SHARE TO PUBLISH (2026-10-07): the desktop's listInstanceReleases / publishInstance. */
   const releases = async (id) => {
@@ -172,5 +167,5 @@ export function buildAppInstancesWeb(client, deps = {}) {
     return client.http.post(`/api/app-instances/${encodeURIComponent(inst.key)}/share`, body);
   };
 
-  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, update, updateAll, installDefaults, releases, share, find, isInstanceCardId };
+  return { listInstances, invalidate, installFromHub, previewOpen, grantPanelSession, cards, detail, tab, remove, pin, update, updateAll, releases, share, find, isInstanceCardId };
 }

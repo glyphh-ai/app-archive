@@ -99,13 +99,9 @@ describe('buildContract — AUTHED shapes', () => {
     expect(Array.isArray(l.splits)).toBe(true);
     expect(l.splits[0]).toMatchObject({ panelId: 'p' });
   });
-  it("appsDefaults answers [] like the desktop and never throws — the SDK has no client.apps (the web died on load, 2026-10-06)", async () => {
-    const client = authedClient();
-    delete client.apps;
-    const c = buildContract(client, deps);
-    const p = c.appsDefaults();
-    expect(typeof p.then).toBe('function');
-    expect(await p).toEqual([]);
+  it("there are no default apps to ask for: the contract has no appsDefaults (his order, 2026-10-09)", () => {
+    const c = buildContract(authedClient(), deps);
+    expect(c.appsDefaults).toBeUndefined();
   });
   it("the dead /api/apps lane has no contract methods — client.apps / client.hosting / client.appServers left the SDK (2026-10-06)", () => {
     const client = authedClient();

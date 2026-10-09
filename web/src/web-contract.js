@@ -633,7 +633,6 @@ export function buildContract(client, deps) {
     appInstancePin: library.appInstancePin,
     appInstanceUpdate: library.appInstanceUpdate,
     appInstancesUpdateAll: library.appInstancesUpdateAll,
-    appInstancesInstallDefaults: library.appInstancesInstallDefaults,
     skillSetEnabled: library.skillSetEnabled,
     skillAgents: library.skillAgents,
     skillAgentSet: library.skillAgentSet,
@@ -825,15 +824,6 @@ export function buildContract(client, deps) {
       try { return { ok: true, ...(await client.libraryMarket.reviewQueue()) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), queue: [] }; }
     },
-    // THE ORG'S WORD ON DEFAULTS (2026-10-07): the same IPC names as the desktop's.
-    orgAppDefaultsGet: async () => {
-      try { return { ok: true, data: await client.http.get('/api/admin/app-defaults') }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
-    orgAppDefaultsSet: async (overrides) => {
-      try { return { ok: true, data: await client.http.put('/api/admin/app-defaults', { overrides: overrides && typeof overrides === 'object' ? overrides : {} }) }; }
-      catch (err) { return { ok: false, error: err?.message || String(err) }; }
-    },
     libraryAdminReview: async (id, action, notes) => {
       try { await client.libraryMarket.reviewListing(id, action, notes); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
@@ -893,13 +883,6 @@ export function buildContract(client, deps) {
         return { ok: true, content: text };
       } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
     },
-    // The HOUSE DEFAULTS — the glyphh launcher set (command center only).
-    // The desktop answers [] here since the local app host went (apps-ipc.ts
-    // "apps-defaults"); the house apps are built-in rows of panelAppsList. This
-    // was `client.apps.defaults()`, a resource the SDK no longer has — it threw
-    // synchronously inside the Echo init and the web died on load (his report,
-    // 2026-10-06: "Cannot access 'openList' before initialization").
-    appsDefaults: async () => [],
     voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),
     voiceSynthesize: lib((text, model, voiceId) => client.voice.synthesize(text, model, voiceId)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy

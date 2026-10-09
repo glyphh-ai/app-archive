@@ -119,7 +119,6 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
 
   // No house defaults on the wall: the Marketplace tile is gone (his order,
   // 2026-09-16) — Skills and Plugins live in Settings → Build.
-  ipcMain.handle("apps-defaults", async () => []);
 
 }
 

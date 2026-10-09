@@ -12,7 +12,7 @@
  */
 
 import { threadLocus } from "./thread-locus.js";
-import { installDefaultsInBackground, refreshBuildBadge } from "./app-updates.js";
+import { refreshBuildBadge } from "./app-updates.js";
 import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
@@ -26,7 +26,7 @@ import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openBotsPanel } from "./bots-events.js";
-import { visibleAppRows, type HouseDefault } from "./app-list.js";
+import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
 import { memberLine, turnError } from "./turn-errors.js";
@@ -6647,25 +6647,16 @@ function railPager(page: number, totalPages: number, onPage: (p: number) => void
 
 async function loadRecentApps(): Promise<void> {
   try {
-    const [apps, layouts, recents, houseDefaults, hiddenDefaults] = await Promise.all([
+    const [apps, layouts, recents] = await Promise.all([
       window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
       window.glyphh.layoutsList?.() ?? Promise.resolve([]),
       window.glyphh.recentsList?.() ?? Promise.resolve([]),
-      // The wall's other two inputs — the rail was skipping both, which is
-      // half of why the lists disagreed.
-      (window.glyphh as unknown as { appsDefaults?: () => Promise<HouseDefault[]> })
-        .appsDefaults?.().catch(() => [] as HouseDefault[]) ?? Promise.resolve([] as HouseDefault[]),
-      window.glyphh.getPreference?.("ccHiddenDefaults", []) ?? Promise.resolve([]),
     ]);
     void loadRailSessions();
     // THE SAME LIST the echo wall builds (help/app-list.ts) — his rule,
     // 2026-09-11. The rail used to keep url-less native rows and skip the
     // house defaults, so the two surfaces showed different apps.
-    railApps = visibleAppRows(
-      (apps || []) as unknown as RailApp[],
-      houseDefaults as HouseDefault[],
-      hiddenDefaults as unknown[],
-    ) as RailApp[];
+    railApps = visibleAppRows((apps || []) as unknown as RailApp[]) as RailApp[];
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     // the wall's arranged order (same preference the command centre writes)
@@ -6919,10 +6910,9 @@ function initRailApps(): void {
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); void refreshBuildBadge(); });
   // A bundle registered its tab in main (install, import, boot): the rail repaints.
   window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); void refreshBuildBadge(); });
-  // APPS CARRY A VERSION; DEFAULTS BY MANIFEST (2026-10-07): the red count on
-  // Build, and the default apps installed in the background after first paint.
+  // APPS CARRY A VERSION (2026-10-07): the red count on Build. Nothing installs
+  // by default (his order, 2026-10-09: no default apps for any customer).
   void refreshBuildBadge();
-  installDefaultsInBackground();
 
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });

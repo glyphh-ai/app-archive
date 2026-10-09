@@ -655,7 +655,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.
   webIconFetch: (url: string) => ipcRenderer.invoke("web-icon-fetch", url) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
-  appsDefaults: () => ipcRenderer.invoke("apps-defaults") as Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,
@@ -1101,7 +1100,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** APPS CARRY A VERSION (2026-10-07): move one instance (a card id or key) to the catalog's head; move every one; install the manifest-flagged defaults in the background. */
   appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
   appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
-  appInstancesInstallDefaults: () => ipcRenderer.invoke("app-instances-install-defaults") as Promise<LibEnvelope>,
   /** THE APP CARD (2026-10-07): Build and run a folder on this machine (a source build answers its job); read a build job. */
   appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
   appBuildStatus: (job: string) => ipcRenderer.invoke("app-build-status", job) as Promise<LibEnvelope>,
@@ -1115,9 +1113,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   libraryQueue: () => ipcRenderer.invoke("library-queue") as Promise<LibEnvelope>,
   libraryDecide: (versionId: string, verdict: "approve" | "changes" | "reject", note?: string) => ipcRenderer.invoke("library-decide", versionId, verdict, note) as Promise<LibEnvelope>,
   libraryVersionFiles: (versionId: string) => ipcRenderer.invoke("library-version-files", versionId) as Promise<LibEnvelope>,
-  /** Org admin: the catalog's default apps and the org's overrides (GET / PUT /api/admin/app-defaults). */
-  orgAppDefaultsGet: () => ipcRenderer.invoke("org-app-defaults-get") as Promise<LibEnvelope>,
-  orgAppDefaultsSet: (overrides: Record<string, "on" | "off" | null>) => ipcRenderer.invoke("org-app-defaults-set", overrides) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
   skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,

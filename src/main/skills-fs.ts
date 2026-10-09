@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installDefaultApps, adminAppDefaults, setAdminAppDefaults, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
+import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
 import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -940,7 +940,6 @@ export function registerSkillsIpc(): void {
   // the defaults the manifest names — the web answers the same names.
   ipcMain.handle("app-instance-update", (_e: unknown, id: string) => env(() => updateInstance(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
   ipcMain.handle("app-instances-update-all", () => env(() => updateAllInstances()));
-  ipcMain.handle("app-instances-install-defaults", () => env(() => installDefaultApps()));
   // THE APP CARD'S Build and run (2026-10-07): the folder is on this machine;
   // a source build answers its job at once and the card follows it.
   ipcMain.handle("app-install-folder", (_e: unknown, dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) =>
@@ -948,8 +947,6 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("app-build-status", (_e: unknown, job: string) => env(() => readBuildJob(String(job || ""))));
   // THE RELEASES TAB (2026-10-07): every release of the instance a card names.
   ipcMain.handle("app-instance-releases", (_e: unknown, id: string) => env(() => listInstanceReleases(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
-  ipcMain.handle("org-app-defaults-get", () => env(() => adminAppDefaults()));
-  ipcMain.handle("org-app-defaults-set", (_e: unknown, overrides: Record<string, "on" | "off" | null>) => env(() => setAdminAppDefaults(overrides && typeof overrides === "object" ? overrides : {})));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
   ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
   ipcMain.handle("skill-replace", async (e, id: string) => {
