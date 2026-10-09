@@ -181,7 +181,7 @@ describe("the session's type decides the panels — one list through the caps", 
       .toEqual(["rename:Rename", "pin:Pin", "new-panel:New agent panel", "delete:Delete!"]);
     expect(sessionRowsFor({ pinned: true })[1]!.label).toBe("Unpin");
     const fresh = agentMenuModel({ surface: "desktop", session: null });
-    expect(kinds(fresh)).toEqual(["tools", "apps"]);
+    expect(kinds(fresh)).toEqual(["tools", "apps", "workspaces"]);
   });
   it("never an empty dropdown, never an empty section — every combination", () => {
     for (const surface of ["web", "desktop"] as const) {
@@ -194,6 +194,8 @@ describe("the session's type decides the panels — one list through the caps", 
               for (const s of m.sections) {
                 // An EMPTY Apps fold is allowed: "Apps · 0" says it, no line under it (his order, 2026-10-05).
                 if (s.kind === "apps") expect(s.note).toBeNull();
+                // An empty Workspaces fold still holds "Create workspace…" (the menu's UI paints it; 2026-10-08).
+                else if (s.kind === "workspaces") expect(s.count).toBe(s.rows.length);
                 else expect(s.rows.length).toBeGreaterThan(0);
               }
             }
@@ -218,10 +220,12 @@ describe("WORKSPACES — the one list, the last fold on both surfaces", () => {
       expect(kinds(m)[kinds(m).length - 1]).toBe("workspaces");
     }
   });
-  it("no workspaces → no section (never an empty fold)", () => {
+  it("no workspaces → the fold is still there, empty, for Create workspace… (his order, 2026-10-08)", () => {
     for (const workspaces of [[], undefined, [{ name: "" }, { name: "   " }]]) {
       const m = agentMenuModel({ surface: "web", session: null, machines: [MAC], apps, workspaces });
-      expect(section(m, "workspaces")).toBeUndefined();
+      const s = section(m, "workspaces") as { count: number; rows: unknown[] } | undefined;
+      expect(s?.count).toBe(0);
+      expect(s?.rows).toEqual([]);
     }
   });
   it("the rows: trimmed names, one per name (case-insensitive), blanks dropped", () => {

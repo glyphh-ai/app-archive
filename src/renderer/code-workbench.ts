@@ -3541,7 +3541,7 @@ async function init(): Promise<void> {
       // as close to the edges as they sit to each other.
       // THE WEB CUT: the agent is the page on the web — edge to edge, no band
       // margin (the dock never paints there; the 7px seams between panels stay).
-      const margin = 7;   // the desktop's inset, on the web too (his order, 2026-10-06: the agent sits in the grid like the desktop's)
+      const margin = 0;   // SNUG (his order, 2026-10-08: "remove the padding around all the panels")
       // The dock's band — THE SAME measure the stage uses for its pill (help/
       // dock-band.ts). A bar PARKED in the body-level portal layer (panels up,
       // auto-hide off) still sits fixed across the top, so its band is still
@@ -3570,7 +3570,7 @@ async function init(): Promise<void> {
       // column flow), the block staying centered and never touching the top
       // bar above or the composer below. Proportional seam drags still apply.
       const band = buildBand();
-      const gap = 7;
+      const gap = 0;   // SNUG (his order, 2026-10-08): panels touch, no seam padding
       const cols = flowColumns(cards);
       syncFlowFracs(cols);
       const cwFr = normFr(flowColFr);
@@ -3603,7 +3603,7 @@ async function init(): Promise<void> {
       // composer below) — 7px seams live only BETWEEN panels; cells touching
       // a band edge touch the band edge.
       const band = buildBand();
-      const gap = 7;
+      const gap = 0;   // SNUG (his order, 2026-10-08): panels touch, no seam padding
       const W = band.width, H = band.height;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
@@ -3838,6 +3838,7 @@ async function init(): Promise<void> {
             document.body.classList.remove("wb-mouse-drag");
             cardsLayer.classList.remove("echo-no-anim");
             saveEchoLayoutMem();
+            persistOpenWorkspace();   // a dragged arrangement is the open workspace's (his order, 2026-10-08)
           };
           document.addEventListener("mousemove", onMove);
           document.addEventListener("mouseup", onUp);
@@ -3891,7 +3892,7 @@ async function init(): Promise<void> {
       // MUST mirror flowRects EXACTLY — the seams sit in the gaps between
       // the band-placed cards, not in stage coordinates.
       const band = buildBand();
-      const gap = 7;
+      const gap = 0;   // SNUG (his order, 2026-10-08): panels touch, no seam padding
       const cols = flowColumns(cards);
       syncFlowFracs(cols);
       const cwFr = normFr(flowColFr);
@@ -4164,6 +4165,7 @@ async function init(): Promise<void> {
         echoGrid.colWidths.push(avg);
         echoGrid.rowFracs.push([1]);
         echoGrid.cells.push({ entry: e, col: nCols, row: 0, colSpan: 1, rowSpan: 1 });
+        persistOpenWorkspace();
       }
       console.warn("[echo] unpark", JSON.stringify({ slug: e.tile.slug, parked: parkedCards.size }));
       layoutCards();
@@ -4213,9 +4215,12 @@ async function init(): Promise<void> {
       cardsLayer.querySelectorAll<HTMLElement>(".echo-card.expanded").forEach((c) => collapseCard(c));
       const card = document.createElement("div");
       card.className = "echo-card";
+      // THE AGENT CANNOT BE CLOSED (his order, 2026-10-08: "remove the x from
+      // the agent panel. They can't be removed") — its card has no ✕.
+      const agentCard = e.tile.kind === "agent" || /^agent(-panel)?:/.test(e.tile.slug || "");
       card.innerHTML = `<div class="echo-card-head"><span></span>
           <button class="ws-icon-btn echo-card-expand" title="Expand">${EXPAND_SVG}</button>
-          <button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+          ${agentCard ? "" : `<button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>`}
         </div><div class="echo-card-body"></div>`;
       card.querySelector("span")!.textContent = e.tile.name;
       const expandBtn = card.querySelector<HTMLElement>(".echo-card-expand")!;
@@ -4224,7 +4229,7 @@ async function init(): Promise<void> {
         expandCard(card);
         layoutCards();
       });
-      card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      card.querySelector(".echo-card-close")?.addEventListener("click", () => { closeCard(e); persistOpenWorkspace(); });
       wireCardDrag(e, card, card.querySelector<HTMLElement>(".echo-card-head")!);
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
@@ -4306,6 +4311,7 @@ async function init(): Promise<void> {
               [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
               [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
               saveEchoLayoutMem();
+              persistOpenWorkspace();
             }
             layoutCards();
             return;
@@ -4373,6 +4379,7 @@ async function init(): Promise<void> {
           if (inCol.length === 1 && inCol[0].row === 0 && inCol[0].rowSpan === 1) {
             echoGrid.rowFracs[col] = [1, 1];
             echoGrid.cells.push({ entry: e, col, row: 1, colSpan: 1, rowSpan: 1 });
+            persistOpenWorkspace();
             placed = true;
           }
         }
@@ -4382,6 +4389,7 @@ async function init(): Promise<void> {
           echoGrid.colWidths.push(avg);
           echoGrid.rowFracs.push([1]);
           echoGrid.cells.push({ entry: e, col: nCols, row: 0, colSpan: 1, rowSpan: 1 });
+          persistOpenWorkspace();
         }
       }
       notifyOpenApps();
@@ -5401,6 +5409,160 @@ async function init(): Promise<void> {
       }, delayMs);
     };
     const scheduleAgentSeat = (): void => ensureAgentSeated(250);
+
+    // ── WORKSPACES ARE SAVED FROM THE SCREEN (his orders, 2026-10-08: "+ to
+    //    save that layout", "when the user drags the workspace around or
+    //    changes the layout that gets saved to that workspace when it is
+    //    open"). The arrangement on screen IS the definition: Create saves it
+    //    and makes it the open workspace in place (nothing reloads); while a
+    //    workspace is open, a drag, a swap, a panel opened or closed writes
+    //    its new shape back. Seam fractions alone ride the arrangement memory
+    //    (saveEchoLayoutMem), as they always have. ──
+    type WsCell = { entry?: TileEntry; panelId: string; col: number; row: number; colSpan: number; rowSpan: number };
+    type WsArrangement = { cols: number; rows: number; colWidths: number[]; cells: WsCell[] };
+    const panelIdOfEntry = (x: TileEntry): string | null => {
+      if (isAgentEntry(x)) return "tool:coding";
+      if (x.tile.kind === "tool" && x.tile.toolView) return `tool:${x.tile.toolView}`;
+      if (x.tile.kind === "app" && x.tile.slug) return x.tile.slug.toLowerCase();
+      return null;
+    };
+    const currentArrangement = (): WsArrangement | null => {
+      const live = (x: TileEntry): boolean => !!x.card?.isConnected && !x.parked;
+      let cells: WsCell[] = [];
+      let widths: number[] = [];
+      if (echoGrid && echoGrid.cells.length) {
+        for (const c of echoGrid.cells) {
+          const id = live(c.entry) ? panelIdOfEntry(c.entry) : null;
+          if (id) cells.push({ entry: c.entry, panelId: id, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan });
+        }
+        widths = echoGrid.colWidths.slice();
+      } else {
+        // Loose cards in the flow: each column's stack becomes rows of one grid.
+        const cols = flowColumns(openList.filter(live));
+        const R = Math.max(1, ...cols.map((c) => c.length));
+        cols.forEach((col, ci) => col.forEach((entry, j) => {
+          const id = panelIdOfEntry(entry);
+          if (!id) return;
+          const r0 = Math.floor((j * R) / col.length), r1 = Math.floor(((j + 1) * R) / col.length);
+          cells.push({ entry, panelId: id, col: ci, row: r0, colSpan: 1, rowSpan: Math.max(1, r1 - r0) });
+        }));
+        widths = flowColFr.length === cols.length ? flowColFr.slice() : cols.map(() => 1);
+      }
+      // THE AGENT IS ALWAYS IN IT (his order: "the layout can not ever not have the agent").
+      if (!cells.some((c) => c.panelId === "tool:coding")) {
+        cells = [{ panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1 }, ...cells.map((c) => ({ ...c, col: c.col + 1 }))];
+        widths = [1, ...widths];
+      }
+      // Empty columns drop out; the rest renumber in order.
+      const used = [...new Set(cells.flatMap((c) => Array.from({ length: c.colSpan }, (_, k) => c.col + k)))].sort((a, b) => a - b);
+      const at = new Map(used.map((c, i) => [c, i]));
+      cells = cells.map((c) => {
+        const a = at.get(c.col) ?? 0, b = at.get(c.col + c.colSpan - 1) ?? a;
+        return { ...c, col: a, colSpan: Math.max(1, b - a + 1) };
+      });
+      const colWidths = normFr(used.map((c) => widths[c] ?? 1));
+      // The lowest panel in a column reaches the floor — no dead rows.
+      const rows = Math.max(1, ...cells.map((c) => c.row + c.rowSpan));
+      for (const c of cells) {
+        const below = cells.some((o) => o !== c && o.row >= c.row + c.rowSpan && o.col < c.col + c.colSpan && c.col < o.col + o.colSpan);
+        if (!below) c.rowSpan = rows - c.row;
+      }
+      return { cols: used.length, rows, colWidths, cells };
+    };
+    const arrangementSig = (a: WsArrangement): string => layoutSig({ cols: a.cols, rows: a.rows, splits: a.cells });
+    const gridPayload = (a: WsArrangement): { cols: number; rows: number; colWidths: number[]; rowHeights: number[] } => ({
+      cols: a.cols, rows: a.rows, colWidths: a.colWidths,
+      rowHeights: Array.from({ length: a.rows }, () => 1 / a.rows),
+    });
+    /** The cards on screen become the definition's cells, under the keys the
+     *  next open will compute, so the arrangement memory finds them again. */
+    const bindArrangement = (a: WsArrangement): void => {
+      const seen = new Map<string, number>();
+      for (const c of [...a.cells].sort((x, y) => (x.row - y.row) || (x.col - y.col))) {
+        const n = (seen.get(c.panelId) ?? 0) + 1;
+        seen.set(c.panelId, n);
+        if (c.entry) { c.entry.memKey = `${c.panelId}#${n}`; c.entry.layoutId = activeLayoutId ?? undefined; }
+      }
+      if (echoGrid) echoGrid.defCols = echoGrid.colWidths.length;
+      echoLayoutSig = arrangementSig(a);
+    };
+    const saveWorkspace = async (o: { name: string; model?: string; session: "last" | "new"; folder?: string }): Promise<{ ok: boolean; error?: string }> => {
+      const a = currentArrangement();
+      if (!a) return { ok: false, error: "Nothing is open to save." };
+      const yo = (window as unknown as { glyphh?: { layoutsSaveGrid?: (g: unknown) => Promise<unknown> } }).glyphh;
+      const res = await (yo?.layoutsSaveGrid?.({
+        name: o.name, ...gridPayload(a),
+        cells: a.cells.map(({ panelId, col, row, colSpan, rowSpan }) => ({ panelId, col, row, colSpan, rowSpan })),
+        sessionMode: o.session,
+        folder: o.folder || null,
+        ...(o.model ? { modelSelections: { default: o.model } } : {}),
+      }) ?? Promise.resolve(null)).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+      if (!res) return { ok: false, error: "The workspace could not be saved." };
+      if (typeof res === "object" && (res as { error?: string }).error) return { ok: false, error: (res as { error: string }).error };
+      // IT IS NOW THE OPEN WORKSPACE, in place — the pages on screen stay alive.
+      saveEchoLayoutMem();   // an outgoing workspace keeps its memory
+      if (!echoGrid) {
+        echoGrid = {
+          defCols: a.cols, colWidths: a.colWidths.slice(),
+          rowFracs: Array.from({ length: a.cols }, () => Array.from({ length: a.rows }, () => 1)),
+          cells: a.cells.filter((c) => c.entry).map((c) => ({ entry: c.entry!, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })),
+        };
+      }
+      activeLayoutId = `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      echoLayoutName = o.name;
+      echoActiveLayout = { name: o.name, mode: o.session };
+      bindArrangement(a);
+      if (o.session === "last") {
+        const cur = (window as unknown as { __agentSessions?: { currentId(): string | null } }).__agentSessions?.currentId?.();
+        if (cur) { try { uiStateSet(layoutSessionKey(o.name), cur); } catch { /* best effort */ } }
+      }
+      layoutCards();
+      paintLayoutBar();
+      scheduleWallSave();
+      saveEchoLayoutMem();
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+      return { ok: true };
+    };
+    (window as unknown as { __wbSaveWorkspace?: typeof saveWorkspace }).__wbSaveWorkspace = saveWorkspace;
+    let wsPersistTimer = 0;
+    const persistOpenWorkspace = (): void => {
+      if (!echoLayoutName) return;
+      const name = echoLayoutName;
+      if (wsPersistTimer) window.clearTimeout(wsPersistTimer);
+      wsPersistTimer = window.setTimeout(() => {
+        wsPersistTimer = 0;
+        void (async () => {
+          if (echoLayoutName !== name || openingLayout) return;
+          const a = currentArrangement();
+          if (!a || arrangementSig(a) === echoLayoutSig) return;   // only seams moved: the memory holds those
+          const yo = (window as unknown as { glyphh?: { layoutsList?: () => Promise<LayoutRow[]>; layoutsSaveGrid?: (g: unknown) => Promise<unknown> } }).glyphh;
+          const row = ((await yo?.layoutsList?.().catch(() => [] as LayoutRow[])) ?? []).find((l) => (l.name || "").toLowerCase() === name.toLowerCase());
+          if (!row || row.target === "desktop" || echoLayoutName !== name) return;
+          // Each cell keeps the setup its panel had in the definition (a URL, a first command).
+          const taken = new Map<string, number>();
+          const setupOf = (pid: string): { config?: CellConfig; sticky?: boolean } => {
+            const n = taken.get(pid) ?? 0;
+            taken.set(pid, n + 1);
+            const hit = (row.splits || []).filter((s) => (s.panelId || "").toLowerCase() === pid)[n];
+            return hit ? { ...(hit.config ? { config: hit.config } : {}), ...(hit.sticky ? { sticky: true } : {}) } : {};
+          };
+          const res = await (yo?.layoutsSaveGrid?.({
+            name: row.name, ...gridPayload(a),
+            cells: a.cells.map(({ panelId, col, row: r, colSpan, rowSpan }) => ({ panelId, col, row: r, colSpan, rowSpan, ...setupOf(panelId) })),
+            ...(row.sessionMode ? { sessionMode: row.sessionMode } : {}),
+            folder: row.folder ?? null,
+            ...(row.loop ? { loop: row.loop } : {}),
+            ...(row.modelSelections && Object.keys(row.modelSelections).length ? { modelSelections: row.modelSelections } : {}),
+          }) ?? Promise.resolve(null)).catch(() => null);
+          if (!res || (typeof res === "object" && (res as { error?: string }).error)) { console.warn("[workspace] the new arrangement was not saved", name); return; }
+          if (echoLayoutName !== name) return;
+          bindArrangement(a);
+          saveEchoLayoutMem();
+          console.warn("[workspace] arrangement saved", JSON.stringify({ name, cols: a.cols, rows: a.rows, cells: a.cells.length }));
+        })();
+      }, 700);
+    };
+
     // The rail's New button needs to distinguish "open the first agent" from
     // "start another chat in the agent already showing". Keep that state in
     // the workbench, where layout/adopted seats are visible.

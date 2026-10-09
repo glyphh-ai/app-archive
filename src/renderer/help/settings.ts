@@ -3,11 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
-import {
-  applyRailTabsPerRow,
-  clampRailTabsPerRow, railTabsLabel,
-  RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown,
-} from "./wall-prefs.js";
+import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown } from "./wall-prefs.js";
 import { loadAgentDefaults } from "./settings-agent.js";
 import { loadVoiceSection } from "./settings-voice.js";
 import { hostHas, keepIfHost, copyText } from "./web-surface.js";
@@ -472,28 +468,9 @@ function initSettings() {
     });
   }
 
-  // Tabs per row — the sidebar's Tabs tray. Its grid reads --rail-tabs-cols;
-  // the icon-rail collapse still overrides to one per row, as it always has.
-  // 0 = Auto, which restores the auto-fill this grid shipped with: a fixed
-  // count would otherwise have to pick a number for every rail width.
-  {
-    const c = document.getElementById("settings-rail-tabs-cols") as HTMLInputElement | null;
-    const cv = document.getElementById("settings-rail-tabs-cols-val");
-    const paint = (): void => {
-      if (!c) return;
-      applyRailTabsPerRow(c.value);
-      if (cv) cv.textContent = railTabsLabel(c.value);
-    };
-    c?.addEventListener("input", paint);
-    c?.addEventListener("change", () => {
-      paint();
-      void window.glyphh.setPreference("railTabsPerRow", Number(c.value));
-    });
-  }
-
-  // THE SIDEBAR TRAYS (his order, 2026-10-08) — persist BEFORE announcing;
+  // THE WORKSPACES TRAY (his order, 2026-10-08) — persist BEFORE announcing;
   // the rail re-reads the pref on the event (help/code.ts).
-  for (const [id, pref] of [["settings-rail-apps", RAIL_SHOW_APPS_PREF], ["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
+  for (const [id, pref] of [["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
     const t = document.getElementById(id) as HTMLInputElement | null;
     t?.addEventListener("change", () => {
       void Promise.resolve(window.glyphh.setPreference(pref, t.checked)).then(() => {
@@ -674,15 +651,9 @@ async function loadSettings() {
     const ov = document.getElementById("settings-echo-agent-opacity-val");
     if (ov) ov.textContent = `${Math.round(Number(agOp.value) * 100)}%`;
   }
-  for (const [id, pref] of [["settings-rail-apps", RAIL_SHOW_APPS_PREF], ["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
+  for (const [id, pref] of [["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
     const t = document.getElementById(id) as HTMLInputElement | null;
     if (t) t.checked = railTrayShown(await window.glyphh.getPreference(pref, RAIL_SHOW_DEFAULT));
-  }
-  const railCols = document.getElementById("settings-rail-tabs-cols") as HTMLInputElement | null;
-  if (railCols) {
-    railCols.value = String(clampRailTabsPerRow(await window.glyphh.getPreference("railTabsPerRow", 0)));
-    const v = document.getElementById("settings-rail-tabs-cols-val");
-    if (v) v.textContent = railTabsLabel(railCols.value);
   }
   const iconZoom = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
   if (iconZoom) {

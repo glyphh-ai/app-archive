@@ -239,9 +239,8 @@ export function webRailWordmark(web: boolean): boolean {
  *  full-screen page now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
   "#rail-more-toggle",
-  // The Tabs and Workspaces trays (back as Appearance options, 2026-10-08)
-  // are the desktop's: the browser cannot render a tab row.
-  "#rail-apps-head", "#rail-apps-body", "#rail-layouts-head", "#rail-layouts-body",
+  // The Workspaces tray (2026-10-08) is the desktop's: workspaces are kept there.
+  "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body",
 ]);
 
 /** Settings rows for a CAPABILITY the browser lacks: the streamed web
@@ -249,7 +248,7 @@ export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
  *  reveal) show on the web: the web's Echo carries the dock. */
 export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
   "#streamed-panels-row",
-  "#rail-apps-row", "#rail-layouts-row",
+  "#rail-layouts-row",
 ]);
 
 // ── THE TOOL VIEWS ─────────────────────────────────────────────────────────

@@ -274,9 +274,11 @@ export function agentMenuModel(i: AgentMenuInput): AgentMenu {
   });
 
   // WORKSPACES, LAST (his order, 2026-10-05): the member's workspaces by
-  // name, one row each; with none the section is simply omitted.
+  // name, one row each. Always present since 2026-10-08 — "Create
+  // workspace…" lives at its head (his order: "agent -> dropdown -> Create
+  // Workspace").
   const spaces = workspaceRows(i.workspaces ?? []);
-  if (spaces.length) byKind.set("workspaces", { kind: "workspaces", label: WORKSPACES_SECTION_LABEL, collapsible: true, count: spaces.length, rows: spaces });
+  byKind.set("workspaces", { kind: "workspaces", label: WORKSPACES_SECTION_LABEL, collapsible: true, count: spaces.length, rows: spaces });
   const sections: MenuSection[] = [];
   for (const kind of MENU_SECTION_ORDER) {
     const s = byKind.get(kind);

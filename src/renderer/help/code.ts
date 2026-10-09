@@ -46,7 +46,8 @@ import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBo
 import { pickUtilityModel } from "./utility-model.js";
 import { harnessApiUrl, harnessToken } from "./harness-api.js";
 import { toastOk } from "./toast.js";
-import { applyRailTabsPerRow, RAIL_SHOW_APPS_PREF, RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown } from "./wall-prefs.js";
+import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown, RAIL_LAYOUTS_H_PREF, clampRailLayoutsH } from "./wall-prefs.js";
+import { openCreateWorkspaceModal } from "./workspace-create.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
@@ -5975,7 +5976,6 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
 interface RailSectionDef { toggle: string; body: string; pref: string; head?: string; showPref?: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
-  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen", head: "rail-apps-head", showPref: RAIL_SHOW_APPS_PREF },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen", head: "rail-layouts-head", showPref: RAIL_SHOW_LAYOUTS_PREF },
 ];
 // Enabled (the Appearance option) and open (the disclosure) are separate
@@ -5989,6 +5989,7 @@ function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean
   el(def.toggle)?.classList.toggle("closed", !open);
   const enabled = !def.showPref || railSectionEnabled[def.toggle] === true;
   el(def.body)?.classList.toggle("hidden", !(open && enabled));
+  if (def.toggle === "rail-layouts-toggle") el("rail-layouts-vsplit")?.classList.toggle("closed", !open);
   if (persist) void window.glyphh.setPreference?.(def.pref, open);
   syncRailLayout();
 }
@@ -6003,6 +6004,7 @@ async function applyRailSectionsVisibility(): Promise<void> {
     railSectionEnabled[def.toggle] = on;
     el(def.head)?.classList.toggle("hidden", !on);
     el(def.body)?.classList.toggle("hidden", !(on && railSectionOpen[def.toggle] === true));
+    if (def.toggle === "rail-layouts-toggle") el("rail-layouts-vsplit")?.classList.toggle("hidden", !on);
   }
   syncRailLayout();
 }
@@ -6024,8 +6026,6 @@ function initRailSections(): void {
 /** One authority over the rail stack's vertical share: with a tray open,
  *  Recents keeps its capped height and the trays take the rest; with every
  *  tray closed (or absent, as in the hidden shell rail) Recents fills. */
-/** The user's dragged Recents height (codeRecentsH) — 0 = the default cap. */
-let recentsUserH = 0;
 
 function syncRailLayout(): void {
   // TODAY'S list id (the old #code-history died with the shell rail — this
@@ -6037,31 +6037,36 @@ function syncRailLayout(): void {
   if (hist) { hist.style.flex = ""; hist.style.maxHeight = ""; }
 }
 
-// ── Recents vertical resize (restored from 5b3cc551 — his report,
-//    2026-09-14: the drag between Recents and Apps/Workspaces was dropped) ──
-function initRecentsVsplit(): void {
-  const vs = el("recents-vsplit");
-  const hist = el("recent-sessions-list");
-  if (!vs || !hist) return;
-  void window.glyphh.getPreference?.("codeRecentsH", 0).then((v) => {
-    recentsUserH = Number(v) || 0;
-    syncRailLayout();
-  });
+// ── THE WORKSPACES DRAG LINE (his order, 2026-10-08: "a horizontal line
+//    above workspace that allows it to be draggable up and down. When
+//    collapsed it moves to the bottom of the left rail"). Recents fills the
+//    rail; the line and the Workspaces tray sit at its foot. Dragging the
+//    line sizes the tray (railLayoutsH); collapsed, the head rests at the
+//    bottom and the line is only a rule. ──
+function initWorkspacesVsplit(): void {
+  const vs = el("rail-layouts-vsplit");
+  const body = el("rail-layouts-body");
+  const rail = el("app-rail-scroll");
+  if (!vs || !body) return;
+  const apply = (h: number): void => { if (h > 0) body.style.flex = `0 0 ${h}px`; };
+  void window.glyphh.getPreference?.(RAIL_LAYOUTS_H_PREF, 0).then((v) => apply(clampRailLayoutsH(v, rail?.clientHeight || window.innerHeight)));
   vs.addEventListener("mousedown", (e) => {
+    if (body.classList.contains("hidden")) return;   // collapsed: nothing to size
     e.preventDefault();
     document.body.classList.add("code-vdragging");
     const startY = e.clientY;
-    const startH = hist.getBoundingClientRect().height;
+    const startH = body.getBoundingClientRect().height;
+    const railH = rail?.clientHeight || window.innerHeight;
+    let h = startH;
     const move = (ev: MouseEvent): void => {
-      recentsUserH = Math.max(60, Math.min(Math.round(window.innerHeight * 0.6), startH + (ev.clientY - startY)));
-      hist.style.flex = `0 0 ${recentsUserH}px`;
-      hist.style.maxHeight = "none";
+      h = clampRailLayoutsH(startH - (ev.clientY - startY), railH) || startH;
+      apply(h);
     };
     const up = (): void => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.classList.remove("code-vdragging");
-      if (recentsUserH > 0) void window.glyphh.setPreference?.("codeRecentsH", recentsUserH);
+      void window.glyphh.setPreference?.(RAIL_LAYOUTS_H_PREF, Math.round(h));
     };
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -6208,7 +6213,6 @@ const RAIL_LAYOUTS_PER_PAGE = 15;
 // live hosts, so data refreshes (recents, cc-order, icon priming) repaint the
 // tray and the rail from the same code path.
 interface RailGridHost { list: HTMLElement; search: HTMLInputElement | null; page: number }
-const railAppsHosts = new Set<RailGridHost>();
 const railLayoutsHosts = new Set<RailGridHost>();
 const railAgentsHosts = new Set<RailGridHost>();
 // ── Rail Recents — the CLI agents' own session stores (his order,
@@ -6808,8 +6812,8 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   void openGlyphhSession(id);
 };
 
-function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
-  (kind === "apps" ? railAppsHosts : kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);
+function registerRailGridHost(kind: "layouts" | "agents", host: RailGridHost): void {
+  (kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);
 }
 
 /** Slice items to a page, clamping in-range (palette parity). */
@@ -6890,7 +6894,7 @@ async function loadRecentApps(): Promise<void> {
 /** Both rail sections. Apps and Layouts each own a search + pagination and live
  *  under their own collapsible header (see initRailSections). */
 let railCcOrder: string[] = [];
-function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); renderRailAgents(); }
+function renderRecentApps(): void { renderRailLayouts(); renderRailAgents(); }
 // The wall re-saves its order on every drag — mirror it into the rail at once,
 // so the two lists can never disagree about what the user arranged.
 window.addEventListener("glyphh:cc-order-changed", (e) => {
@@ -6923,86 +6927,6 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
     window.setTimeout(() => document.getElementById(`${section === "apps" ? "app" : section === "agents" ? "cagent" : "layout"}-new-btn`)?.click(), 60);
   });
   list.appendChild(btn);
-}
-
-function renderRailApps(): void {
-  for (const host of [...railAppsHosts]) {
-    if (!host.list.isConnected) { railAppsHosts.delete(host); continue; }
-    paintAppsGrid(host);
-  }
-}
-
-function paintAppsGrid(host: RailGridHost): void {
-  const list = host.list;
-  const q = (host.search?.value || "").trim().toLowerCase();
-  list.textContent = "";
-
-  // ORDER FOLLOWS THE COMMAND CENTRE: the wall is where apps are dragged, and
-  // its saved order (ccIconOrder) is the one the user arranged — the rail was
-  // sorting by recency instead, so the two disagreed. Anything not in that
-  // order falls in after it, recency-first.
-  const order = railCcOrder;
-  const rank = (a: RailApp): number => {
-    const i = order.indexOf(`app:${(a.slug || a.id || "").toLowerCase()}`);
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
-  const apps = railApps
-    .filter((a) => !q || (a.name || "").toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q))
-    .sort((a, b) => {
-      const ra = rank(a), rb = rank(b);
-      if (ra !== rb) return ra - rb;
-      const ta = railRecentTs[`app:${a.id}`] || 0;
-      const tb = railRecentTs[`app:${b.id}`] || 0;
-      return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
-    });
-  // NOTHING is hand-injected here. The rail renders the SAME set the echo
-  // wall does; a fixed tile prepended in this one place is how Design
-  // outlived its own panel (his report, 2026-09-11 — wb-design.ts and
-  // openDesignPanel were deleted in the retrenchment, so the tile opened
-  // nothing). New surfaces join by becoming an app row, not by being
-  // special-cased into one of the two lists.
-  const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
-  host.page = ap.page;
-  for (const a of ap.items) {
-    const tile = document.createElement("button");
-    tile.className = "app-rail-tile";
-    tile.type = "button";
-    tile.title = a.name;
-    const icon = document.createElement("div");
-    icon.className = "tile-icon";
-    icon.innerHTML = appIconInner(a, a.name, "tile-initial");
-    const nm = document.createElement("span");
-    nm.className = "tile-name";
-    nm.textContent = a.name;
-    tile.append(icon, nm);
-    tile.addEventListener("click", () => {
-      ensureWorkbench();   // rail clicks land on the layout surface
-      // The GLYPHH tile opens the glyphh AGENT (the dock mark's exact open),
-      // never the app-launch path (his order, 2026-09-10).
-      if (a.appArchetype === "glyphh-self" || (a.slug || a.id) === "glyphh") {
-        (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent?.();
-        return;
-      }
-      // An installed Glyphh app is a tab beside the agent, the same door the Apps page's Open uses.
-      if (a.appArchetype === "glyphh-app") {
-        const tool = (a.launchConfig as { tool?: unknown } | null | undefined)?.tool;
-        // Cold-safe like every other door: boot the workbench and wait for the
-        // bridge instead of calling one that may not exist yet.
-        if (typeof tool === "string" && tool) { openWorkPanelInWorkbench("__wbOpenTool", tool); return; }
-        openAppInWorkbench({ slug: (a.slug || a.id).toLowerCase(), name: a.name, url: "", glyphh: true });
-        return;
-      }
-      // Same open the Apps page's "Open app" uses (per-config launch).
-      void window.glyphh.appLaunch?.({
-        slug: a.slug || a.id, name: a.name, url: a.url,
-        isBrowser: a.isBrowser, execPath: a.execPath,
-        appArchetype: a.appArchetype, launchConfig: a.launchConfig,
-      });
-    });
-    list.appendChild(tile);
-  }
-  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { host.page = pg; paintAppsGrid(host); }));
-  if (!apps.length) railEmpty(list, q, "Tab", "apps");
 }
 
 function renderRailLayouts(): void {
@@ -7114,10 +7038,6 @@ function paintAgentsGrid(host: RailGridHost): void {
 function initRailApps(): void {
   // The left rail's two grids are the FIRST hosts — registered once here,
   // before the initial load, so behavior is exactly as before the registry.
-  const leftApps: RailGridHost | null = el<HTMLDivElement>("recent-apps-list")
-    ? { list: el<HTMLDivElement>("recent-apps-list")!, search: el<HTMLInputElement>("recent-apps-search"), page: 0 }
-    : null;
-  if (leftApps) registerRailGridHost("apps", leftApps);
   const leftLayouts: RailGridHost | null = el<HTMLDivElement>("recent-layouts-list")
     ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
     : null;
@@ -7128,7 +7048,21 @@ function initRailApps(): void {
   el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
-  initRecentsVsplit();
+  initWorkspacesVsplit();
+  // ONE CREATE DOOR (his order, 2026-10-08): the rail's +, the agent menu's
+  // "Create workspace…". A panel is its own document — it asks the shell,
+  // which owns the arrangement; the shell opens the modal.
+  {
+    const solo = (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
+    const g = window.glyphh as unknown as { agentPanelCreateWorkspace?: () => Promise<boolean>; onAgentPanelCreateWorkspace?: (cb: () => void) => void };
+    (window as unknown as { __glyphhCreateWorkspace?: () => void }).__glyphhCreateWorkspace = () => {
+      if (solo && g.agentPanelCreateWorkspace) { void g.agentPanelCreateWorkspace(); return; }
+      void openCreateWorkspaceModal();
+    };
+    if (!solo) g.onAgentPanelCreateWorkspace?.(() => { void openCreateWorkspaceModal(); });
+  }
+  // The + beside Workspaces: save what is on screen as a workspace.
+  el("rail-layouts-add")?.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
   syncRailLayout();
   void loadRecentApps();
   // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
@@ -7146,13 +7080,6 @@ function initRailApps(): void {
   void loadOutputApps();
   document.addEventListener("glyphh:apps-changed", () => { void loadOutputApps(); });
 
-  // Apps search — its own page; Enter runs the text as a command (palette parity).
-  if (leftApps) wireRailSearch(leftApps.search, () => { leftApps.page = 0; paintAppsGrid(leftApps); });
-  el<HTMLInputElement>("recent-apps-search")?.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    const text = (e.target as HTMLInputElement).value.trim();
-    if (text) void window.glyphh.execCommand(text.replace(/^\./, ""));
-  });
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
 
@@ -7896,9 +7823,6 @@ export function initCode(): void {
     const n = Number(v);
     document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
   });
-  // Tabs per rail row (his ask, 2026-09-25): a CSS var Settings drags live
-  // through the SAME applier; this seeds it at boot.
-  void window.glyphh.getPreference?.("railTabsPerRow", 0).then(applyRailTabsPerRow);
   // Echo Agent panel transparency (Appearance slider) — the CSS var the
   // caret panel reads. Settings applies it live; this seeds it at boot.
   void window.glyphh.getPreference?.("echoAgentOpacity", 0.92).then((v) => {

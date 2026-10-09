@@ -447,37 +447,19 @@
                   </button>
                 </div>
 
-                <!-- THE SIDEBAR TRAYS (his order, 2026-10-08; on Appearance, his word): Tabs and Workspaces
-                     under Recents, each an option — prefs railShowApps /
-                     railShowLayouts (help/wall-prefs.ts), on by default. The
-                     rail re-reads on glyphh:rail-sections-changed. -->
+                <!-- THE SIDEBAR (his order, 2026-10-08): the Tabs option is gone;
+                     Workspaces is ON by default — pref railShowLayouts
+                     (help/wall-prefs.ts). The rail re-reads on
+                     glyphh:rail-sections-changed. -->
                 <h3 class="settings-subheading">Sidebar</h3>
-                <label class="settings-toggle set-pref-row" id="rail-apps-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Show Tabs in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Tabs tray under Recents — search and click to open a tab, without the command center.</div>
-                  </div>
-                  <input type="checkbox" id="settings-rail-apps" />
-                  <span class="toggle-switch"></span>
-                </label>
                 <label class="settings-toggle set-pref-row" id="rail-layouts-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Show Workspaces in the sidebar</div>
-                    <div class="set-pref-desc">A collapsible Workspaces tray under Recents — click a workspace to open it.</div>
+                    <div class="set-pref-desc">The Workspaces tray at the foot of the sidebar — click a workspace to open it, + to save what is on screen as one.</div>
                   </div>
                   <input type="checkbox" id="settings-rail-layouts" />
                   <span class="toggle-switch"></span>
                 </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Tabs per row</div>
-                    <div class="set-pref-desc">How many tabs each row of the sidebar's Tabs tray holds. Auto fits as many as the rail's width allows.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <input type="range" id="settings-rail-tabs-cols" min="0" max="6" step="1" />
-                    <span id="settings-rail-tabs-cols-val" class="settings-hint"></span>
-                  </div>
-                </div>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Icon zoom</div>

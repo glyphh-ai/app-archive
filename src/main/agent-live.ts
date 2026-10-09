@@ -106,6 +106,13 @@ export function registerAgentLiveIpc(): void {
     sendToHomeShell("agent-panel:open-layout", { name });
     return true;
   });
+  // CREATE WORKSPACE from a panel's menu (his order, 2026-10-08): the modal
+  // and the arrangement it saves are the SHELL's.
+  ipcMain.handle("agent-panel-create-workspace", (e) => {
+    activateAgentPanel(e.sender.id);
+    sendToHomeShell("agent-panel:create-workspace", {});
+    return true;
+  });
   // A SETTINGS PAGE a panel asks for (the "Choose a plan" door under a no-plan
   // refusal) opens in the shell's Settings, the one the dock opens.
   ipcMain.handle("agent-panel-open-settings", (_e, p: { sub?: string } | undefined) => {

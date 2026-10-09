@@ -161,29 +161,18 @@
           </div>
           <div id="recent-sessions-list" class="code-history"></div>
         </div>
-        <!-- Restored (his report, 2026-09-14: "the drag area between the
-             recents and the Apps/Workspaces got dropped") — drag to resize
-             Recents; the height persists as codeRecentsH. -->
-        <div id="recents-vsplit" class="recents-vsplit hidden" title="Drag to resize"></div>
-        <!-- Tabs and Workspaces trays — BACK as Appearance options (his order,
-             2026-10-08): `railShowApps` / `railShowLayouts` show a tray; its
-             disclosure remembers open/closed on its own (code.ts RAIL_SECTIONS). -->
-        <div id="rail-apps-head" class="hidden code-rail-label app-rail-section-head" data-rail-section="apps">
-          <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
-            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <span>Tabs</span>
-          </button>
-        </div>
-        <div id="rail-apps-body" class="hidden app-rail-section-body" data-rail-section="apps">
-          <div class="app-rail-search">
-            <input id="recent-apps-search" class="rail-recents-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
-          </div>
-          <div id="recent-apps-list" class="app-rail-grid"></div>
-        </div>
+        <!-- THE WORKSPACES TRAY at the rail's foot (his orders, 2026-10-08):
+             on by default (`railShowLayouts`), a drag line above it sizes it
+             (railLayoutsH), collapsed it rests at the bottom; the + saves what
+             is on screen as a workspace (help/workspace-create.ts). -->
+        <div id="rail-layouts-vsplit" class="rail-layouts-vsplit hidden" title="Drag to resize"></div>
         <div id="rail-layouts-head" class="hidden code-rail-label app-rail-section-head" data-rail-section="layouts">
           <button id="rail-layouts-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             <span>Workspaces</span>
+          </button>
+          <button id="rail-layouts-add" class="rail-label-btn" type="button" title="Create workspace — save what is on screen" aria-label="Create workspace">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
         <div id="rail-layouts-body" class="hidden app-rail-section-body" data-rail-section="layouts">

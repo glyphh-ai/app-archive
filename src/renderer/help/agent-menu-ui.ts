@@ -235,6 +235,14 @@ function paint(menu: HTMLElement, m: AgentMenu, doors: AgentMenuDoors, sessions:
       // a click closes the menu and opens it through the workbench's door
       // (surface.ts surfaceLayoutCells filters what this surface cannot host).
       const open = fold(s.kind, s.label, s.count);
+      // CREATE WORKSPACE (his order, 2026-10-08) — always visible under the
+      // head, folded or not: saves what is on screen (the shell's modal).
+      const create = row(IC.layout, "Create workspace…", "wam-workspace-create wam-sub");
+      create.addEventListener("click", () => {
+        close();
+        (window as unknown as { __glyphhCreateWorkspace?: () => void }).__glyphhCreateWorkspace?.();
+      });
+      menu.appendChild(create);
       for (const ws of s.rows) {
         const b = under(row(IC.layout, ws.name, "wam-workspace wam-sub"), open);
         b.dataset.workspace = ws.name;
