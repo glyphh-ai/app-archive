@@ -96,6 +96,16 @@ export function registerAgentLiveIpc(): void {
     sendToHomeShell("agent-panel:open-file", { path: file, mode });
     return true;
   });
+  // A WORKSPACE a panel opens (".dip <workspace>", the Workspace menu) lands
+  // in the SHELL's grid — never inside the panel (his report, 2026-10-08:
+  // "glyphh inside of glyphh"). Same rule, same door as the tools and files.
+  ipcMain.handle("agent-panel-open-layout", (e, p: { name?: string } | undefined) => {
+    const name = String(p?.name ?? "").trim();
+    if (!name) return false;
+    activateAgentPanel(e.sender.id);
+    sendToHomeShell("agent-panel:open-layout", { name });
+    return true;
+  });
   // A SETTINGS PAGE a panel asks for (the "Choose a plan" door under a no-plan
   // refusal) opens in the shell's Settings, the one the dock opens.
   ipcMain.handle("agent-panel-open-settings", (_e, p: { sub?: string } | undefined) => {

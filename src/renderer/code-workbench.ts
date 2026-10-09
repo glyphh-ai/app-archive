@@ -2806,6 +2806,11 @@ async function init(): Promise<void> {
       // panel opened before the session restores fills once it does
       // (wb.onCwdChanged → refreshForCwd, webFsReady's retry).
       if (IS_WEB_TARGET) activateGlyphh();
+      // THE LAYOUT CAN NEVER NOT HAVE THE AGENT (his order, 2026-10-08): whatever
+      // the replay below seats — a workspace, loose cards, nothing — the boot
+      // ends with the Glyphh agent on screen. Checked once the async opens
+      // (a workspace's folder switch) have had their moment.
+      ensureAgentSeated(1500);
       // BOOT RELOADS THE DB STATE (his rule, 2026-08-19, reversing 08-18's
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
@@ -4031,6 +4036,7 @@ async function init(): Promise<void> {
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       scheduleWallSave();   // the open set changed — persist it
+      scheduleAgentSeat();  // the last card gone → a fresh Glyphh agent (his order, 2026-10-08)
       if (echoGrid && !opts?.keepSeat) {
         // The freed space COLLAPSES: column-mates re-inflate over it, and an
         // emptied column is removed — the layout adjusts to fill, never
@@ -5231,6 +5237,7 @@ async function init(): Promise<void> {
       const wire = (tries = 0): void => {
         const entry = openList.find((x) => x.tile.slug === tile.slug && x.card);
         if (!entry) { if (tries < 60) requestAnimationFrame(() => wire(tries + 1)); return; }
+        entry.card!.classList.add("echo-agent-instance");   // the boot veil (home.ts) keys on it
         entry.card!.addEventListener("focusin", () => { lastAgentInstance = entry; activatePanelOf(entry); });
         entry.card!.addEventListener("mousedown", () => { lastAgentInstance = entry; activatePanelOf(entry); }, true);
         if (!cmd) return;
@@ -5323,6 +5330,11 @@ async function init(): Promise<void> {
         if (!p?.view) return;
         (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(p.view);
       });
+      // A workspace a panel opens (".dip <workspace>", the Workspace menu) lands in THIS grid.
+      (g as { onAgentPanelOpenLayout?: (cb: (p: { name: string }) => void) => void } | undefined)?.onAgentPanelOpenLayout?.((p) => {
+        if (!p?.name) return;
+        void (window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> }).__wbOpenLayoutByName?.(p.name);
+      });
       (g as { onAgentPanelOpenFile?: (cb: (p: { path: string; mode?: string }) => void) => void } | undefined)?.onAgentPanelOpenFile?.((p) => {
         if (!p?.path) return;
         const door = p.mode === "browse" ? "__wbBrowseFile" : p.mode === "edit" ? "__wbEditFile" : "__wbOpenFile";
@@ -5372,6 +5384,23 @@ async function init(): Promise<void> {
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
     (window as unknown as { __wbOpenGlyphhAgent?: () => void; __wbHasAgentPanel?: () => boolean }).__wbOpenGlyphhAgent = () => activateGlyphh();
+    /** THE SURFACE IS NEVER WITHOUT THE AGENT (his order, 2026-10-08: "remove
+     *  all tabs should always leave the glyphh agent up", "close all should
+     *  open a new glyphh agent clean"). Checked after a delay so a bulk close
+     *  (Close all, a workspace swap) settles first; when nothing on screen is
+     *  an agent — an instance here, the in-document seat on the web — a fresh
+     *  one opens through the one door. */
+    const agentOnScreen = (): boolean => openList.some((x) => !!x.card?.isConnected && (isAgentEntry(x) || isAgentInstance(x)));
+    let agentSeatTimer = 0;
+    const ensureAgentSeated = (delayMs = 250): void => {
+      if (agentSeatTimer) window.clearTimeout(agentSeatTimer);
+      agentSeatTimer = window.setTimeout(() => {
+        agentSeatTimer = 0;
+        if (!body.isConnected || agentOnScreen()) return;
+        activateGlyphh();
+      }, delayMs);
+    };
+    const scheduleAgentSeat = (): void => ensureAgentSeated(250);
     // The rail's New button needs to distinguish "open the first agent" from
     // "start another chat in the agent already showing". Keep that state in
     // the workbench, where layout/adopted seats are visible.
@@ -9216,7 +9245,7 @@ async function init(): Promise<void> {
   };
   wbApp.__wbOpenLayoutByName = async (name: string): Promise<boolean> => {
     await loadUiState();   // its remembered geometry is server-side
-    const yo = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).glyphh;
+    const yo = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]>; agentPanelOpenLayout?: (p: { name: string }) => Promise<boolean> } }).glyphh;
     const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).catch(() => [[], []] as [PanelAppRow[], LayoutRow[]]);
     const key = name.trim().toLowerCase();
     // Match like the switcher's search does — exact, then prefix, then
@@ -9225,6 +9254,11 @@ async function init(): Promise<void> {
       ?? layouts.find((l) => l.name.toLowerCase().startsWith(key))
       ?? layouts.find((l) => l.name.toLowerCase().includes(key));
     if (!layout) return false;
+    // INSIDE AN AGENT PANEL a workspace belongs to the SHELL's grid (his
+    // report, 2026-10-08: ".dip" typed in the agent opened the workspace
+    // inside the agent's own document — "glyphh inside of glyphh"). The
+    // request goes up through main, like a tool or a file does.
+    if (IS_SOLO_WINDOW && yo?.agentPanelOpenLayout) { void yo.agentPanelOpenLayout({ name: layout.name }); return true; }
     openLayoutRow(layout, rows);
     return true;
   };

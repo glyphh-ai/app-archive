@@ -420,7 +420,11 @@ void (async () => {
     // The agent is UP when its card is placed and its composer is visible
     // (the agent rides in the body-level holder over the card, so both are
     // checked). Wait until that holds for ~10 frames, then lift.
-    const wall = document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null;
+    // On the DESKTOP the agent is an INSTANCE (a webview card, its composer in
+    // its own document): the placed card is the tell. The web's in-document
+    // agent is up when its card is placed and its composer is visible.
+    const wall = document.querySelector(".echo-card.placed.echo-agent-instance")
+      ?? (document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null);
     const up = !!wall && wall.getClientRects().length > 0;
     settled = up ? settled + 1 : 0;
     if (settled >= 10 || veilTries++ > 360) {

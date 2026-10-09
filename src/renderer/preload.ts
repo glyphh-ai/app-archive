@@ -1181,6 +1181,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentPanelActivate: (p?: { wcId?: number }) => ipcRenderer.invoke("agent-panel-activate", p ?? {}) as Promise<boolean>,
   /** A solo panel asks the shell to open a workbench tool beside it. */
   agentPanelOpenTool: (p: { view: string; cwd?: string }) => ipcRenderer.invoke("agent-panel-open-tool", p) as Promise<boolean>,
+  /** A workspace a panel opens lands in the shell's grid, never inside the panel. */
+  agentPanelOpenLayout: (p: { name: string }) => ipcRenderer.invoke("agent-panel-open-layout", p) as Promise<boolean>,
+  onAgentPanelOpenLayout: (callback: (p: { name: string }) => void) => {
+    ipcRenderer.on("agent-panel:open-layout", (_event, p) => callback(p ?? { name: "" }));
+  },
   /** A file a panel opens goes to the shell's workbench, never inside the panel. */
   agentPanelOpenFile: (p: { path: string; mode?: "open" | "browse" | "edit" }) => ipcRenderer.invoke("agent-panel-open-file", p) as Promise<boolean>,
   agentPanelOpenSettings: (sub: string) => ipcRenderer.invoke("agent-panel-open-settings", { sub }) as Promise<boolean>,
