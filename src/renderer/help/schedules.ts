@@ -205,14 +205,13 @@ function targetName(row: ScheduleRow): string {
 }
 
 function paintOverview(): void {
-  const list = el("schedules-list"); const count = el("schedules-count");
+  const list = el("schedules-list");
   if (!list) return;
   const now = Date.now();
   const shown = rows
     .filter((r) => !query || `${r.name} ${targetName(r)} ${r.agentName || ""}`.toLowerCase().includes(query))
     .map((r) => ({ r, next: r.enabled ? cronNext(r.cron, new Date(), zone) : null }))
     .sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
-  if (count) count.textContent = rows.length ? String(rows.length) : "";
   list.textContent = "";
   if (!shown.length) {
     list.innerHTML = `<div class="crud-empty">${query ? "No schedules match." : "Nothing on the clock yet. Add one here, or give a task a schedule and it shows up on this page."}</div>`;
