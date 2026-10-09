@@ -114,11 +114,11 @@ export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { 
   const fill = AVATAR_INK;   // black for now; avatar.color is kept, not drawn
   const white = "#fff";
   const ears: Record<Ear, { right: string; left: string }> = {
-    classic: { right: "L131 20 L123 57", left: "M33 22 L62 42 L39 54 Z" },
-    tall: { right: "L133 12 L123 57", left: "M28 10 L62 42 L39 54 Z" },
-    folded: { right: "L112 30 L134 30 L123 57", left: "M33 22 L62 42 L39 54 Z" },
-    round: { right: "C108 22 136 14 123 57", left: "M38 26 C30 36 34 50 39 54 L62 42 C56 32 48 24 38 26 Z" },
-    spiky: { right: "L101 18 L110 38 L131 20 L123 57", left: "M33 22 L62 42 L39 54 Z" },
+    classic: { right: "L135 13 L123 57", left: "M28 15 L62 42 L39 54 Z" },
+    tall: { right: "L138 9 L123 57", left: "M22 9 L62 42 L39 54 Z" },
+    folded: { right: "L110 26 L138 26 L123 57", left: "M28 15 L62 42 L39 54 Z" },
+    round: { right: "C106 14 142 6 123 57", left: "M36 20 C26 32 32 50 39 54 L62 42 C56 30 48 18 36 20 Z" },
+    spiky: { right: "L99 10 L111 34 L135 13 L123 57", left: "M28 15 L62 42 L39 54 Z" },
   };
   const tails: Record<Tail, string> = {
     classic: "L112 150 C126 152 136 151 145 149 C137 158 130 164 124 169",
@@ -129,15 +129,19 @@ export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { 
   const e = ears[v.ear];
   const body = `M40 62 ${e.right} C140 70 144 104 128 121 L112 133 ${tails[v.tail]} L128 179 L35 180 L44 131 C18 118 20 80 40 62 Z`;
   const ring = "M45 104 C43 89 70 66 96 64 C116 62 124 80 121 97 C118 116 100 126 86 122 C70 118 47 112 45 104 Z";
-  const ringEl = `<path d="${ring}" fill="none" stroke="${white}" stroke-width="6"/>`;
+  // THE EYES MAKE THE CHARACTER (his note, 2026-10-09: "some of the eyes need
+  // to be more accentuated"): a thicker ring, a bigger pupil with a dark glint.
+  const ringEl = `<path d="${ring}" fill="none" stroke="${white}" stroke-width="8"/>`;
+  const pupil = (cx: number, cy: number, r = 12): string =>
+    `<circle class="eye" cx="${cx}" cy="${cy}" r="${r}" fill="${white}"/><circle cx="${cx + r * 0.35}" cy="${cy - r * 0.35}" r="${Math.max(3, r * 0.3)}" fill="${fill}"/>`;
   const eyes: Record<Eye, string> = {
-    classic: `${ringEl}<circle class="eye" cx="94" cy="94" r="9" fill="${white}"/>`,
-    look: `${ringEl}<circle class="eye" cx="72" cy="96" r="9" fill="${white}"/>`,
-    up: `${ringEl}<circle class="eye" cx="96" cy="80" r="9" fill="${white}"/>`,
-    big: `${ringEl}<circle class="eye" cx="90" cy="94" r="15" fill="${white}"/><circle cx="95" cy="89" r="5" fill="${fill}"/>`,
-    sleepy: `<path d="M45 104 C60 96 100 90 121 97 C118 116 100 126 86 122 C70 118 47 112 45 104 Z" fill="none" stroke="${white}" stroke-width="6"/><circle class="eye" cx="94" cy="106" r="7" fill="${white}"/>`,
-    wink: `<path d="M50 102 C70 84 100 82 118 96" fill="none" stroke="${white}" stroke-width="7" stroke-linecap="round"/>`,
-    star: `${ringEl}<path class="eye" d="M94 82 L97.5 90 L106 90.5 L99.5 96 L101.5 104.5 L94 100 L86.5 104.5 L88.5 96 L82 90.5 L90.5 90 Z" fill="${white}"/>`,
+    classic: `${ringEl}${pupil(92, 94)}`,
+    look: `${ringEl}${pupil(68, 97)}`,
+    up: `${ringEl}${pupil(94, 80)}`,
+    big: `${ringEl}${pupil(88, 94, 19)}`,
+    sleepy: `<path d="M45 104 C60 96 100 90 121 97 C118 116 100 126 86 122 C70 118 47 112 45 104 Z" fill="none" stroke="${white}" stroke-width="8"/><circle class="eye" cx="92" cy="107" r="9" fill="${white}"/>`,
+    wink: `<path d="M50 102 C70 82 100 80 118 96" fill="none" stroke="${white}" stroke-width="10" stroke-linecap="round"/><path d="M58 112 C74 104 96 104 110 110" fill="none" stroke="${white}" stroke-width="5" stroke-linecap="round"/>`,
+    star: `${ringEl}<path class="eye" d="M93 77 L97.8 87.6 L109 88.3 L100.4 95.6 L103 106.8 L93 100.8 L83 106.8 L85.6 95.6 L77 88.3 L88.2 87.6 Z" fill="${white}"/>`,
   };
   const antenna = v.extra === "antenna";
   const sticker = `<g fill="${white}" stroke="${white}" stroke-width="16" stroke-linejoin="round"><path d="${body}"/><path d="${e.left}"/>`
