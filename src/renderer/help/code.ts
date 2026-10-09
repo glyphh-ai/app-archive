@@ -579,6 +579,37 @@ async function refreshModelList(force?: boolean): Promise<void> {
   paintModelChip();
 }
 
+/** Switch the session's model — the model chip's pick and the + box's Models
+ *  power share it (his order, 2026-10-09). Mid-chat, it asks first: the new
+ *  model has none of this conversation cached. */
+async function chooseSessionModel(id: string | null): Promise<void> {
+  const c = current();
+  // SWITCHING MID-CHAT COSTS (his order, 2026-09-20, as Claude's app warns):
+  // the new model has none of this conversation in its cache, so the whole
+  // context is sent again on the next turn. Ask before a live chat moves.
+  const before = effectiveModelId() || "";
+  const after = bareModelId(id || "") || "";
+  if (c && c.messages.length && before !== after) {
+    const ok = await yoConfirm({
+      title: "Switch models?",
+      message: "Switching models mid-conversation re-sends the whole conversation to the new model, which can increase token usage. New chats start fresh.",
+      confirmText: "Switch",
+      cancelText: "Keep current",
+    });
+    if (!ok) return;
+  }
+  if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
+  else pendingModels = id ? { default: id } : null;
+  paintModelChip();
+}
+/** A model's price as the + box shows it: dollars per million tokens, in and out. */
+function modelPriceLine(m: AvailModel): string {
+  const f = (n: number): string => (n >= 10 ? n.toFixed(0) : n >= 1 ? n.toFixed(2).replace(/0$/, "") : n.toFixed(2));
+  const i = m.inputUsdPerMTok, o = m.outputUsdPerMTok;
+  if (typeof i !== "number" || typeof o !== "number") return "";
+  return `$${f(i)} in · $${f(o)} out per 1M tokens`;
+}
+
 function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
@@ -598,25 +629,8 @@ function renderModelMenu(): void {
   menu.appendChild(pane);
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   const choose = async (id: string | null): Promise<void> => {
-    const c = current();
     menu.classList.add("hidden");
-    // SWITCHING MID-CHAT COSTS (his order, 2026-09-20, as Claude's app warns):
-    // the new model has none of this conversation in its cache, so the whole
-    // context is sent again on the next turn. Ask before a live chat moves.
-    const before = effectiveModelId() || "";
-    const after = bareModelId(id || "") || "";
-    if (c && c.messages.length && before !== after) {
-      const ok = await yoConfirm({
-        title: "Switch models?",
-        message: "Switching models mid-conversation re-sends the whole conversation to the new model, which can increase token usage. New chats start fresh.",
-        confirmText: "Switch",
-        cancelText: "Keep current",
-      });
-      if (!ok) return;
-    }
-    if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
-    else pendingModels = id ? { default: id } : null;
-    paintModelChip();
+    await chooseSessionModel(id);
   };
   const paint = (): void => {
     list.textContent = "";
@@ -4235,6 +4249,24 @@ function wireComposerAttachments(): void {
       addConnector: () => { setGroupScope("discover"); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
+      // THE POWERS BOX (his order, 2026-10-09): the enabled models with their
+      // price, the session's own wearing the check; a pick switches it.
+      models: async () => {
+        await refreshModelList();
+        const sel = effectiveModelId() || "";
+        return modelsForLoop().map((m) => ({ id: m.id, name: m.name, price: modelPriceLine(m), selected: !!sel && bareModelId(m.id) === bareModelId(sel) }));
+      },
+      useModel: (id) => { void chooseSessionModel(id); },
+      // "Make a power": Glyphh builds it — the composer gets the start of the ask.
+      makePower: () => {
+        const ta = input();
+        if (!ta) return;
+        ta.value = "Make me a power that ";
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      },
+      browsePowers: () => toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "skills")),
       deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
       toggleDevice: (id, attached) => {
         const c = current();

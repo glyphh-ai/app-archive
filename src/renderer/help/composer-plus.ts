@@ -35,7 +35,7 @@ import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 export type PlusSurface = "desktop" | "web";
 export type PlusSpace = "code";
-export type PlusRowId = "attach" | "skills" | "connectors" | "devices" | "memory" | "add-folder" | "working-folder" | "choose-folder";
+export type PlusRowId = "attach" | "skills" | "connectors" | "models" | "browse" | "devices" | "memory" | "add-folder" | "working-folder" | "choose-folder";
 export type PlusRowKind = "action" | "submenu" | "check";
 
 export interface PlusRow {
@@ -61,6 +61,8 @@ export interface PlusCaps {
   folder: boolean;
   skills: boolean;
   connectors: boolean;
+  /** The member's enabled models (loopModels) — the Models section. */
+  models: boolean;
   devices: boolean;
   memory: boolean;
 }
@@ -73,6 +75,7 @@ export function plusCapsOf(has: (name: string) => boolean): PlusCaps {
     folder: has("pickWorkingDir"),
     skills: has("skillsList") && has("skillSetEnabled"),
     connectors: has("connectionsList") || has("mcpConnectionsList"),
+    models: has("loopModels"),
     devices: has("attachDevicesList"),
     memory: has("getPreference") && has("setPreference"),
   };
@@ -91,15 +94,24 @@ export const PLUS_ICONS = {
   plus: `<svg viewBox="0 0 24 24" ${S}><path d="M12 5v14M5 12h14"/></svg>`,
   gear: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
   back: `<svg viewBox="0 0 24 24" ${S}><polyline points="15 18 9 12 15 6"/></svg>`,
+  models: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>`,
+  powers: `<svg viewBox="0 0 24 24" ${S}><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`,
+  chest: `<svg viewBox="0 0 24 24" ${S}><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M3 9a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5"/><path d="M3 13h18M11 13v3h2v-3"/></svg>`,
 } as const;
 export const PLUS_CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 export const PLUS_CARET = `<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
 
 export const ATTACH_SHORTCUT = "⌘U";
 export const ATTACH_LABEL = "Add files or photos";
-export const MANAGE_SKILLS_LABEL = "Manage skills";
-export const ADD_CONNECTOR_LABEL = "Add connector";
-export const MANAGE_CONNECTORS_LABEL = "Manage connectors";
+// THE POWERS BOX (his order, 2026-10-09): the + is where a member sees and
+// controls Glyphh's powers — Connections, Models, Your powers — and opens the
+// whole catalog. Skills and tasks are just "powers you built".
+export const MANAGE_SKILLS_LABEL = "Manage your powers";
+export const MAKE_POWER_LABEL = "Make a power";
+export const ADD_CONNECTOR_LABEL = "Add connection";
+export const MANAGE_CONNECTORS_LABEL = "Manage connections";
+export const BROWSE_POWERS_LABEL = "Browse all powers…";
+export const POWERS_LABELS = { connectors: "Connections", models: "Models", skills: "Your powers" } as const;
 export const MANAGE_DEVICES_LABEL = "Manage devices";
 
 export interface PlusState {
@@ -116,9 +128,13 @@ export interface PlusState {
 export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   const rows: PlusRow[] = [];
   if (caps.attach) rows.push({ id: "attach", label: ATTACH_LABEL, icon: PLUS_ICONS.attach, kind: "action", shortcut: ATTACH_SHORTCUT, hint: "Images and documents ride the next message" });
-  if (caps.skills) rows.push({ id: "skills", label: "Skills", icon: PLUS_ICONS.skills, kind: "submenu", sepBefore: rows.length > 0 });
-  if (caps.connectors) rows.push({ id: "connectors", label: "Connectors", icon: PLUS_ICONS.connectors, kind: "submenu" });
-  if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu" });
+  // THE POWERS (his order, 2026-10-09): Connections, Models, Your powers, then the whole catalog.
+  const powersFrom = rows.length;
+  if (caps.connectors) rows.push({ id: "connectors", label: POWERS_LABELS.connectors, icon: PLUS_ICONS.connectors, kind: "submenu", sepBefore: rows.length > 0 });
+  if (caps.models) rows.push({ id: "models", label: POWERS_LABELS.models, icon: PLUS_ICONS.models, kind: "submenu", sepBefore: rows.length > 0 && rows.length === powersFrom });
+  if (caps.skills) rows.push({ id: "skills", label: POWERS_LABELS.skills, icon: PLUS_ICONS.powers, kind: "submenu", sepBefore: rows.length > 0 && rows.length === powersFrom });
+  if (caps.skills || caps.connectors) rows.push({ id: "browse", label: BROWSE_POWERS_LABEL, icon: PLUS_ICONS.chest, kind: "action", hint: "Every power: connections, models, the ones you and your team built" });
+  if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu", sepBefore: rows.length > 0 });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
   // The folder family is the DESKTOP's (the OS pickers), where a session has
   // a folder to walk.
@@ -149,11 +165,12 @@ export interface PlusApi {
   setPreference?: (key: string, value: unknown) => unknown;
 }
 
-/** THE SKILLS the submenu lists — the member's skills (the Skills page's
- *  kind), by name. A door that fails lists nothing. */
+/** YOUR POWERS — what the member built: their skills and tasks (his order,
+ *  2026-10-09: no separate word for them), by name. A door that fails lists nothing. */
+export const YOUR_POWER_KINDS: ReadonlyArray<string> = Object.freeze(["skill", "task"]);
 export async function readSkillRows(api: PlusApi): Promise<PlusSkill[]> {
   try {
-    const r = await api.skillsList?.(["skill"]);
+    const r = await api.skillsList?.([...YOUR_POWER_KINDS]);
     const rows = r?.ok ? r.data ?? [] : [];
     return rows.map((s) => ({ id: s.id, name: s.name, enabled: s.enabled !== false, type: s.type })).sort((a, b) => a.name.localeCompare(b.name));
   } catch { return []; }
@@ -289,6 +306,14 @@ export interface PlusDoors {
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
+  /** THE MODELS POWER (his order, 2026-10-09): the enabled models with their
+   *  price; the one this session runs on wears the check; a pick switches it. */
+  models?: () => Promise<Array<{ id: string; name: string; price: string; selected: boolean }>>;
+  useModel?: (id: string) => void;
+  /** "Make a power": hands the composer to Glyphh with the start of the ask. */
+  makePower?: () => void;
+  /** "Browse all powers…": the whole catalog. */
+  browsePowers?: () => void;
   /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): an attached
    *  desktop is on by default; a click flips it for this session. */
   deviceOn?: (machineId: string) => boolean;
@@ -403,6 +428,8 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
           case "working-folder": case "choose-folder": close(); doors.pickWorkingFolder(); break;
           case "skills": void openSkills(); break;
           case "connectors": void openConnectors(); break;
+          case "models": void openModels(); break;
+          case "browse": close(); doors.browsePowers?.(); break;
           case "devices": void openDevices(); break;
           case "memory": {
             const verdict = toggleMemory(doors.api, memory);
@@ -475,14 +502,14 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
   };
 
   const openSkills = async (): Promise<void> => {
-    const pane = subPane("Skills");
-    const loading = loadingRow(pane, "Loading your skills…");
+    const pane = subPane(POWERS_LABELS.skills);
+    const loading = loadingRow(pane, "Loading your powers…");
     const skills = await readSkillRows(doors.api);
     loading.remove();
     if (!pane.isConnected) return;
-    if (!skills.length) emptyRow(pane, "No skills yet.");
+    if (!skills.length) emptyRow(pane, "None yet — ask Glyphh to make one.");
     for (const s of skills) {
-      const b = rowEl({ label: s.name, icon: PLUS_ICONS.skills, kind: "check", checked: s.enabled, hint: s.enabled ? "On — click to turn off" : "Off — click to turn on" });
+      const b = rowEl({ label: s.name, icon: PLUS_ICONS.powers, kind: "check", checked: s.enabled, hint: s.enabled ? "On — click to turn off" : "Off — click to turn on" });
       b.dataset.skillId = s.id;
       b.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -498,6 +525,11 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
       pane.appendChild(b);
     }
     pane.appendChild(sepEl());
+    if (doors.makePower) {
+      const make = rowEl({ label: MAKE_POWER_LABEL, icon: PLUS_ICONS.plus, kind: "action", hint: "Tell Glyphh what it should be able to do" });
+      make.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.makePower!(); });
+      pane.appendChild(make);
+    }
     const manage = rowEl({ label: MANAGE_SKILLS_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
     manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "skills")); });
     pane.appendChild(manage);
@@ -506,7 +538,7 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
   };
 
   const openConnectors = async (): Promise<void> => {
-    const pane = subPane("Connectors");
+    const pane = subPane(POWERS_LABELS.connectors);
     const loading = loadingRow(pane, "Loading your connections…");
     const rows = await readConnectorRows(doors.api);
     loading.remove();
@@ -548,6 +580,23 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     const manage = rowEl({ label: MANAGE_CONNECTORS_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
     manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "connectors")); });
     pane.append(add, manage);
+    doors.place(menu);
+    focusFirst(pane);
+  };
+
+  const openModels = async (): Promise<void> => {
+    const pane = subPane(POWERS_LABELS.models);
+    const loading = loadingRow(pane, "Loading your models…");
+    const rows = (await doors.models?.().catch(() => [])) ?? [];
+    loading.remove();
+    if (!pane.isConnected) return;
+    if (!rows.length) emptyRow(pane, "No models on your plan yet.");
+    for (const m of rows) {
+      const b = rowEl({ label: m.name, icon: PLUS_ICONS.models, kind: "check", checked: m.selected, sub: m.price || undefined, hint: m.selected ? "This session runs on it" : "Use it for this session" });
+      b.dataset.modelId = m.id;
+      b.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.useModel?.(m.id); });
+      pane.appendChild(b);
+    }
     doors.place(menu);
     focusFirst(pane);
   };
