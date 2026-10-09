@@ -1070,6 +1070,42 @@ export function openGroupTab(group: GroupPage, sub: string): void {
   if (painted) showGroupTab(group, sub);
 }
 
+/** THE PAGE'S ONE TOOLBAR (his order, 2026-10-09: "make the header of the
+ *  customize tab look more like this", Claude's Customize: tabs, Yours |
+ *  Discover, then search / filter / sort / Add on one row right above the
+ *  list). The shown tab LENDS its own controls to the head's right end —
+ *  the same nodes, listeners and ids intact — and gets them back on the
+ *  next tab, or before its panel returns to the Settings modal. */
+let lentTools: Array<{ el: HTMLElement; parent: HTMLElement; next: Node | null }> = [];
+function returnGroupTools(): void {
+  for (const t of lentTools.reverse()) {
+    try { t.parent.insertBefore(t.el, t.next && t.next.parentNode === t.parent ? t.next : null); } catch { /* origin gone with its panel */ }
+  }
+  lentTools = [];
+}
+function adoptGroupTools(sec: HTMLElement, panel: HTMLElement | null): void {
+  returnGroupTools();
+  const slot = sec.querySelector<HTMLElement>(".settings-group-tools");
+  if (!slot || !panel) return;
+  const head = panel.querySelector<HTMLElement>(".skills-head");
+  const after = head?.nextElementSibling as HTMLElement | null;
+  const row = after?.classList.contains("skills-tabs") ? after : null;
+  const lend: HTMLElement[] = [];
+  const search = head?.querySelector<HTMLElement>(":scope > .skills-search");
+  if (search) lend.push(search);
+  row?.querySelectorAll<HTMLElement>(":scope > .skills-pill").forEach((p) => lend.push(p));
+  const actions = head?.querySelector<HTMLElement>(":scope > .skills-head-actions");
+  if (actions) lend.push(actions);
+  else head?.querySelectorAll<HTMLElement>(":scope > button").forEach((b) => lend.push(b));
+  for (const el of lend) {
+    if (!el.parentElement) continue;
+    lentTools.push({ el, parent: el.parentElement, next: el.nextSibling });
+    // An icon-only pill keeps its words as the tooltip.
+    if (el.classList.contains("skills-pill")) el.title = el.querySelector("span")?.textContent?.trim() || el.title;
+    slot.appendChild(el);
+  }
+}
+
 function showGroupTab(group: string, sub: string, forceScope = false): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   if (!sec) return;
@@ -1079,6 +1115,7 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
   const host = sec.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
   host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
   if (host) host.scrollTop = 0;
+  adoptGroupTools(sec, host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`) ?? null);
   // The page's one scope reaches the tab before it loads, so the tab paints
   // straight into Yours or Discover (his report, 2026-10-07).
   applyScopeTo(sub, groupScope, forceScope);
@@ -1106,6 +1143,7 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
  * again cost the user their settings.
  */
 function returnGroupPanels(): void {
+  returnGroupTools();   // a lent search / Add goes home with its panel
   // Park adopted sections BEFORE moving their hosts: a section mounted into a
   // group panel makes that panel an ancestor of the pen it must return to.
   for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);

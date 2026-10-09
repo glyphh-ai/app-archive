@@ -250,12 +250,18 @@
              exactly as they do in Settings. The panels are MOVED here from
              .settings-panels and moved back the moment the Settings modal opens. -->
         <section class="help-section settings-group" data-section="customize">
+          <!-- ONE HEADER (his order, 2026-10-09, Claude's Customize as the
+               reference): the title, then one row — the tabs, Yours | Discover,
+               and on the right the shown tab's own search / filter / sort / Add
+               (navigation.ts adoptGroupTools), right above the list. -->
+          <h1 class="settings-group-title">Customize</h1>
           <div class="settings-group-head">
             <div class="skills-tabs settings-group-tabs" role="tablist"></div>
             <div class="skills-tabs settings-group-scope" role="tablist">
               <button class="skills-tab active" data-scope="mine" type="button" role="tab">Yours</button>
               <button class="skills-tab" data-scope="discover" type="button" role="tab">Discover</button>
             </div>
+            <div class="settings-group-tools"></div>
           </div>
           <div class="settings-modal-body settings-group-host"><div class="settings-panels"></div></div>
         </section>
