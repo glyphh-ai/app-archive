@@ -313,6 +313,27 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     },
     async ({ agent, name, description, brief, model, role }) => via("agents.save", { agent, name, description, brief, model, role }),
   );
+  // A SUPER POWER'S AVATAR (his order, 2026-10-09): the Images power draws it
+  // in the Glyphh mascot's style (shared/avatar-style.ts); it lands on the agent.
+  mcp.tool(
+    "super_power_avatar",
+    "Make a new AVATAR for one of the user's super powers (agents) with the Images power, in the Glyphh mascot's style (a black alien-cat sticker), and set it as that super power's icon. `prompt` says what makes this one its own (a prop, a pose, a feature); omit it to draw from the name and description. Returns { agent, model, usd }.",
+    {
+      agent: z.string().describe("The super power's id, from agents_list"),
+      prompt: z.string().optional().describe("What makes this avatar its own, e.g. \"holding a tiny wrench, goggles up\""),
+      model: z.string().optional().describe("An image model from powers_list; omit for the default"),
+    },
+    async ({ agent, prompt, model }) => {
+      try {
+        const [{ getAgent, saveAgent }, { generateAvatar }] = await Promise.all([import("./local-agents.js"), import("./powers.js")]);
+        const row = getAgent(agent);
+        const made = await generateAvatar({ name: row.name, description: row.description, ...(prompt ? { prompt } : {}), ...(model ? { model } : {}) });
+        const face = row.avatar ?? { variant: 2, color: "#0b0a0f" };
+        saveAgent({ slug: row.slug, avatar: { variant: face.variant, color: face.color, image: made.image } });
+        return text({ agent: row.slug, model: made.model, usd: made.usd });
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
   mcp.tool(
     "agent_delete",
     "DELETE one of the user's agents (and its scheduled tasks). Only when the user asked for it.",

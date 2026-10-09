@@ -397,7 +397,16 @@ export interface AgentRowLike {
 }
 
 export type AgentRole = "orchestrator" | "worker";
-export interface BotAvatarLike { variant: number; color: string }
+/** `image` is a generated picture (his order, 2026-10-09: "+ add new… generate
+ *  an avatar"), a small PNG/JPEG/WebP data URL; drawn in place of the face. */
+export interface BotAvatarLike { variant: number; color: string; image?: string }
+
+/** The largest avatar picture a row carries (a 256px PNG is well under this). */
+export const AVATAR_IMAGE_MAX = 400_000;
+export function cleanAvatarImage(v: unknown): string | null {
+  const s = String(v ?? "");
+  return s.length <= AVATAR_IMAGE_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(s) ? s : null;
+}
 
 export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
@@ -429,7 +438,8 @@ export function cleanAvatar(v: unknown): BotAvatarLike | null {
   const color = String(a.color ?? "").trim();
   // Sixteen faces since 2026-10-09 (help/bot-avatar.ts AVATAR_VARIANTS).
   if (!Number.isFinite(variant) || variant < 1 || variant > 16 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
-  return { variant, color };
+  const image = cleanAvatarImage(a.image);
+  return image ? { variant, color, image } : { variant, color };
 }
 
 export const agentSlug = (name: string): string =>

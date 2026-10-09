@@ -1048,6 +1048,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean; modality?: string; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number }>; error?: string }>,
   planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; defaultModel?: string }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
+  /** A super power's avatar from the Images power (main/powers.ts generateAvatar). */
+  avatarGenerate: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
+    ipcRenderer.invoke("avatar-generate", input) as Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>,
   /** The agent roster moved (saved, deleted, pulled from the server). */
   onAgentsChanged: (cb: () => void) => {
     const l = () => cb();

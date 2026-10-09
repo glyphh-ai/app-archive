@@ -36,6 +36,8 @@ interface Api extends PlusApi {
   agentBriefGenerate?: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
     Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>;
   pickDirectory?: () => Promise<string | null>;
+  avatarGenerate?: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
+    Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>;
   getWorkingDirRecents?: () => Promise<string[]>;
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
@@ -44,7 +46,7 @@ export type PowerKind = "folders" | "connections" | "models" | "skills";
 export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["connections", "models", "skills"]);
 
 const api = (): Api => ((window as unknown as { glyphh?: Api }).glyphh ?? {});
-const SAME_AS_MAIN = "";
+const PLUS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
 const WAND_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M12.2 6.2 11 5"/><path d="m15 9-12 12"/></svg>`;
 const MODEL_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>`;
@@ -66,12 +68,36 @@ export function powersOf(bot: Pick<BotRow, PowerKind>, kind: PowerKind): string[
   return out;
 }
 
-/** The patch that adds (on) or removes (off) one power. A model added to a bot
- *  with no model of its own becomes the one it runs on. */
+/** A super power's models as ONE list (his order, 2026-10-09: the model "gets
+ *  that information from the powers"): the first is the one it runs on
+ *  (`model`), the rest are `models`. */
+export function modelList(bot: Pick<BotRow, "model" | "models">): string[] {
+  const main = String(bot.model ?? "").trim();
+  return [...(main ? [main] : []), ...powersOf({ models: bot.models } as Pick<BotRow, PowerKind>, "models").filter((m) => m !== main)];
+}
+/** The fields a model list is saved as. */
+export function modelFields(list: string[]): { model: string; models: string[] } {
+  return { model: list[0] ?? "", models: list.slice(1) };
+}
+
+/** The patch that adds (on) or removes (off) one power. Models move as one
+ *  list: the first added runs it, and removing that one hands it to the next. */
 export function powerPatch(bot: Pick<BotRow, PowerKind | "model">, kind: PowerKind, name: string, on: boolean): Record<string, unknown> {
-  if (kind === "models" && on && !String(bot.model ?? "").trim()) return { model: name };
+  if (kind === "models") {
+    const cur = modelList(bot).filter((m) => m !== name);
+    return modelFields(on ? [...cur, name] : cur);
+  }
   const cur = powersOf(bot, kind).filter((x) => x !== name);
   return { [kind]: on ? [...cur, name] : cur };
+}
+
+/** What the avatar modal's box starts with (shared/avatar-style.ts avatarStarterAsk, kept in step). */
+export function avatarStarter(name: string, description: string): string {
+  const n = String(name ?? "").trim();
+  const d = String(description ?? "").trim();
+  if (!n && !d) return "";
+  return [n && `${n}.`, d && `It ${d.charAt(0).toLowerCase()}${d.slice(1).replace(/\.?$/, ".")}`].filter(Boolean).join(" ")
+    + " Give it one prop or feature that shows what it does.";
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] => {
@@ -116,13 +142,12 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     <div class="crud-form-error botp-error hidden"></div>
     <div class="edit-head botp-head"></div>
     <label class="settings-label">Name</label>
-    <input type="text" class="settings-input botp-name" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
-    <label class="settings-label">Icon</label>
-    <div class="agents2-faces botp-faces" role="group" aria-label="Face"></div>
+    <div class="botp-name-row">
+      <button type="button" class="botp-face-btn" aria-haspopup="menu" aria-expanded="false" title="Change the avatar"></button>
+      <input type="text" class="settings-input botp-name" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
+    </div>
     <label class="settings-label">When to use it</label>
     <input type="text" class="settings-input botp-desc" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
-    <label class="settings-label">Model</label>
-    <div class="settings-inline"><select class="settings-input botp-model" style="width:auto;"></select></div>
     <div class="agents2-brief-head">
       <label class="settings-label">Brief</label>
       <button class="agents2-wand botp-wand" type="button" title="Write the brief with AI" aria-label="Write the brief with AI">${WAND_SVG}</button>
@@ -138,7 +163,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const q = <T extends HTMLElement>(sel: string): T => form.querySelector<T>(sel)!;
   const nameIn = q<HTMLInputElement>(".botp-name");
   const descIn = q<HTMLInputElement>(".botp-desc");
-  const modelSel = q<HTMLSelectElement>(".botp-model");
+  const faceBtn = q<HTMLButtonElement>(".botp-face-btn");
   const briefIn = q<HTMLTextAreaElement>(".botp-brief");
   const wand = q<HTMLButtonElement>(".botp-wand");
   const saveBtn = q<HTMLButtonElement>(".botp-save");
@@ -154,40 +179,156 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     icons.innerHTML = botAvatarSvg(picked, "idle", { size: 44 });
     head.append(icons, el("div", "edit-head-name", nameIn.value.trim() || bot?.name || "Super power"));
   }
-  function paintFaces(): void {
-    const faces = q<HTMLElement>(".botp-faces");
-    faces.textContent = "";
+  const CARET_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+  /** THE AVATAR, LEFT OF THE NAME, AS A DROPDOWN (his order, 2026-10-09):
+   *  the sixteen faces, the picture it wears if one was made, + Add new. */
+  function paintFaceBtn(): void {
+    faceBtn.innerHTML = `<span class="botp-face-mark">${botAvatarSvg(picked, "idle", { size: 40 })}</span><span class="botp-face-caret">${CARET_SVG}</span>`;
+  }
+  let faceMenu: HTMLElement | null = null;
+  function closeFaceMenu(): void {
+    faceMenu?.remove();
+    faceMenu = null;
+    faceBtn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", onFaceAway, true);
+    document.removeEventListener("keydown", onFaceKey, true);
+  }
+  function onFaceAway(e: MouseEvent): void {
+    if (faceMenu && !faceMenu.contains(e.target as Node) && !faceBtn.contains(e.target as Node)) closeFaceMenu();
+  }
+  function onFaceKey(e: KeyboardEvent): void { if (e.key === "Escape") { e.stopPropagation(); closeFaceMenu(); } }
+  function openFaceMenu(): void {
+    if (faceMenu) { closeFaceMenu(); return; }
+    const m = el("div", "botp-face-menu");
+    m.setAttribute("role", "menu");
+    const grid = el("div", "agents2-faces botp-face-grid");
+    const pick = (a: BotAvatar): void => { picked = a; paintFaceBtn(); paintHead(); closeFaceMenu(); };
+    // The picture it wears (made with + Add new), first.
+    const pictures = [picked.image, bot?.avatar?.image].filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
+    for (const image of pictures) {
+      const b = el("button", "agents2-face" + (picked.image === image ? " on" : ""));
+      b.type = "button"; b.title = "Its picture"; b.setAttribute("aria-label", "Its picture");
+      b.innerHTML = botAvatarSvg({ ...picked, image }, "idle", { size: 40 });
+      b.addEventListener("click", () => pick({ variant: picked.variant, color: picked.color, image }));
+      grid.appendChild(b);
+    }
     for (const v of AVATAR_VARIANTS) {
-      const b = el("button", "agents2-face" + (v.id === picked.variant ? " on" : ""));
+      const b = el("button", "agents2-face" + (!picked.image && v.id === picked.variant ? " on" : ""));
       b.type = "button"; b.title = v.name; b.setAttribute("aria-label", v.name);
       b.innerHTML = botAvatarSvg({ variant: v.id, color: picked.color }, "idle", { size: 40 });
-      b.addEventListener("click", () => { picked = { ...picked, variant: v.id }; paintFaces(); paintHead(); });
-      faces.appendChild(b);
+      b.addEventListener("click", () => pick({ variant: v.id, color: picked.color }));
+      grid.appendChild(b);
     }
+    const add = el("button", "botp-face-add");
+    add.type = "button";
+    add.innerHTML = `${PLUS_SVG}<span>Add new</span>`;
+    add.addEventListener("click", () => { closeFaceMenu(); openAvatarModal(); });
+    m.append(grid, add);
+    document.body.appendChild(m);
+    const r = faceBtn.getBoundingClientRect();
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
+    m.style.top = `${Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8)}px`;
+    faceMenu = m;
+    faceBtn.setAttribute("aria-expanded", "true");
+    setTimeout(() => { document.addEventListener("mousedown", onFaceAway, true); document.addEventListener("keydown", onFaceKey, true); }, 0);
   }
-  function fillModels(keep: string): void {
-    modelSel.textContent = "";
-    const opt = (value: string, label: string): void => { const o = el("option", "", label); o.value = value; modelSel.appendChild(o); };
-    opt(SAME_AS_MAIN, "Same as the main agent");
-    for (const m of models) opt(m.id, m.name);
-    // A model the team no longer lists stays visible rather than silently flipping.
-    if (keep && !models.some((m) => m.id === keep)) opt(keep, keep);
-    modelSel.value = keep;
+  faceBtn.addEventListener("click", openFaceMenu);
+
+  // ── + ADD NEW: an avatar made by the Images power in the mascot's style.
+  //    One fixed size; Generate as often as wanted; Use it puts the picture on
+  //    the form (Save keeps it). The hard guards run in main (avatar-guard). ──
+  let avatarModal: HTMLElement | null = null;
+  function closeAvatarModal(): void {
+    if (!avatarModal) return;
+    avatarModal.remove();
+    avatarModal = null;
+    guardWebviewsForModal(false);
+    document.removeEventListener("keydown", onAvatarKey, true);
   }
+  function onAvatarKey(e: KeyboardEvent): void { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeAvatarModal(); } }
+  function openAvatarModal(): void {
+    if (avatarModal) return;
+    const gen = api().avatarGenerate;
+    const m = el("div", "confirm-overlay botp-modal botp-avatar-modal");
+    m.innerHTML = `
+      <div class="confirm-box botp-modal-box botp-avatar-box" role="dialog" aria-modal="true" aria-label="New avatar">
+        <div class="confirm-head botp-modal-head"><h3>New avatar</h3>
+          <button class="ws-icon-btn botp-modal-x" type="button" title="Close" aria-label="Close">${CLOSE_SVG}</button></div>
+        <div class="confirm-body botp-avatar-body">
+          <div class="botp-avatar-stage"><div class="botp-avatar-preview"></div></div>
+          <label class="settings-label">Describe it</label>
+          <textarea class="settings-input botp-avatar-ask" rows="4" maxlength="300" spellcheck="true" placeholder="Wearing goggles, holding a tiny wrench"></textarea>
+          <div class="botp-avatar-note">Drawn in the Glyphh mascot's style by your image model. Friendly characters only: anything inappropriate is refused.</div>
+          <div class="crud-form-error botp-error botp-avatar-error hidden"></div>
+        </div>
+        <div class="confirm-foot">
+          <button class="action-btn secondary botp-avatar-cancel" type="button">Cancel</button>
+          <button class="action-btn secondary botp-avatar-gen" type="button">Generate</button>
+          <button class="action-btn primary botp-avatar-use" type="button" disabled>Use it</button>
+        </div>
+      </div>`;
+    const qa = <T extends HTMLElement>(sel: string): T => m.querySelector<T>(sel)!;
+    const preview = qa<HTMLElement>(".botp-avatar-preview");
+    const askIn = qa<HTMLTextAreaElement>(".botp-avatar-ask");
+    const err = qa<HTMLElement>(".botp-avatar-error");
+    const genBtn = qa<HTMLButtonElement>(".botp-avatar-gen");
+    const useBtn = qa<HTMLButtonElement>(".botp-avatar-use");
+    let made = "";
+    const paintPreview = (): void => { preview.innerHTML = botAvatarSvg(made ? { ...picked, image: made } : picked, "idle", { size: 160 }); };
+    paintPreview();
+    askIn.value = avatarStarter(nameIn.value, descIn.value);
+    if (!gen) {
+      showErr(err, "Avatar pictures are made in the Glyphh desktop app.");
+      genBtn.disabled = true;
+    }
+    genBtn.addEventListener("click", async () => {
+      if (!gen || genBtn.disabled) return;
+      showErr(err, "");
+      genBtn.disabled = true; useBtn.disabled = true;
+      genBtn.textContent = "Generating…";
+      preview.classList.add("busy");
+      const r = await gen({ name: nameIn.value.trim(), description: descIn.value.trim(), prompt: askIn.value.trim() })
+        .catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      if (!avatarModal) return;
+      preview.classList.remove("busy");
+      genBtn.disabled = false;
+      genBtn.textContent = made ? "Generate again" : "Generate";
+      if (!r.ok) { showErr(err, r.error); useBtn.disabled = !made; return; }
+      made = r.data.image;
+      genBtn.textContent = "Generate again";
+      useBtn.disabled = false;
+      paintPreview();
+    });
+    useBtn.addEventListener("click", () => {
+      if (!made) return;
+      picked = { variant: picked.variant, color: picked.color, image: made };
+      paintFaceBtn();
+      paintHead();
+      closeAvatarModal();
+    });
+    qa(".botp-modal-x").addEventListener("click", closeAvatarModal);
+    qa(".botp-avatar-cancel").addEventListener("click", closeAvatarModal);
+    m.addEventListener("mousedown", (e) => { if (e.target === m) closeAvatarModal(); });
+    document.addEventListener("keydown", onAvatarKey, true);
+    guardWebviewsForModal(true);
+    document.body.appendChild(m);
+    avatarModal = m;
+    askIn.focus();
+  }
+
   function fillForm(): void {
     if (!bot) return;
     nameIn.value = bot.name;
     descIn.value = bot.description ?? "";
     briefIn.value = bot.prompt ?? "";
     picked = avatarOf({ slug: bot.slug, avatar: bot.avatar });
-    fillModels(bot.model ?? SAME_AS_MAIN);
-    paintFaces();
+    paintFaceBtn();
     paintHead();
   }
 
   async function save(): Promise<void> {
     if (!bot) return;
-    const input = { name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), model: modelSel.value, avatar: picked };
+    const input = { name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: picked };
     if (!input.name) { nameIn.classList.add("invalid"); clearInvalid(nameIn); showErr(errEl, "A super power needs a name."); return; }
     if (!input.prompt) { briefIn.classList.add("invalid"); clearInvalid(briefIn); showErr(errEl, "A super power needs a brief — without one it can't be handed work."); return; }
     saveBtn.disabled = true;
@@ -211,7 +352,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   }
   async function writeBrief(): Promise<void> {
     if (wand.disabled) return;
-    const input = { name: nameIn.value.trim(), description: descIn.value.trim(), model: modelSel.value, draft: briefIn.value.trim() };
+    const input = { name: nameIn.value.trim(), description: descIn.value.trim(), model: bot?.model ?? "", draft: briefIn.value.trim() };
     if (!input.name && !input.description && !input.draft) { showErr(briefErr, "Give the super power a name and say when to use it first — the brief is written from those."); return; }
     showErr(briefErr, "");
     wand.disabled = true;
@@ -254,7 +395,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   const SEARCH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
   const CHEVRON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-  const PLUS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
   const EMPTY_TEXT: Record<PowerKind, string> = {
     folders: "No folders yet.",
     connections: "No connections yet.",
@@ -290,12 +430,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!bot) return [];
     if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 ? { tag: "Works here" } : {}) }));
     if (kind === "connections") return powersOf(bot, "connections").map((c) => { const k = connOf(c); return { icon: k?.icon ?? PLUS_ICONS.connectors, name: k?.name ?? c, sub: k?.on ? "Connected" : "Not connected", stored: c }; });
-    if (kind === "models") {
-      const main = String(bot.model ?? "").trim();
-      const out: PowerItem[] = main ? [{ icon: MODEL_SVG, name: modelName(main), sub: "Change it in the form", tag: "Runs on" }] : [];
-      for (const m of powersOf(bot, "models").filter((m) => m !== main)) out.push({ icon: MODEL_SVG, name: modelName(m), sub: "", stored: m });
-      return out;
-    }
+    if (kind === "models") return modelList(bot).map((m, i) => ({ icon: MODEL_SVG, name: modelName(m), sub: "", stored: m, ...(i === 0 ? { tag: "Runs on" } : {}) }));
     return powersOf(bot, "skills").map((s) => { const k = skillOf(s); return { icon: POWER_SVG, name: k?.name ?? s, sub: k?.type === "task" ? "Task" : "Skill", stored: s }; });
   }
 
@@ -381,7 +516,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!r?.ok) { showErr(sideErr, r?.error || "The power could not be saved."); return; }
     showErr(sideErr, "");
     bot = { ...bot, ...(patch as Partial<BotRow>) };
-    if ("model" in patch) fillModels(String(patch.model));
     paintPowers();
   }
 
@@ -408,7 +542,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     draft = {
       model: bot.model ?? "",
       folders: powersOf(bot, "folders"), connections: powersOf(bot, "connections"),
-      models: powersOf(bot, "models"), skills: powersOf(bot, "skills"),
+      models: modelList(bot).slice(1), skills: powersOf(bot, "skills"),
     };
     modal = el("div", "confirm-overlay botp-modal");
     modal.innerHTML = `
@@ -440,10 +574,15 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     paintModal();
     if (!onWeb()) void api().getWorkingDirRecents?.().then((r) => { recents = Array.isArray(r) ? r.map(String) : []; paintModal(); }).catch(() => {});
   }
-  /** Flip one pick in the draft. A model picked for a bot with none becomes the one it runs on. */
+  /** Flip one pick in the draft. Models move as one list: the first picked runs it. */
   function toggleDraft(kind: PowerKind, name: string): void {
     if (!draft) return;
-    if (kind === "models" && !draft.model) { draft.model = name; paintModal(); return; }
+    if (kind === "models") {
+      const cur = modelList(draft);
+      Object.assign(draft, modelFields(cur.includes(name) ? cur.filter((m) => m !== name) : [...cur, name]));
+      paintModal();
+      return;
+    }
     const cur = powersOf(draft, kind);
     draft[kind] = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
     paintModal();
@@ -452,9 +591,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     if (!modal || !draft || !bot) return;
     const patch: Record<string, unknown> = {};
     for (const { kind } of POWER_KINDS) {
+      if (kind === "models") continue;
       if (JSON.stringify(powersOf(draft, kind)) !== JSON.stringify(powersOf(bot, kind))) patch[kind] = powersOf(draft, kind);
     }
-    if ((draft.model ?? "") !== (bot.model ?? "")) patch.model = draft.model;
+    if (JSON.stringify(modelList(draft)) !== JSON.stringify(modelList(bot))) Object.assign(patch, modelFields(modelList(draft)));
     if (!Object.keys(patch).length) { closeModal(); return; }
     const save = modal.querySelector<HTMLButtonElement>(".botp-modal-save")!;
     save.disabled = true;
@@ -463,7 +603,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     save.disabled = false;
     if (!r?.ok) { showErr(modal.querySelector<HTMLElement>(".botp-modal-error")!, r?.error || "The powers could not be saved."); return; }
     bot = { ...bot, ...(patch as Partial<BotRow>) };
-    if ("model" in patch) fillModels(String(patch.model));
     showErr(sideErr, "");
     paintPowers();
     closeModal();
@@ -477,7 +616,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     main.appendChild(el("div", "botp-power-name", name));
     if (sub) main.appendChild(el("div", "botp-power-sub", sub));
     row.append(ic, main);
-    if (fixed) { row.appendChild(el("span", "botp-power-tag", fixed)); return row; }
+    if (fixed) row.appendChild(el("span", "botp-power-tag", fixed));
     const b = el("button", `action-btn ${has ? "" : "secondary "}botp-choice-btn${has ? " on" : ""}`, has ? "Added" : "Add");
     b.type = "button";
     b.addEventListener("click", onToggle);
@@ -514,12 +653,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       if (!live.length) empty("No connections yet. Connect an account on the Connections page first.");
       for (const c of live) body.appendChild(choice(c.icon, c.name, c.org ? "Your organization's" : "", have.includes(c.slug), () => toggleDraft("connections", c.slug)));
     } else if (modalKind === "models") {
-      const main = String(d.model ?? "").trim();
-      const have = powersOf(d, "models");
+      const have = modelList(d);
       if (!models.length) empty("Your team's models couldn't be read.");
       for (const m of models) {
-        if (m.id === main) { body.appendChild(choice(MODEL_SVG, m.name, "", true, () => {}, "Runs on")); continue; }
-        body.appendChild(choice(MODEL_SVG, m.name, "", have.includes(m.id), () => toggleDraft("models", m.id)));
+        body.appendChild(choice(MODEL_SVG, m.name, "", have.includes(m.id), () => toggleDraft("models", m.id), have[0] === m.id ? "Runs on" : undefined));
       }
     } else {
       const have = powersOf(d, "skills");

@@ -22230,3 +22230,48 @@ body .code-history .code-history-item.rail-bot-row.active .code-history-title { 
   .botp-grid { grid-template-columns: minmax(0, 1fr); }
   .botp-powers { position: static; }
 }
+
+/* ── A GENERATED AVATAR SITS EXACTLY WHERE A FACE SITS (his order,
+   2026-10-09): the picture is pre-fitted to the mascot's box, so it takes
+   the face's own square at every size. ── */
+img.bot-cat-img { display: block; object-fit: contain; flex: none; }
+.rail-bot-row .rail-bot-mark img.bot-cat-img { width: 56px; height: 56px; }
+
+/* The avatar, left of the name, as a dropdown. */
+.botp-name-row { display: flex; align-items: center; gap: 10px; }
+.botp-name-row .botp-name { flex: 1; min-width: 0; }
+.botp-face-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; height: 48px; padding: 0 6px 0 4px;
+  background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 10px; color: var(--text-2); cursor: pointer;
+}
+.botp-face-btn:hover, .botp-face-btn[aria-expanded="true"] { border-color: var(--border-3); color: var(--text); }
+.botp-face-mark { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; }
+.botp-face-mark > svg, .botp-face-mark > img { width: 40px; height: 40px; }
+.botp-face-caret { display: inline-flex; }
+.botp-face-caret svg { width: 13px; height: 13px; }
+.botp-face-menu {
+  position: fixed; z-index: 99550; width: 324px; padding: 10px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border-3); border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.botp-face-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.botp-face-grid .agents2-face img { width: 40px; height: 40px; }
+.botp-face-add {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 8px 10px;
+  background: none; border: none; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px;
+  color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.botp-face-add:hover { background: var(--hover); }
+.botp-face-add svg { width: 15px; height: 15px; }
+/* The new-avatar modal: one fixed size like the powers modal. */
+.confirm-overlay .confirm-box.botp-avatar-box { height: min(560px, calc(100vh - 80px)); min-height: min(560px, calc(100vh - 80px)); max-height: min(560px, calc(100vh - 80px)); }
+.botp-avatar-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.botp-avatar-stage { display: flex; justify-content: center; padding: 10px 0 4px; }
+.botp-avatar-preview {
+  width: 184px; height: 184px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+}
+.botp-avatar-preview > svg, .botp-avatar-preview > img { width: 160px; height: 160px; }
+.botp-avatar-preview.busy { animation: botp-pulse 1.2s ease-in-out infinite; }
+@keyframes botp-pulse { 50% { opacity: .45; } }
+.botp-avatar-ask { resize: none; }
+.botp-avatar-note { font-size: 12px; color: var(--text-3); }

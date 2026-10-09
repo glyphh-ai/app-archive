@@ -6,11 +6,14 @@
  * `saveAs` also writes the file into the member's folder, so a workflow that
  * runs every morning leaves its pictures where the work lives.
  */
-import { ipcMain } from "electron";
+import { ipcMain, nativeImage } from "electron";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getClient } from "./glyphh-client";
 import { getWorkingDirectory } from "./working-directory.js";
+import { avatarImagePrompt } from "../shared/avatar-style.js";
+import { figureTooSmall, keyOutGreen, mascotFit, placeFigure } from "../shared/avatar-cutout.js";
+import { guardAvatarAsk, guardAvatarImage } from "./avatar-guard.js";
 import { POWERS, modelsForPower, pickPowerModel, powerById, safeSaveName, type CatalogModelLike, type PowerDef, type PowerId } from "../shared/powers.js";
 
 export interface PowerOffer { id: PowerId; name: string; blurb: string; tool: string; models: string[]; avatar: PowerDef["avatar"] }
@@ -65,7 +68,50 @@ export async function runPower(id: PowerId, input: PowerRunInput): Promise<Power
   return out;
 }
 
+/** The side an avatar picture is kept at: sharp at the rail's 56px on a 2x screen. */
+const AVATAR_PX = 256;
+/** The working size the background is keyed out at. */
+const WORK_PX = 512;
+
+export interface AvatarGenInput { name?: string; description?: string; prompt?: string; model?: string }
+export interface AvatarGenResult { image: string; model: string; usd: number; prompt: string }
+
+/**
+ * A SUPER POWER'S AVATAR (his order, 2026-10-09): the mascot's style plus what
+ * makes this one its own, made by the Images power. Guarded hard on the way in
+ * and out (main/avatar-guard.ts), the green background keyed out and the
+ * figure fitted into the mascot's own box (shared/avatar-cutout.ts), kept as a
+ * 256px PNG data URL — small enough to ride in the agent row, so it draws the
+ * same on every surface with no link to expire.
+ */
+export async function generateAvatar(input: AvatarGenInput): Promise<AvatarGenResult> {
+  const askText = String(input.prompt ?? "").trim();
+  // Gate 1 + 2: the words, then a model, on everything the member or a caller wrote.
+  await guardAvatarAsk(askText, [String(input.name ?? ""), String(input.description ?? "")].filter(Boolean).join("\n"));
+  const prompt = avatarImagePrompt({ name: input.name, description: input.description, ask: askText });
+  const made = await runPower("images", { prompt, size: "1024x1024", title: `Avatar: ${String(input.name || "super power").slice(0, 80)}`, ...(input.model ? { model: input.model } : {}) });
+  if (!made.url) throw new Error("The picture was made but could not be read back.");
+  const res = await fetch(made.url);
+  if (!res.ok) throw new Error(`The picture could not be downloaded (${res.status}).`);
+  const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
+  if (img.isEmpty()) throw new Error("The image model did not answer with a picture.");
+  // Gate 3: the picture as made, before anything is kept.
+  await guardAvatarImage(img.resize({ width: WORK_PX, height: WORK_PX }).toPNG().toString("base64"));
+  const work = img.resize({ width: WORK_PX, height: WORK_PX, quality: "best" });
+  const { width, height } = work.getSize();
+  const px = new Uint8Array(work.toBitmap());
+  const fig = keyOutGreen(px, width, height);
+  if (!fig || figureTooSmall(fig, width, height)) throw new Error("The picture had no clear character in it. Try again.");
+  const placed = placeFigure(px, width, fig, AVATAR_PX, mascotFit(fig, AVATAR_PX));
+  const out = nativeImage.createFromBitmap(Buffer.from(placed), { width: AVATAR_PX, height: AVATAR_PX });
+  return { image: `data:image/png;base64,${out.toPNG().toString("base64")}`, model: made.model, usd: made.usd, prompt };
+}
+
 export function registerPowersIpc(): void {
+  ipcMain.handle("avatar-generate", async (_e, input: AvatarGenInput) => {
+    try { return { ok: true as const, data: await generateAvatar(input ?? {}) }; }
+    catch (err) { return { ok: false as const, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("powers-list", async () => {
     try { return { ok: true as const, data: await availablePowers() }; }
     catch (err) { return { ok: false as const, error: err instanceof Error ? err.message : String(err), data: [] }; }

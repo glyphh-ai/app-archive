@@ -14,7 +14,9 @@
  * Pure — no DOM, so the thing is unit-tested (test/main/bot-avatar.test.ts).
  */
 
-export interface BotAvatar { variant: number; color: string }
+/** `image`: a generated picture (a data URL) drawn in place of the face. */
+export interface BotAvatar { variant: number; color: string; image?: string }
+const AVATAR_IMAGE_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 export type BotMood = "idle" | "thinking" | "generating" | "done" | "listening" | "error" | "curious" | "sleepy" | "playful" | "dizzy";
 
@@ -87,7 +89,10 @@ export function defaultAvatar(slug: string): BotAvatar {
 /** The avatar a record carries, or the slug's default. */
 export function avatarOf(bot: { slug: string; avatar?: BotAvatar | null }): BotAvatar {
   const a = bot.avatar;
-  if (a && Number.isFinite(a.variant) && a.variant >= 1 && a.variant <= AVATAR_VARIANTS.length && /^#[0-9a-f]{3,8}$/i.test(a.color)) return { variant: Math.round(a.variant), color: a.color };
+  if (a && Number.isFinite(a.variant) && a.variant >= 1 && a.variant <= AVATAR_VARIANTS.length && /^#[0-9a-f]{3,8}$/i.test(a.color)) {
+    const image = typeof a.image === "string" && AVATAR_IMAGE_RE.test(a.image) ? a.image : "";
+    return image ? { variant: Math.round(a.variant), color: a.color, image } : { variant: Math.round(a.variant), color: a.color };
+  }
   return defaultAvatar(bot.slug);
 }
 
@@ -97,6 +102,12 @@ export function avatarOf(bot: { slug: string; avatar?: BotAvatar | null }): BotA
  * carries `bot-cat` and the mood as classes (styles.css animates per mood).
  */
 export function botAvatarSvg(avatar: BotAvatar, mood: BotMood = "idle", opts: { size?: number; title?: string } = {}): string {
+  // A generated picture stands in for the face, at the same size and classes.
+  if (avatar.image && AVATAR_IMAGE_RE.test(avatar.image)) {
+    const size = opts.size ? ` width="${opts.size}" height="${opts.size}"` : "";
+    const alt = (opts.title ?? "").replace(/["<>&]/g, "");
+    return `<img class="bot-cat bot-cat-img ${mood}" src="${avatar.image}" alt="${alt}"${size} draggable="false">`;
+  }
   const def = AVATAR_VARIANTS.find((x) => x.id === avatar.variant) ?? AVATAR_VARIANTS[0]!;
   const v: MascotParts = { ...BASE, ...def.o };
   const eye: Eye = MOOD_EYE[mood] ?? v.eye;
