@@ -963,6 +963,42 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     { id: z.string().min(1) },
     async ({ id }) => { const { deleteMemoryPage } = await import("./memory.js"); return memText(deleteMemoryPage(id)); },
   );
+  // ── THE POWERS (his order, 2026-10-09): one tool per power, on the
+  //    server's metered media pipeline (main/powers.ts). Glyphh combines them,
+  //    a super power's workflow calls them, a member talks to one directly.
+  const powerText = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
+  const powerRun = async (id: "images" | "video" | "audio", input: Record<string, unknown>) => {
+    try {
+      const { runPower } = await import("./powers.js");
+      return powerText(await runPower(id, input as { prompt: string }));
+    } catch (err) { return { ...powerText(`Error: ${err instanceof Error ? err.message : String(err)}`), isError: true }; }
+  };
+  const saveAs = z.string().optional().describe("Also write the file into the member's folder under this name (e.g. \"brand/hero.png\"); never a path outside it.");
+  const folder = z.string().optional().describe("The folder saveAs writes into; default the member's working folder.");
+  mcp.tool(
+    "powers_list",
+    "Glyphh's POWERS on this member's plan — Images, Video, Audio — each with its tool and the models it can use. Call it to pick a model for a power or to offer a comparison across models.",
+    {},
+    async () => { try { const { availablePowers } = await import("./powers.js"); return powerText(await availablePowers()); } catch (err) { return { ...powerText(`Error: ${err instanceof Error ? err.message : String(err)}`), isError: true }; } },
+  );
+  mcp.tool(
+    "image_generate",
+    "The Images power: make a picture from a prompt. Answers { model, assetId, url, usd, saved? }; the picture is kept in the member's media library, and in their folder when saveAs is given. model is optional (powers_list names them).",
+    { prompt: z.string().min(1), model: z.string().optional(), size: z.string().optional().describe("e.g. 1024x1024, 1024x1536"), title: z.string().optional(), saveAs, folder },
+    async (input) => powerRun("images", input),
+  );
+  mcp.tool(
+    "video_generate",
+    "The Video power: make a short clip from a prompt, or from a picture (imageUrl). Takes a while. Answers { model, assetId, url, usd, saved? }.",
+    { prompt: z.string().min(1), model: z.string().optional(), seconds: z.number().optional(), imageUrl: z.string().optional(), size: z.string().optional(), title: z.string().optional(), saveAs, folder },
+    async (input) => powerRun("video", input),
+  );
+  mcp.tool(
+    "audio_generate",
+    "The Audio power: make music, a sound effect or spoken voice from a prompt. Answers { model, assetId, url, usd, saved? }.",
+    { prompt: z.string().min(1), model: z.string().optional(), seconds: z.number().optional(), voice: z.string().optional(), title: z.string().optional(), saveAs, folder },
+    async (input) => powerRun("audio", input),
+  );
   mcp.tool(
     "scrape_page",
     "Load an http(s) URL headlessly on the user's machine and return its title, text, and html. `wait` (ms, ≤15000) delays extraction for JS-rendered pages.",

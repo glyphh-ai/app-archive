@@ -114,6 +114,7 @@ import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { installBotsIpc } from "./bots";
+import { registerPowersIpc } from "./powers";
 import { onUserZoneChange } from "./user-zone";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -473,6 +474,7 @@ async function boot() {
     registerNotifyIpc();
     registerAgentLiveIpc();
     installBotsIpc();
+    registerPowersIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
     registerCloudFsIpc();

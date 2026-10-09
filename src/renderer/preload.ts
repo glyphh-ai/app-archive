@@ -1258,6 +1258,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("agent-brief-generate", input) as Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>,
   // ── THE BOTS PANEL (his order, 2026-10-08; main/bots.ts): a bot's thread,
   //    asking it (the Glyphh loop on `bots/<slug>`), stopping it, the frames.
+  /** THE POWERS this member's plan carries (main/powers.ts): Images, Video, Audio… */
+  powersList: () => ipcRenderer.invoke("powers-list") as Promise<{ ok: boolean; data: Array<{ id: string; name: string; blurb: string; tool: string; models: string[]; avatar: { variant: number; color: string } }>; error?: string }>,
   botsThread: (agent: string) =>
     ipcRenderer.invoke("bots-thread", { agent }) as Promise<{ ok: true; chatId: string; messages: Array<{ role: "user" | "assistant"; text: string; at: number }>; running: boolean; partial?: string; startedAt?: number }>,
   botsAsk: (agent: string, text: string, opts?: { workdir?: string }) =>

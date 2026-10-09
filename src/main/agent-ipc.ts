@@ -28,6 +28,7 @@ import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer } from "./local-mcp-server.js";
 import { getAgent, type AgentRow } from "./local-agents.js";
+import { powerOfChat } from "../shared/powers.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
@@ -286,7 +287,10 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   // personality) and its model. With no folder picked it works in the
   // member's working folder, as the bot's own runs always have.
   const bot = botOfChat(p.chatId);
-  const folder = String(p.workdir ?? "").trim() || (bot ? getWorkingDirectory() : "");
+  // A POWER'S THREAD (`powers/<id>`, his order 2026-10-09): talking to a power
+  // directly — its brief leads the turn, like a bot's.
+  const power = powerOfChat(p.chatId);
+  const folder = String(p.workdir ?? "").trim() || (bot || power ? getWorkingDirectory() : "");
   if (!folder) throw new Error("NO_WORKDIR: this session has no folder yet");
   if (folder) {
     let ok = false;
@@ -300,7 +304,7 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   const chat = storedChat(p.chatId);
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
-  const brief = String(bot?.prompt ?? "").trim();
+  const brief = String(bot?.prompt ?? power?.brief ?? "").trim();
   const text = [brief, steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
   const model = String(bot?.model ?? "").trim() || p.model;
   return runGlyphhLoopTurn(sender, {
