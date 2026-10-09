@@ -22369,3 +22369,13 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .botp-voice-menu { width: 280px; }
 .botp-voice-menu .botp-voice { margin-top: 0; border-top: none; padding-top: 0; }
 .botp-voice-menu .botp-voice-list { max-height: 320px; }
+
+/* The voice's test button, small, on the label line above the voice (his order, 2026-10-09). */
+.botp-voice-wrap { position: relative; display: inline-flex; flex: none; }
+.botp-voice-test {
+  position: absolute; right: 2px; bottom: calc(100% + 6px); width: 22px; height: 22px; border-radius: 50%;
+  color: var(--text-2); border: 1px solid var(--border-2); background: var(--surface-2);
+}
+.botp-voice-test:hover, .botp-voice-test.on { color: var(--text); border-color: var(--accent); }
+.botp-voice-test svg { width: 10px; height: 10px; }
+.botp-voice-test.busy { animation: botp-pulse 1.2s ease-in-out infinite; }

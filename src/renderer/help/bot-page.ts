@@ -58,6 +58,12 @@ export const PERSONALITY_LABELS: ReadonlyArray<string> = Object.freeze(["Serious
 export const EFFORTS: ReadonlyArray<string> = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
 export const EFFORT_LABELS: ReadonlyArray<string> = Object.freeze(["Fastest", "Faster", "Balanced", "Deeper", "Deepest"]);
 interface VoiceOption { id: string; name: string; providerSlug?: string; previewUrl?: string; category?: string }
+/** The voice a super power wears until one is picked: the member's own when
+ *  the model offers it, else the model's first. */
+export function defaultVoiceOf(voices: ReadonlyArray<{ id: string; name: string }>, model: string, mine: string): BotVoice | null {
+  const v = voices.find((x) => x.id === mine) ?? voices[0];
+  return v ? { model, voiceId: v.id, name: v.name } : null;
+}
 /** Desktop IPC answers raw; the web contract wraps it in { ok, data }. */
 function unwrap<T>(res: unknown): T | null {
   if (res && typeof res === "object" && "data" in (res as object) && "ok" in (res as object)) return ((res as { data?: T }).data ?? null);
@@ -169,7 +175,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     <label class="settings-label">Identity</label>
     <div class="botp-name-row">
       <button type="button" class="botp-face-btn" aria-haspopup="menu" aria-expanded="false" title="Change the avatar"></button>
-      <button type="button" class="botp-voice-btn" aria-haspopup="menu" aria-expanded="false" title="Change the voice"></button>
+      <span class="botp-voice-wrap">
+        <button type="button" class="ws-icon-btn botp-voice-test" title="Hear this voice" aria-label="Hear this voice"></button>
+        <button type="button" class="botp-voice-btn" aria-haspopup="menu" aria-expanded="false" title="Change the voice"></button>
+      </span>
       <input type="text" class="settings-input botp-name" aria-label="Name" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
     </div>
     <label class="settings-label">When to use it</label>
@@ -203,6 +212,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const descIn = q<HTMLInputElement>(".botp-desc");
   const faceBtn = q<HTMLButtonElement>(".botp-face-btn");
   const voiceBtn = q<HTMLButtonElement>(".botp-voice-btn");
+  const voiceTest = q<HTMLButtonElement>(".botp-voice-test");
   // THE SLIDERS (his order, 2026-10-09: "personality, thinking effort or speed").
   const persIn = q<HTMLInputElement>(".botp-personality");
   const effortIn = q<HTMLInputElement>(".botp-effort");
@@ -289,7 +299,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   //    "that row is the agent's identity: Avatar -> voice -> name"). The
   //    voices are the ones your speech model offers; ▶ plays a sample. ──
   const SPEAKER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`;
-  const voiceLabel = (): string => pickedVoice?.name || (pickedVoice ? pickedVoice.voiceId : "Your voice");
+  const voiceLabel = (): string => pickedVoice?.name || pickedVoice?.voiceId || (voiceList && "error" in voiceList ? "No voice" : "Voice…");
   function paintVoiceBtn(): void {
     voiceBtn.innerHTML = `<span class="botp-voice-icon">${SPEAKER_SVG}</span><span class="botp-voice-btn-name"></span><span class="botp-face-caret">${CARET_SVG}</span>`;
     (voiceBtn.querySelector(".botp-voice-btn-name") as HTMLElement).textContent = voiceLabel();
@@ -321,9 +331,55 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     setTimeout(() => { document.addEventListener("mousedown", onVoiceAway, true); document.addEventListener("keydown", onVoiceKey, true); }, 0);
   }
   voiceBtn.addEventListener("click", openVoiceMenu);
+
+  /** THE TEST (his order, 2026-10-09: "a small test icon above the voice so
+   *  the user can hear it"): the super power says hello in the voice picked,
+   *  or in yours when none is; a second press stops it. */
+  const STOP_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>`;
+  voiceTest.innerHTML = PLAY_SVG;
+  async function testVoice(): Promise<void> {
+    if (previewAudio || voiceTest.classList.contains("busy")) { stopPreview(); paintTest(); return; }
+    showErr(errEl, "");
+    let model = pickedVoice?.model ?? "";
+    let voiceId: string | null = pickedVoice?.voiceId ?? null;
+    if (!pickedVoice) {
+      const a = api();
+      const [vs, cfg] = await Promise.all([a.voiceSettingsGet?.().catch(() => null), a.voiceConfig?.().catch(() => null)]);
+      const mine = unwrap<{ outputModel?: string | null; voiceId?: string | null }>(vs);
+      const house = unwrap<{ tts?: string | null; voice?: string | null }>(cfg);
+      model = String(mine?.outputModel || house?.tts || "").trim();
+      voiceId = mine?.voiceId || house?.voice || null;
+    }
+    if (!model) { showErr(errEl, "Pick a speech model in Settings › Voice to hear a voice."); return; }
+    voiceTest.classList.add("busy");
+    try {
+      const bytes = asBytes(await api().voiceSynthesize?.(`Hi, I'm ${nameIn.value.trim() || "your super power"}.`, model, voiceId));
+      if (!bytes) throw new Error("no audio");
+      const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      const au = new Audio(url);
+      previewAudio = au;
+      au.onended = au.onerror = () => { URL.revokeObjectURL(url); if (previewAudio === au) previewAudio = null; paintTest(); };
+      voiceTest.classList.remove("busy");
+      paintTest();
+      await au.play();
+    } catch {
+      voiceTest.classList.remove("busy");
+      previewAudio = null;
+      showErr(errEl, "That voice couldn't be played. Try another one.");
+    }
+    paintTest();
+  }
+  function paintTest(): void {
+    const on = !!previewAudio;
+    voiceTest.innerHTML = on ? STOP_SVG : PLAY_SVG;
+    voiceTest.title = on ? "Stop" : "Hear this voice";
+    voiceTest.setAttribute("aria-label", voiceTest.title);
+    voiceTest.classList.toggle("on", on);
+  }
+  voiceTest.addEventListener("click", () => { void testVoice(); });
   let voiceList: { model: string; voices: VoiceOption[] } | { error: string } | null = null;
   let previewAudio: HTMLAudioElement | null = null;
-  const stopPreview = (): void => { try { previewAudio?.pause(); } catch { /* gone */ } previewAudio = null; };
+  const stopPreview = (): void => { try { previewAudio?.pause(); } catch { /* gone */ } previewAudio = null; paintTest(); };
   async function loadVoices(): Promise<void> {
     const a = api();
     const [vs, cfg] = await Promise.all([a.voiceSettingsGet?.().catch(() => null), a.voiceConfig?.().catch(() => null)]);
@@ -333,6 +389,19 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const provider = (Array.isArray(cat) ? cat.find((x) => x.id === model)?.providerSlug : undefined) || model.split("/")[0] || "";
     const voices = unwrap<VoiceOption[]>(await a.catalogVoices?.(provider).catch(() => null));
     voiceList = Array.isArray(voices) && voices.length ? { model, voices } : { error: "Your speech model has no voices to pick from." };
+    if (Array.isArray(voices) && voices.length) {
+      const mine = String(unwrap<{ voiceId?: string | null }>(vs)?.voiceId || unwrap<{ voice?: string | null }>(cfg)?.voice || "");
+      defaultVoice = defaultVoiceOf(voices, model, mine);
+    }
+  }
+  /** A super power always has a voice (his order, 2026-10-09: "default the
+   *  voice instead of having a row called 'your voice'"): one never picked
+   *  wears yours when your model offers it, else the model's first. */
+  let defaultVoice: BotVoice | null = null;
+  async function primeVoice(): Promise<void> {
+    if (!voiceList) await loadVoices();
+    if (!pickedVoice && defaultVoice) pickedVoice = defaultVoice;
+    paintVoiceBtn();
   }
   async function preview(v: VoiceOption, model: string, btn: HTMLButtonElement): Promise<void> {
     stopPreview();
@@ -368,11 +437,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
         paintVoiceBtn();
         closeVoiceMenu();
       };
-      const mine = el("button", "botp-voice-row" + (!pickedVoice ? " on" : ""));
-      mine.type = "button";
-      mine.append(el("span", "botp-voice-play-gap"), el("span", "botp-voice-name", "Your voice"));
-      mine.addEventListener("click", () => choose(null));
-      list.appendChild(mine);
       for (const v of vl.voices) {
         const on = !!pickedVoice && pickedVoice.voiceId === v.id && pickedVoice.model === vl.model;
         const r = el("div", "botp-voice-row" + (on ? " on" : ""));
@@ -490,6 +554,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     effortTouched = false;
     pickedVoice = bot.voice ?? null;
     paintVoiceBtn();
+    void primeVoice();
     paintSliders();
   }
 
@@ -745,6 +810,6 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
 
   return {
     back: () => false,
-    destroy: () => { destroyed = true; root.remove(); host.classList.remove("botp-host"); },
+    destroy: () => { destroyed = true; stopPreview(); root.remove(); host.classList.remove("botp-host"); },
   };
 }
