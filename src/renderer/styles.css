@@ -13704,8 +13704,8 @@ select:focus {
                                  the ⋮ dropdown renders INSIDE this row and
                                  a clip makes it unclickable */
   gap: 8px;
-  min-height: 38px;
-  padding: 4px 12px;
+  min-height: 46px;
+  padding: 9px 12px;   /* a bit more air on the top row (his ask, 2026-10-09) */
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
@@ -17145,7 +17145,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   position: static;
   background: none;
   border-bottom: none;
-  padding: 4px 4px 2px 10px;
+  padding: 9px 6px 7px 12px;   /* a bit more air on the top row (his ask, 2026-10-09) */
   min-height: 0;
   -webkit-app-region: no-drag;
 }
