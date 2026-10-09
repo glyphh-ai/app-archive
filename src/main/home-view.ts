@@ -279,6 +279,17 @@ export class HomeView {
     });
 
     (wc as any).on("did-attach-webview", (_event: unknown, guest: WebContents) => {
+      // AN AGENT PANEL'S CONSOLE REACHES THE LOG (2026-10-08): the shell's
+      // warnings are forwarded above, but a panel is a guest and its
+      // "[sess] open" / "[panel] command" lines went nowhere — a rail click
+      // that died inside the panel left no trace. Only our own solo
+      // document, never a web page.
+      guest.on("console-message", (_e: unknown, level: number, message: string, line: number, sourceId: string) => {
+        if (level < 2) return;
+        let ours = false;
+        try { const u = new URL(guest.getURL()); ours = u.protocol === "file:" && u.searchParams.get("solo") === "tool:coding"; } catch { ours = false; }
+        if (ours) console.error(`[panel ${guest.id}] ${message} (${String(sourceId).split("/").pop()}:${line})`);
+      });
       // Stay in the panel when a page bounces to a native client (slack:// etc.)
       wireForceWebGuest(guest);
       attachDialogHandler(guest);
