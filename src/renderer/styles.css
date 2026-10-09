@@ -22711,3 +22711,13 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .memory-privacy-icon { width: 18px; height: 18px; flex: none; color: var(--accent-text, var(--accent)); }
 .memory-privacy-text { flex: 1; min-width: 0; }
 .memory-privacy-link { flex: none; margin-left: auto; }
+
+/* The slight strobe (his order, 2026-10-09): the ring's glow breathes, slowly. */
+.spn-ring { animation: spn-breathe 4.5s ease-in-out infinite; }
+.spn-building .spn-ring { animation: spn-breathe 2.8s ease-in-out infinite; }
+@keyframes spn-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 85%, transparent), 0 0 26px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 95%, transparent), 0 0 44px 0 color-mix(in srgb, var(--accent) 85%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .spn-ring, .spn-building .spn-ring { animation: none; } }
+.spn-born .spn-ring { animation: none; }

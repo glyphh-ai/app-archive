@@ -13,7 +13,7 @@
  *          still needs; Talk to it, Open its page, Build another
  */
 
-import { AVATAR_VARIANTS, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
+import { botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
 import { escapeHtml, guardWebviewsForModal } from "./shared.js";
 import { readConnectorRows, type PlusApi } from "./composer-plus.js";
 import { openPowersModal } from "./powers-modal.js";
@@ -111,6 +111,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     closed = true;
     clearTimers();
     clearTimeout(cometTimer);
+    clearTimeout(winkTimer);
     offBeat?.();
     document.removeEventListener("keydown", onKey, true);
     guardWebviewsForModal(false);
@@ -170,25 +171,36 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     cometTimer = window.setTimeout(launchComet, 3500 + Math.random() * 5000);
   };
   cometTimer = window.setTimeout(launchComet, 900 + Math.random() * 1500);
-  let castAt = Math.floor(Math.random() * AVATAR_VARIANTS.length);
-  const paintCast = (mood: "playful" | "thinking" | "generating"): void => {
-    const v = AVATAR_VARIANTS[castAt % AVATAR_VARIANTS.length]!;
-    face.innerHTML = botAvatarSvg({ variant: v.id, color: "#0b0a0f" }, mood, { size: 112 });
+  // THE REGULAR CAT (his order, 2026-10-09: "remove the weird eye cat… just
+  // the regular cat with a wink and a slight strobe"): Glyphh itself, winking
+  // now and then; the ring breathes a soft glow behind it.
+  const REGULAR: BotAvatar = { variant: 1, color: "#0b0a0f" };
+  const paintCat = (wink: boolean): void => { face.innerHTML = botAvatarSvg(REGULAR, wink ? "playful" : "idle", { size: 112 }); };
+  let winkTimer = 0;
+  const winkLoop = (): void => {
+    clearTimeout(winkTimer);
+    winkTimer = window.setTimeout(() => {
+      if (closed) return;
+      paintCat(true);
+      window.setTimeout(() => { if (!closed && !doneShown) paintCat(false); }, 650);
+      winkLoop();
+    }, 3500 + Math.random() * 3000);
+  };
+  let doneShown = false;
+  const startCat = (): void => {
+    doneShown = false;
+    paintCat(false);
     face.classList.remove("spn-face-in");
     void face.offsetWidth;
     face.classList.add("spn-face-in");
-  };
-  const cycleCast = (mood: "playful" | "thinking" | "generating", ms: number): void => {
-    clearTimers();
-    paintCast(mood);
-    timers.push(window.setInterval(() => { castAt++; paintCast(mood); }, ms));
+    winkLoop();
   };
 
   // ── ASK ──
   function paintAsk(): void {
     building = false;
     hero.className = "spn-hero";
-    cycleCast("playful", 3600);
+    startCat();
     body.textContent = "";
     foot.textContent = "";
     body.appendChild(hero);
@@ -243,7 +255,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     showErr("");
     building = true;
     hero.className = "spn-hero spn-building";
-    cycleCast("thinking", 2600);
+    startCat();
     body.textContent = "";
     foot.textContent = "";
     body.appendChild(hero);
@@ -270,7 +282,6 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
         li.classList.toggle("active", i === at);
         li.querySelector(".spn-dot")!.innerHTML = done ? CHECK_SVG : "";
       });
-      if (stage === "face") cycleCast("generating", 1500);
     };
     light("plan");
     const stop = el("button", "action-btn secondary", "Stop");
@@ -304,8 +315,10 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   // ── DONE ──
   function paintDone(b: Built): void {
     clearTimers();
+    clearTimeout(winkTimer);
+    doneShown = true;
     hero.className = "spn-hero spn-born";
-    face.innerHTML = botAvatarSvg(b.avatar ?? { variant: AVATAR_VARIANTS[castAt % AVATAR_VARIANTS.length]!.id, color: "#0b0a0f" }, "done", { size: 112, title: b.name });
+    face.innerHTML = botAvatarSvg(b.avatar ?? REGULAR, "done", { size: 112, title: b.name });
     face.classList.remove("spn-face-in");
     void face.offsetWidth;
     face.classList.add("spn-face-in");

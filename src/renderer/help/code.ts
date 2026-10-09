@@ -6005,10 +6005,11 @@ let railBots: Array<{ slug: string; name: string }> = [];
 /** Each super power's own voice, by slug (voice-mic.ts setSpeakerVoice reads it). */
 const railBotVoices = new Map<string, { model: string; voiceId: string }>();
 
-async function primeBotAvatars(): Promise<void> {
+/** Read the roster; true when it was actually read (an empty list counts). */
+async function primeBotAvatars(): Promise<boolean> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
-  if (!env?.ok || !Array.isArray(env.data)) return;
+  if (!env?.ok || !Array.isArray(env.data)) return false;
   railBotAvatars.clear();
   railBotVoices.clear();
   const bots: Array<{ slug: string; name: string }> = [];
@@ -6019,6 +6020,7 @@ async function primeBotAvatars(): Promise<void> {
     bots.push({ slug: a.slug, name: String(a.name || a.slug) });
   }
   railBots = bots;
+  return true;
 }
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
@@ -6174,7 +6176,9 @@ async function loadRailSessions(): Promise<void> {
     .sort((a, b) => b.mtime - a.mtime);
   reconcileWebDefaultFolder();
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
-  await primeBotAvatars();   // the rail's rows: Glyphh and its super powers
+  // The rail's rows: Glyphh and its super powers. Only a roster that was
+  // really read can say "none yet" — a failed read never opens the intro.
+  if (await primeBotAvatars()) void maybeIntroSuperPowers();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -6474,6 +6478,38 @@ function renderRailSessions(): void {
       onOpen: () => { leaveWorkspace(); sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }); },
       menu: (btn) => openRailBotMenu(btn, b) });
   }
+}
+
+/** THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
+ *  to it opens its conversation the way its rail row does. */
+function openNewSuperPower(): void {
+  openNewSuperPowerModal({
+    onTalk: (slug, name) => {
+      railPickedKey = slug;
+      renderRailSessions();
+      leaveWorkspace();
+      sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
+    },
+    onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
+  });
+}
+
+/** FIRST TIME, IT OPENS ITSELF (his order, 2026-10-09: "this modal should load
+ *  on startup for first time users"): on the desktop's shell, once the rail
+ *  has read the roster, a member with no super powers who has never seen it
+ *  gets it once; the preference keeps it from coming back. */
+const SUPER_POWER_INTRO_PREF = "superPowerIntroShown";
+let superPowerIntroChecked = false;
+async function maybeIntroSuperPowers(): Promise<void> {
+  if (superPowerIntroChecked) return;
+  superPowerIntroChecked = true;
+  if (onWeb() || (new URLSearchParams(window.location.search).get("solo") || "")) return;
+  if (railBots.length) return;
+  const g = window.glyphh as unknown as { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => unknown };
+  const seen = await Promise.resolve(g.getPreference?.(SUPER_POWER_INTRO_PREF, false)).catch(() => true);
+  if (seen) return;
+  void g.setPreference?.(SUPER_POWER_INTRO_PREF, true);
+  window.setTimeout(() => openNewSuperPower(), 900);
 }
 
 /** A new Glyphh session in the open agent — set at init (initCode). */
@@ -6907,18 +6943,7 @@ function initRailApps(): void {
   el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
   // THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
   // to it opens its conversation the way its rail row does.
-  el("rail-sp-new")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openNewSuperPowerModal({
-      onTalk: (slug, name) => {
-        railPickedKey = slug;
-        renderRailSessions();
-        leaveWorkspace();
-        sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
-      },
-      onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
-    });
-  });
+  el("rail-sp-new")?.addEventListener("click", (e) => { e.stopPropagation(); openNewSuperPower(); });
   el<HTMLInputElement>("rail-sp-search")?.addEventListener("input", () => renderRailSessions());
   // ONE CREATE DOOR (his order, 2026-10-08): the rail's +, the agent menu's
   // "Create workspace…". A panel is its own document — it asks the shell,
