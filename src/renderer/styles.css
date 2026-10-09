@@ -22790,3 +22790,9 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .sp-filter-face svg, .sp-filter-face img { width: 18px; height: 18px; object-fit: contain; }
 .sp-filter-menu .menu-check { width: 14px; height: 14px; color: var(--accent); display: inline-flex; }
 .wb-session-row .wb-session-owner { flex: none; margin-right: 4px; }
+
+/* The map's Super powers group (2026-10-09): who this one hands work to. */
+.pmap-edge-superPowers { stroke: color-mix(in srgb, #ec4899 75%, transparent); }
+.pmap-k-superPowers .pmap-label-dot { background: #ec4899; }
+.pmap-k-superPowers.pmap-node { border-left: 3px solid #ec4899; }
+.pmap-k-superPowers .pmap-node-icon svg { width: 22px; height: 22px; }

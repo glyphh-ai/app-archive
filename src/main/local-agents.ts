@@ -33,7 +33,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, checkSuperPowers, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -65,6 +65,8 @@ export interface AgentRow {
   folders?: string[];
   connections?: string[];
   models?: string[];
+  /** The super powers it holds and may hand work to (2026-10-09). */
+  superPowers?: string[];
   /** The sliders and the voice (shared/member-library.ts AgentRowLike). */
   personality?: number;
   effort?: string;
@@ -143,7 +145,7 @@ interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
-  folders?: string[]; connections?: string[]; models?: string[];
+  folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
   personality?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;
@@ -181,6 +183,12 @@ export function saveAgent(input: AgentInput): AgentRow {
   if (!name) throw new Error("an agent needs a name");
   const slug = slugify(String(input.slug || name));
   const existing = known ?? readAgent(slug);
+  // WHO IT HOLDS (2026-10-09): never itself, never a loop — checked on every save that names them.
+  if (input.superPowers !== undefined) {
+    const roster = new Map(listAgents().filter((a) => a.slug !== slug).map((a) => [a.slug, a.superPowers ?? []] as const));
+    roster.set(slug, existing?.superPowers ?? []);
+    input = { ...input, superPowers: checkSuperPowers(slug, input.superPowers, roster) };
+  }
   const row = buildAgentRow({ ...input, slug }, existing, new Date().toISOString());
   writeAgent(row);
   // Live flips park or arm every one of its tasks at once.

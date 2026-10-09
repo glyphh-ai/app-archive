@@ -19,6 +19,7 @@ export interface BotPowersLike {
   folders?: string[];
   connections?: string[];
   models?: string[];
+  superPowers?: string[];
   skills?: string[];
 }
 
@@ -53,6 +54,9 @@ export function botPowersNote(bot: BotPowersLike | null, workdir: string): strin
   if (models.length) lines.push(`- Models: ${main ? `you run on ${main}; ` : ""}you may also use ${models.join(", ")}.`);
   const skills = list(bot.skills);
   if (skills.length) lines.push(`- Powers you may load: ${skills.join(", ")}.`);
+  // THE SUPER POWERS IT HOLDS (his order, 2026-10-09): the only ones it hands work to.
+  const team = list(bot.superPowers);
+  if (team.length) lines.push(`- Super powers you may hand work to with spawn_agent: ${team.join(", ")}. Hand work to no other.`);
   return lines.length ? ["Your powers:", ...lines].join("\n") : "";
 }
 

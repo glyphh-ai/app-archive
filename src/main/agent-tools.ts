@@ -37,7 +37,7 @@ import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, 
 
 interface SaveParams {
   agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown;
-  powers?: unknown; connections?: unknown; models?: unknown; folders?: unknown; personality?: unknown; effort?: unknown;
+  powers?: unknown; connections?: unknown; models?: unknown; folders?: unknown; personality?: unknown; effort?: unknown; superPowers?: unknown;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -46,7 +46,7 @@ function summary(a: ReturnType<typeof getAgent>) {
   return {
     agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim(),
     powers: (a.skills ?? []).map((id) => id.slice(id.indexOf(":") + 1)), connections: a.connections ?? [], models: a.models ?? [],
-    folders: a.folders ?? [], personality: a.personality ?? null, effort: a.effort ?? null,
+    folders: a.folders ?? [], superPowers: a.superPowers ?? [], personality: a.personality ?? null, effort: a.effort ?? null,
   };
 }
 
@@ -157,6 +157,8 @@ export function installAgentRelayHandlers(): void {
       ...(p.folders !== undefined ? { folders: cleanNames(p.folders) } : {}),
       ...(personality !== undefined ? { personality } : {}),
       ...(effort !== undefined ? { effort } : {}),
+      // The super powers it holds: checked for itself and loops by saveAgent.
+      ...(p.superPowers !== undefined ? { superPowers: cleanNames(p.superPowers) } : {}),
     });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });

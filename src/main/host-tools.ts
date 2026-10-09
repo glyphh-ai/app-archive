@@ -214,6 +214,7 @@ function registerTools(mcp: ToolRegistrar): void {
       folders: z.array(z.string()).optional().describe("Absolute folder paths; the first is its working folder, the rest it can read"),
       personality: z.number().int().min(1).max(5).optional().describe("1 serious … 3 balanced … 5 playful"),
       effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional().describe("How hard it thinks: low is fast, max is thorough"),
+      superPowers: z.array(z.string()).optional().describe("Other super powers it holds — the only ones it may hand work to, by slug from agents_list. Never itself; no loops (two can't hold each other)"),
     },
     async (input) => via("agents.save", input),
   );

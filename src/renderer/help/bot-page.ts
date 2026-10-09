@@ -34,8 +34,10 @@ export interface BotRow {
   modelCaps?: Record<string, number>;
   avatar: BotAvatar | null;
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
+  /** The other super powers it holds (2026-10-09). */
+  superPowers?: string[];
 }
-type PowerTabName = "folders" | "connections" | "models" | "skills";
+type PowerTabName = "folders" | "connections" | "models" | "skills" | "superPowers";
 interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; utility?: boolean }
 interface Api extends PlusApi {
@@ -60,9 +62,9 @@ interface Api extends PlusApi {
   taskSpec?: (slug: string) => Promise<Envelope>;
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
-export type PowerKind = "folders" | "connections" | "models" | "skills";
+export type PowerKind = "folders" | "connections" | "models" | "skills" | "superPowers";
 /** Shut on first open: everything but Folders. */
-export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["connections", "models", "skills"]);
+export const DEFAULT_COLLAPSED: ReadonlyArray<PowerKind> = Object.freeze(["connections", "models", "skills", "superPowers"]);
 
 /** The sliders' stops (his order, 2026-10-09). Effort maps onto the loop's dial. */
 export const PERSONALITY_LABELS: ReadonlyArray<string> = Object.freeze(["Serious", "Calm", "Balanced", "Warm", "Playful"]);
@@ -103,6 +105,8 @@ export const POWER_KINDS: ReadonlyArray<{ kind: PowerKind; label: string }> = Ob
   { kind: "connections", label: "Connections" },
   { kind: "models", label: "Models" },
   { kind: "skills", label: "Your powers" },
+  // SUPER POWERS HOLD SUPER POWERS (his order, 2026-10-09).
+  { kind: "superPowers", label: "Super powers" },
 ]);
 
 /** A bot's list of one kind, as stored (blank and repeated names dropped). */
@@ -174,6 +178,14 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** Each model's logo, from the server's catalog (models-catalog). */
   const modelIcons = new Map<string, string>();
   let conns: PlusConnectorRow[] = [];
+  /** Every super power, for this one's Super powers section (face, name). */
+  let roster: Array<{ slug: string; name: string; avatar: BotAvatar | null }> = [];
+  const readRoster = async (): Promise<typeof roster> => {
+    const env = await (api() as { libraryAgentsList?: () => Promise<Envelope> }).libraryAgentsList?.().catch(() => null);
+    return (env?.ok && Array.isArray(env.data) ? env.data as Array<Record<string, unknown>> : [])
+      .map((a) => ({ slug: String(a.slug ?? ""), name: String(a.name ?? a.slug ?? ""), avatar: (a.avatar as BotAvatar | null) ?? null }))
+      .filter((a) => a.slug);
+  };
   let skills: Array<{ id: string; name: string; type?: string }> = [];
   let picked: BotAvatar = { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[0]! };
   let destroyed = false;
@@ -699,6 +711,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     connections: "No connections yet.",
     models: "No models yet. It runs on the main agent's.",
     skills: "None yet.",
+    superPowers: "None yet. Add one it can hand work to.",
   };
   interface PowerItem { icon: string; name: string; sub: string; tag?: string; stored?: string }
   // OPEN OR SHUT, REMEMBERED (his order, 2026-10-09: "collapse all these on
@@ -728,6 +741,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   function itemsOf(kind: PowerKind): PowerItem[] {
     if (!bot) return [];
     if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 ? { tag: "Works here" } : {}) }));
+    if (kind === "superPowers") return powersOf(bot, "superPowers").map((slug) => {
+      const r = roster.find((x) => x.slug === slug);
+      return { icon: botAvatarSvg(avatarOf({ slug, avatar: r?.avatar ?? null }), "idle", { size: 24 }), name: r?.name ?? slug, sub: r ? "Hands work to it" : "Gone", stored: slug };
+    });
     if (kind === "connections") return powersOf(bot, "connections").map((c) => { const k = connOf(c); return { icon: k?.icon ?? PLUS_ICONS.connectors, name: k?.name ?? c, sub: k?.on ? "Connected" : "Not connected", stored: c }; });
     if (kind === "models") {
       const caps = bot.modelCaps ?? {};
@@ -863,7 +880,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     });
     const model: PowerMapModel = {
       center: { name: nameIn.value.trim() || bot.name, face: botAvatarSvg(picked, "idle", { size: 84 }) },
-      groups: [group("connections", "Connections"), group("folders", "Folders"), group("skills", "Powers"), group("models", "Models")],
+      groups: [group("connections", "Connections"), group("folders", "Folders"), group("superPowers", "Super powers"), group("skills", "Powers"), group("models", "Models")],
     };
     map.update(model);
   }
@@ -888,11 +905,12 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     openPowersModal({
       ...(kind ? { tab: kind } : {}),
       ...(kind && focus ? { focus: { tab: kind as PowerTabName, name: focus } } : {}),
-      selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills"), modelCaps: { ...(b.modelCaps ?? {}) } },
+      selection: { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills"), superPowers: powersOf(b, "superPowers"), modelCaps: { ...(b.modelCaps ?? {}) } },
+      self: b.slug,
       onSave: async (picked) => {
         if (!bot) return { ok: false, error: "This super power is gone." };
         const patch: Record<string, unknown> = {};
-        for (const k of ["folders", "connections", "skills"] as const) {
+        for (const k of ["folders", "connections", "skills", "superPowers"] as const) {
           if (JSON.stringify(picked[k]) !== JSON.stringify(powersOf(bot, k))) patch[k] = picked[k];
         }
         // It runs on its first chat model; the team's chat list is `models` here.
@@ -934,6 +952,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     models = ms?.ok ? ms.models.filter((m) => !m.utility) : [];
     conns = cs;
     skills = sk?.ok && Array.isArray(sk.data) ? (sk.data as Array<{ id: string; name: string; type?: string }>) : [];
+    roster = await readRoster();
     fillForm();
     paintPowers();
     doneLoading();

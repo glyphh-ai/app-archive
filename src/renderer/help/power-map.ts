@@ -14,7 +14,7 @@
  * paints it and repaints on `update`.
  */
 
-export type MapGroupKind = "connections" | "folders" | "skills" | "models";
+export type MapGroupKind = "connections" | "folders" | "superPowers" | "skills" | "models";
 
 export interface MapNode {
   /** The value the page stores (a slug, a path, a power id, a model name). */
@@ -36,9 +36,9 @@ export interface PowerMapModel {
 
 /** Where each group sits. */
 export const MAP_SIDES: Readonly<Record<MapGroupKind, "left" | "right">> = Object.freeze({
-  connections: "left", folders: "left", skills: "right", models: "right",
+  connections: "left", folders: "left", superPowers: "left", skills: "right", models: "right",
 });
-const ORDER: ReadonlyArray<MapGroupKind> = ["connections", "folders", "skills", "models"];
+const ORDER: ReadonlyArray<MapGroupKind> = ["connections", "folders", "superPowers", "skills", "models"];
 
 export const NODE_W = 196;
 export const NODE_H = 46;

@@ -31,18 +31,23 @@ import { planGates } from "./plan-gate.js";
 import { hideAppOverlay } from "../app-overlay.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { capText, isChatModel, modelTypeLabel, parseCap, priceLines, safeIconUrl, tokensShort, type CatalogModel } from "./model-info.js";
+import { avatarOf, botAvatarSvg, type BotAvatar } from "./bot-avatar.js";
 
-export type PowerTab = "folders" | "connections" | "models" | "skills";
+export type PowerTab = "folders" | "connections" | "models" | "skills" | "superPowers";
 export const POWER_TABS: ReadonlyArray<{ tab: PowerTab; label: string }> = Object.freeze([
   { tab: "folders", label: "Folders" },
   { tab: "connections", label: "Connections" },
   { tab: "models", label: "Models" },
   { tab: "skills", label: "Your powers" },
+  // SUPER POWERS HOLD SUPER POWERS (his order, 2026-10-09: "agree").
+  { tab: "superPowers", label: "Super powers" },
 ]);
 
 /** A super power's picks. `models` is one list: the first is the one it runs on. */
 export interface PowerSelection {
   folders: string[]; connections: string[]; models: string[]; skills: string[];
+  /** The other super powers it holds — the only ones it hands work to. */
+  superPowers?: string[];
   /** Model → dollars a month (his order, 2026-10-09); absent = no limit. The gateway enforces it. */
   modelCaps?: Record<string, number>;
 }
@@ -58,6 +63,8 @@ export interface PowersModalOptions {
    *  modal"): a model or a connection opens its page; a folder or one of
    *  your powers opens its tab, searched to it. `name` is how it is stored. */
   focus?: { tab: PowerTab; name: string };
+  /** The super power being edited: never offered to itself, nor anything that would loop back to it. */
+  self?: string;
   /** Open straight on Your powers' New power screen (Customize's Add → New power). */
   newPower?: boolean;
 }
@@ -127,7 +134,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   if (!progressWired) { progressWired = true; api().onConnectorsConnectProgress?.((p) => onProgress?.(p)); }
   let tab: PowerTab = opts.focus?.tab ?? opts.tab ?? "folders";
   const sel: PowerSelection | null = opts.selection
-    ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills], modelCaps: { ...(opts.selection.modelCaps ?? {}) } }
+    ? { folders: [...opts.selection.folders], connections: [...opts.selection.connections], models: [...opts.selection.models], skills: [...opts.selection.skills], superPowers: [...(opts.selection.superPowers ?? [])], modelCaps: { ...(opts.selection.modelCaps ?? {}) } }
     : null;
   /** The connections tab's own screens: the list, the directory, one connection's permissions. */
   let connView: { kind: "list" } | { kind: "discover" } | { kind: "perms"; conn: Conn; app?: CatalogApp } | { kind: "app"; app: CatalogApp } = { kind: "list" };
@@ -330,6 +337,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (tab === "folders") paintFolders();
     else if (tab === "connections") paintConnections();
     else if (tab === "models") paintModels();
+    else if (tab === "superPowers") paintSuperPowers();
     else paintSkills();
   }
   function repaintBody(): void {
@@ -339,7 +347,54 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (tab === "folders") paintFolders(true);
     else if (tab === "connections") paintConnections(true);
     else if (tab === "models") paintModels(true);
+    else if (tab === "superPowers") paintSuperPowers(true);
     // Your powers paints itself: it is Customize's own Skills panel.
+  }
+
+  // ── SUPER POWERS (his order, 2026-10-09): the other super powers this one
+  //    holds, face and name, + and ✓. Never itself; one that already reaches
+  //    it (directly or through others) would loop, so it is shown but closed. ──
+  interface RosterRow { slug: string; name: string; description: string; avatar: BotAvatar | null; superPowers: string[] }
+  let roster: RosterRow[] | null = null;
+  async function loadRoster(): Promise<void> {
+    const env = await (api() as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> }).libraryAgentsList?.().catch(() => null);
+    roster = (env?.ok && Array.isArray(env.data) ? env.data : []).map((a: Record<string, unknown>) => ({
+      slug: String(a.slug ?? ""), name: String(a.name ?? a.slug ?? ""), description: String(a.description ?? ""),
+      avatar: (a.avatar as BotAvatar | null) ?? null,
+      superPowers: Array.isArray(a.superPowers) ? (a.superPowers as unknown[]).map(String) : [],
+    })).filter((r) => r.slug);
+    if (!closed && tab === "superPowers") repaintBody();
+  }
+  /** Does `from` hold `target`, directly or through others? */
+  function reaches(from: string, target: string, seen = new Set<string>()): boolean {
+    if (from === target) return true;
+    if (seen.has(from) || !roster) return false;
+    seen.add(from);
+    return (roster.find((r) => r.slug === from)?.superPowers ?? []).some((n) => reaches(n, target, seen));
+  }
+  function paintSuperPowers(bodyOnly = false): void {
+    if (!bodyOnly) {
+      bar.append(
+        searchBox("superPowers", "Search super powers", () => repaintBody()),
+        addButton("+ New", () => { close(); document.getElementById("rail-sp-new")?.click(); }),
+      );
+    }
+    if (!roster) { empty("Reading your super powers…"); void loadRoster(); return; }
+    const needle = (queries.superPowers ?? "").trim().toLowerCase();
+    const list = roster.filter((r) => r.slug !== opts.self && matches(needle, r.name, r.description, r.slug));
+    if (!list.length) { empty(needle ? "No super power matches." : "No other super powers yet. + New makes one."); return; }
+    for (const r of list) {
+      const face = botAvatarSvg(avatarOf({ slug: r.slug, avatar: r.avatar }), "idle", { size: 24 });
+      const has = !!sel?.superPowers?.includes(r.slug);
+      const loops = !!opts.self && !has && reaches(r.slug, opts.self);
+      body.appendChild(row({
+        icon: face, name: r.name,
+        sub: loops ? `Already holds this super power, so it can't be added back` : (r.description || "Super power"),
+        has,
+        ...(sel && !loops ? { onToggle: () => { sel.superPowers = toggleIn(sel.superPowers ?? [], r.slug); repaintBody(); } } : {}),
+        onOpen: () => { close(); (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(r.slug); },
+      }));
+    }
   }
 
   function paintFolders(bodyOnly = false): void {
@@ -881,6 +936,8 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
       if (conn) connView = { kind: "perms", conn, ...(app ? { app } : {}) };
       else if (app) connView = { kind: "app", app };
       else queries.connections = rows.find((r) => r.slug === f.name)?.name ?? f.name;
+    } else if (f.tab === "superPowers") {
+      queries.superPowers = roster?.find((r) => r.slug === f.name)?.name ?? f.name;
     } else if (f.tab === "folders") {
       queries.folders = baseName(f.name);
     } else {

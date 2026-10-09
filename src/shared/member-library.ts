@@ -390,6 +390,10 @@ export interface AgentRowLike {
   folders?: string[];
   connections?: string[];
   models?: string[];
+  /** THE SUPER POWERS IT HOLDS (his order, 2026-10-09: "should a super power
+   *  hold other super powers… agree"): the slugs of the other super powers it
+   *  may hand work to — and the only ones. Never itself, never a loop. */
+  superPowers?: string[];
   /** THE SLIDERS AND THE VOICE (his order, 2026-10-09: "sliders on the super
    *  power.. personality, thinking effort or speed, and add voice… Each super
    *  power will and can have its own voice"). Personality 1 (serious) … 5
@@ -424,7 +428,7 @@ export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
-  folders?: string[]; connections?: string[]; models?: string[];
+  folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
   personality?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
@@ -539,6 +543,7 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     folders: Array.isArray(input.folders) ? cleanNames(input.folders) : cleanNames(existing?.folders),
     connections: Array.isArray(input.connections) ? cleanNames(input.connections) : cleanNames(existing?.connections),
     models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
+    superPowers: (Array.isArray(input.superPowers) ? cleanNames(input.superPowers) : cleanNames(existing?.superPowers)).filter((s) => s !== slug),
     ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
     ...optional("effort", input.effort === undefined ? cleanEffort(existing?.effort) : cleanEffort(input.effort)),
     voice: input.voice === undefined ? cleanVoice(existing?.voice) : cleanVoice(input.voice),
@@ -548,6 +553,27 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     createdAt: existing?.createdAt ?? nowIso,
     updatedAt: nowIso,
   };
+}
+
+/** WHO A SUPER POWER MAY HOLD (his order, 2026-10-09: "a super power can't
+ *  add itself, and two can't hold each other"): `picks` for `slug`, checked
+ *  against what every other super power holds. Refuses itself, a slug that is
+ *  no super power, and any loop — A holding B when B already reaches A,
+ *  directly or through others. Returns the picks, cleaned. */
+export function checkSuperPowers(slug: string, picks: unknown, roster: ReadonlyMap<string, readonly string[]>): string[] {
+  const want = cleanNames(picks);
+  if (want.includes(slug)) throw new Error("a super power can't hold itself");
+  const unknown = want.filter((w) => !roster.has(w));
+  if (unknown.length) throw new Error(`no super power called ${unknown.map((u) => `"${u}"`).join(", ")} — agents_list names them`);
+  const reaches = (from: string, target: string, seen = new Set<string>()): boolean => {
+    if (from === target) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (roster.get(from) ?? []).some((n) => reaches(n, target, seen));
+  };
+  const loops = want.filter((w) => reaches(w, slug));
+  if (loops.length) throw new Error(`that would be a loop: ${loops.map((l) => `"${l}"`).join(", ")} already ${loops.length === 1 ? "holds" : "hold"} this super power`);
+  return want;
 }
 
 export function isAgentRow(v: unknown): v is AgentRowLike {

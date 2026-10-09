@@ -19,10 +19,10 @@ const model = (over: Partial<Record<"connections" | "folders" | "skills" | "mode
 
 describe("the super power map's layout", () => {
   it("connections and folders sit left of the centre; powers and models right", () => {
-    expect(MAP_SIDES).toEqual({ connections: "left", folders: "left", skills: "right", models: "right" });
+    expect(MAP_SIDES).toEqual({ connections: "left", folders: "left", superPowers: "left", skills: "right", models: "right" });
     const L = layoutPowerMap(model({ connections: [n("youtube")], folders: [n("videos")], skills: [n("clips")], models: [n("gemini")] }));
     for (const node of L.nodes) {
-      if (node.kind === "connections" || node.kind === "folders") expect(node.x + node.w).toBeLessThan(L.center.x - L.center.r);
+      if (node.kind === "connections" || node.kind === "folders" || node.kind === "superPowers") expect(node.x + node.w).toBeLessThan(L.center.x - L.center.r);
       else expect(node.x).toBeGreaterThan(L.center.x + L.center.r);
     }
     expect(L.labels.map((l) => l.label)).toEqual(["Connections", "Folders", "Powers", "Models"]);
