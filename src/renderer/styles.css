@@ -22126,3 +22126,10 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .rail-bot-row .code-history-title { flex: 1 1 auto; min-width: 0; color: var(--text-2); font-size: 13px; }
 .rail-bot-row.active { background: var(--hover); }
 .rail-bot-row.active .code-history-title { color: var(--text); }
+
+/* ── THE RAIL (his order, 2026-10-09): Glyphh right under + New; then the
+   SUPER POWERS label, a search under it, the list. ── */
+.rail-glyphh-row .rail-glyphh-mark { width: 16px; height: 16px; flex: none; }
+.rail-glyphh-row.active { background: var(--hover); color: var(--text); }
+.rail-sp-body > .rail-sp-head { padding: 14px 16px 6px; }
+.rail-sp-body > .app-rail-search { padding: 0 10px 6px; }

@@ -5796,7 +5796,6 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
  *  Recents has neither and always shows. */
 interface RailSectionDef { toggle: string; body: string; pref: string; head?: string; showPref?: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
-  { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen", head: "rail-layouts-head", showPref: RAIL_SHOW_LAYOUTS_PREF },
 ];
 // Enabled (the Appearance option) and open (the disclosure) are separate
@@ -6425,6 +6424,7 @@ function renderRailSessions(): void {
   // chat in the same Glyphh UI; the threads themselves live in the recents
   // dropdown at the agent's top right, which reads railSessions as before.
   host.textContent = "";
+  document.getElementById("rail-glyphh")?.classList.toggle("active", railPickedKey === "glyphh");
   const row = (o: { key: string; name: string; mark: HTMLElement; liveId?: string; onOpen: () => void; menu?: (btn: HTMLElement) => void }): void => {
     const r = document.createElement("div");
     r.className = "code-history-item rail-bot-row";
@@ -6447,20 +6447,20 @@ function renderRailSessions(): void {
     r.addEventListener("click", () => { railPickedKey = o.key; renderRailSessions(); o.onOpen(); });
     host.appendChild(r);
   };
-  // Glyphh: its newest thread (the rest are in the recents dropdown), else a new one.
-  const glyphhMark = document.createElement("span");
-  glyphhMark.className = "code-sess-mark rail-bot-mark";
-  glyphhMark.innerHTML = `<img src="brand/glyphh-mark.png" alt="" draggable="false" />`;
-  const newest = railSessions.find((x) => !x.bot);
-  row({ key: "glyphh", name: "Glyphh", mark: glyphhMark, ...(newest ? { liveId: newest.id } : {}), onOpen: () => {
-    if (newest) sessOpen(newest);
-    else el<HTMLButtonElement>("code-new-chat")?.click();
-  } });
   // SUPER POWERS ONLY (his order, 2026-10-09: "The left rail are only super
   // powers"): the bots — powers combined, carrying skills, tasks, schedules.
   // The powers themselves live in the chest, not here.
-  if (railBots.length) host.appendChild(sessSectionHead("Super powers", "Your bots — powers combined into workflows"));
-  for (const b of railBots) {
+  // The label and the search are the rail's own markup now (his order,
+  // 2026-10-09: "SUPERPOWERS label, and a search under it, then the list").
+  const q = (el<HTMLInputElement>("rail-sp-search")?.value ?? "").trim().toLowerCase();
+  const shown = railBots.filter((b) => !q || b.name.toLowerCase().includes(q) || b.slug.includes(q));
+  if (!shown.length) {
+    const empty = document.createElement("div");
+    empty.className = "wb-session-empty";
+    empty.textContent = q ? "No super power matches." : "No super powers yet — ask Glyphh to make one.";
+    host.appendChild(empty);
+  }
+  for (const b of shown) {
     const mark = document.createElement("span");
     mark.className = "code-sess-mark rail-bot-mark";
     mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 20 });
@@ -6469,6 +6469,17 @@ function renderRailSessions(): void {
       onOpen: () => sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }),
       menu: (btn) => openRailBotMenu(btn, b) });
   }
+}
+
+/** GLYPHH, the rail row under + New (his order, 2026-10-09): its newest
+ *  thread (the rest are in the recents dropdown), else a new one. */
+function openGlyphhHome(): void {
+  railPickedKey = "glyphh";
+  renderRailSessions();
+  document.getElementById("rail-glyphh")?.classList.add("active");
+  const newest = railSessions.find((x) => !x.bot && !x.id.startsWith("powers/"));
+  if (newest) sessOpen(newest);
+  else el<HTMLButtonElement>("code-new-chat")?.click();
 }
 
 /** Which rail row the member opened last — it wears the active state. */
@@ -6875,9 +6886,10 @@ function initRailApps(): void {
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
-  el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initWorkspacesVsplit();
+  el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
+  el<HTMLInputElement>("rail-sp-search")?.addEventListener("input", () => renderRailSessions());
   // ONE CREATE DOOR (his order, 2026-10-08): the rail's +, the agent menu's
   // "Create workspace…". A panel is its own document — it asks the shell,
   // which owns the arrangement; the shell opens the modal.

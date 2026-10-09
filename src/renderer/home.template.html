@@ -114,6 +114,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New</span>
         </button>
+        <!-- GLYPHH, right under + New (his order, 2026-10-09): its newest thread,
+             else a new one (help/code.ts openGlyphhHome). -->
+        <button id="rail-glyphh" class="app-rail-nav-item rail-glyphh-row" type="button">
+          <img class="rail-glyphh-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
+          <span>Glyphh</span>
+        </button>
         <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
              Layouts (each opens the modal at that section; the pages live in
              the modal). Everything else stays modal-only. -->
@@ -153,17 +159,15 @@
         <!-- Recents — BACK (his order, 2026-09-10): the sessions are the CLI
              agents' own stores now (Claude first); a click resumes that exact
              conversation on its agent. Same section grammar as Apps below. -->
-        <div class="code-rail-label app-rail-section-head" data-rail-section="recents">
-          <button id="rail-recents-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
-            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <span>Glyphh</span>
-          </button>
-        </div>
-        <!-- THE RAIL IS GLYPHH AND ITS SUPER POWERS (his orders, 2026-10-09): the
-             powers live in the chest, not here. Each bot —
-             its mascot, its name, the ⋮. A click opens its chat in the Glyphh UI;
-             the threads live in the recents dropdown at the agent's top right. -->
-        <div id="rail-recents-body" class="app-rail-section-body" data-rail-section="recents">
+        <!-- SUPER POWERS (his orders, 2026-10-09): the label, a search under it,
+             then the list — each bot's mascot, its name, the ⋮. A click opens its
+             chat in the Glyphh UI; the threads live in the recents dropdown at the
+             agent's top right. The powers themselves live in the + box. -->
+        <div id="rail-recents-body" class="app-rail-section-body rail-sp-body" data-rail-section="recents">
+          <div class="code-history-sec rail-sp-head">Super powers</div>
+          <div class="app-rail-search">
+            <input id="rail-sp-search" class="rail-recents-search" type="text" placeholder="Search super powers…" spellcheck="false" autocomplete="off" />
+          </div>
           <div id="recent-sessions-list" class="code-history"></div>
         </div>
         <!-- THE WORKSPACES TRAY at the rail's foot (his orders, 2026-10-08):
