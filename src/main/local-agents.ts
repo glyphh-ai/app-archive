@@ -152,13 +152,21 @@ interface AgentInput {
 /** WHO NEEDS TO KNOW THE ROSTER MOVED: the Glyphh loop rebuilds its spawn
  *  tool from it, so an agent made from Settings, from a chat (`agent_save`)
  *  or deleted anywhere reaches the next turn of every open conversation. */
-const changed = new Set<() => void>();
+// LOAD-ORDER SAFE (his crash, 2026-10-09: "Cannot access 'changed' before
+// initialization"): glyphh-loop subscribes at ITS module load, which can run
+// inside this module's own imports (local-agents → local-library →
+// glyphh-loop → here), before a top-level `const` would exist. A function
+// declaration is hoisted, so the set is made on first use, whoever comes first.
+function changedSet(): Set<() => void> {
+  const g = globalThis as unknown as { __glyphhAgentsChanged?: Set<() => void> };
+  return (g.__glyphhAgentsChanged ??= new Set());
+}
 export function onAgentsChanged(cb: () => void): () => void {
-  changed.add(cb);
-  return () => changed.delete(cb);
+  changedSet().add(cb);
+  return () => changedSet().delete(cb);
 }
 function announceAgents(): void {
-  for (const cb of changed) { try { cb(); } catch { /* a listener's failure is its own */ } }
+  for (const cb of changedSet()) { try { cb(); } catch { /* a listener's failure is its own */ } }
   // Every window too: the rail paints the super powers' faces from this
   // roster, so a new icon shows there the moment it is saved (his order,
   // 2026-10-09).
