@@ -22113,7 +22113,10 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .web-full-body > .help-section[data-section="schedules"] { padding: 0 28px 24px; box-sizing: border-box; }
 .web-full-body .page-titlebar { display: flex; margin: 0 -28px 14px; }
 .page-toolrow { justify-content: flex-start; gap: 8px; }
-.page-toolrow > .skills-count { margin-left: auto; }
+.page-toolrow > .skills-search { margin-left: auto; }
+/* A label's count, as a badge inside it ("Your schedules 5"). */
+.tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 7px; padding: 0 5px; border-radius: 9px; background: var(--hover); color: var(--text-2); font-size: 11px; font-weight: 600; line-height: 1; box-sizing: border-box; }
+.tab-count:empty { display: none; }
 .page-toolrow > .skills-search { position: static; transform: none; width: min(260px, 32vw); }
 .page-toolrow > .skills-pill { margin-left: 0; padding: 6px; border: none; background: none; color: var(--text-2); }
 .page-toolrow > .skills-pill:hover { background: var(--hover); color: var(--text); }
