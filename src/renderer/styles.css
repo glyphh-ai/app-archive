@@ -22648,3 +22648,5 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
 .pmap-hint { position: absolute; right: 12px; bottom: 9px; font-size: 11px; color: var(--text-3); pointer-events: none; }
 @keyframes pmap-flow { to { stroke-dashoffset: -22; } }
 @media (prefers-reduced-motion: reduce) { .pmap-edge { animation: none; } }
+.spn-line { transition: opacity .16s ease; }
+.spn-line.swap { opacity: 0; }

@@ -50,12 +50,24 @@ export async function buildSuperPower(ask: string, beat: (b: SuperPowerBeat) => 
   let heard = "";
   let lastSent = 0;
   let stage: SuperPowerBeat["stage"] = "plan";
+  // STEADY WORDS (his report, 2026-10-09: "the words are kind of just
+  // switching back and forth"): a line stays at least 1.2s unless the stage
+  // moves, the same line is never sent twice, and a written line only once
+  // it is whole (below).
+  let lastLineSent = "";
   const tell = (b: SuperPowerBeat, force = false): void => {
     const now = Date.now();
-    if (!b.line || (!force && b.stage === stage && now - lastSent < 300)) return;
+    if (!b.line || b.line === lastLineSent) return;
+    if (!force && b.stage === stage && now - lastSent < 1200) return;
     stage = b.stage;
     lastSent = now;
+    lastLineSent = b.line;
     beat(b);
+  };
+  /** The newest COMPLETE line Glyphh wrote; a half-streamed one is not shown. */
+  const wholeLine = (): string => {
+    const cut = heard.lastIndexOf("\n");
+    return cut > 0 ? lastLine(heard.slice(0, cut)) : "";
   };
   tell({ stage: "plan", line: "Reading what you asked for" }, true);
   // MADE IS DONE: once agent_save has answered, the build wraps up a few
@@ -75,9 +87,9 @@ export async function buildSuperPower(ask: string, beat: (b: SuperPowerBeat) => 
           tell({ stage: "life", line: "It's alive. Finishing up" }, true);
           wrapUp = setTimeout(() => { stopGlyphhHeadless(me.chatId); }, 8000);
         }
-        else if (ev.type === "thinking") tell({ stage, line: "Thinking it through" });
+        else if (ev.type === "thinking" && !heard) tell({ stage, line: "Thinking it through" });
         else if (ev.type === "approval") tell({ stage, line: "Skipped a step that needs your approval" });
-        else if (ev.type === "delta") { heard += ev.delta; tell({ stage, line: lastLine(heard) }); }
+        else if (ev.type === "delta") { heard += ev.delta; tell({ stage, line: wholeLine() }); }
       },
     });
   } finally {

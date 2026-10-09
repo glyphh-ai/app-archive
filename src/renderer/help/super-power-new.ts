@@ -248,7 +248,11 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     offBeat = api().onSuperPowerBuildProgress?.((b) => {
       if (closed) return;
       if (b.stage) light(b.stage);
-      if (b.line) line.textContent = b.line;
+      // A soft fade between lines, so a change reads as progress, not flicker.
+      if (b.line && b.line !== line.textContent) {
+        line.classList.add("swap");
+        window.setTimeout(() => { if (!closed) { line.textContent = b.line; line.classList.remove("swap"); } }, 160);
+      }
     }) ?? null;
     const r = await run(text).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
     offBeat?.();
