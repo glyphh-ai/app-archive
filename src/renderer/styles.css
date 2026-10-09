@@ -14559,7 +14559,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-composer-bar .code-chip.code-plus-chip { font-size: 18px; padding: 0 5px; }
 .code-composer-bar .code-chip.code-mic-chip { padding: 2px 5px; }
 .code-composer-bar .code-chip.code-mic-chip svg { width: 15px; height: 15px; }
-.code-composer-bar .code-chip.code-mic-caret { padding: 2px 2px; margin-left: -3px; }
+/* The caret sits against the waveform it opens the options for (his report, 2026-10-09:
+   it floated too far right): the 30px voice button leaves ~7px of air past its glyph. */
+.code-composer-bar .code-chip.code-mic-caret { padding: 2px 2px; margin-left: -9px; }
 .code-composer-bar .code-chip.code-voice-mode { width: 30px; height: 30px; padding: 0; }
 .code-chipwrap { position: relative; min-width: 0; }
 /* A CHIP NEVER GROWS PAST ITS OWN SLOT (his report + screenshot, 2026-08-28:
