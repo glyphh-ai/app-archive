@@ -108,8 +108,9 @@ describe("the desktop's remote door", () => {
     await expect(t["agent.run"]!({ prompt: "x", workdir: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
     expect(calls).toEqual([]);
     await t["agent.run"]!({ prompt: "x", mode: "code", workdir: join(granted, "repo") });
-    await t["agent.run"]!({ prompt: "y", mode: "work" });
-    expect(calls.map((c) => c.m)).toEqual(["agent.run", "agent.run"]);
+    // No folder named is refused (2026-10-09): never the machine's working folder or home.
+    await expect(t["agent.run"]!({ prompt: "y", mode: "work" })).rejects.toThrow(/needs a folder this machine granted/);
+    expect(calls.map((c) => c.m)).toEqual(["agent.run"]);
   });
 });
 

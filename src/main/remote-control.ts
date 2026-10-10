@@ -145,9 +145,12 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
   });
   for (const [m, h] of Object.entries(fsDoor)) table[m] = async (p) => h(p);
 
+  // A REMOTE TURN RUNS IN A GRANTED FOLDER OR NOT AT ALL (his rule, 2026-10-09:
+  // remote control is the perimeter): no folder named is refused, never the working folder.
   table["agent.run"] = async (p) => {
     const workdir = str(p, "workdir");
-    return dispatch("agent.run", { ...(p as object), ...(workdir ? { workdir: guard(workdir) } : {}) });
+    if (!workdir) throw new Error("a remote turn needs a folder this machine granted for remote control");
+    return dispatch("agent.run", { ...(p as object), workdir: guard(workdir) });
   };
   table["fs.list"] = async (p) => {
     const path = str(p, "path");

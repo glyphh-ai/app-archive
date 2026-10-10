@@ -23,6 +23,7 @@ import os from "os";
 import fs from "fs";
 import { execFile } from "child_process";
 import { followWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
+import { shellProfile } from "@glyphh/sdk/loop";
 
 interface Running { proc: pty.IPty; wc: WebContents }
 
@@ -35,9 +36,12 @@ function key(wcId: number, termId: string): string { return `${wcId}:${termId}`;
  * relay-pty.ts). One place so shell choice / `-il` / env inheritance never
  * drift between the local and relayed paths.
  */
-export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number; light?: boolean }): pty.IPty {
+export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number; light?: boolean; fence?: string }): pty.IPty {
   const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "/bin/zsh");
   const shellArgs = os.platform() === "win32" ? [] : ["-il"];
+  // A REMOTE terminal (relay-pty.ts) is fenced to its granted folder, writes
+  // like the loop's bash (Seatbelt); with no sandbox it does not start.
+  const fenced = opts.fence ? fencedShell(shell, shellArgs, opts.fence) : null;
   // COLORFGBG is the classic light/dark hint TUIs read ("fg;bg" in ANSI
   // indices) — CLIs that auto-detect the background pick the right variant.
   const env: Record<string, string> = { ...(process.env as Record<string, string>) };
@@ -47,13 +51,18 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
   let cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
   try { if (!fs.statSync(cwd).isDirectory()) throw new Error("not a directory"); }
   catch { console.warn("[wb-term] cwd is not a directory; spawning in home", JSON.stringify({ cwd })); cwd = os.homedir(); }
-  return pty.spawn(shell, shellArgs, {
+  return pty.spawn(fenced ? fenced.file : shell, fenced ? fenced.args : shellArgs, {
     name: "xterm-256color",
     cols: opts.cols || 80,
     rows: opts.rows || 24,
     cwd,
     env,
   });
+}
+
+function fencedShell(shell: string, args: string[], folder: string): { file: string; args: string[] } {
+  if (os.platform() !== "darwin" || !fs.existsSync("/usr/bin/sandbox-exec")) throw new Error("this desktop can't fence a remote terminal, so it does not open one");
+  return { file: "/usr/bin/sandbox-exec", args: ["-p", shellProfile(fs.realpathSync(folder)), shell, ...args] };
 }
 
 function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number, light?: boolean): void {
