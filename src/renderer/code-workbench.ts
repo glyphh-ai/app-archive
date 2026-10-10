@@ -3242,28 +3242,29 @@ async function init(): Promise<void> {
     // a release anywhere in this document with no drag live clears the shield.
     window.addEventListener("blur", () => liveDrag?.end());
     document.addEventListener("pointerup", () => { if (!liveDrag) document.body.classList.remove("echo-drag"); }, true);
-    /** A press on a card's grip or title starts its drag. */
+    /** A press on a card's grip or title starts its drag. The press is the
+     *  name's old, proven mechanics (his report, 2026-10-10: "it was working
+     *  by clicking on the name"): mousedown with preventDefault (no text
+     *  selection or native drag steals the gesture) and the moves read off
+     *  the DOCUMENT, with the webviews shielded (body.echo-drag) so none
+     *  swallows them. Pointer capture on the handle never held in the app. */
     const wireCardDrag = (e: TileEntry, card: HTMLElement, handles: Array<HTMLElement | null>): void => {
       for (const h of handles) {
         if (!h) continue;
-        h.addEventListener("pointerdown", (ev) => {
+        h.addEventListener("mousedown", (ev) => {
           if (ev.button !== 0) return;
           if ((ev.target as HTMLElement).closest("button, input, .ws-app-chrome")) return;
           const d = beginCardDrag(e, card, ev.clientX, ev.clientY, true);
           if (!d) return;
-          // Capture keeps the stream flowing over iframes/webviews.
-          try { h.setPointerCapture(ev.pointerId); } catch { /* uncapturable */ }
-          const mv = (m: PointerEvent): void => d.move(m.clientX, m.clientY);
+          ev.preventDefault();
+          const mv = (m: MouseEvent): void => d.move(m.clientX, m.clientY);
           const up = (): void => {
-            h.removeEventListener("pointermove", mv);
-            h.removeEventListener("pointerup", up);
-            h.removeEventListener("pointercancel", up);
-            try { h.releasePointerCapture(ev.pointerId); } catch { /* already released */ }
+            document.removeEventListener("mousemove", mv);
+            document.removeEventListener("mouseup", up);
             d.end();
           };
-          h.addEventListener("pointermove", mv);
-          h.addEventListener("pointerup", up);
-          h.addEventListener("pointercancel", up);
+          document.addEventListener("mousemove", mv);
+          document.addEventListener("mouseup", up);
         });
       }
     };
