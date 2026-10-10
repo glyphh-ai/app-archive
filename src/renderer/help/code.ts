@@ -7460,19 +7460,9 @@ function paintLayoutsGrid(host: RailGridHost): void {
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { host.page = pg; paintLayoutsGrid(host); }));
-  if (!layouts.length) {
-    if (q) railEmpty(list, q, "Workspace", "layouts");
-    else {
-      // No workspaces yet: the one action is the same + as the head's.
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "app-rail-empty-btn";
-      btn.textContent = "+ Workspace";
-      btn.title = "Create workspace — save what is on screen";
-      btn.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
-      list.appendChild(btn);
-    }
-  }
+  // No workspaces yet: nothing below the head (his order, 2026-10-09: the
+  // "+ Workspace" button repeated the head's +).
+  if (!layouts.length && q) railEmpty(list, q, "Workspace", "layouts");
 }
 
 function renderRailAgents(): void {
