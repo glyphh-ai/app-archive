@@ -15863,16 +15863,24 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .loop-drop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; }
 .loop-drop-item { position: relative; }
 
-/* ── Monaco landing: the website hero's gradient, the ghost mark overlaid ── */
+/* ── Monaco landing: the website hero's gradient, the ghost mark overlaid ──
+   THEME AWARE (his order, 2026-10-09: "much more theme aware and darker in
+   dark mode and lighter in light modes"): every stop is the theme's own accent
+   (and a touch of the hero's pink) MIXED INTO the theme's background, so a dark
+   theme reads deep and a light one pale, in each theme's colour. */
 .ws-monaco-landing {
   /* The host is position:relative — pin to it, full pane, no flex/percentage
      height negotiation to lose. */
   position: absolute; inset: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
+  --wsml-pink: #f472b6;
   background:
-    radial-gradient(90% 80% at 100% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 55%),
-    radial-gradient(100% 90% at 0% 100%, rgba(124, 58, 237, 0.5) 0%, rgba(124, 58, 237, 0) 62%),
-    linear-gradient(35deg, #a78bfa 0%, #c4a9f8 44%, #f5c1e0 100%);
+    radial-gradient(90% 80% at 100% 0%, color-mix(in srgb, var(--text) 7%, transparent) 0%, transparent 55%),
+    radial-gradient(100% 90% at 0% 100%, color-mix(in srgb, var(--accent) 26%, transparent) 0%, transparent 62%),
+    linear-gradient(35deg,
+      color-mix(in srgb, var(--accent) 24%, var(--bg)) 0%,
+      color-mix(in srgb, var(--accent) 12%, var(--bg)) 44%,
+      color-mix(in srgb, var(--wsml-pink) 12%, var(--bg)) 100%);
 }
 .wsml-inner {
   display: flex; flex-direction: column; align-items: center; gap: 20px;
@@ -15880,12 +15888,12 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 .wsml-mark {
   width: 128px; height: 128px;
-  opacity: 0.22; filter: grayscale(1);
+  opacity: 0.18; filter: grayscale(1);
   user-select: none; -webkit-user-drag: none;
 }
 .wsml-hint {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px; color: rgba(44, 39, 53, 0.65);
+  font-size: 11px; color: var(--text-faint, var(--text-3));
 }
 
 /* View-toggles overflow: a few visible, the rest behind ⋮ */
