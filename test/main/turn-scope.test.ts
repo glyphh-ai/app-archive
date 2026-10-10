@@ -21,9 +21,9 @@ const ok = (c: ScopeCallLike, chain = [marketer]): string | null => scopeRefusal
 
 describe("a super power holds its list and nothing else", () => {
   it("connections: the account lane, the custom-connection catalog and Glyphh's connector tools", () => {
-    expect(ok(call("account", "pd_gmail-send-email"))).toBeNull();
-    expect(ok(call("account", "pd_gmail__support_inbox-send-email"))).toBeNull();
-    expect(ok(call("account", "pd_slack-post"))).toMatch(/Marketer doesn't hold the connection "slack"/);
+    expect(ok(call("account", "pd_o1a2b3__gmail-send-email"))).toBeNull();
+    expect(ok(call("account", "pd_o1a2b3__gmail__u_6d6c1f0e-send-email"))).toBeNull();
+    expect(ok(call("account", "pd_o1a2b3__slack-post"))).toMatch(/Marketer doesn't hold the connection "slack"/);
     expect(ok(call("catalog", "crm_lookup", {}, "connection: crm"))).toMatch(/connection "crm"/);
     expect(ok(call("belt", "connector_call", { app: "gmail" }))).toBeNull();
     expect(ok(call("belt", "connector_call", { app: "slack" }))).not.toBeNull();
@@ -42,7 +42,7 @@ describe("a super power holds its list and nothing else", () => {
 
   it("an empty list holds nothing", () => {
     const bare = superPowerReach({ slug: "bare", name: "Bare", model: "", models: [], connections: [], skills: [], superPowers: [], folders: [] });
-    expect(ok(call("account", "pd_gmail-send"), [bare])).not.toBeNull();
+    expect(ok(call("account", "pd_o1__gmail-send"), [bare])).not.toBeNull();
     expect(ok(call("spawn", "writer"), [bare])).not.toBeNull();
     expect(holdsFolder(bare, "/anything")).toBe(false);
   });
@@ -78,16 +78,16 @@ describe("nothing reaches further than the turn", () => {
 
   it("a sub-agent is held to its own list AND the turn that started it", () => {
     const writer = superPowerReach({ slug: "writer", name: "Writer", model: "", models: [], connections: ["gmail", "slack"], skills: [], superPowers: [], folders: [] });
-    expect(ok(call("account", "pd_slack-post"), [writer])).toBeNull();
-    expect(ok(call("account", "pd_slack-post"), [marketer, writer])).toMatch(/Marketer doesn't hold/);
-    expect(ok(call("account", "pd_gmail-send"), [marketer, writer])).toBeNull();
+    expect(ok(call("account", "pd_o1__slack-post"), [writer])).toBeNull();
+    expect(ok(call("account", "pd_o1__slack-post"), [marketer, writer])).toMatch(/Marketer doesn't hold/);
+    expect(ok(call("account", "pd_o1__gmail-send"), [marketer, writer])).toBeNull();
   });
 });
 
 describe("Glyphh holds everything but what was withheld", () => {
   it("allows the rest and refuses the withheld", () => {
-    expect(ok(call("account", "pd_gmail-send"), [glyphh])).toBeNull();
-    expect(ok(call("account", "pd_slack-post"), [glyphh])).toMatch(/Glyphh doesn't hold the connection "slack"/);
+    expect(ok(call("account", "pd_o1__gmail-send"), [glyphh])).toBeNull();
+    expect(ok(call("account", "pd_o1__slack-post"), [glyphh])).toMatch(/Glyphh doesn't hold the connection "slack"/);
     expect(ok(call("spawn", "intruder"), [glyphh])).not.toBeNull();
     expect(ok(call("spawn", "writer"), [glyphh])).toBeNull();
     expect(holdsFolder(glyphh, "/private/notes")).toBe(false);
@@ -101,8 +101,10 @@ describe("Glyphh holds everything but what was withheld", () => {
 
 describe("account tool names", () => {
   it("name their connection", () => {
-    expect(accountConnection("pd_google_sheets-add-row")).toBe("google_sheets");
-    expect(accountConnection("pd_gmail__support_inbox-send")).toBe("gmail");
-    expect(accountConnection("my_server-tool")).toBe("my_server");
+    expect(accountConnection("pd_o1a2b3__google_sheets-add-row")).toBe("google_sheets");
+    expect(accountConnection("pd_o1a2b3__gmail__u_6d6c1f0e-send")).toBe("gmail");
+    expect(accountConnection("pd_o1a2b3__gmail__support_inbox-send")).toBe("gmail");
+    expect(accountConnection("mcp_o1a2b3__billing_api-lookup")).toBe("billing_api");
+    expect(accountConnection("plain_server-tool")).toBe("plain_server");
   });
 });

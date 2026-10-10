@@ -103,12 +103,14 @@ export function holdsFolder(r: Reach, folder: string): boolean {
   return false;
 }
 
-/** The connection a gateway account tool belongs to: `pd_gmail-send` → gmail,
- *  `pd_gmail__support_inbox-send` → gmail, `my_server-tool` → my_server. */
+/** The connection a gateway account tool belongs to. The gateway names each
+ *  tool `<server>-<tool>`, and the fork names a server with its org first
+ *  (server connections.py, orgconsole.py): `pd_<org>__gmail[__u_<id>|__<label>]`
+ *  is the gmail connection, `mcp_<org>__<name>` a custom MCP server. */
 export function accountConnection(tool: string): string {
   const server = String(tool ?? "").split("-")[0] ?? "";
-  const bare = server.startsWith("pd_") ? server.slice(3) : server;
-  return bare.split("__")[0] ?? "";
+  const m = /^(?:pd|mcp)_[a-z0-9_]*?__([a-z0-9_]+?)(?:__|$)/.exec(server);
+  return m?.[1] ?? server;
 }
 
 const str = (v: unknown): string => String(v ?? "").trim();
