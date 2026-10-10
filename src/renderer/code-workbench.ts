@@ -595,11 +595,68 @@ function tokenLuminance(name: string, fallback: number): number {
     return fallback;
   }
 }
+/** THE EDITOR'S OWN THEME (his order, 2026-10-09: "a dropdown on the editor
+ *  to set it. That setting should persist"): Match the app, or one of
+ *  Monaco's built-ins. One preference for every editor (Monaco's theme is
+ *  global). */
+const MONACO_THEMES: ReadonlyArray<{ id: string; label: string }> = Object.freeze([
+  { id: "auto", label: "Match the app" },
+  { id: "vs", label: "Light" },
+  { id: "vs-dark", label: "Dark" },
+  { id: "hc-light", label: "High contrast light" },
+  { id: "hc-black", label: "High contrast dark" },
+]);
+const MONACO_THEME_PREF = "monacoTheme";
+let monacoThemePick = "auto";
+void (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).glyphh
+  ?.getPreference?.(MONACO_THEME_PREF, "auto")?.then((v) => {
+    const id = String(v ?? "auto");
+    if (!MONACO_THEMES.some((t) => t.id === id) || id === monacoThemePick) return;
+    monacoThemePick = id;
+    applyMonacoTheme();
+  }).catch(() => { /* the app's theme stands */ });
 function monacoTheme(): string {
+  if (monacoThemePick !== "auto") return monacoThemePick;
   // Decide by the theme's ACTUAL surface, not its name — "dark" was the only
   // name that mapped to vs-dark, so every other dark scheme (high-vis,
   // matrix, …) got a white editor in a black app.
   return tokenLuminance("--surface", 255) < 128 ? "vs-dark" : "vs";
+}
+function applyMonacoTheme(): void {
+  const w = window as unknown as { monaco?: { editor?: { setTheme?: (t: string) => void } } };
+  try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
+}
+function setMonacoTheme(id: string): void {
+  if (!MONACO_THEMES.some((t) => t.id === id)) return;
+  monacoThemePick = id;
+  (window as unknown as { glyphh?: { setPreference?: (k: string, v: unknown) => void } }).glyphh?.setPreference?.(MONACO_THEME_PREF, id);
+  applyMonacoTheme();
+}
+/** The editor's theme drop: opened under its button, closed on a pick or a click away. */
+function openMonacoThemeMenu(anchor: HTMLElement): void {
+  document.querySelector(".ws-monaco-theme-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "yo-workdir-menu open ws-monaco-theme-menu";
+  menu.setAttribute("role", "menu");
+  for (const t of MONACO_THEMES) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "yo-workdir-menu-item";
+    item.setAttribute("role", "menuitemradio");
+    item.setAttribute("aria-checked", String(t.id === monacoThemePick));
+    item.innerHTML = `<span class="check">${t.id === monacoThemePick ? CHECK_SVG : ""}</span><span class="nm"></span>`;
+    (item.querySelector(".nm") as HTMLElement).textContent = t.label;
+    item.addEventListener("click", (e) => { e.stopPropagation(); setMonacoTheme(t.id); close(); });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8))}px`;
+  const away = (e: MouseEvent): void => { if (!menu.contains(e.target as Node) && e.target !== anchor) close(); };
+  const key = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  function close(): void { menu.remove(); document.removeEventListener("mousedown", away, true); document.removeEventListener("keydown", key, true); }
+  setTimeout(() => { document.addEventListener("mousedown", away, true); document.addEventListener("keydown", key, true); }, 0);
 }
 function isMarkdown(name: string): boolean {
   return /\.(md|mdx|markdown)$/i.test(name);
@@ -623,8 +680,7 @@ function appIsLight(): boolean {
 // data-theme on <html>).
 new MutationObserver(() => {
   applyAccentInk();
-  const w = window as unknown as { monaco?: { editor?: { setTheme?: (t: string) => void } } };
-  try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
+  applyMonacoTheme();
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
 /** THE STRIP MUST NOT COVER A TITLE (his report, 2026-09-19: with the sidebar
@@ -7322,6 +7378,9 @@ async function init(): Promise<void> {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </button>
         <button class="ws-monaco-save hidden" title="Save (⌘S)">Save</button>
+        <button class="ws-monaco-mode-btn ws-monaco-theme" title="Editor theme" aria-haspopup="menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg>
+        </button>
       </div>
       <div class="ws-monaco-host"></div>
       <div class="ws-monaco-md-host"></div>
@@ -7333,6 +7392,8 @@ async function init(): Promise<void> {
     const host    = body.querySelector(".ws-monaco-host") as HTMLElement;
     const mdHost  = body.querySelector(".ws-monaco-md-host") as HTMLElement;
     const saveBtn = body.querySelector(".ws-monaco-save") as HTMLButtonElement;
+    const themeBtn = body.querySelector(".ws-monaco-theme") as HTMLButtonElement;
+    themeBtn.addEventListener("click", (e) => { e.stopPropagation(); openMonacoThemeMenu(themeBtn); });
 
     const paintSave = () => {
       const tab = slot.tabs[slot.activeIdx];
