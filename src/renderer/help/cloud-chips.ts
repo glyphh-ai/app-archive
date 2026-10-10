@@ -210,7 +210,7 @@ export function createCloudChips(opts: CloudChipsOpts): CloudChips {
       secLabel(LOCUS_SVG.local, "Remote control");
       const machines = opts.machines();
       if (!machines.length) {
-        const note = drillItem("No desktop attached", "Turn remote control on in the Glyphh desktop app (Settings → Remote control).", "");
+        const note = drillItem("No desktop attached", "Turn remote control on in the Glyphh desktop app (Settings → System → Remote control).", "");
         note.classList.add("ws-install");
         markUnreachable(note, "No desktop is attached — turn remote control on in the Glyphh desktop app.");
         list.appendChild(note);

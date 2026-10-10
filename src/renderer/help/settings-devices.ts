@@ -59,7 +59,7 @@ function paint(rows: { devices: DeviceRow[]; blocked: BlockedRow[] }, a: Devices
         </div>
         <div class="set-pref-value">${a.source === "devices" && d.machineId ? `<button class="action-btn" data-disconnect="${esc(d.machineId)}" data-name="${esc(d.name)}">Disconnect</button>` : ""}</div>
       </div>`).join("")
-    : `<div class="crud-empty">No machine is attached. Turn on Remote control in the Glyphh desktop app (or run <code>glyphh remote-control</code>) and it lists here.</div>`;
+    : `<div class="crud-empty">No machine is attached. Turn on Remote control under Settings → System in the Glyphh desktop app (or run <code>glyphh remote-control</code>) and it lists here.</div>`;
   if (blockedHost && blockedSec) {
     blockedSec.classList.toggle("hidden", !rows.blocked.length);
     blockedHost.innerHTML = rows.blocked.map((b) => `

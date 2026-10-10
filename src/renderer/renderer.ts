@@ -17,7 +17,7 @@ import type { LibEnvelope } from "./help/library-types.js";
 /** The library kinds a bundle can be: every one of them is a skill, the kind
  *  says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
-/** Settings → Remote control (mirrors main/remote-control.ts). */
+/** Settings → System → Remote control (mirrors main/remote-control.ts). */
 type RemoteControlView = { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null };
 
 // Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so

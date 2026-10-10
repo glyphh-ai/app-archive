@@ -26,7 +26,7 @@ describe("the desktop is its own device (his report, 2026-10-07)", () => {
     expect(on).toContain("Terminal panel is not a tool");
     const off = folderSteerLine("/Users/me/dev/happy-shoes", "mac.local", false);
     expect(off).toContain("remote control is off");
-    expect(off).toContain("Settings → Remote control");
+    expect(off).toContain("Settings → System → Remote control");
     expect(folderSteerLine("", "mac.local", true)).toBe("");
   });
 });

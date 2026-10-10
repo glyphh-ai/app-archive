@@ -37,6 +37,27 @@ export function targetKey(host: string, port: number | string): string {
   return LOOPBACK.has(h) ? `localhost:${Number(port) || 80}` : h;
 }
 
+/** STRICT SANDBOX (Settings → System): nothing runs outside the sandbox, whoever asks. */
+const STRICT_PREF = "sandboxStrict";
+export function sandboxStrict(): boolean { return getPreference<unknown>(STRICT_PREF) === true; }
+export function setSandboxStrict(on: boolean): void { setPreference(STRICT_PREF, on === true); }
+
+/** Settings → System: what the member allowed, and taking it back. */
+export interface SandboxView { builtIn: readonly string[]; hosts: string[]; ports: number[]; strict: boolean }
+export function sandboxView(): SandboxView {
+  return { builtIn: DEFAULT_ALLOWED, hosts: savedAllowed().filter((h) => !/^localhost:\d+$/.test(h)), ports: savedLocalPorts(), strict: sandboxStrict() };
+}
+export function removeAllowedHost(host: string): SandboxView {
+  setPreference(PREF, savedAllowed().filter((h) => h !== host));
+  return sandboxView();
+}
+export function removeLocalPort(port: number): SandboxView {
+  setPreference(LOCAL_PREF, savedLocalPorts().filter((p) => p !== port));
+  setPreference(PREF, savedAllowed().filter((h) => h !== `localhost:${port}`));
+  for (const s of st.once.values()) s.delete(`localhost:${port}`);
+  return sandboxView();
+}
+
 /** Local ports a session's shell may reach DIRECTLY (a database client, any
  *  non-HTTP tool): the member allowed them with Always. */
 export function savedLocalPorts(): number[] {

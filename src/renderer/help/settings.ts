@@ -394,6 +394,16 @@ function initSettings() {
   if (!hostHas("remoteControlGet")) {
     document.querySelectorAll<HTMLElement>('.settings-nav-item[data-sub="remote"], .settings-panel[data-sub="remote"]')
       .forEach((n) => n.classList.add("hidden"));
+  } else {
+    // THE DESKTOP'S SYSTEM PAGE holds its devices (his order, 2026-10-09): the
+    // Devices list moves in under System, and the Devices entry steps aside.
+    const host = document.getElementById("system-devices");
+    const page = document.querySelector<HTMLElement>('.settings-panel[data-sub="devices"]');
+    if (host && page) {
+      for (const n of Array.from(page.children)) if (!n.classList.contains("set-title-row")) host.appendChild(n);
+      host.classList.remove("hidden");
+      document.querySelectorAll<HTMLElement>('.settings-nav-item[data-sub="devices"]').forEach((n) => n.classList.add("hidden"));
+    }
   }
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)

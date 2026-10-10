@@ -26,6 +26,7 @@ import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 import { GLYPHH_GUIDE, GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
 import { askOutsideSandbox } from "./net-ask.js";
+import { sandboxStrict } from "./net-proxy.js";
 import { currentTurnChat, currentTurnFolder } from "./turn-folder.js";
 import { runUnfenced } from "./shell-fence.js";
 
@@ -674,6 +675,7 @@ function registerTools(mcp: ToolRegistrar): void {
       const chat = currentTurnChat();
       const folder = currentTurnFolder();
       if (!chat || !folder) return text("Error: this runs only inside a session, with someone there to approve it");
+      if (sandboxStrict()) return text("The member has Strict sandbox on (Settings → System): nothing runs outside the sandbox. Tell them what you needed it for.");
       if (!(await askOutsideSandbox(chat, command, reason))) return text("The member declined: the command was not run. Don't try another way around the sandbox; tell them what you needed it for.");
       return text(await runUnfenced(command, folder));
     },

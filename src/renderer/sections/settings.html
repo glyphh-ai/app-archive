@@ -71,7 +71,7 @@
                    remote control on, with Disconnect; the ones disconnected from the
                    web, with Allow. On the web and the desktop alike (settings-devices.ts). -->
               <button class="settings-nav-item not-on-platform" data-sub="devices"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Devices</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="remote"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span>Remote control</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="remote"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span>System</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
@@ -285,8 +285,12 @@
               <!-- REMOTE CONTROL (his order, 2026-09-30): this device takes turns from
                    mobile.glyphh.ai only when switched on here, and only in the folders
                    granted here (main/remote-control.ts). An org admin can turn it off. -->
+              <!-- SYSTEM (his order, 2026-10-09: "rename remote control -> system and add
+                   the settings for the sandbox plus device control"): this computer's
+                   remote control, its devices and the sandbox every session runs in. -->
               <div class="settings-panel" data-sub="remote">
-                <h2>Remote control</h2>
+                <h2>System</h2>
+                <h3 class="settings-subheading">Remote control</h3>
                 <p class="section-desc">Run sessions on this computer from your phone at mobile.glyphh.ai. Turns work only in the folders you grant here, and your approvals still apply.</p>
                 <div class="set-pref-desc hidden" id="remote-org-off">Your organization's admin has turned remote control off.</div>
                 <label class="settings-toggle set-pref-row">
@@ -304,6 +308,21 @@
                   <div class="set-pref-text"></div>
                   <div class="set-pref-value"><button class="action-btn" id="remote-add-folder">Add folder…</button></div>
                 </div>
+                <!-- Devices move in here on the desktop (settings.ts); the web keeps its own Devices page. -->
+                <div id="system-devices" class="hidden"><h3 class="settings-subheading">Devices</h3></div>
+                <h3 class="settings-subheading">Sandbox</h3>
+                <p class="set-pref-desc">Every command a session runs is fenced to its folder: it can't write elsewhere, can't read your keys and credentials, and reaches the network only through hosts you allow.</p>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Strict sandbox</div>
+                    <div class="set-pref-desc">Nothing ever runs outside the sandbox, even when you'd be asked first.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-sandbox-strict" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="set-pref-desc" id="sandbox-builtin"></div>
+                <div id="sandbox-hosts"></div>
+                <div id="sandbox-ports"></div>
               </div>
 
               <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the

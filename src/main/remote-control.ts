@@ -1,7 +1,7 @@
 /**
  * remote-control.ts — REMOTE CONTROL on the desktop (his order, 2026-09-30):
  * this machine takes turns from mobile.glyphh.ai only when its member turned
- * it on in Settings → Remote control, and only inside the folders granted there.
+ * it on in Settings → System → Remote control, and only inside the folders granted there.
  *
  * THE SETTING is this device's, kept in the member's server prefs map under
  * `remoteControl:<hostname>` ({enabled, folders}) — it survives a restart and

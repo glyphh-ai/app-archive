@@ -7,7 +7,7 @@
 import { app, ipcMain } from "electron";
 import { loopSenderOf } from "./glyphh-loop.js";
 import { isRelaySink } from "./attach-run-frames.js";
-import { ensureNetProxy, setNetAsker, type NetChoice } from "./net-proxy.js";
+import { ensureNetProxy, removeAllowedHost, removeLocalPort, sandboxView, setNetAsker, setSandboxStrict, type NetChoice } from "./net-proxy.js";
 import { setAppDataDirs } from "./shell-fence.js";
 
 const waiting = new Map<string, (c: NetChoice) => void>();
@@ -52,5 +52,10 @@ export function registerNetAskIpc(): void {
     r(run === true);
     return true;
   });
+  // Settings → System → Sandbox.
+  ipcMain.handle("sandbox:get", () => sandboxView());
+  ipcMain.handle("sandbox:remove-host", (_e, host: string) => removeAllowedHost(String(host || "")));
+  ipcMain.handle("sandbox:remove-port", (_e, port: number) => removeLocalPort(Number(port)));
+  ipcMain.handle("sandbox:set-strict", (_e, on: boolean) => { setSandboxStrict(on === true); return sandboxView(); });
   void ensureNetProxy().catch((err: unknown) => console.warn("[net-proxy] not started; sessions have no network:", err instanceof Error ? err.message : err));
 }

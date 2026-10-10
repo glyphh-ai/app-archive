@@ -15,6 +15,7 @@ import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
 import { loadRemoteControl } from "./settings-remote.js";
+import { loadSandbox } from "./settings-sandbox.js";
 import { initDevices, loadDevices } from "./settings-devices.js";
 import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
@@ -925,7 +926,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
-  else if (sub === "remote") void loadRemoteControl();
+  else if (sub === "remote") { void loadRemoteControl(); void loadSandbox(); if (document.getElementById("system-devices")?.classList.contains("hidden") === false) { initDevices(); void loadDevices(); } }
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.

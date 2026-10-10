@@ -285,7 +285,7 @@ export interface PanelAppInput {
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
-/** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
+/** Settings → System → Remote control (mirrors main/remote-control.ts RemoteControlView). */
 interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null }
 /** A notification as main/notify.ts hands it to the workbench (mirrors AppNotification). */
 interface AppNotification { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }
@@ -483,7 +483,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   getPreference: (key: string, defaultVal?: unknown) => ipcRenderer.invoke("get-preference", key, defaultVal),
   getBackgroundMode: () => ipcRenderer.invoke("get-background-mode") as Promise<boolean>,
   setBackgroundMode: (enabled: boolean) => ipcRenderer.invoke("set-background-mode", enabled) as Promise<boolean>,
-  // Settings → Remote control (main/remote-control.ts): this device's switch and granted folders.
+  // Settings → System → Remote control (main/remote-control.ts): this device's switch and granted folders.
   remoteControlGet: () => ipcRenderer.invoke("remote-control:get") as Promise<RemoteControlView>,
   remoteControlSetEnabled: (enabled: boolean) => ipcRenderer.invoke("remote-control:set-enabled", enabled) as Promise<RemoteControlView>,
   remoteControlAddFolder: () => ipcRenderer.invoke("remote-control:add-folder") as Promise<RemoteControlView>,
@@ -1085,6 +1085,11 @@ contextBridge.exposeInMainWorld("glyphh", {
     return () => { ipcRenderer.removeListener("glyphh-agent:outside-ask", l); };
   },
   outsideAnswer: (id: string, run: boolean) => ipcRenderer.invoke("glyphh-outside-answer", id, run) as Promise<boolean>,
+  /** Settings → System → Sandbox (main/net-proxy.ts). */
+  sandboxGet: () => ipcRenderer.invoke("sandbox:get") as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
+  sandboxRemoveHost: (host: string) => ipcRenderer.invoke("sandbox:remove-host", host) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
+  sandboxRemovePort: (port: number) => ipcRenderer.invoke("sandbox:remove-port", port) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
+  sandboxSetStrict: (on: boolean) => ipcRenderer.invoke("sandbox:set-strict", on) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
   /** THE WORK BOARD (swarm.ts phase 2): main asks this panel to change or read a team's board. */
   onTeamBoard: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => {
     const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => cb(req);

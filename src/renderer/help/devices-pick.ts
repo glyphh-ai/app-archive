@@ -62,7 +62,7 @@ export function folderSteerLine(folder: string, hostname: string, attached: bool
   if (!f) return "";
   const where = hostname.trim() ? `on the member's desktop "${hostname.trim()}"` : "on the member's desktop";
   if (!attached) {
-    return `[The folder for this session is ${f} ${where}, but remote control is off there, so the device tools cannot reach it. Say so plainly and ask the member to turn on Settings → Remote control on that desktop; do not open a Terminal panel to work around it.]`;
+    return `[The folder for this session is ${f} ${where}, but remote control is off there, so the device tools cannot reach it. Say so plainly and ask the member to turn on Settings → System → Remote control on that desktop; do not open a Terminal panel to work around it.]`;
   }
   if (!on) {
     return `[The folder for this session is ${f} ${where}, but that device is not turned on for this session, so the device tools cannot reach it. Say so plainly and ask the member to check the device under + → Devices; do not open a Terminal panel to work around it.]`;

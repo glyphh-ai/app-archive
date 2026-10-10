@@ -106,9 +106,9 @@ export function sessionLocked(
 }
 
 export const GRANT_CARD = {
-  title: "Grant this folder in Remote control on your desktop",
+  title: "Grant this folder under Settings → System on your desktop",
   body: (folder: string): string =>
-    `This session works in ${folder}, which the desktop has not granted for remote control. Open Settings → Remote control on your desktop and add the folder, then open the session again.`,
+    `This session works in ${folder}, which the desktop has not granted for remote control. Open Settings → System → Remote control on your desktop and add the folder, then open the session again.`,
 };
 
 // ── THE PICKER ───────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ export function pickerSections(input: {
   const desktop: PickerDesktopSection = input.surface === "desktop"
     ? { kind: "desktop", label: "On this desktop", folders: [] }
     : machine
-      ? { kind: "desktop", label: `On ${machine.name}`, machine, folders: machine.folders, ...(machine.folders.length ? {} : { empty: "No folder is granted on this desktop yet — add one under Settings → Remote control there." }) }
+      ? { kind: "desktop", label: `On ${machine.name}`, machine, folders: machine.folders, ...(machine.folders.length ? {} : { empty: "No folder is granted on this desktop yet — add one under Settings → System → Remote control there." }) }
       : { kind: "desktop", label: "On your desktop", folders: [], empty: "No desktop is attached — turn remote control on in the Glyphh desktop app." };
   const cloud: PickerCloudSection = { kind: "cloud", label: "In the cloud", spaces: input.spaces };
   if (input.bornLocus === "cloud") desktop.locked = LOCUS_LOCKED_HINT.cloud;
