@@ -1,5 +1,5 @@
 /**
- * Boot gate — splash screen, CC bootstrap modal, and first-time tutorial.
+ * Boot gate — the splash screen and the update hold.
  *
  * Extracted from renderer.ts. All DOM queries happen internally; the caller
  * supplies callbacks so the module can drive panel visibility, theme changes,
@@ -32,7 +32,6 @@ const splashShownAt = Date.now();
 const SPLASH_MIN_MS = 1800;
 let booted = false;
 let bootData: BootData | null = null;
-let tutorialShowing = false;
 let ccModalShowing = false;
 
 // ── Update gate ─────────────────────────────────────────────────────────────
@@ -53,7 +52,6 @@ let downloadCapTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Expose read-only accessors so renderer can check state if needed. */
 export function isBooted(): boolean { return booted; }
-export function isTutorialShowing(): boolean { return tutorialShowing; }
 export function isCcModalShowing(): boolean { return ccModalShowing; }
 
 // The callbacks captured at initBootGate(), so the WEB boot (web/src/web-boot.js)
@@ -73,78 +71,12 @@ export function webShowFirstRun(onComplete?: () => void): void {
   // 2026-08-27: the static card tutorial is retired as the first-run door —
   // (the wall tour that once followed it went with the wall, 2026-10-08).
   // First run just enters the
-  // app; the tour fires once the wall paints. (showTutorial stays for any
-  // explicit re-entry point — hidden, not deleted.)
+  // app.
   webEnterApp(onComplete);
 }
 export function webEnterApp(onComplete?: () => void): void {
   if (bootCb) bootCb.showPanels();
   onComplete?.();
-}
-
-// ── Tutorial ────────────────────────────────────────────────────────────────
-
-// Tutorial steps (sections/tutorial.html): Connections → Apps → Loops →
-// Layouts → Command center. Visual steps (icon + copy) — the count drives
-// the dots and the final "Get Started" button.
-const TUTORIAL_STEPS = 5;
-
-function showTutorial(cb: BootGateCallbacks, onWebComplete?: () => void): void {
-  tutorialShowing = true;
-  const overlay = document.getElementById("tutorial-overlay")!;
-  overlay.classList.remove("hidden");
-  // BrowserViews are native — they paint over HTML. Hide them so tutorial is visible.
-  cb.hidePanels();
-  let step = 0;
-
-  function goToStep(idx: number) {
-    step = idx;
-    overlay.querySelectorAll(".tutorial-step").forEach((s, i) => {
-      s.classList.toggle("active", i === idx);
-    });
-    overlay.querySelectorAll(".tutorial-nav-dot").forEach((d, i) => {
-      d.classList.toggle("active", i === idx);
-    });
-
-    const nextBtn = document.getElementById("tutorial-next") as HTMLButtonElement;
-    nextBtn.textContent = idx === TUTORIAL_STEPS - 1 ? "Get Started" : "Next";
-  }
-
-  document.getElementById("tutorial-next")!.addEventListener("click", () => {
-    if (step < TUTORIAL_STEPS - 1) {
-      goToStep(step + 1);
-    } else {
-      closeTutorial();
-    }
-  });
-
-  document.getElementById("tutorial-close")!.addEventListener("click", closeTutorial);
-
-  overlay.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeTutorial();
-  });
-
-  function closeTutorial() {
-    tutorialShowing = false;
-    window.glyphh.setPreference("hasSeenTutorial", true);
-    overlay.classList.add("hidden");
-    // Restore panels now that tutorial is dismissed
-    cb.showPanels();
-    // WEB: the native-panel workspace is empty in a browser — the real Chat front
-    // door is home.html. Hand off to the web boot's completer (→ navigate to /home)
-    // instead of the desktop homeGotoSection IPC. Desktop passes no callback and
-    // takes the original path below, byte-identical.
-    if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) {
-      onWebComplete?.();
-      return;
-    }
-    // First run ends at HOME — the dashboard's starters and schedule are the
-    // natural next step, not whatever section the panel restored to.
-    void (window.glyphh as unknown as { homeGotoSection?: (s: string) => Promise<unknown> }).homeGotoSection?.("agent");
-  }
-
-  // Start first step
-  goToStep(0);
 }
 
 // The CC-bootstrap / BYOK key modal is gone: Glyphh has no in-app agent and
@@ -176,7 +108,7 @@ function finishSplash(cb: BootGateCallbacks): void {
   // BUT not if tutorial / CC modal / lockout gate / login overlay is up — BrowserViews paint
   // over HTML overlays. (Panels survive a renderer reload in the main process, so after a
   // logout-and-reload from the lockout screen we must NOT re-attach them over the login.)
-  if (!tutorialShowing && !ccModalShowing && !accountLocked && !bootData?.needsOnboarding) cb.showPanels();
+  if (!ccModalShowing && !accountLocked && !bootData?.needsOnboarding) cb.showPanels();
   const splash = document.getElementById("splash");
   if (splash) {
     splash.classList.add("fade-out");
@@ -238,9 +170,8 @@ function showLockout(cb: BootGateCallbacks, info?: { status?: string; upgradeUrl
   // overlay. Seal them too; styles.css hides them while body.account-locked.
   document.body.classList.add("account-locked");
 
-  // A locked account never sees onboarding or the tutorial.
+  // A locked account never sees onboarding.
   document.getElementById("onboarding-overlay")?.classList.add("hidden");
-  document.getElementById("tutorial-overlay")?.classList.add("hidden");
 
   const titleEl = document.getElementById("lockout-title");
   const msgEl = document.getElementById("lockout-message");

@@ -1126,10 +1126,6 @@
                   <button id="conn2-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Connections</span></button>
                   <div id="conn2-detail"></div>
                 </div>
-                <!-- The REAL connections section is adopted in here (its list and
-                     toolbar hidden): the catalog modal and the connect flow are the
-                     originals, driven by Add → New connection. -->
-                <div id="conncfg-legacy" class="conncfg-legacy"></div>
               </div>
               <div class="settings-panel" data-sub="org-library">
                 <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>
@@ -2389,12 +2385,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-              <!-- Connections — the connections section body (from
-                   sections/connections.html) is MOVED into this host on open and
-                   parked back on close; loadConnections binds unchanged. -->
-              <div class="settings-panel settings-panel-section" data-sub="connections">
-                <div id="settings-connections-host"></div>
               </div>
 
               <!-- Layouts — the layout builder/library management page moved in

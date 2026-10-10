@@ -23,7 +23,7 @@ import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } fr
 import { primeConnectedIcons } from "./app-icon.js";
 import { openPowersModal } from "./powers-modal.js";
 import { mountPowerMap, type MapGroup, type PowerMapModel } from "./power-map.js";
-import { cronToWords } from "./schedules.js";
+import { cronToWords } from "./cron-words.js";
 import { createGlyphhSpinner } from "../glyphh-spinner.js";
 import { NOTHING, glyphhPatch, glyphhView, withheldFor, type Everything, type Withheld } from "./glyphh-holds.js";
 

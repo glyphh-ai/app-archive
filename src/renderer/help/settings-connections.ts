@@ -19,7 +19,6 @@
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
-import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
 import { planGates } from "./plan-gate.js";
 import { toastError } from "./toast.js";
 import { hostHas } from "./web-surface.js";
@@ -114,7 +113,6 @@ export async function loadSettingsConnections(): Promise<void> {
   const body = el("conn2-body");
   if (!body) return;
   wire();
-  ensureAdopted();
   el("conn2-detail-view")?.classList.add("hidden");
   el("conn2-list-view")?.classList.remove("hidden");
   fail("");
@@ -1208,28 +1206,6 @@ function wire(): void {
       if (pageShowing() && !current) void reloadQuietly();
     });
   }
-}
-
-// ── the adopted original: catalog modal + connect flow (one implementation) ──
-let adopted = false;
-let selfTriggered = false;
-let refreshing = false;
-async function refreshFromStore(): Promise<void> {
-  if (refreshing) return;
-  refreshing = true;
-  try { await loadSettingsConnections(); } finally { refreshing = false; }
-}
-function ensureAdopted(): void {
-  const host = el("conncfg-legacy");
-  if (!host || adopted) return;
-  adopted = true;
-  selfTriggered = true;
-  adoptConnectionsInto(host, [], null);
-  onConnectionsChanged(() => {
-    if (selfTriggered) { selfTriggered = false; return; }
-    if (current) return;
-    void refreshFromStore();
-  });
 }
 
 /** + Custom MCP uses the app's standard form modal. */

@@ -109,7 +109,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "artifacts";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "app" | "artifacts";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -183,7 +183,6 @@ interface ThreadSlot { id: number; view: "thread"; sticky?: boolean }
 /** A whole app SECTION (Home, Apps, Settings, Drips, …) hosted as a panel —
  *  the section's singleton DOM is adopted into the slot body (the same
  *  reparenting trick the coding slot uses for the agent). */
-interface SectionSlot { id: number; view: "section"; section: string; sticky?: boolean }
 /** Echo — the open app panels as LIVE snapshots floating in a three.js
  *  scene, with the real agent DOM docked front-center in the space. */
 interface EchoSlot { id: number; view: "echo"; sticky?: boolean }
@@ -231,7 +230,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -483,15 +482,6 @@ function guardChromeErrorPage(
 
 /** The in-guest probe: non-empty only when Chrome's error document is up. */
 const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"); return e ? (e.innerText || "").slice(0, 300) : ""; })()`;
-
-/** Panel titles for hosted sections (slot headers + layout minis). */
-const SECTION_TITLES: Record<string, string> = {
-  dashboard: "Home", connections: "Connections", apps: "Tabs", marketplace: "Marketplace",
-  layouts: "Workspaces",
-  skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
-  settings: "Settings", docs: "Docs",
-  build: "Build", customize: "Customize",
-};
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──
 let monacoReady: Promise<void> | null = null;
@@ -1116,7 +1106,7 @@ async function init(): Promise<void> {
    *  round-trips verbatim through the desktop IPC, the web bridge and the
    *  server's opaque `data` JSON, so a new key needs no migration. */
   type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" };
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> };
@@ -1166,9 +1156,7 @@ async function init(): Promise<void> {
           views: r.slots.map((s): SavedView =>
             s.view === "app"
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
-              : s.view === "section"
-                ? { view: "section", section: s.section }
-                : s.view),
+              : s.view),
         })).filter((r) => r.views.length > 0),
       };
       uiStateSet(layoutKey(), JSON.stringify(data));
@@ -1189,8 +1177,6 @@ async function init(): Promise<void> {
       for (const v of (savedRail.views || []).slice(0, 2)) {
         if (typeof v === "object" && v !== null && v.view === "app" && v.slug) {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
-        } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
-          slots.push({ id: nextSlotId++, view: "section", section: v.section });
         } else if (v === "coding" || v === "thread") {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
@@ -1300,19 +1286,9 @@ async function init(): Promise<void> {
    *  the session you are about to start — so it survives another panel opening
    *  and keeps its own column, exactly as the running agent does. Every other
    *  internal section is still a full-screen page. */
-  const isAgentSeat = (s: Slot): boolean =>
-    s.view === "coding" || (s.view === "section" && s.section === "dashboard");
+  const isAgentSeat = (s: Slot): boolean => s.view === "coding";
 
   function placeSlot(slot: Slot): void {
-    // Internal section panels render FULL SCREEN, period — they never share
-    // the grid. Placing anything else first closes any hosted section
-    // (renderRails parks its DOM back to the pen). The agent seat is exempt.
-    if (slot.view !== "section") {
-      for (let i = rails.length - 1; i >= 0; i--) {
-        rails[i].slots = rails[i].slots.filter((sl) => sl.view !== "section" || isAgentSeat(sl));
-        if (!rails[i].slots.length) rails.splice(i, 1);
-      }
-    }
     // Keep the agent VISIBLE when a panel opens. A DOCKED agent (anchor left/right)
     // lives on `.code-root` and stays put — leave it alone. A rail-hosted agent is
     // the overlay following its coding-seat placeholder; opening a panel without
@@ -1424,7 +1400,6 @@ async function init(): Promise<void> {
   interface EchoCtlType {
     openApp(app: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean; cloud?: boolean }): void;
     openLayout(layout: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> }): void;
-    openSection(section: string): void;
     openAgent(): void;
     /** The agent was docked (parked out to the rail/dock) — close its now-empty
      *  Echo card WITHOUT forgetting the session it still hosts. */
@@ -1589,7 +1564,6 @@ async function init(): Promise<void> {
       const r = rails[i];
       const idx = r.slots.findIndex((s) => s.id === slotId);
       if (idx >= 0) {
-        const wasSection = r.slots[idx].view === "section";
         const wasEcho = r.slots[idx].view === "echo";
         const wasThread = r.slots[idx].view === "thread";
         const wasSeat = isAgentSeat(r.slots[idx]);
@@ -1602,9 +1576,6 @@ async function init(): Promise<void> {
         void wasEcho;
         renderRails();
         saveLayout();
-        // Closing an internal app panel (a section) goes back to the
-        // launcher — which is ECHO now.
-        if (wasSection) openEchoSurface();
         return;
       }
     }
@@ -1818,17 +1789,6 @@ async function init(): Promise<void> {
     });
   }
 
-  /** Adopt a section's DOM into the slot and run its loader. */
-  function renderSectionIntoSlot(body: HTMLElement, slot: SectionSlot): void {
-    // legacyKey: a workspace saved before a section rename still names the
-    // old page; without this the cell reads "This page is unavailable."
-    const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${legacyKey(slot.section)}"]`);
-    if (!sec) { body.innerHTML = `<div class="ws-empty">This page is unavailable.</div>`; return; }
-    body.classList.add("ws-section-body");
-    sec.classList.add("active", "wb-hosted");
-    body.appendChild(sec);
-  }
-
   /**
    * Navigate the workbench to a SECTION — the 2.5.0 shell's page switch.
    * Opening a section clears every other panel (with the unsaved-work
@@ -1847,35 +1807,17 @@ async function init(): Promise<void> {
     // wall-settle loop never lifts when the wall boots covered (the landing
     // composer), and a veiled workbench renders an open section invisible.
     document.body.classList.remove("wb-booting");
-    const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
     if (section === "agent" || section === "code" || section === "workspace") {
       // The agent is the PERMANENT bottom composer — there is no agent panel
       // to open or dock anymore. "agent" just focuses the input; "code"/
-      // "workspace" flip back to the working surface (section slots close,
+      // "workspace" flip back to the working surface (nothing closes,
       // the workspace stays — no uninvited anything).
-      let changed = false;
-      for (let i = rails.length - 1; i >= 0; i--) {
-        const kept = rails[i].slots.filter((sl) => sl.view !== "section");
-        if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
-        if (!rails[i].slots.length) rails.splice(i, 1);
-      }
-      // NOTHING changed → NOTHING re-renders. Every agent panel command runs
-      // this flip first; an unconditional renderRails rebuilt Echo (and every
-      // panel body) per command — open two apps, keep only the last card.
-      if (changed) {
-        renderRails();
-        saveLayout();
-      }
       if (section === "agent") (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
       return;
     }
-    // PAGES open as Echo cards — Echo is the only surface.
-    void loadSection;   // the card path runs the loader itself
-    openEchoSurface();
-    // THE FULL-SCREEN PAGES (his orders, 2026-10-05 web, 2026-10-07 desktop):
-    // Build and Customize fill the page in place of everything showing.
-    if (panelOpensFullScreen(section, IS_WEB_TARGET)) { echoCtl?.openWebFullPanel(section); return; }
-    echoCtl?.openSection(section);
+    // THE FULL-SCREEN PAGES (Artifacts, a super power's Edit page) fill the
+    // page in place of everything showing; there are no other pages.
+    if (panelOpensFullScreen(section, IS_WEB_TARGET)) { openEchoSurface(); echoCtl?.openWebFullPanel(section); }
   }
 
   function renderRails(): void {
@@ -2033,7 +1975,6 @@ async function init(): Promise<void> {
   function renderSlot(slot: Slot, railIdx: number, slotIdx: number): HTMLElement {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
     const title = slot.view === "app" ? slot.name
-      : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
       : meta.title;
     const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
@@ -2174,7 +2115,6 @@ async function init(): Promise<void> {
         body.classList.add("ws-echo-body", "echo-nogl");
       }
     }
-    else if (slot.view === "section") renderSectionIntoSlot(body, slot);
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
@@ -2574,10 +2514,9 @@ async function init(): Promise<void> {
       for (const e of openList) {
         const t = e.tile;
         if (t.kind === "agent" || t.slug === "glyphh-home") continue;
-        if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
         // A CLI agent card is NOT a bare terminal — losing the id here is why
         // a reopened app "reverted to claude" (his report, 2026-09-10).
-        else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
+        if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
         else if (t.kind === "tool" && t.toolView) {
           cards.push({ kind: "tool", toolView: t.toolView });
         }
@@ -2657,8 +2596,7 @@ async function init(): Promise<void> {
         if (saved?.cards?.length) {
           const caps = surfaceCaps(IS_WEB_TARGET);
           for (const c of saved.cards) {
-            if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
-            else if (c.kind === "tool" && c.toolView) {
+            if (c.kind === "tool" && c.toolView) {
               if (surfaceHostsView(c.toolView, caps)) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
               else console.warn("[echo] saved panel needs a streamed panel here:", c.toolView);
             }
@@ -2874,7 +2812,7 @@ async function init(): Promise<void> {
      *   echo — the wall IS the surface a workspace opens over, never a
      *     document;
      *   settings — his exception: it always opens at its front page. */
-    const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings", "section"]);
+    const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings"]);
     /** How much unsaved editor text one cell may carry through a switch. */
     const UNSAVED_BYTES_KEPT = 256 * 1024;
     const holdsDocState = (view: string): boolean => !NO_DOC_STATE.has(view);
@@ -3073,8 +3011,7 @@ async function init(): Promise<void> {
         const slug = (t.slug || "").toLowerCase();
         let entry: TileEntry | null = null;
         if (slug.startsWith("page:")) {
-          openSectionCard(slug.slice(5), t.name);
-          entry = openList.find((e) => (e.tile.slug || "").toLowerCase() === slug) ?? null;
+          continue;   // a saved page card predates the cut (2026-10-10): nothing to restore
         } else if (slug.startsWith("agent:")) {
           continue;   // a saved CLI card predates the cut (2026-10-08): nothing to restore
         } else if (t.kind === "tool" && t.toolView) {
@@ -5268,10 +5205,6 @@ async function init(): Promise<void> {
     // full-screen page through this door on the web, and the Customize work
     // panel (a page card) on the desktop, before the workspace opens.
     (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel = () => closeWebFullPanel();
-    (window as unknown as { __wbClosePage?: (section: string) => void }).__wbClosePage = (section) => {
-      const key = legacyKey(section);
-      for (const x of openList.filter((c) => c.tile.slug === `page:${key}`)) closeCard(x);
-    };
     const activateGlyphh = (_self?: TileEntry): void => {
       // EVERY door is another panel (his ruling, 2026-09-26) and every panel
       // starts on a NEW session (his order, 2026-09-29).
@@ -5536,46 +5469,6 @@ async function init(): Promise<void> {
         mountToolIntoCard(e, card);
         return;
       }
-      if (t.navApp) {
-        openSectionCard(t.navApp.slug === "home" ? "dashboard" : t.navApp.slug, t.navApp.name);
-      }
-    };
-    /** A PAGE (Home, Apps, Settings, …) as an Echo card: adopt the section
-     *  singleton, run its loader, park it back on close. One card per page. */
-    const openSectionCard = (rawSection: string, title?: string): void => {
-      // Every door into a page lands here — normalize renamed keys ONCE, at
-      // the chokepoint, so no caller has to remember the old spelling.
-      const section = legacyKey(rawSection);
-      const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${section}"]`);
-      if (!sec) return;
-      if (section === "dashboard") {
-        // HOME is a clean landing — like the chat icon, clicking Home clears
-        // whatever is up (layout memory saved by the reset) and loads the
-        // Home page alone.
-        const home = openList.find((x) => x.tile.slug === "page:dashboard");
-        if (home?.card && openList.length === 1) { flash(home.card); return; }
-        resetEcho();
-      }
-      const existing = openList.find((x) => x.tile.slug === `page:${section}`);
-      if (existing?.card) { flash(existing.card); return; }
-      // USER-FACING title from the section map first — a bare capitalize
-      // leaked internal names ("layouts" → "Layouts"; the product word is
-      // "Workspaces").
-      const name = title || SECTION_TITLES[section] || (section === "dashboard" ? "Home" : section.charAt(0).toUpperCase() + section.slice(1));
-      const entry = adHoc({ name, slug: `page:${section}`, kind: "app" });
-      const card = openShell(entry);
-      if (!card) return;
-      const body = card.querySelector<HTMLElement>(".echo-card-body")!;
-      body.classList.add("ws-section-body");
-      sec.classList.add("active", "wb-hosted");
-      body.appendChild(sec);
-      (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(section);
-      // HOME hosts the LIVE composer: the agent element it normally lives in is
-      // parked (display:none) while a page card is up, so the landing rendered
-      // with no input at all until the adoption re-ran here.
-      if (section === "dashboard") {
-        (window as unknown as { __adoptComposerToHome?: () => void }).__adoptComposerToHome?.();
-      }
     };
     // ── The agent drives Echo too: while Echo is mounted, EVERY panel tool
     // (open / list / close / focus / clear / terminal / browser / files)
@@ -5652,7 +5545,7 @@ async function init(): Promise<void> {
     // the cards and the seams go visibility:hidden under body.web-full-open —
     // nothing closes, nothing reflows — and come back exactly as they were
     // when the host goes. Artifacts mounts its panel; Build / Customize adopt
-    // their section page the way openSectionCard does. Desktop: never. ──
+    // nothing else. Desktop: never. ──
     let webFullHost: HTMLElement | null = null;
     let webFullKey: string | null = null;
     let webFullPanel: Pick<ArtifactsPanelHandle, "back" | "destroy"> | null = null;
@@ -5677,7 +5570,7 @@ async function init(): Promise<void> {
      *  as a card on the desktop or full screen on the web. A workspace open
      *  replaces every card anyway; its own cells are left alone here. */
     function isPagePanel(x: TileEntry): boolean {
-      return x.tile.slug === "page:customize" || x.tile.toolView === "artifacts";
+      return x.tile.toolView === "artifacts";
     }
     function closePagePanelsFor(opening: TileEntry): void {
       // openingLayout is declared further down this scope: a card opened
@@ -5771,21 +5664,6 @@ async function init(): Promise<void> {
         });
         return;
       }
-      (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools?.();
-      const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${key}"]`);
-      if (!sec) return;
-      // A page that brings its own title row (Customize) is its own header:
-      // the full-screen "‹ Title / ✕" row steps aside (his order, 2026-10-09).
-      const ownBar = sec.querySelector<HTMLElement>(".settings-group-titlebar");
-      if (ownBar) {
-        host.classList.add("own-head");
-        const x = ownBar.querySelector<HTMLElement>(".settings-group-close");
-        if (x && !x.dataset.wired) { x.dataset.wired = "1"; x.addEventListener("click", () => closeWebFullPanel()); }
-      }
-      panelBody.classList.add("ws-section-body");
-      sec.classList.add("active", "wb-hosted");
-      panelBody.appendChild(sec);
-      (window as unknown as { __wbSectionLoad?: (sn: string) => void }).__wbSectionLoad?.(key);
     };
     const ctl: EchoCtlType = {
       openWebFullPanel,
@@ -5835,18 +5713,6 @@ async function init(): Promise<void> {
         activateTile(adHoc(tile));
       },
       openLayout: (layout) => openLayoutInEcho(layout),
-      openSection: (section) => {
-        // A GROUP PAGE (Build, Customize) is full screen on both surfaces
-        // (his order, 2026-10-07) — a restored wall card included.
-        if (panelOpensFullScreen(section, IS_WEB_TARGET)) { openWebFullPanel(section); return; }
-        // Section pages (Apps, Workspaces, Agents, …) follow the ONE open
-        // rule everything else does now (his order, 2026-08-30): the card
-        // joins whatever is showing — a live layout adopts it into the next
-        // slot via openShell, loose cards accumulate. No wipes, no
-        // working-surface special cases; the old seam-eating problem died
-        // when pages became grid cells instead of a stack above the layout.
-        openSectionCard(section);
-      },
       openAgent: () => { void openAgentCard(); },
       detachAgent: () => {
         // The dock already moved .code-agent out to .code-root; the leftover
@@ -8952,7 +8818,6 @@ async function init(): Promise<void> {
     // different panels is stale (the layout was edited) — definition wins.
     const viewKey = (v: SavedView): string =>
       typeof v === "string" ? v
-        : v.view === "section" ? `section:${v.section}`
         : `app:${(v.slug || "").toLowerCase()}`;
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");

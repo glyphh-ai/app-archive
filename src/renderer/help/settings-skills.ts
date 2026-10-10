@@ -20,7 +20,7 @@ import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
-import { cronToWords, openScheduleOnLoad } from "./schedules.js";
+import { cronToWords } from "./cron-words.js";
 import { renderRunList } from "./lib-runs.js";
 import { renderConnectionTable, connDeps, openConnectionOnLoad, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
@@ -1269,8 +1269,7 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   const actions = block.querySelector(".skill-sched-actions") as HTMLElement;
 
   // THE SAME CONTROL AS THE AGENTS TAB (his order, 2026-09-17): one button
-  // that reads the schedule and opens the same modal. Clicking the schedule
-  // itself goes to its own page, where the history is.
+  // that reads the schedule and opens the same modal.
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "action-btn";
@@ -1282,16 +1281,6 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   const stub: BundleAgentRow = { ref: "", name: s.name, description: "", loop: "", model: "", source: "slot" };
   btn.addEventListener("click", () => openScheduleModal(s, stub, row));
   actions.appendChild(btn);
-
-  if (row) {
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "skill-sched-open";
-    open.textContent = "Open schedule";
-    open.title = "Its page, with every run";
-    open.addEventListener("click", () => { openScheduleOnLoad(row.id); openSettingsModal("schedules"); });
-    actions.appendChild(open);
-  }
   host.appendChild(block);
 }
 
@@ -1397,7 +1386,7 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
     const r = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> }).scheduleSave(input)
       .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
     if (!r.ok) { fail(r.error || "Couldn't save the schedule."); return; }
-    notice(`${s.name} runs ${cronToWords(cron)}`, { detail: "Change or remove it here, or under Customize → Schedules." });
+    notice(`${s.name} runs ${cronToWords(cron)}`, { detail: "Change or remove it here." });
     close();
     void paintBundleAgents(s);
   });

@@ -642,16 +642,6 @@ body {
   margin-bottom: 8px;
 }
 
-/* The triad's gradient beat ("One workspace.") — used by the first-run
-   tour's tagline; EXACTLY the web hero's rhero-accent gradient. */
-.intro-accent {
-  background: linear-gradient(115deg, #b36bfb, #9333ea 48%, #ec4899);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-
 .splash-status {
   font-size: 12px;
   color: var(--text-faint);
@@ -3030,37 +3020,10 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
 /* Schedule builder */
 .skill-schedule-builder { display: flex; flex-direction: column; gap: 6px; }
 .skill-sched-select { font-size: 12px; max-width: 220px; }
-.sched-row { display: flex; align-items: center; gap: 6px; }
-.sched-sel {
-  font-size: 12px; background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
-  min-width: 50px;
-}
+
 .skill-schedule-opts {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   font-size: 12px; color: var(--text-2);
-}
-.sched-days { padding: 2px 0; }
-.sched-day-chips { display: flex; gap: 4px; flex-wrap: wrap; }
-.sched-day-chip {
-  padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text-2);
-  cursor: pointer; transition: all 0.15s; user-select: none;
-}
-.sched-day-chip:hover { border-color: var(--accent); color: var(--text); }
-.sched-day-chip.active {
-  background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
-}
-.sched-time-row, .sched-dom-row, .sched-interval-row {
-  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2);
-}
-.sched-time-row label, .sched-dom-row label, .sched-interval-row label {
-  font-size: 11px; color: var(--text-2); min-width: 32px;
-}
-.sched-time-row span { color: var(--text-2); font-weight: 600; }
-.sched-preview {
-  font-size: 11px; color: var(--text-2); padding: 4px 0;
-  font-style: italic;
 }
 
 /* Recent runs inline styling */
@@ -3510,15 +3473,8 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
   display: block;
 }
 
-/* The dashboard landing is RETIRED (the app boots into the new-session
-   screen). Nothing routes here anymore — hard-hide it so a stale .active can
-   never bleed "Welcome back" + the old mascot through an open layout. */
-.help-section[data-section="dashboard"] { display: none !important; }
-
 /* Sections with split detail views need full height */
-.help-section[data-section="dashboard"].active,
 .help-section[data-section="apps"].active,
-.help-section[data-section="connections"].active,
 .help-section[data-section="loops"].active,
 .help-section[data-section="skills"].active,
 .help-section[data-section="agents"].active,
@@ -3533,68 +3489,8 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
   height: 100%;
   overflow-y: auto;
 }
-/* The connections list + detail fill and scroll exactly like the Apps list +
-   #app-detail (two-column .app-builder-split form). */
-.help-section[data-section="connections"] #connections-list { flex: 1; min-height: 0; overflow-y: auto; }
-.help-section[data-section="connections"] #conn-detail { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.help-section[data-section="connections"] #conn-detail.hidden { display: none !important; }
 
-/* ── Home dashboard (landing) ─────────────────────────────────────────── */
-/* The dashboard renders INSIDE an echo card as often as full-page — media
-   queries measure the window, so responsiveness keys off the SECTION's own
-   width (container queries), like the lib tables. */
-.help-section[data-section="dashboard"] { container-type: inline-size; container-name: dash; }
-/* The glyphh.ai desktop page's MOVEMENT, ported: the faint drifting
-   particle field behind the hero (slow upward drift, twinkle, a minority
-   of accent dots). The canvas sits behind the landing content. */
-.help-section[data-section="dashboard"].active { position: relative; }
-.dash-particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.help-section[data-section="dashboard"] .dash-scroll { position: relative; z-index: 1; }
-.dash-scroll {
-  padding: 28px 36px 48px;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
-  /* The landing column flows from the top; the hero's own top offset (18vh)
-     drops the greeting+composer down the page, cards below (Landing.js). */
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-@container dash (max-width: 720px) { .dash-scroll { padding: 18px 16px 32px; } }
-
-/* HERO — greeting + composer as one unit, pushed DOWN the page (not centered
-   high): a big top offset drops it lower, cards flow beneath (dash-hero). */
-.dash-hero { display: flex; flex-direction: column; width: 100%; margin-top: 22vh; }
-.dash-hero > .dash-header { margin-bottom: 18px; }
-@container dash (max-width: 720px) { .dash-hero { margin-top: 12vh; } }
-.dash-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px;
-  margin-bottom: 18px;
-  text-align: left;
-}
-.dash-mark { width: 56px; height: 56px; flex: none; border-radius: 12px; }
-.dash-header-text { text-align: left; }
-
-/* App notifications — a quiet slot under the welcome; apps fill it later. */
-.dash-notifications {
-  margin: 0 auto 16px;
-  max-width: 640px;
-}
-.dash-notifications.hidden { display: none; }
-
-/* the FULL agent footer, adopted — full column width (same as the two
-   cowork cards), taller input, and it never moves */
-/* Under-title line — one span per space, the rail tab picks which shows. */
-.dash-subtitle { margin: 4px 0 0; font-size: 15px; color: var(--text-2); }
-.dash-subtitle span { display: none; }
-
-body[data-rail-space="code"] .dash-sub-code { display: inline; }
+/* ── The composer's chip row ──────────────────────────────────────────── */
 
 /* The landing's chip row above the composer's top-left. It shows in EVERY
    space — chat keeps the source chip alone (reading "Cloud"), and paints the
@@ -3611,47 +3507,6 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
 /* ── Chat landing starters ─────────────────────────────────────────────
    Six characters, each a front door to a space. Chat only — Work and Code
    land on their own surfaces. */
-/* Chat only. (Hidden with display, not visibility: a reserved-but-invisible
-   block made the landing column taller than its container, and a centred
-   flex column that overflows pushes its FIRST child out through the top —
-   which is why the greeting kept sitting too high instead of centred.) */
-.dash-starters {
-  display: grid;
-  /* Full-width strip above the two-column body — a compact single row, three
-     cards across. Narrows to 2, then 1 in a tight panel. */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  width: 100%;
-  margin: 6px 0 18px;
-}
-@container dash (max-width: 780px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container dash (max-width: 520px) { .dash-starters { grid-template-columns: 1fr; } }
-
-.dash-starter {
-  position: relative;
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 10px 12px 11px;
-  text-align: left; cursor: pointer;
-  border: 1px solid var(--border-2); border-radius: 12px;
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--surface-3) 88%, transparent), var(--surface-2));
-  color: var(--text);
-  transition: transform .16s cubic-bezier(.2,.8,.2,1), border-color .16s, box-shadow .16s;
-}
-.dash-starter:hover {
-  transform: translateY(-2px);
-  /* the theme's highlight ink — WHITE on the default dark theme (same token
-     as the echo tiles' hover ring) */
-  border-color: var(--echo-tile-highlight, var(--text));
-  box-shadow: 0 10px 26px rgba(0,0,0,.28);
-}
-.dash-starter-top { display: flex; align-items: center; gap: 8px; }
-.dash-starter-mascot { width: 40px; height: 40px; flex: none; display: block; }
-.dash-starter-mascot svg { width: 100%; height: 100%; display: block; }
-.dash-starter-name { font-size: 12px; font-weight: 650; color: var(--text-2); letter-spacing: .01em; }
-.dash-starter-top .space-pill { margin-left: auto; }
-.dash-starter-title { font-size: 13px; font-weight: 650; }
-.dash-starter-blurb { font-size: 11.5px; line-height: 1.4; color: var(--text-3); }
 
 /* The space pill — the same badge language as the layout cards. */
 .space-pill {
@@ -3679,10 +3534,6 @@ body[data-rail-space="code"] .dash-sub-code { display: inline; }
    below it. Scoped to Home so the in-session/layout composers keep one line. */
 .dash-composer-slot .code-input,
 body.composer-on-home .dash-composer-slot .code-input { min-height: 64px; }
-
-/* Chat mode hides the cowork content but KEEPS its space — the composer
-   stays fixed in the page; the toggle never makes the layout jump */
-body.chat-only .dash-two-col { display: none; }
 
 /* The agent's head chrome matches the session's TYPE (or the active tab before
    the first send creates the session) — TWO types since 2026-09-29:
@@ -3795,7 +3646,7 @@ body.chat-only .dash-two-col { display: none; }
    longer scopes items by space (the Chat/Work/Code tabs were removed). */
 
 /* Settings › Usage: the Add funds action above the metric cards */
-.dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
 .dash-greeting {
   font-family: var(--font-sans);
   font-size: 34px;
@@ -3804,13 +3655,10 @@ body.chat-only .dash-two-col { display: none; }
   color: var(--text);
   margin: 0;
 }
-.dash-subtitle { font-size: 15px; color: var(--text-2); margin: 4px 0 0; }
-.dash-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
 .dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @container dash (max-width: 900px) { .dash-grid { grid-template-columns: repeat(2, 1fr); } }
 @container dash (max-width: 620px) { .dash-grid { grid-template-columns: 1fr; } }
-@container dash (max-width: 620px) { .dash-header { flex-wrap: wrap; } }
 
 .dash-card {
   background: var(--surface-3);
@@ -4138,18 +3986,7 @@ body.chat-only .dash-two-col { display: none; }
 /* App grid cards */
 /* Apps tab: a flex column holding the card grid + a full-width pagination bar
    below it (the bar must not be a grid cell). */
-.app-list-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 0;
-}
-.app-list-wrap .app-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 140px));
-  gap: 10px;
-  align-content: start;
-}
+
 .app-card {
   display: flex;
   flex-direction: column;
@@ -4166,54 +4003,6 @@ body.chat-only .dash-two-col { display: none; }
 .app-card:hover {
   background: var(--surface-2);
   border-color: var(--border-3);
-}
-.app-card-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.app-card-icon img {
-  /* contain in a fixed inset so every logo reads the same size (cc parity) */
-  border-radius: 6px;
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
-  padding: 4px;
-  box-sizing: border-box;
-}
-.app-card-initial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: var(--hover);
-  color: var(--text-2);
-  font-size: 14px;
-  font-weight: 600;
-}
-.app-card-name {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-.app-card-id {
-  font-size: 9px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.crud-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 /* Empty-state — a rotating saying (peace/love/object) over a muted how-to.
@@ -4244,22 +4033,6 @@ body.chat-only .dash-two-col { display: none; }
   line-height: 1.45;
 }
 .settings-callout.hidden { display: none; }
-
-.crud-card {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  gap: 12px;
-}
-.crud-card:hover {
-  background: var(--surface-2);
-  border-color: var(--border-2);
-}
 
 /* ── Artifacts — grid of previews, or the library table (his order, 2026-09-18) */
 .files-gallery { display: block; margin-top: 4px; }
@@ -4402,36 +4175,22 @@ body.chat-only .dash-two-col { display: none; }
 /* Overlapping stack of app-icon squares (layout list + layout/drip edit
    heads). No rings/backgrounds — just the icons themselves, overlapped. */
 .layout-card-icons .layout-app-icon + .layout-app-icon,
-.edit-head-icons .layout-app-icon + .layout-app-icon,
-.edit-head-icons .drip-emoji-icon + .drip-emoji-icon {
+.edit-head-icons .layout-app-icon + .layout-app-icon {
   margin-left: -9px;
 }
-/* Drip emoji icons (drips list + drip edit head), overlapping stack — no
-   chip background, just the emoji at the same sizes as connection icons. */
-.drip-emoji-icon {
-  width: 24px; height: 24px; flex-shrink: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 18px; line-height: 1;
-}
-.edit-head .drip-emoji-icon { width: 40px; height: 40px; font-size: 26px; }
-.drip-card-icons { display: flex; align-items: center; flex-shrink: 0; margin-right: 4px; }
-.drip-card-icons .drip-emoji-icon + .drip-emoji-icon { margin-left: -9px; }
 
 /* Icon sizes match the Connections page: 32px in the list tiles, 40px in the
    edit-form heads — for both layout icon stacks and drip emoji stacks. */
 .app-card .layout-app-icon,
 .app-card .layout-app-icon img,
 .app-card .layout-app-initial { width: 32px; height: 32px; border-radius: 7px; }
-.app-card .drip-emoji-icon { width: 32px; height: 32px; font-size: 22px; }
-.app-card .layout-card-icons,
-.app-card .drip-card-icons { margin-right: 0; }
-.app-card .layout-card-icons .layout-app-icon + .layout-app-icon,
-.app-card .drip-card-icons .drip-emoji-icon + .drip-emoji-icon { margin-left: -11px; }
+
+.app-card .layout-card-icons { margin-right: 0; }
+.app-card .layout-card-icons .layout-app-icon + .layout-app-icon { margin-left: -11px; }
 .edit-head .layout-app-icon,
 .edit-head .layout-app-icon img,
 .edit-head .layout-app-initial { width: 40px; height: 40px; border-radius: 8px; }
-.edit-head-icons .layout-app-icon + .layout-app-icon,
-.edit-head-icons .drip-emoji-icon + .drip-emoji-icon { margin-left: -12px; }
+.edit-head-icons .layout-app-icon + .layout-app-icon { margin-left: -12px; }
 .layout-app-icon {
   width: 24px;
   height: 24px;
@@ -4461,98 +4220,6 @@ body.chat-only .dash-two-col { display: none; }
    at every size the tile takes (24 / 32 / 40px). */
 .layout-tool-icon { background: var(--hover); color: var(--text-2); }
 .layout-tool-icon svg { width: 60%; height: 60%; max-width: 18px; max-height: 18px; display: block; }
-
-/* ── Schedules ──────────────────────────────────────────── */
-
-.sched-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: var(--text-2);
-}
-.sched-banner-text { flex: 1; }
-.sched-awake-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  color: var(--text-2);
-  font-size: 12px;
-}
-
-.sched-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-2);
-  color: var(--text-2);
-  font-size: 10.5px;
-  margin-right: 4px;
-}
-.sched-badge.freq { color: var(--text); border-color: rgba(175, 95, 255, 0.3); }
-.sched-badge.ask  { color: var(--text-3); }
-
-.sched-toggle {
-  position: relative;
-  width: 30px;
-  height: 16px;
-  display: inline-block;
-  flex-shrink: 0;
-}
-.sched-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-.sched-toggle-track {
-  position: absolute;
-  inset: 0;
-  background: var(--border-3);
-  border-radius: 10px;
-  transition: background 0.15s;
-}
-.sched-toggle-thumb {
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 12px; height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.15s;
-}
-.sched-toggle input:checked + .sched-toggle-track { background: var(--accent); }
-.sched-toggle input:checked + .sched-toggle-track .sched-toggle-thumb { transform: translateX(14px); }
-.sched-toggle input:disabled + .sched-toggle-track { opacity: 0.4; cursor: not-allowed; }
-
-.sched-history-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s;
-}
-.sched-history-row:hover { background: var(--hover); }
-.sched-history-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-faint);
-  flex-shrink: 0;
-}
-.sched-history-dot.ok  { background: var(--accent); }
-.sched-history-dot.err { background: var(--danger); }
-.sched-history-empty {
-  padding: 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
 
 /* Store stat cards */
 .store-stat-card {
@@ -4599,136 +4266,6 @@ body.chat-only .dash-two-col { display: none; }
   font-size: 11px;
   padding: 0 12px;
 }
-
-/* Dashboard (help landing page) */
-.dash-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.dash-header h2 { margin: 0; }
-.dash-provider { font-size: 11px; color: var(--text-3); background: var(--hover); padding: 4px 10px; border-radius: 6px; margin-left: auto; }
-.dash-header #dash-refresh { font-size: 16px; padding: 2px 8px; line-height: 1; }
-
-/* Two-tab dashboard (Home | Dashboard) + cowork landing */
-.dash-tabs { display: inline-flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; margin-bottom: 18px; }
-.dash-tab { background: transparent; border: none; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500; padding: 6px 16px; border-radius: 6px; cursor: pointer; }
-.dash-tab:hover { color: var(--text); }
-.dash-tab.active { background: var(--surface); color: var(--text); }
-.dash-pane { display: none; }
-.dash-pane.active { display: block; }
-
-.dash-cowork-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
-.dash-cowork-card { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer; transition: border-color 160ms ease, transform 160ms ease; }
-.dash-cowork-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-.dash-cowork-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.dash-cowork-desc { font-size: 12px; color: var(--text-3); }
-.dash-stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-.dash-stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
-.dash-stat-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
-.dash-stat-values { display: flex; gap: 20px; }
-.dash-stat-item { display: flex; flex-direction: column; }
-.dash-stat-num { font-size: 22px; font-weight: 600; color: var(--white); line-height: 1.2; font-variant-numeric: tabular-nums; }
-.dash-stat-num.green { color: var(--text); }
-.dash-stat-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-.dash-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-.dash-chart-stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-.dash-chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
-.dash-chart-box { height: 200px; position: relative; }
-.dash-range-toggle { display: flex; gap: 0; }
-.dash-range-btn { background: var(--hover); border: 1px solid var(--border); color: var(--text-3); font-size: 11px; padding: 3px 10px; cursor: pointer; transition: all 0.15s; }
-.dash-range-btn:first-child { border-radius: 4px 0 0 4px; }
-.dash-range-btn:last-child { border-radius: 0 4px 4px 0; }
-.dash-range-btn.active { background: var(--accent-bg); border-color: rgba(175, 95, 255, 0.27); color: var(--text); }
-.dash-range-btn:hover:not(.active) { color: var(--text-2); }
-.dash-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; margin-top: 24px; }
-.dash-section-title { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px; }
-.dash-apps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.dash-app-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; transition: border-color 0.15s; }
-.dash-app-card:hover { border-color: var(--border-3); }
-.dash-app-info { flex: 1; min-width: 0; }
-.dash-app-name { font-size: 13px; font-weight: 500; color: var(--text-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dash-app-date { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-.dash-app-actions { display: flex; gap: 6px; }
-.dash-app-actions button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.15s; }
-.dash-app-actions button:hover { color: var(--text); background: var(--accent-bg); }
-.dash-app-actions .dash-app-delete:hover { color: var(--danger-soft); background: var(--danger-bg); }
-.dash-reminders-list { display: flex; flex-direction: column; gap: 6px; }
-.dash-reminder-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
-.dash-reminder-msg { flex: 1; font-size: 13px; color: var(--text-bright); }
-.dash-reminder-time { font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums; }
-.dash-reminder-cancel { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.15s; }
-.dash-reminder-cancel:hover { color: var(--danger-soft); background: var(--danger-bg); }
-.dash-empty-hint { font-size: 12px; color: var(--text-faint); padding: 16px; text-align: center; }
-.dash-sources-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-
-/* Dashboard split columns (Token Metrics + Store Metrics) */
-.dash-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-@container dash (max-width: 780px) { .dash-split-row { grid-template-columns: 1fr; } }
-.dash-split-col {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
-  min-height: 200px; min-width: 0; overflow: hidden;
-}
-
-/* Daily Activity — full-width line chart above the two metric columns. */
-.dash-activity-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 16px; margin-bottom: 16px; min-width: 0;
-}
-.dash-activity-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
-}
-.dash-activity-head .dash-split-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
-.dash-activity-chart-box { height: 240px; position: relative; }
-.dash-split-header {
-  font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase;
-  letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
-}
-.dash-split-subhead {
-  font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
-  letter-spacing: 0.4px; margin: 16px 0 10px; padding-top: 12px; border-top: 1px solid var(--border);
-}
-.dash-split-col .dash-stat-row { gap: 8px; margin-bottom: 12px; }
-.dash-split-col .dash-stat-card { padding: 12px 14px; }
-.dash-split-col .dash-stat-num { font-size: 18px; }
-.dash-split-col .dash-stat-values { gap: 14px; }
-.dash-split-col .dash-chart-container { padding: 14px; }
-.dash-split-col .dash-chart-box { height: 160px; }
-.dash-split-col .crud-toolbar { margin-bottom: 10px; }
-.dash-split-col .crud-cards { gap: 3px; }
-.dash-split-col .crud-card { padding: 8px 12px; }
-.dash-split-col .crud-card-name { font-size: 12px; }
-.dash-split-col .crud-card-meta { font-size: 11px; }
-.dash-split-col .crud-inline-form { padding: 0; }
-.dash-split-col .crud-inline-header { margin-bottom: 10px; }
-
-/* adaL card — same card structure as the split columns, but spans full width
-   above them as the primary memory tier (green accent border to signal that). */
-.dash-adal-col { margin-bottom: 16px; border-color: rgba(175, 95, 255, 0.27); }
-.dash-adal-col .dash-stat-num { font-size: 18px; }
-.dash-adal-col .dash-stat-values { gap: 14px; }
-.dash-adal-col .dash-chart-container { padding: 14px; }
-.dash-adal-col .dash-chart-box { height: 160px; }
-
-/* Dashboard data triggers — subheads that open a modal */
-.dash-data-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.dash-data-trigger .action-btn { font-size: 11px; padding: 3px 10px; }
-
-/* Dashboard modals — keep the data lists out of the main view */
-.dash-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; }
-.dash-modal.hidden { display: none; }
-.dash-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
-.dash-modal-panel {
-  position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  width: min(760px, 92vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-}
-.dash-modal-head {
-  display: flex; align-items: center; gap: 10px; padding: 14px 18px;
-  border-bottom: 1px solid var(--border); flex: 0 0 auto;
-}
-.dash-modal-title {
-  font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px;
-}
-.dash-modal-x { margin-left: auto; font-size: 14px; line-height: 1; padding: 4px 8px; }
-.dash-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1 1 auto; }
 
 /* yo-modal — theme-aware confirm dialog (replaces native confirm()). */
 /* Above the Echo dock layer (99000). The dock floats over the page, never over
@@ -4931,17 +4468,12 @@ body.chat-only .dash-two-col { display: none; }
    into a sliver. Stack them vertically instead; the page scrolls as one
    column. The !importants out-rank the drag-divider's inline width. */
 @media (max-width: 1140px) {
-  #settings-modal .app-builder-split,
   #settings-modal .lib-split {
     flex-direction: column;
     align-items: stretch;
     overflow: visible;
   }
-  #settings-modal .app-builder-controls {
-    width: auto !important;
-    overflow-y: visible;
-    padding-right: 0;
-  }
+
   #settings-modal .app-builder-divider,
   #settings-modal .lib-split-divider { display: none; }
   #settings-modal .lib-split-form {
@@ -4955,7 +4487,7 @@ body.chat-only .dash-two-col { display: none; }
     flex: none;
   }
   #settings-modal .lib-split-side { margin-left: 0; }
-  #settings-modal .app-builder-preview { min-height: 340px; }
+
   /* The connection detail wrapper clips (overflow:hidden) in the wide split;
      stacked, it becomes the scroller instead. */
   #settings-modal #conn-detail { overflow-y: auto; }
@@ -4967,25 +4499,6 @@ body.chat-only .dash-two-col { display: none; }
 .pagination-bar .action-btn { min-width: 32px; padding: 4px 8px; }
 .pagination-bar .action-btn:disabled { opacity: 0.25; pointer-events: none; }
 .pagination-label { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-
-.dash-pre-block {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px;
-  color: var(--text); font-size: 12px; font-family: var(--font-mono);
-  white-space: pre-wrap; word-break: break-word; max-height: 30vh; overflow-y: auto;
-}
-
-.dash-prompt-meta-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-bottom: 8px;
-}
-.dash-prompt-meta-grid .dash-meta-item {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
-}
-.dash-prompt-meta-grid .dash-meta-label {
-  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px;
-}
-.dash-prompt-meta-grid .dash-meta-value {
-  font-size: 12px; color: var(--text-bright); font-weight: 500; font-variant-numeric: tabular-nums;
-}
 
 /* CRUD form */
 .crud-form {
@@ -5088,13 +4601,6 @@ body.chat-only .dash-two-col { display: none; }
   margin-top: 0;   /* was -4px — pulled the breadcrumb above the form's scroll top and clipped it */
 }
 
-/* In a CRUD detail/edit view, hide the list page header (H2 + description) so
-   only the form + its breadcrumb show. Skip dashboard (its inline detail sits
-   under charts, not a plain list). */
-.help-section:not([data-section="dashboard"]):has(.crud-inline-form:not(.hidden)) > h2,
-.help-section:not([data-section="dashboard"]):has(.crud-inline-form:not(.hidden)) > .section-desc {
-  display: none;
-}
 /* Same rule for SETTINGS PANELS whose h2/description are direct children (the
    super-admin Orgs page — his report, 2026-09-01: the list title must not show
    over the detail view). */
@@ -5582,28 +5088,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 
 /* App detail view */
 
-/* ── App builder split layout ───────────────────────────── */
-.app-builder-split {
-  display: flex;
-  gap: 0;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.app-builder-controls {
-  width: 620px;
-  flex-shrink: 0;
-  overflow-y: auto;
-  /* Left edge on the page gutter (the tabs row above starts there too);
-     right padding keeps a scrollbar gap from the divider. */
-  padding: 12px 16px 12px 0;
-}
-/* Uniform vertical spacing for EVERY field in the edit forms (app editor +
-   connection editor), including the nested Type/native sub-fields — 20px above
-   each label, 6px below (label→input gap). First field sits snug to the top. */
-.app-builder-controls .settings-label,
-.app-builder-preview .settings-label { margin-top: 20px; margin-bottom: 6px; }
 /* Conditional field groups (Type→browser/native, archetype, MCP transport,
    OIDC…) are plain block wrappers toggled with .hidden. As blocks, the first
    label's 20px top margin COLLAPSES through the wrapper edge and renders as a
@@ -5624,13 +5108,11 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   display: flex;
   flex-direction: column;
 }
-.app-builder-controls .app-tab-left > .settings-label:first-child,
-.app-builder-controls > .edit-head + .settings-label,
-.app-builder-controls > .settings-label:first-child { margin-top: 4px; }
+
 /* The General tab panel is a flex column with a 10px gap, which ADDED to the
    label margins — top-level fields sat 30px apart while nested (browser/
    native) fields sat 20px. Kill the gap so margins alone set one rhythm. */
-.app-builder-controls .app-tab-left[data-tab="dashboard"] { gap: 0; }
+
 .app-detail-preview-wrap {
   border: 1px solid var(--border-2);
   border-radius: 6px;
@@ -5667,13 +5149,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 .lib-split-divider.dragging {
   /* Purple when grabbed — the affordance IS the highlight. */
   background: var(--accent);
-}
-
-.app-builder-preview {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
 }
 
 /* ── App detail tabs ─────────────────────────────────── */
@@ -5724,22 +5199,13 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 
 /* App dashboard right panel — compact sizing like dash-split-col */
 .app-tab-right[data-tab="dashboard"] { padding: 16px; gap: 0; }
-.app-tab-right[data-tab="dashboard"] .dash-stat-row { gap: 8px; margin-bottom: 12px; }
-.app-tab-right[data-tab="dashboard"] .dash-stat-card { padding: 12px 14px; }
-.app-tab-right[data-tab="dashboard"] .dash-stat-num { font-size: 18px; }
-.app-tab-right[data-tab="dashboard"] .dash-stat-values { gap: 14px; }
-.app-tab-right[data-tab="dashboard"] .dash-chart-container { padding: 14px; }
-.app-tab-right[data-tab="dashboard"] .dash-chart-box { height: 160px; }
+
 .app-tab-right[data-tab="dashboard"] .crud-toolbar { margin-bottom: 10px; }
-.app-tab-right[data-tab="dashboard"] .crud-cards { gap: 3px; }
-.app-tab-right[data-tab="dashboard"] .crud-card { padding: 8px 12px; }
+
 .app-tab-right[data-tab="dashboard"] .crud-card-name { font-size: 12px; }
 .app-tab-right[data-tab="dashboard"] .crud-card-meta { font-size: 11px; }
 .app-tab-right[data-tab="dashboard"] .crud-inline-form { padding: 0; }
 .app-tab-right[data-tab="dashboard"] .crud-inline-header { margin-bottom: 10px; }
-.app-tab-right[data-tab="dashboard"] .dash-split-header { margin-bottom: 12px; }
-.app-tab-right[data-tab="dashboard"] .dash-split-subhead { margin: 16px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); }
-.app-tab-right[data-tab="dashboard"] .dash-chart-stack { margin-bottom: 0; }
 
 .app-dash-icon {
   width: 48px;
@@ -5764,30 +5230,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* ── App card badge (MCP-only) ────────────────────────── */
 
 .app-card { position: relative; }
-
-.app-card-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: 8px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(74, 158, 255, 0.15);
-  color: var(--blue);
-}
-
-.app-card-badge.badge-connection {
-  background: rgba(175, 95, 255, 0.15);
-  color: var(--text);
-}
-/* Governance: connected but the caller's agents can't use it. */
-.app-card-badge.badge-blocked {
-  background: rgba(212, 74, 74, 0.16);
-  color: var(--text);
-}
 
 /* ── + New dropdown menu ──────────────────────────────── */
 
@@ -5933,21 +5375,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.connector-load-more {
-  text-align: center;
-  padding: 10px;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px dashed var(--border-3);
-  border-radius: 8px;
-  background: none;
-  width: 100%;
-}
-
-.connector-load-more:hover { background: var(--active-bg); }
 
 /* ── Connected apps list ─────────────────────────────── */
 
@@ -6240,10 +5667,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* "Open schedule": a quiet link beside the control, not a second button. */
 .skill-sched-open { background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent-text); cursor: pointer; }
 .skill-sched-open:hover { text-decoration: underline; }
-
-/* The run history, its own section at the bottom of a schedule's detail. */
-.schedule-runs-section { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); }
-.schedule-runs-section .ws-task-runs { max-height: 420px; overflow-y: auto; }
 
 /* Run, on the schedule card itself. Sits at the end of the head row. */
 .ws-task-run { margin-left: 8px; padding: 3px 10px; font-size: 12px; flex-shrink: 0; }
@@ -6720,11 +6143,6 @@ select.settings-input {
 .settings-inline > .action-btn {
   flex-shrink: 0;
   white-space: nowrap;
-}
-
-.settings-input-sm {
-  width: 80px;
-  flex-shrink: 0;
 }
 
 .settings-input-md {
@@ -8766,178 +8184,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Tutorial modal ──────────────────────────── */
-
-.tutorial-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9000;
-  background: var(--overlay-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: tut-fade-in 0.3s ease;
-}
-.tutorial-overlay.hidden { display: none !important; }
-
-@keyframes tut-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.tutorial-card {
-  background: var(--hover);
-  border: 1px solid var(--border-2);
-  border-radius: 16px;
-  width: 440px;
-  max-width: 90vw;
-  padding: 36px 32px 28px;
-  position: relative;
-  animation: tut-card-in 0.4s ease-out;
-}
-@keyframes tut-card-in {
-  from { opacity: 0; transform: translateY(20px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.tutorial-close {
-  position: absolute;
-  top: 12px;
-  right: 16px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 22px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-.tutorial-close:hover { color: var(--white); }
-
-.tutorial-logo {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 4px;
-}
-.tutorial-logo .glyphh-logo { height: 64px; }
-/* .tutorial-dot-sm still styles the dot in the .yo/.sup/.dip command demos. */
-.tutorial-dot-sm { color: var(--text); }
-
-.tutorial-sub {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-3);
-  margin-bottom: 28px;
-}
-
-.tutorial-steps {
-  position: relative;
-  min-height: 180px;
-}
-
-.tutorial-step {
-  display: none;
-  flex-direction: column;
-  gap: 14px;
-  animation: tut-step-in 0.35s ease-out;
-}
-.tutorial-step.active { display: flex; }
-
-@keyframes tut-step-in {
-  from { opacity: 0; transform: translateX(30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.tutorial-demo {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  padding: 16px 18px;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-}
-
-.tutorial-input-mock {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-}
-
-.tutorial-cursor {
-  color: var(--text);
-  animation: tut-blink 0.8s step-end infinite;
-  margin-right: 0;
-  font-weight: 300;
-}
-@keyframes tut-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.tutorial-kbd-mock {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.tutorial-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 36px;
-  padding: 0 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-3);
-  border-radius: 8px;
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 500;
-  box-shadow: 0 2px 0 var(--border);
-}
-
-.tutorial-cmd {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--white);
-  letter-spacing: -0.5px;
-}
-
-.tutorial-desc {
-  font-size: 14px;
-  color: var(--text-2);
-  line-height: 1.6;
-}
-
-.tutorial-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 24px;
-}
-
-.tutorial-dots {
-  display: flex;
-  gap: 8px;
-}
-
-.tutorial-nav-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--border-3);
-  transition: background 0.2s;
-}
-.tutorial-nav-dot.active { background: var(--accent); }
-
-/* The Next / Get Started button reuses the auth screens' primary button
-   (.btn.btn-primary.btn-lg — see sections/tutorial.html). */
-
 /* ── Messages ─────────────────────────────────── */
 
 .yo-msg {
@@ -10921,18 +10167,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   pointer-events: auto;
 }
 
-.drip-picker-section {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-  gap: 4px;
-}
-
-.drip-picker-divider {
-  height: 1px;
-  background: var(--border-2);
-  margin: 8px 0;
-}
-
 .drip-picker-tile {
   display: flex;
   flex-direction: column;
@@ -11167,13 +10401,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   padding-right: 0;
 }
 
-/* Editing a connection is a full-bleed two-column detail — drop the page's
-   right gutter so the tools pane and its scrollbar reach the window's right
-   edge (only in edit mode; the connections LIST keeps the normal gutter). */
-#page-body:has(.help-section[data-section="connections"] #conn-detail:not(.hidden)) {
-  padding-right: 0;
-}
-
 /* Settings sits tighter into the corner — trim the page's 32/40px gutters. */
 #page-body:has(.help-section[data-section="settings"].active) {
   padding-top: 12px;
@@ -11379,29 +10606,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .skill-menu-icon { display: inline-flex; width: 16px; margin-right: 9px; color: var(--ws-text-muted); }
 .skill-menu-icon svg { width: 15px; height: 15px; }
 .ws-popover-item.danger .skill-menu-icon { color: var(--ws-diff-del); }
-
-/* ── Schedule run toast (ported from v4) ───────────────────────────── */
-.sched-toast {
-  position: fixed; bottom: 20px; left: 50%;
-  transform: translate(-50%, 20px); opacity: 0;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 8px; box-shadow: 0 6px 24px var(--shadow);
-  padding: 10px 12px 10px 14px; display: flex; align-items: center; gap: 12px;
-  z-index: 2000; transition: opacity 0.2s, transform 0.2s;
-  font-size: 13px; color: var(--text); max-width: 90vw;
-}
-.sched-toast.show { opacity: 1; transform: translate(-50%, 0); }
-.sched-toast-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sched-toast-action {
-  background: var(--accent); color: #000; border: none; border-radius: 5px;
-  padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0;
-}
-.sched-toast-action:hover { opacity: 0.85; }
-.sched-toast-close {
-  background: none; border: none; color: var(--text-3); cursor: pointer;
-  font-size: 16px; line-height: 1; padding: 0 2px; flex-shrink: 0;
-}
-.sched-toast-close:hover { color: var(--text); }
 
 /* ════════════════════════════════════════════════════════════════════
    Workbench app (yo://workbench)
@@ -12020,9 +11224,7 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
    title bar. */
 .ws-section-body > .help-section[data-section="docs"],
 .ws-section-body > .help-section[data-section="settings"],
-.ws-section-body > .help-section[data-section="dashboard"],
 .ws-section-body > .help-section[data-section="apps"],
-.ws-section-body > .help-section[data-section="connections"],
 .ws-section-body > .help-section[data-section="layouts"],
 .ws-section-body > .help-section[data-section="customize"] {
   display: flex; flex-direction: column;
@@ -12844,21 +12046,11 @@ select:focus {
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) > #apps-library-page > .section-desc {
   display: none !important;
 }
-/* Same for the connection editor: hide the "Connections" heading + description
-   while a connection detail is open, so the form stands alone. */
-.help-section[data-section="connections"]:has(#conn-detail:not(.hidden)) > h2,
-.help-section[data-section="connections"]:has(#conn-detail:not(.hidden)) > .section-desc {
-  display: none !important;
-}
+
 /* .apps-page-heading carries NO offsets of its own — it renders on the base
    .help-section h2 grammar so the Apps header lands exactly where the
    Connections header does. (The old margin-top:20px was the dead
    My apps | Marketplace tab-strip y-offset.) */
-
-/* Work panels — the fixed built-in cards that sit FIRST in the one apps grid
-   (#apps-grid). Same .app-card grammar as the org cards after them; only the
-   inline SVG icon (verbatim from the old view-dropdown buttons) needs a size. */
-.workpanel-card .app-card-icon svg { width: 28px; height: 28px; }
 
 /* ── Marketplace storefront (its own section — sections/marketplace.html) ── */
 .mkt-banner {
@@ -13391,19 +12583,15 @@ select:focus {
 /* ── Connections section ─────────────────────────────────────────── */
 .conn-tools-pane { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
 /* Inline button spinner — Add & Connect / Connect while an MCP server dials. */
-.btn-spinner {
-  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
-  border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
-  vertical-align: -1px; animation: btn-spin .7s linear infinite;
-}
+
 @keyframes btn-spin { to { transform: rotate(360deg); } }
 /* Shared edit-form header: icon (or icon-list) + NAME + slug. Used by the
    Apps, Connections, Layouts and Drips editors for a consistent look. */
 .edit-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-.edit-head .app-card-icon { width: 40px; height: 40px; }
+
 .edit-head-icons { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .edit-head-name { font-size: 17px; font-weight: 700; color: var(--text); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.edit-head-slug { font-size: 12px; font-weight: 500; color: var(--text-3); font-family: var(--font-mono); }
+
 /* Name+slug row on top, the published address (or "Not Published") on its own
    line UNDER the title — never inline with it. */
 .edit-head-col { display: flex; flex-direction: column; min-width: 0; }
@@ -13447,8 +12635,6 @@ select:focus {
 /* Grid fills the constant-height panel + scrolls, so search results never
    resize the modal. */
 .conn-modal-panel .connector-grid { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
-/* A search in flight dims the current results instead of wiping them. */
-.connector-grid.is-searching { opacity: .6; transition: opacity .15s; }
 
 /* ── Required connections (app editor, installed Glyphh apps) ── */
 .app-req-conn-row {
@@ -14686,7 +13872,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .cl-greeting { font-size: 22px; font-weight: 600; color: var(--text); margin: 0; }
 .cl-two-col { align-items: start; }
 .cl-sessions { margin-top: 10px; }
-.dash-tasks-empty { font-size: 12.5px; color: var(--text-3); padding: 10px 2px; }
 
 /* Session cards (Code home RIGHT column + the per-space session list) —
    2-row, left-justified, locus icon leading. */
@@ -15555,49 +14740,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-run-body.md pre { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 0 0 8px; }
 .se-status { font-size: 11px; color: var(--text-3); }
 
-/* ── Dashboard landing body: a balanced two-column split beneath the
-   full-width starters strip — recommendations LEFT, the cross-agent tasks
-   list RIGHT. ── */
-.dash-two-col {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 4px;
-  align-items: start;
-}
-/* In a narrow panel the columns stack: recommendations on top, tasks beneath. */
-@container dash (max-width: 780px) { .dash-two-col { grid-template-columns: 1fr; gap: 20px; } }
-
-/* Recommended for you — prompt starters, icon on the right. */
-.dash-recs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.dash-rec {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  text-align: left; cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px 14px;
-  color: var(--text); font-size: 13px; line-height: 1.45; font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
-}
-.dash-rec:hover { border-color: var(--border-2); background: var(--hover); }
-.dash-rec-text { flex: 1; min-width: 0; }
-.dash-rec-ico { color: var(--text); flex-shrink: 0; display: inline-flex; }
-
 /* Recent runs — every task firing across every agent; a click opens the run
    as a chat session. */
-.dash-tasks-search { margin: 10px 0 10px; width: 100%; }
-.dash-tasks-list { display: flex; flex-direction: column; gap: 6px; }
-.dash-run-row {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  text-align: left; cursor: pointer; font-family: inherit;
-  background: none; border: 1px solid var(--border); border-radius: 8px;
-  padding: 9px 12px; font-size: 12.5px; color: var(--text-2);
-  transition: border-color 0.15s, background 0.15s;
-}
-.dash-run-row:hover { border-color: var(--border-2); background: var(--hover); }
-.dash-run-task { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dash-task-agent {
-  color: var(--text-3); font-size: 11px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 999px; padding: 1px 8px; white-space: nowrap; flex-shrink: 0;
-}
-.dash-run-when { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; }
+
 #dash-tasks-pager .pagination-bar { margin-top: 10px; }
 
 /* ── Coding Agent tile: the live agent DOM, reparented into a workbench slot ── */
@@ -17182,20 +16327,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .desktop-attach-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .desktop-attach-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
-/* Starter cards — a compact full-width strip, 3 across (two rows of three for
-   the six starters), title leads the top row with its pill. */
-.dash-starters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.dash-starter-top { display: flex; align-items: center; gap: 8px; }
-.dash-starter-title { flex: 1; min-width: 0; font-weight: 600; }
-@media (max-width: 900px) { .dash-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-
 /* The Chat/Work/Code space pill inside the input was removed — every session
    is the Code agent now. */
 .code-input-wrap { position: relative; }
-
-/* Two-col landing: bare columns — header + cards only, no wrapper chrome. */
-.dash-col { min-width: 0; }
-.dash-session-row .dash-session-when { flex: none; font-size: 11px; color: var(--text-3); }
 
 /* Landing chips row: source chip first, then folder/git/+ — one row, left. */
 .dash-source-slot { display: contents; }
@@ -17409,15 +16543,6 @@ body:not(.composer-on-home) .code-input,
 .code-source-slot .code-wd-btn,
 .code-source-slot .code-icon-btn { flex: 0 0 auto; }
 
-/* A layout-hosted agent's empty thread is the MASCOT + text only — no
-   starters, no columns, nothing borrowed from the landing. */
-.echo-card .code-thread .dash-landing,
-.echo-card .code-thread .dash-starters,
-.echo-card .code-thread .dash-two-col,
-.ws-rail-slot .code-thread .dash-landing,
-.ws-rail-slot .code-thread .dash-starters,
-.ws-rail-slot .code-thread .dash-two-col { display: none !important; }
-
 /* Agent header, LEFT group: [+ new] [recents] [⋯] — the same trio on every
    agent view (full screen and layout-hosted), left of the spacer. */
 .session-head-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
@@ -17436,10 +16561,6 @@ body:not(.composer-on-home) .code-input,
    its existence hid the kebab everywhere and Chat/Work lost their menu. */
 .code-view-session-actions { border-top: 1px solid var(--border-2); margin-top: 4px; padding-top: 4px; }
 .code-view-session-actions .danger { color: var(--danger, #e5484d); }
-
-/* Landing session column: pager under the rows. */
-.dash-sessions-pager { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 6px; }
-.dash-sessions-page-at { font-size: 11px; color: var(--text-3); }
 
 /* Agent header: [+ new] [recents] [⋯] ride the RIGHT edge (they sit after the
    spacer); the title/back stay left. */
@@ -17487,25 +16608,6 @@ body:not(.composer-on-home) .code-input,
 /* ── Releases workbench view (ws-rel-*) — release management for built apps ── */
 .ws-rel-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
-/* Tasks view — scheduled work at a glance. Rides the ws-rel toolbar voice;
-   its own classes carry only card/feed layout (sizes; colors from theme vars). */
-.ws-tasks-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.ws-tasks-heading { font-weight: 700; font-size: 12.5px; color: var(--text); }
-.ws-tasks-scroll { flex: 1; overflow-y: auto; padding: 10px 32px 24px; }
-/* The centered page column — same voice as the section pages (heading +
-   .section-desc + a bounded content width). */
-.ws-tasks-page { width: 100%; max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-.ws-tasks-title { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: 0; margin: 14px 0 0; }
-.ws-tasks-page > .section-desc { margin: 0 0 4px; }
-.ws-tasks-scroll.hidden { display: none; }
-.ws-tasks-chartwrap { position: relative; height: 200px; flex: 0 0 auto; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface-2); padding: 14px 16px 10px; }
-.ws-tasks-canvas { width: 100% !important; height: 100% !important; }
-.ws-tasks-chartwrap .ws-tasks-refresh { position: absolute; top: 8px; right: 8px; }
-/* Under the chart: TWO EQUAL columns — the landing-style prompt starters
-   (dash-starter cards, stacked single-file inside their column) beside the
-   recent-runs feed. */
-.ws-tasks-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
-
 /* Markdown tables in the thread — themed, compact, wide ones scroll inside
    their own wrapper (the bubble never scrolls horizontally). */
 .yo-md-tablewrap { overflow-x: auto; margin: 8px 0; border: 1px solid var(--border-2); border-radius: 10px; }
@@ -17514,75 +16616,26 @@ body:not(.composer-on-home) .code-input,
 .yo-md-table th { font-weight: 650; color: var(--text); background: var(--surface-3); white-space: nowrap; }
 .yo-md-table td { color: var(--text-2, var(--text)); }
 .yo-md-table tbody tr:last-child td { border-bottom: none; }
-.ws-tasks-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.ws-tasks-col .ws-tasks-prompts.dash-starters { grid-template-columns: 1fr; }
 
-.ws-tasks-create input, .ws-tasks-create select {
-  width: 100%; box-sizing: border-box; height: 30px;
-  background: var(--surface-3); border: 1px solid var(--border-2); border-radius: 8px;
-  padding: 0 10px; color: var(--text); font-size: 12px;
-}
-.ws-tasks-create input:focus, .ws-tasks-create select:focus { border-color: var(--accent); outline: none; }
-.ws-tasks-prompts { display: flex; flex-direction: column; gap: 8px; }
 /* The cards are .dash-starter — the + New Session landing's own style. Only
    the blurb clamp is local (these prompts run longer than the landing's). */
-.ws-tasks-prompts .dash-starter-blurb { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
 .ws-tc-row { display: flex; gap: 8px; }
 .ws-tc-row > * { flex: 1 1 0; min-width: 0; }
 .ws-tc-note { font-size: 11px; color: var(--text-3); min-height: 14px; }
-.ws-tasks-coltitle { font-weight: 700; font-size: 12px; color: var(--text); }
-.ws-tasks-alltitle { margin-top: 2px; }
-.ws-tasks-recents { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.ws-tasks-recent-list { display: flex; flex-direction: column; gap: 6px; }
-.ws-task-recent { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-2); border-radius: 8px; background: var(--surface-2); padding: 6px 10px; cursor: pointer; font-size: 11.5px; }
-.ws-task-recent:hover { border-color: var(--accent); }
+
 .ws-task-recent-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.ws-task-detailwrap { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.ws-task-detailwrap.hidden { display: none; }
-.ws-tasks-list { display: flex; flex-direction: column; gap: 8px; }
-.ws-task-card {
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  background: var(--surface-2);
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.ws-task-card:hover { border-color: var(--accent); }
-.ws-task-card.off { opacity: 0.55; }
-.ws-task-head { display: flex; align-items: center; gap: 8px; }
-.ws-task-name { font-weight: 600; font-size: 12.5px; color: var(--text); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .ws-task-chip { flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2); color: var(--text-3); }
 .ws-task-chip.ok { color: var(--ok, #3fb96f); border-color: currentColor; }
 .ws-task-chip.err { color: var(--danger, #e5534b); border-color: currentColor; }
-.ws-task-next { flex: 0 0 auto; font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
-.ws-task-sub { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 11px; color: var(--text-3); min-width: 0; }
-.ws-task-sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-task-kind { flex: 0 0 auto; text-transform: capitalize; }
-.ws-task-cron { margin-left: auto; flex: 0 0 auto; }
-.ws-task-detail-head { display: flex; align-items: center; gap: 10px; padding: 2px 2px 8px; }
-.ws-task-detail-head .ws-task-name { flex: 1 1 auto; }
-.ws-task-runs { display: flex; flex-direction: column; gap: 8px; }
+
 .ws-task-run { border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; }
 .ws-task-run.failed { border-color: color-mix(in srgb, var(--danger, #e5534b) 45%, var(--border-2)); }
 .ws-task-run-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-3); }
 .ws-task-run-when { font-variant-numeric: tabular-nums; }
 .ws-task-run-dur { margin-left: auto; font-variant-numeric: tabular-nums; }
-.ws-task-run-out, .ws-task-run-err {
-  margin: 6px 0 0;
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-2, var(--text));
-  background: var(--surface-3);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-.ws-task-run-err { color: var(--danger, #e5534b); }
-.ws-task-run-out a { color: var(--accent); }
+
 .ws-rel-toolbar {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-bottom: 1px solid var(--border-2);
@@ -19506,8 +18559,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    pane has already relocated into the open accordion row by the time the
    detail un-hides itself (his report, 2026-09-12: the editor rendered under
    the list). */
-.conncfg-legacy #connections-toolbar,
-.conncfg-legacy #connections-list { display: none !important; }
 /* The page EDITOR is hidden wherever it sits inside this page — bin, row, or
    anywhere a previous build left it. Scoping the hide to the bin let a node
    that had been relocated render its breadcrumb, Remove/Cancel/Save and its
@@ -19797,10 +18848,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .app-conn-state { font-size: 12px; color: var(--text-3); }
 .app-conn-state.on { color: var(--accent); }
 
-.tabs-list { margin-top: 4px; }
-.tabs-list .conn2-chips { margin: 2px 0 12px; }
-.drip-recipe { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
 .code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
 /* THE LOCUS GLYPH beside a session (his order, 2026-10-04): a monitor for the
@@ -19921,7 +18968,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .ws-task-run + .ws-task-run { margin-top: 6px; }
 .ws-task-run-head { cursor: pointer; user-select: none; }
 .ws-task-run-trigger, .ws-task-run-count { opacity: .8; }
-.ws-task-cancel, .ws-task-story-btn { margin-left: 6px; padding: 2px 8px; font-size: 11px; }
+.ws-task-cancel { margin-left: 6px; padding: 2px 8px; font-size: 11px; }
 .task-story { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .task-event { border-left: 2px solid var(--border-2); padding: 2px 0 2px 10px; }
 .task-event-agent { border-left-color: var(--accent); }
@@ -19933,11 +18980,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .task-event-head { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--text-2); }
 .task-event-kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); min-width: 74px; }
 .task-event-body { margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
-.help-section[data-section="schedules"] .ws-tasks-chartwrap { height: 180px; margin: 6px 0 14px; }
-.help-section[data-section="schedules"] .ws-tasks-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
-.help-section[data-section="schedules"] .ws-task-card { cursor: pointer; }
-.help-section[data-section="schedules"] .ws-task-card + .ws-task-card { margin-top: 6px; }
-@media (max-width: 900px) { .help-section[data-section="schedules"] .ws-tasks-cols { grid-template-columns: 1fr; } }
+
 /* A skill's TYPE (2026-09-17): every bundle on the library pages is a skill;
    the chip says which kind it is, and shows only when that differs from the
    page you are already on. */
@@ -20287,17 +19330,13 @@ h2,
 h3,
 h4):not(.gdoc-paper *),
 .yo-modal-title,
-.dash-modal-title,
 .conn-modal-title,
 .yo-panel-title,
-.dash-section-title,
 .gmem-sec-title,
 .mem-page-title,
 .settings-subheading,
-.ws-tasks-heading,
 .mkt-banner-title,
 .mkt-console-title,
-.dash-cowork-title,
 .lockout-title {
   font-family: var(--font-display) !important;
   font-weight: 700 !important;
@@ -20921,7 +19960,7 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 /* The SECTION carries the 28px gutter; the title row reaches past it to both
    edges. (Margins on the children overflowed: a full-width child plus 56px
    pushed + Add and the close off the right edge, his report 2026-10-09.) */
-.web-full-body > .help-section[data-section="schedules"] { padding: 0 28px 24px; box-sizing: border-box; }
+
 .web-full-body .page-titlebar { display: flex; margin: 0 -28px 14px; }
 .page-toolrow { justify-content: flex-start; gap: 8px; }
 .page-toolrow > .skills-search { margin-left: auto; }

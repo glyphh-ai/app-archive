@@ -9,18 +9,15 @@ import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
+import { initUsageEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
-import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
 import { loadRemoteControl } from "./settings-remote.js";
 import { loadSandbox } from "./settings-sandbox.js";
 import { initDevices, loadDevices } from "./settings-devices.js";
-import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
-import { loadConnections, initConnections } from "./connections.js";
 import { openPowersModal } from "./powers-modal.js";
 import { toastInfo } from "./toast.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
@@ -161,11 +158,7 @@ function activeSection(): string {
 
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
-  if (sec === "dashboard") void loadDashboard();
-  else if (sec === "customize") loadSettingsGroup(sec);
-  else if (sec === "drips") loadDrips();
-  else if (sec === "schedules") void loadSchedulesPage();
-  else if (sec === "connections") void loadConnections();
+  if (sec === "customize") loadSettingsGroup(sec);
   else if (sec === "files") void loadFiles();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
@@ -209,12 +202,6 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
-  // as section panels beside the agent, never inside settings.
-  if (["drips", "connections"].includes(section)) {
-    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
-    return;
-  }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
   if (["files"].includes(section)) {
@@ -222,9 +209,8 @@ export function gotoSection(section: string, sub?: string): void {
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
   void window.glyphh.setPreference?.("homeLastSub", sub || "");
-  // 2.5.0 shell: every section IS a workbench panel — opening one replaces
-  // the workspace with just that panel; "code" is the agent surface. The
-  // loader runs via __wbSectionLoad once the panel's DOM mounts.
+  // 2.5.0 shell: "code" is the agent surface; the full-screen pages
+  // (Artifacts, a super power's page) are the only other things it opens.
   resetEditors();
   document.body.dataset.railSection = section;
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenSection?: (s: string) => void };
@@ -912,7 +898,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
-  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   // Organization › General — the org record page (admin-gated nav).
   else if (sub === "org-general") void loadOrgPanel();
@@ -1208,7 +1193,6 @@ function rehostOpenGroups(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
   files: { host: "settings-files-host" },
-  connections: { host: "settings-connections-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
@@ -1246,10 +1230,6 @@ export function initHelp() {
   primeGroupPrefs();       // the Customize page's remembered tab and scope (his report, 2026-10-07)
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
-  // The workbench bundle can't import help modules — it calls this bridge
-  // after mounting a section panel so the section's data actually loads.
-  (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad =
-    (section: string) => loadActiveSection(section);
   // (The header's Glyphh mark is gone — no logo in the chrome cluster.)
   // The code section is the permanent shell now — always active.
   document.querySelector(`.help-section[data-section="code"]`)?.classList.add("active");
@@ -1387,15 +1367,12 @@ export function initHelp() {
   const boot = (name: string, fn: () => void): void => {
     try { fn(); } catch (err) { console.error(`[init] ${name} failed:`, err); }
   };
-  boot("dashboard", initDashboardEvents);
+  boot("usage", initUsageEvents);
   boot("org", initOrgPanel);
   boot("settings", initSettings);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
-  boot("drips", initDripsEvents);
-  boot("schedules", initSchedulesEvents);
-  boot("connections", initConnections);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).
