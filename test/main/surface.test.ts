@@ -209,8 +209,8 @@ describe("settings — the one Customize page is the same on both surfaces; only
 });
 
 describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
-  it("Artifacts, Schedules and a super power's Edit open full screen — Customize is gone (his order, 2026-10-09)", () => {
-    expect([...webFullScreenPanels]).toEqual(["artifacts", "schedules", "bot"]);
+  it("Artifacts and a super power's Edit open full screen — Customize and Schedules are gone", () => {
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "bot"]);
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {

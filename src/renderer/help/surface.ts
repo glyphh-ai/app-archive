@@ -165,8 +165,9 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  stays an ordinary work panel there. */
 /** "bot" is the bot's edit page (his order, 2026-10-09: "editing a bot should
  *  be a page just like customize"), opened from the rail's ⋮ → Edit. */
-/* No "customize": the page is gone (his order, 2026-10-09); its name opens the powers modal. */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "schedules", "bot"]);
+/* No "customize": the page is gone (his order, 2026-10-09); its name opens the powers modal.
+ * No "schedules": the Schedules page is gone too (2026-10-10). */
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "bot"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
@@ -193,7 +194,7 @@ export function groupOfSub(sub: string): GroupPage | null {
   return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", schedules: "Schedules", bot: "Edit" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", bot: "Edit" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
