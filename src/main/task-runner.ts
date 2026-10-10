@@ -25,7 +25,7 @@ import path from "path";
 import { app, ipcMain } from "electron";
 import { tmpdir } from "os";
 import { spawnFenced, type TaskProc } from "./program-sandbox.js";
-import { currentTurnFolder } from "./turn-folder.js";
+import { currentTurnChat, currentTurnFolder } from "./turn-folder.js";
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
@@ -279,7 +279,7 @@ function saveJournal(runId: string, journal: RunJournal): void {
 
 // ── the ctx verbs main answers ───────────────────────────────────────────────
 
-interface Live { proc: TaskProc; /** The run's own empty folder, removed when it ends (a run with no turn's folder). */ scratch: string | null; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string; /** Cut when the run ends: a CLI turn still going is aborted with it. */ abort: AbortController }
+interface Live { /** The turn that started the run (task_run), whose powers its slots are held to too. */ caller: string | null; proc: TaskProc; /** The run's own empty folder, removed when it ends (a run with no turn's folder). */ scratch: string | null; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string; /** Cut when the run ends: a CLI turn still going is aborted with it. */ abort: AbortController }
 const live = new Map<string, Live>();
 /** How many restarts a single run may survive before it is called dead. */
 const MAX_RESUMES = 2;
@@ -311,14 +311,14 @@ function firstJson(text: string): unknown {
   throw new Error("the agent's JSON did not parse");
 }
 
-async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { schema?: unknown; model?: string }, signal?: AbortSignal): Promise<{ text: string; json?: unknown; agent: string }> {
+async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { schema?: unknown; model?: string }, caller: string | null, signal?: AbortSignal): Promise<{ text: string; json?: unknown; agent: string }> {
   const who = resolveSlotAgent(spec, slot);
   const { prompt: standing, agentName } = who;
   // The program's own per-call model beats everything; then the slot's; then the agent's.
   const model = opts.model ?? who.model;
   const ask = opts.schema ? `${prompt}\n\nReply with only JSON matching this shape, no prose:\n${JSON.stringify(opts.schema)}` : prompt;
   const full = standing ? `${standing}\n\n${ask}` : ask;
-  const r = await runGlyphhHeadless(full, { ...(model ? { model: String(model) } : {}) });
+  const r = await runGlyphhHeadless(full, { ...(model ? { model: String(model) } : {}), as: who.agentId, parent: caller });
   if (!r.ok) throw new Error(r.error || `${agentName} could not finish this step`);
   const text = r.text;
   return { text, ...(opts.schema ? { json: firstJson(text) } : {}), agent: agentName };
@@ -360,7 +360,7 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
   switch (kind) {
     case "agent": {
       const [slot, prompt, opts] = args as [string, string, { schema?: unknown; model?: string }];
-      return agentTurn(l.spec, slot, prompt, opts ?? {}, l.abort.signal).then((r) => {
+      return agentTurn(l.spec, slot, prompt, opts ?? {}, l.caller, l.abort.signal).then((r) => {
         push({ kind: "agent", slot, agent: r.agent, prompt: summarize(prompt, 2000), output: summarize(r.text, 8000), ...(r.json !== undefined ? { json: r.json } : {}) });
         return r;
       }, (err: Error) => { push({ kind: "agent", slot, prompt: summarize(prompt, 2000), error: err.message }); throw err; });
@@ -460,7 +460,7 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean, folder?: string 
     try { proc.kill(); } catch { /* gone */ }
     finish(run.id, run.startedAt, "failed", `timed out after ${Math.round((manifest.timeoutMs || DEFAULT_TIMEOUT_MS) / 60000)} min`, null);
   }, manifest.timeoutMs || DEFAULT_TIMEOUT_MS);
-  const l: Live = { proc, scratch, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt, abort: new AbortController() };
+  const l: Live = { caller: currentTurnChat(), proc, scratch, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt, abort: new AbortController() };
   live.set(run.id, l);
   proc.on("message", (msg: { type: string; id?: number; kind?: string; args?: unknown[]; result?: unknown; error?: string }) => {
     if (msg.type === "call" && typeof msg.id === "number") {

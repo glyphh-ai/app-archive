@@ -40,6 +40,7 @@ import { attachmentImageRefs, attachmentPromptBlock, validAttachments, type Atta
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
 import { isScreenFamily } from "./unattended-tools.js";
+import { holdAs, loopScope, noteTurnModel, turnRefusal } from "./turn-scope.js";
 import { mineSync as tabRows } from "./apps-store.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { commandToolSpec, rpaOf, sequenceToolSpec } from "../shared/rpa.js";
@@ -280,6 +281,8 @@ const loop = new GlyphhLoop({
   capture: memoryCapture,
   // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
   standing: projectStanding,
+  // THE SCOPE (his order, 2026-10-10: "NO EXCEPTIONS"): every call, held to its holder's powers.
+  scope: loopScope,
   fetch: taggedFetch,
   // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
   shell: fencedShell,
@@ -300,6 +303,8 @@ const unattendedLoop = new GlyphhLoop({
   capture: memoryCapture,
   // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
   standing: projectStanding,
+  // THE SCOPE (his order, 2026-10-10: "NO EXCEPTIONS"): every call, held to its holder's powers.
+  scope: loopScope,
   fetch: taggedFetch,
   // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
   shell: fencedShell,
@@ -351,6 +356,9 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const picked = bareModel(p.model ?? "");
   if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
   const model = picked || orgRequiredModel();
+  const refused = turnRefusal(p.chatId, { folder: p.workdir ?? "", model });
+  if (refused) throw new Error(`OUT_OF_SCOPE: ${refused}`);
+  noteTurnModel(p.chatId, model);
   const n = p.history?.length ?? 0;
   const prev = seenTurns.get(p.chatId);
   if (prev !== undefined && n - prev > 2) loop.forget(p.chatId);
@@ -503,6 +511,9 @@ export async function runBotTurn(
   if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
   // The bot's folder, else one of its own: never the working folder or home.
   const workdir = p.workdir || scratchFolder();
+  const refused = turnRefusal(p.chatId, { folder: workdir, model, scratch: !p.workdir });
+  if (refused) throw new Error(`OUT_OF_SCOPE: ${refused}`);
+  noteTurnModel(p.chatId, model);
   return inTurnFolder(workdir, () => loop.run({
     chatId: p.chatId, text: p.text, model, permission: "auto",
     workdir,
@@ -529,6 +540,10 @@ export async function runGlyphhHeadless(
   prompt: string,
   opts: {
     model?: string; workdir?: string; chatId?: string;
+    /** The super power this run works as (a schedule's agent, a task slot's); absent = Glyphh. */
+    as?: string | null;
+    /** The turn that started this run (skill_run, a task's slot): the run is held to it too. */
+    parent?: string | null;
     /** Every engine event, for a host that shows the run's progress. */
     onEvent?: (ev: LoopEvent) => void;
     /** Answer every approval "no" at once: nobody is there to answer it, and an unanswered one hangs the run. */
@@ -539,11 +554,16 @@ export async function runGlyphhHeadless(
   let text = "";
   let error = "";
   // A run with no folder of its own gets an empty one, removed after: never the working folder or home.
+  const model = bareModel(opts.model ?? "") || orgRequiredModel();
+  const release = holdAs(chatId, opts.as, opts.parent ?? null);
+  const refused = turnRefusal(chatId, { folder: opts.workdir ?? "", model, scratch: !opts.workdir });
+  if (refused) { release(); return { ok: false, text: "", error: refused }; }
+  noteTurnModel(chatId, model);
   const scratch = opts.workdir ? "" : scratchFolder();
   const workdir = opts.workdir || scratch;
   try {
     await inTurnFolder(workdir, () => unattendedLoop.run({
-      chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
+      chatId, text: prompt, model, permission: "auto",
       workdir,
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");
@@ -552,6 +572,7 @@ export async function runGlyphhHeadless(
       try { opts.onEvent?.(ev); } catch { /* a watcher's failure is its own */ }
     }));
   } finally {
+    release();
     unattendedLoop.forget(chatId);
     if (scratch) { try { rmSync(scratch, { recursive: true, force: true }); } catch { /* the OS clears tmp */ } }
   }

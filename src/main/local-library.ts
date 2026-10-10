@@ -38,6 +38,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { userZone } from "./user-zone.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
+import { currentTurnChat } from "./turn-folder.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
@@ -370,7 +371,8 @@ export async function runSkillHeadless(slug: string, input?: string): Promise<{ 
   const { text, slotModel } = promptForSkill(ref);
   const given = String(input ?? "").trim();
   const prompt = given ? `${text}\n\nInput:\n${given}` : text;
-  return runGlyphhHeadless(prompt, { ...(slotModel ? { model: slotModel } : {}) });
+  // Run from a turn (skill_run): held to that turn's powers (turn-scope.ts).
+  return runGlyphhHeadless(prompt, { ...(slotModel ? { model: slotModel } : {}), parent: currentTurnChat() });
 }
 
 /** One run: the target's program, through the AGENT doing the work.
@@ -417,7 +419,7 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   }
   // On the clock, unattended: the Glyphh loop, headless — no panel, no
   // terminal opening on a clock (his report, 2026-10-08).
-  const r = await runGlyphhHeadless(prompt, { ...(model ? { model } : {}) });
+  const r = await runGlyphhHeadless(prompt, { ...(model ? { model } : {}), as: who || null });
   finish(r.ok ? "ok" : "failed", r.ok ? null : r.error ?? "the run failed", r.text || null);
 }
 

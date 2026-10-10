@@ -5083,7 +5083,9 @@ function send(): void {
           finishRun(c.id, "⚠ Pick a working folder to start — Glyphh works inside the folder you choose, and only there (folder button at the top of this pane).");
           return;
         }
-        finishRun(c.id, `⚠ ${msg}`);
+        // Out of its holder's powers (main turn-scope.ts): the reason, in its own words.
+        const scoped = /OUT_OF_SCOPE: (.*)$/s.exec(msg);
+        finishRun(c.id, `⚠ ${scoped ? scoped[1] : msg}`);
       });
   };
   void saveStore().then(() => launch(false));
