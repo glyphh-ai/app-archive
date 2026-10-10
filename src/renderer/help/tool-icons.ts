@@ -29,13 +29,12 @@ export const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   // Echo — the command center as a 3D wall (moved here from the agent's
   // ⋮ menu: it opens like an app, via layouts or the picker).
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
-  { id: "tool:gdesign",  label: "Design", icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4"/></svg>` },
   { id: "tool:gimage",   label: "Image", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309"/></svg>` },
   { id: "tool:gvideo",   label: "Video", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff"/></svg>` },
   { id: "tool:gsound",   label: "Sounds", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
-/** The mark a built-in work panel wears, by its view key ("gdesign"). The
+/** The mark a built-in work panel wears, by its view key ("gimage"). The
  *  library pages use it for an app that IS a panel and ships no icon of its
  *  own (his report, 2026-09-17: the Design app's icon wasn't rendering). */
 export const toolViewIcon = (view: string): string => toolPanelIcon(`tool:${view}`);

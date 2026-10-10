@@ -46,15 +46,6 @@ function rig({ seed = {}, file = null } = {}) {
 }
 
 describe('createHouseStoreWeb — the member library is the store, reads and writes alike', () => {
-  it('a design made here is a `design` row on the server, listed and read back; the empty library is an empty list, never an error', async () => {
-    const { house, memberLibrary } = rig();
-    expect(await house.designList()).toEqual({ ok: true, designs: [] });
-    expect(await house.designWrite('Brand', { name: 'Brand' })).toEqual({ ok: true, file: 'brand.json', title: 'Brand' });
-    expect(memberLibrary.put).toHaveBeenCalledWith('design', 'brand.json', { data: { title: 'Brand', document: { name: 'Brand' }, folderId: null }, files: [], updatedAt: 10_001 });
-    const l = await house.designList();
-    expect(l.designs.map((d) => d.file)).toEqual(['brand.json']);
-    expect(await house.designRead('brand')).toEqual({ ok: true, title: 'Brand', document: { name: 'Brand' } });
-  });
 
   it('upload is the browser picker into the library; the url a card plays is the presigned GET; download is a Blob the browser saves', async () => {
     const png = new Uint8Array([1, 2, 3]);

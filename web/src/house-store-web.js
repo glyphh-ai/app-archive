@@ -52,14 +52,11 @@ export function createHouseStoreWeb({ client, apiUrl, fetchImpl = (u, i) => fetc
     ...(now ? { now } : {}),
   });
   const {
-    designList, designRead, designWrite, designDelete, designAssetUpload, designAssetUrl, designAssetDelete,
     mediaList, mediaUrl, mediaThumbBytes, mediaDelete,
   } = store;
   const accept = Object.keys(MEDIA_MIME).join(',');
 
   return {
-    // ── Design (wb-design.ts) ─────────────────────────────────────────────
-    designList, designRead, designWrite, designDelete, designAssetUpload, designAssetUrl, designAssetDelete,
     // ── Images / Video / Audio (wb-media.ts) ──────────────────────────────
     mediaList, mediaUrl, mediaThumbBytes, mediaDelete,
     // GLYPHH MAKES NO MODEL CALLS (media-panel.ts says the same on the desktop):

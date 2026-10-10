@@ -45,7 +45,7 @@ export const MEDIA_KINDS: readonly MediaKind[] = ["image", "video", "audio"];
  *  keeps its own copy of this table (help/house-relay.ts — it never imports
  *  src/shared); test/main/house-relay.test.ts pins the two equal. */
 export const HOUSE_VIEW_OF_APP: Readonly<Record<string, string>> = Object.freeze({
-  design: "gdesign", slides: "gpoint", images: "gimage", video: "gvideo", audio: "gsound", drive: "gdrive",
+  slides: "gpoint", images: "gimage", video: "gvideo", audio: "gsound", drive: "gdrive",
 });
 /** The house panel an app slug names, or null for any other app. */
 export const houseViewOfApp = (slug: unknown): string | null => HOUSE_VIEW_OF_APP[String(slug ?? "").toLowerCase()] ?? null;

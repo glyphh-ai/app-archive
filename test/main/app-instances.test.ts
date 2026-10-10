@@ -184,8 +184,8 @@ describe("the Apps-page card and the tool rows", () => {
     expect(card.instance).not.toHaveProperty("access");
     expect(card.instance).not.toHaveProperty("public");
     // A house app's card is Glyphh's and wears its panel's mark; the manifest's description rides (his report, 2026-10-07).
-    const house = instanceCardOf({ ...APP, key: "design~u1", slug: "design", manifest: { ...APP.manifest, name: "Design", description: "The member's design systems" } });
-    expect(house).toMatchObject({ author: "Glyphh", tool: "gdesign", description: "The member's design systems", name: "Design" });
+    const house = instanceCardOf({ ...APP, key: "images~u1", slug: "images", manifest: { ...APP.manifest, name: "Images", description: "The member's pictures" } });
+    expect(house).toMatchObject({ author: "Glyphh", tool: "gimage", description: "The member's pictures", name: "Images" });
     expect(card.instance.tools).toEqual(["list_expenses"]);
     expect(card.instance.release).toBeNull();
     expect(isInstanceCardId(card.id)).toBe(true);

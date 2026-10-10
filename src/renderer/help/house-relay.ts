@@ -18,7 +18,7 @@
 
 /** A house app's slug on the desktop → the work panel view that shows it. */
 export const HOUSE_VIEW_OF_APP: Readonly<Record<string, string>> = Object.freeze({
-  design: "gdesign", slides: "gpoint", images: "gimage", video: "gvideo", audio: "gsound", drive: "gdrive",
+  slides: "gpoint", images: "gimage", video: "gvideo", audio: "gsound", drive: "gdrive",
 });
 
 /** The house views — the panels both surfaces host themselves. */

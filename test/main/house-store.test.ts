@@ -87,8 +87,8 @@ describe("ids are the file names the Mac used, made library-safe", () => {
     for (const bad of ["sunset.png", "avatar/x.png", "image/", "image/../x", "", undefined]) expect(mediaRef(bad)).toBeNull();
   });
 
-  it("the six house apps are APPS (instances), each naming the built-in panel its slug opens — never a synthesized row", () => {
-    expect(Object.keys(HOUSE_VIEW_OF_APP).sort()).toEqual(["audio", "design", "drive", "images", "slides", "video"]);
+  it("the house apps are APPS (instances), each naming the built-in panel its slug opens — never a synthesized row", () => {
+    expect(Object.keys(HOUSE_VIEW_OF_APP).sort()).toEqual(["audio", "drive", "images", "slides", "video"]);
     expect(houseViewOfApp("images")).toBe("gimage");
     expect(houseViewOfApp("Drive")).toBe("gdrive");
     for (const other of ["crm", "", null, undefined, "gimage"]) expect(houseViewOfApp(other)).toBeNull();

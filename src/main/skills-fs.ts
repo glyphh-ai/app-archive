@@ -70,7 +70,7 @@ export interface SkillSummary {
   updatedAt: string;
   /** App and task bundles: the manifest's icon.svg markup. */
   icon?: string | null;
-  /** An app that IS a built-in work panel names its view here ("gdesign"). */
+  /** An app that IS a built-in work panel names its view here ("gimage"). */
   tool?: string | null;
 }
 export interface SkillFile { path: string; size: number }

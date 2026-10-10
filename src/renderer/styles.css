@@ -18879,7 +18879,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 /* ════ GLYPHH DESIGN panel — library + the shots.so-shaped studio.
    Chrome = workbench theme vars ONLY; the design paints inside the shot. ════ */
 
-.ws-gdesign-body { display: flex; flex-direction: column; overflow: hidden; }
 
 /* — library thumbnails — */
 .gdz-thumb {

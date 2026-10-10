@@ -41,12 +41,12 @@ const TEMPLATES: Record<"vibe" | "dev" | "design" | "email" | "research", Templa
       cell("tool:coding", 2, 0, 2),
     ],
   },
-  // Rail | the agent | Image/Design | Video.
+  // Rail | the agent | Image | Video.
   design: {
     name: "Design", cols: 3, rows: 2, colWidths: [0.42, 0.29, 0.29],
     build: () => [
       cell("tool:coding", 0, 0, 2),
-      cell("tool:gimage", 1, 0), cell("tool:gdesign", 1, 1),
+      cell("tool:gimage", 1, 0, 2),
       cell("tool:gvideo", 2, 0, 2),
     ],
   },
