@@ -10,6 +10,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { insideFolder } from "@glyphh/sdk/loop";
 
 const folder = new AsyncLocalStorage<string>();
+const chat = new AsyncLocalStorage<string>();
+
+/** THE THREAD A TURN RUNS ON, for the tools inside it (swarm.ts hand_off, the shell's proxy token). */
+export function inTurnChat<T>(chatId: string, fn: () => T): T {
+  return chat.run(chatId, fn);
+}
+export function currentTurnChat(): string | null {
+  return chat.getStore() ?? null;
+}
 
 export function inTurnFolder<T>(dir: string, fn: () => T): T {
   return folder.run(dir, fn);

@@ -1071,6 +1071,13 @@ contextBridge.exposeInMainWorld("glyphh", {
     return () => { ipcRenderer.removeListener("team:handoff-stop", l); };
   },
   teamHandoffDone: (id: string, result: { ok: boolean; text: string; error?: string }) => ipcRenderer.invoke("team-handoff-done", id, result) as Promise<boolean>,
+  /** THE SHELL'S NETWORK ASK (net-proxy.ts): a session's command wants a new host; the member answers here. */
+  onNetAsk: (cb: (req: { id: string; chatId: string; host: string }) => void) => {
+    const l = (_e: Electron.IpcRendererEvent, req: { id: string; chatId: string; host: string }) => cb(req);
+    ipcRenderer.on("glyphh-agent:net-ask", l);
+    return () => { ipcRenderer.removeListener("glyphh-agent:net-ask", l); };
+  },
+  netAnswer: (id: string, choice: "once" | "always" | "deny") => ipcRenderer.invoke("glyphh-net-answer", id, choice) as Promise<boolean>,
   /** THE WORK BOARD (swarm.ts phase 2): main asks this panel to change or read a team's board. */
   onTeamBoard: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => {
     const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => cb(req);

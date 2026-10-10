@@ -26,7 +26,8 @@ import { hostTools } from "./host-tools.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { mkdtempSync, rmSync } from "node:fs";
-import { inTurnFolder } from "./turn-folder.js";
+import { inTurnChat, inTurnFolder } from "./turn-folder.js";
+import { fencedShell } from "./shell-fence.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { onModelStateChanged } from "./model-watch.js";
@@ -70,8 +71,7 @@ export interface LoopRunPayload {
 const callTags = new AsyncLocalStorage<string[]>();
 /** THE THREAD A TURN RUNS ON, for the tools inside it (swarm.ts hand_off:
  *  which team is asking). Set around every panel turn, like the tags. */
-const turnChat = new AsyncLocalStorage<string>();
-export function currentTurnChat(): string | null { return turnChat.getStore() ?? null; }
+export { currentTurnChat } from "./turn-folder.js";
 
 /** A run with no folder of its own (a schedule, a skill run, the Bots panel)
  *  works in a fresh, empty folder of its own — never the working folder or home. */
@@ -278,6 +278,8 @@ const loop = new GlyphhLoop({
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
   fetch: taggedFetch,
+  // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
+  shell: fencedShell,
   warn: (m) => console.warn(m),
 });
 /** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
@@ -294,6 +296,8 @@ const unattendedLoop = new GlyphhLoop({
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
   fetch: taggedFetch,
+  // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
+  shell: fencedShell,
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -443,7 +447,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
-  const started = await inTurnFolder(p.workdir ?? "", () => turnChat.run(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run())));
+  const started = await inTurnFolder(p.workdir ?? "", () => inTurnChat(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run())));
   return started;
 }
 

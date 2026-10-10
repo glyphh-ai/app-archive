@@ -760,6 +760,45 @@ function renderModeMenu(): void {
   }
 }
 
+/** THE SHELL WANTS A NEW HOST (main/net-proxy.ts): Allow once (this session),
+ *  Always (every session), or Deny. Closing the box is Deny. */
+function showNetAsk(req: { id: string; chatId: string; host: string }): void {
+  const answer = (choice: "once" | "always" | "deny"): void => {
+    void (window.glyphh as unknown as { netAnswer?: (id: string, c: string) => Promise<boolean> }).netAnswer?.(req.id, choice);
+  };
+  const session = chats.find((c) => c.id === req.chatId);
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-box" role="dialog" aria-modal="true">
+      <div class="confirm-head"><h3>Allow network access?</h3></div>
+      <div class="confirm-body">
+        <p style="margin:0;">A command in <b></b> wants to reach <b class="net-host"></b>. The session's sandbox only lets it reach hosts you allow.</p>
+      </div>
+      <div class="confirm-foot">
+        <button class="action-btn secondary" type="button" data-c="deny">Deny</button>
+        <button class="action-btn secondary" type="button" data-c="once">Allow once</button>
+        <button class="action-btn primary" type="button" data-c="always">Always allow</button>
+      </div>
+    </div>`;
+  const bolds = overlay.querySelectorAll("b");
+  bolds[0]!.textContent = session?.title || "this session";
+  bolds[1]!.textContent = req.host;
+  let done = false;
+  const close = (choice: "once" | "always" | "deny"): void => {
+    if (done) return;
+    done = true;
+    answer(choice);
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close("deny"); } };
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close("deny"); });
+  overlay.querySelectorAll<HTMLButtonElement>("button[data-c]").forEach((b) => b.addEventListener("click", () => close(b.dataset.c as "once" | "always" | "deny")));
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+}
+
 /** The permission-modes explainer — the standard dialog skeleton, a bit
  *  wider than the 420px confirm box (five modes with real paragraphs). */
 function showModeInfoModal(): void {
@@ -7475,6 +7514,8 @@ function initRailApps(): void {
       void (window.glyphh as unknown as { teamBoardDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> }).teamBoardDone?.(req.id, r);
     });
     g.onTeamHandoffStop?.((req) => { const id = teamRuns.get(req.id); if (id) void window.glyphh.glyphhStop?.(id); });
+    // THE SHELL'S NETWORK ASK (main/net-proxy.ts): a command in a session wants a host the sandbox doesn't know yet.
+    (window.glyphh as unknown as { onNetAsk?: (cb: (req: { id: string; chatId: string; host: string }) => void) => unknown }).onNetAsk?.((req) => { showNetAsk(req); });
     // DRAG A SUPER POWER INTO THE CHAT (his order, 2026-10-09): drop on the agent.
     const zone = document.querySelector<HTMLElement>(".code-agent");
     if (zone) {

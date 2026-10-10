@@ -117,6 +117,7 @@ import { registerPowersIpc } from "./powers";
 import { registerPowerBuildIpc } from "./power-build-ipc.js";
 import { registerSuperPowerBuildIpc } from "./super-power-build-ipc.js";
 import { registerSwarmIpc } from "./swarm.js";
+import { registerNetAskIpc } from "./net-ask.js";
 import { onUserZoneChange } from "./user-zone";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -479,6 +480,7 @@ async function boot() {
     registerPowerBuildIpc();
     registerSuperPowerBuildIpc();
     registerSwarmIpc();
+    registerNetAskIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
     registerCloudFsIpc();
