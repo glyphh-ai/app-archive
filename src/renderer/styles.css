@@ -12771,7 +12771,7 @@ select:focus {
   cursor: pointer;
 }
 .code-icon-btn { transition: background 0.12s ease, color 0.12s ease, transform 0.15s cubic-bezier(0.25, 0.9, 0.3, 1); }
-.code-icon-btn:hover { background: var(--hover); color: var(--text); transform: scale(var(--icon-zoom, 1.08)); }
+.code-icon-btn:hover { background: var(--hover); color: var(--text); transform: scale(1.08); }
 .code-thread {
   flex: 1;
   overflow-y: auto;
@@ -15951,11 +15951,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 
 /* SAME square as the dock slots — one icon language everywhere. */
 
-/* LIGHT ICON ZOOM (Appearance → Icon zoom, --icon-zoom): every icon in the
-   app breathes up a touch on hover. On the launcher the whole tile (icon +
-   label) scales — sturdier target than the inner span, and reads more
-   iPhone. Edit-mode wiggle (an animation) takes precedence while active. */
-
 /* The dev workbench tool tiles (Files/Terminal/Editor/Diff/Plan/Releases):
    plain outline glyphs read oversized at 62% — seat them smaller. */
 
@@ -15985,9 +15980,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* TITLES under the dock icons (his ask, 2026-08-20) — pure CSS from the
    button's title attribute, so both builders (nav template + traded icons)
    get labels with zero markup churn. Absolute: the squares keep their size. */
-/* Bottom margin RESERVES the magnification's reach: a zoomed slot grows down
-   (scale + the arc's dip) — scaling the gap with the dock-zoom pref keeps it
-   off the tiles below at every strength. */
 
    /* = the page tiles' mini */
 

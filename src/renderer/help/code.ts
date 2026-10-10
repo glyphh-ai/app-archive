@@ -8437,12 +8437,6 @@ export function initCode(): void {
       if (ok) (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
     });
   });
-  // Icon hover zoom (Appearance slider) — every icon scales by this on
-  // hover. Settings applies it live; this seeds it at boot.
-  void window.glyphh.getPreference?.("iconHoverZoom", 1.08).then((v) => {
-    const n = Number(v);
-    document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
-  });
   // Echo Agent panel transparency (Appearance slider) — the CSS var the
   // caret panel reads. Settings applies it live; this seeds it at boot.
   void window.glyphh.getPreference?.("echoAgentOpacity", 0.92).then((v) => {

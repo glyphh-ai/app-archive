@@ -322,22 +322,6 @@ function initSettings() {
     });
   }
 
-  // Icon hover zoom — every icon in the app scales by this on hover.
-  // Applied LIVE via the CSS var; persisted like every other preference.
-  {
-    const z = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
-    const zv = document.getElementById("settings-icon-zoom-val");
-    const paint = (): void => {
-      if (!z) return;
-      document.documentElement.style.setProperty("--icon-zoom", z.value);
-      if (zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`;
-    };
-    z?.addEventListener("input", paint);
-    z?.addEventListener("change", () => {
-      paint();
-      void window.glyphh.setPreference("iconHoverZoom", Number(z.value));
-    });
-  }
 
   // Interface sound volume (his ask, 2026-08-19) — pref uiSoundVolume 0..1,
   // server-backed like every pref (/api/me/prefs → db). Live: dragging updates
@@ -505,13 +489,6 @@ async function loadSettings() {
   for (const [id, pref] of [["settings-rail-layouts", RAIL_SHOW_LAYOUTS_PREF]] as const) {
     const t = document.getElementById(id) as HTMLInputElement | null;
     if (t) t.checked = railTrayShown(await window.glyphh.getPreference(pref, RAIL_SHOW_DEFAULT));
-  }
-  const iconZoom = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
-  if (iconZoom) {
-    const raw = Number(await window.glyphh.getPreference("iconHoverZoom", 1.08));
-    iconZoom.value = String(Number.isFinite(raw) ? Math.max(1, Math.min(1.5, raw)) : 1.08);
-    const zv = document.getElementById("settings-icon-zoom-val");
-    if (zv) zv.textContent = Number(iconZoom.value) <= 1 ? "Off" : `${Math.round((Number(iconZoom.value) - 1) * 100)}%`;
   }
   const snd = document.getElementById("general-ui-sound") as HTMLInputElement | null;
   if (snd) {
