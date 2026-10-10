@@ -199,6 +199,15 @@ export function createWbRelay({ client, apiUrl, isAuthenticated, getRoot = () =>
         return { isRepo: !!(r && r.isRepo), ...(r && r.branch ? { branch: r.branch } : {}) };
       } catch { return { isRepo: false }; }
     },
+    // The Branch row (2026-10-10): the machine runs git; a refusal rejects
+    // with its plain reason, as the desktop's IPC does.
+    gitBranches: async (root) => {
+      try { return await dispatch('git.branches', { path: root }); }
+      catch { return { isRepo: false, branches: [] }; }
+    },
+    gitSwitch: (root, branch) => dispatch('git.switch', { path: root, branch }),
+    gitCreateBranch: (root, name) => dispatch('git.createBranch', { path: root, name }),
+    gitInit: (root) => dispatch('git.init', { path: root }),
     listDir: async (dir) => {
       try { return await dispatch('fs.listDir', { dir }); }
       catch (e) { return { entries: [], error: msg(e) }; }

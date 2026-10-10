@@ -27,7 +27,7 @@ import { dispatchRelayMethod } from "./relay-client.js";
 import { killAllRelayPtys } from "./relay-pty.js";
 import { gitStateOf } from "./attach-handlers.js";
 import { relayFsTable } from "./relay-fs.js";
-import { getWorkingDirectory } from "./working-directory.js";
+import { getWorkingDirectory, gitBranchesForDir, gitCreateBranch, gitInitDir, gitSwitchBranch } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
 import { getPreference, loadPreferences, setPreference } from "./stores/preferences-db.js";
@@ -168,6 +168,12 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
     return { path: dir, parent: roots.includes(dir) || !inGranted(up, folders()) ? null : up, entries };
   };
   table["fs.gitInfo"] = async (p) => gitStateOf(guard(str(p, "path")));
+  // THE BRANCH ROW from another machine (2026-10-10): the same four git
+  // operations this desktop's own chip runs, inside a granted folder only.
+  table["git.branches"] = async (p) => gitBranchesForDir(guard(str(p, "path")));
+  table["git.switch"] = async (p) => gitSwitchBranch(guard(str(p, "path")), str(p, "branch"));
+  table["git.createBranch"] = async (p) => gitCreateBranch(guard(str(p, "path")), str(p, "name"));
+  table["git.init"] = async (p) => gitInitDir(guard(str(p, "path")));
   // A WEB TERMINAL on this machine (his order, 2026-10-04: a CLI tile on
   // app.glyphh.ai opens the desktop's shell for a desktop-bound session). The
   // shell starts inside a granted folder — the one asked for, else the first
@@ -289,6 +295,19 @@ export function registerRemoteControlIpc(): void {
   ipcMain.handle("machines:start", (_e, id: string) => getClient().http.post(`/api/machines/${encodeURIComponent(String(id || ""))}/start`, {}));
   ipcMain.handle("attach-fs:list", (_e, path: string | undefined, machineId: string) => listAttachedFolder(path, machineId));
   ipcMain.handle("attach-fs:mkdir", (_e, parent: string, name: string, machineId: string) => makeAttachedFolder(parent, name, machineId));
+  ipcMain.handle("attach-git:call", (_e, method: string, params: Record<string, unknown>, machineId: string) => callAttachedGit(method, params, machineId));
+}
+
+/** The git methods the composer's Branch row may run on another machine. */
+const ATTACHED_GIT = new Set(["fs.gitInfo", "git.branches", "git.switch", "git.createBranch", "git.init"]);
+
+/** A git question or change on another attached machine (a desktop or the
+ *  Glyphh machine): that machine runs it, inside its own grants. */
+export async function callAttachedGit(method: string, params: Record<string, unknown>, machineId: string): Promise<unknown> {
+  const id = String(machineId || "").trim();
+  if (!id) throw new Error("that machine isn't connected");
+  if (!ATTACHED_GIT.has(String(method))) throw new Error(`${String(method)} is not a git method`);
+  return getClient().attach.dispatch(String(method), params && typeof params === "object" ? params : {}, { machineId: id });
 }
 
 /** The member's Glyphh machines (GET /api/machines); none when the server has no such route. */

@@ -474,6 +474,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   machinesList: () => ipcRenderer.invoke("machines:list") as Promise<{ machines: Array<Record<string, unknown>> }>,
   machinesStart: (id: string) => ipcRenderer.invoke("machines:start", id) as Promise<unknown>,
   attachFsMkdir: (parent: string, name: string, machineId: string) => ipcRenderer.invoke("attach-fs:mkdir", parent, name, machineId) as Promise<{ path?: string }>,
+  /** The Branch row on another machine (2026-10-10): fs.gitInfo / git.branches / git.switch / git.createBranch / git.init there. */
+  attachGitCall: (method: string, params: Record<string, unknown>, machineId: string) => ipcRenderer.invoke("attach-git:call", method, params, machineId) as Promise<unknown>,
   attachFsList: (path: string | undefined, machineId: string) => ipcRenderer.invoke("attach-fs:list", path, machineId) as Promise<{ path: string; parent: string | null; root?: string; entries: Array<{ name: string; path: string; dir: boolean; git?: boolean }> }>,
   onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
     const h = (_e: unknown, v: RemoteControlView) => cb(v);
@@ -1494,6 +1496,11 @@ contextBridge.exposeInMainWorld("wb", {
   setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
   getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
   gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),
+  // The Branch row (2026-10-10): a refusal rejects with git's reason, said plainly.
+  gitBranches: (root: string) => ipcRenderer.invoke("files:git-branches", root) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
+  gitSwitch: (root: string, branch: string) => ipcRenderer.invoke("files:git-switch", root, branch) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
+  gitCreateBranch: (root: string, name: string) => ipcRenderer.invoke("files:git-create-branch", root, name) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
+  gitInit: (root: string) => ipcRenderer.invoke("files:git-init", root) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
   onCwdChanged: (cb: (dir: string | null) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, dir: string | null) => cb(dir);
     ipcRenderer.on("working-dir-changed", handler);
