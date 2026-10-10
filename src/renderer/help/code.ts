@@ -56,6 +56,7 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
+import { dropPager, pageSlice, DROP_PAGE } from "./drop-page.js";
 import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
@@ -642,10 +643,17 @@ function renderModelMenu(): void {
     menu.classList.add("hidden");
     await chooseSessionModel(id);
   };
+  // THE MODELS CAN BE MANY (his order, 2026-10-09): one page at a time, the
+  // picked one's page first; a search pages its matches (drop-page.ts).
+  let page = Math.floor(Math.max(0, modelsForLoop().findIndex((m) => m.id === selectedModel()?.id)) / DROP_PAGE);
   const paint = (): void => {
     list.textContent = "";
+    pane.querySelector(".drop-pager")?.remove();
     const q = search.value.trim().toLowerCase();
-    const rows = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
+    const matched = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
+    const paged = pageSlice(matched, page);
+    page = paged.page;
+    const rows = paged.items;
     if (!autoOnly()) {
       // THE CURRENT CHOICE CARRIES THE CHECK (his report, 2026-09-29: "there is
       // no check mark by the current selected model"), and Default names the
@@ -681,7 +689,7 @@ function renderModelMenu(): void {
         head.textContent = g.label;
         list.appendChild(head);
       }
-      for (const m of g.rows.slice(0, 200)) {
+      for (const m of g.rows) {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "code-drop-item drop-item-2line" + (selectedModel()?.id === m.id ? " selected" : "");
@@ -699,8 +707,10 @@ function renderModelMenu(): void {
         list.appendChild(item);
       }
     }
+    const pager = dropPager(page, paged.pages, (p) => { page = p; paint(); });
+    if (pager) pane.appendChild(pager);
   };
-  search.addEventListener("input", paint);
+  search.addEventListener("input", () => { page = 0; paint(); });
   paint();
   requestAnimationFrame(() => search.focus());
 }

@@ -60,3 +60,15 @@ describe("a named folder on the Glyphh machine", () => {
     expect(namedFolderOf("c1k2j3")).toBe("");
   });
 });
+
+describe("a chip drop stays its height (his order, 2026-10-09)", () => {
+  it("shows one page of rows and clamps the page into range", async () => {
+    const { pageSlice, DROP_PAGE } = await import("../../src/renderer/help/drop-page");
+    const many = Array.from({ length: 20 }, (_, i) => i);
+    expect(pageSlice(many, 0).items).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(pageSlice(many, 0).pages).toBe(Math.ceil(20 / DROP_PAGE));
+    expect(pageSlice(many, 9)).toMatchObject({ page: 3, items: [18, 19] });
+    expect(pageSlice(many, -2).page).toBe(0);
+    expect(pageSlice([], 0)).toEqual({ items: [], page: 0, pages: 1 });
+  });
+});

@@ -22905,3 +22905,7 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .ws-fs-newfolder .loop-drop-search { flex: 1; margin: 0; }
 .ws-fs-newfolder-err { font-size: 11px; color: var(--danger, #e5484d); padding: 0 8px 6px; }
 .ws-fs-newfolder-err:empty { display: none; }
+/* A chip drop's pager (drop-page.ts, 2026-10-09): one compact ‹ n/m › under the list. */
+.drop-pager { flex: 0 0 auto; display: flex; justify-content: center; padding: 6px 4px 2px; margin-top: 4px; border-top: 1px solid var(--line, rgba(255,255,255,0.08)); }
+.drop-pager .pagination-nav { display: flex; align-items: center; gap: 8px; }
+.drop-pager .pagination-info { font-size: 11px; color: var(--text-3, var(--muted)); min-width: 32px; text-align: center; }

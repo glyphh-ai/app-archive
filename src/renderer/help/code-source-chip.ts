@@ -1,4 +1,5 @@
 import { hostHas } from "./web-surface.js";
+import { DROP_PAGE, dropPager, pageSlice } from "./drop-page.js";
 import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, namedFolderId, namedFolderOf, onOtherDesktop, pickerRecent, type GlyphhMachine, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { selfMachineId } from "./devices-pick.js";
@@ -350,6 +351,8 @@ export function machineChipLabel(src: Source): string {
 }
 
 /** One drop under a chip: opened, clamped, closed on a click away. */
+/** The paged drops' ceiling: a page of rows, the search, the head and the pager. */
+const PAGED_DROP_MAX_PX = 440;
 function chipDrop(anchor: HTMLElement): { menu: HTMLElement; close: () => void } {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
@@ -426,15 +429,28 @@ export function openMachinePicker(anchor: HTMLElement, opts: {
       secLabel(list, "Local:", LOCUS_SVG.local);
       row({ ...model.local, name: "This desktop" }, () => pick({ kind: "local", path: localRecents[0] ?? "" }));
     }
-    secLabel(list, "Remote:", LOCUS_SVG.cloud);
-    for (const m of model.remote) {
-      if (m.kind === "glyphh") {
-        row(m, () => pick({ kind: "cloud-new" }), reach.cloud === false ? (reach.cloudWhy || "Can't reach the Glyphh machine right now") : undefined);
-      } else {
-        row(m, () => pick({ kind: "local", path: startFolderOn(m, src, opts.recentFolders?.() ?? []), ...(m.id ? { machineId: m.id } : {}), machine: m.name }), m.empty);
+    // The machines can be many: one page of them, the session's own page first.
+    const at = Math.max(0, model.remote.findIndex((m) => m === here));
+    let page = Math.floor(at / DROP_PAGE);
+    const remoteAt = list.childElementCount;
+    const paintRemote = (): void => {
+      while (list.childElementCount > remoteAt) list.lastElementChild!.remove();
+      menu.querySelector(".drop-pager")?.remove();
+      secLabel(list, "Remote:", LOCUS_SVG.cloud);
+      const shown = pageSlice(model.remote, page);
+      page = shown.page;
+      for (const m of shown.items) {
+        if (m.kind === "glyphh") {
+          row(m, () => pick({ kind: "cloud-new" }), reach.cloud === false ? (reach.cloudWhy || "Can't reach the Glyphh machine right now") : undefined);
+        } else {
+          row(m, () => pick({ kind: "local", path: startFolderOn(m, src, opts.recentFolders?.() ?? []), ...(m.id ? { machineId: m.id } : {}), machine: m.name }), m.empty);
+        }
       }
-    }
-    clampDropUp(menu, anchor);
+      const pager = dropPager(page, shown.pages, (p) => { page = p; paintRemote(); });
+      if (pager) menu.appendChild(pager);
+    };
+    paintRemote();
+    clampDropUp(menu, anchor, PAGED_DROP_MAX_PX);
     clampDropX(menu, anchor);
   })();
 }
@@ -470,10 +486,16 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
     const list = document.createElement("div");
     list.className = "ws-locus-list";
     menu.appendChild(list);
+    // The folders can be many: one page at a time; a search pages its matches.
+    let page = Math.floor(Math.max(0, rows.findIndex((r) => r.sel)) / DROP_PAGE);
     const draw = (): void => {
       list.textContent = "";
+      menu.querySelector(".drop-pager")?.remove();
       const q = search.value.trim().toLowerCase();
-      const shown = q ? rows.filter((r) => `${r.main} ${r.hint}`.toLowerCase().includes(q)) : rows;
+      const matched = q ? rows.filter((r) => `${r.main} ${r.hint}`.toLowerCase().includes(q)) : rows;
+      const paged = pageSlice(matched, page);
+      page = paged.page;
+      const shown = paged.items;
       for (const r of shown) {
         const b = drillItem(r.main, r.hint, r.sel ? CHECK : "");
         b.classList.add("ws-fs-row");
@@ -487,10 +509,12 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
         b.addEventListener("click", fresh.go);
         list.appendChild(b);
       }
+      const pager = dropPager(page, paged.pages, (p) => { page = p; draw(); });
+      if (pager) menu.appendChild(pager);
     };
-    search.addEventListener("input", draw);
+    search.addEventListener("input", () => { page = 0; draw(); });
     draw();
-    clampDropUp(menu, anchor);
+    clampDropUp(menu, anchor, PAGED_DROP_MAX_PX);
     clampDropX(menu, anchor);
     requestAnimationFrame(() => search.focus());
   };
