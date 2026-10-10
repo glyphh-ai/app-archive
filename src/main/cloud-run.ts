@@ -78,6 +78,11 @@ export interface CloudRunStart {
   devices?: string[];
   /** The turn's own folders per machine, beside the grants (HarnessRunBody.folders). */
   folders?: Record<string, string[]>;
+  /** ANOTHER MACHINE (the picker, 2026-10-09): `desktop` relays the turn to the
+   *  attached machine `machineId`, inside `workdir`; absent = the cloud. */
+  target?: "cloud" | "desktop";
+  machineId?: string;
+  workdir?: string;
 }
 
 /** The slice of the SDK's run handle the lane drives (`client.run()` →
@@ -98,7 +103,8 @@ export interface CloudFsEntry { name: string; path: string; kind: string }
 /** The slice of `@glyphh/sdk`'s Client the lane uses. */
 export interface CloudLaneClient {
   run(opts: {
-    target: "cloud";
+    target: "cloud" | "desktop";
+    runId?: string;
     threadId: string;
     prompt: string;
     mode: "work" | "code";
@@ -114,6 +120,8 @@ export interface CloudLaneClient {
     surface?: "web" | "desktop" | "cli";
     devices?: string[];
     folders?: Record<string, string[]>;
+    machineId?: string;
+    workdir?: string;
   }): CloudRunHandle;
   harnessViaApi(): {
     fsSpaces(): Promise<{ spaces: CloudSpace[] }>;
@@ -235,9 +243,30 @@ export function createCloudLane(deps: CloudLaneDeps) {
     if (!chatId || !threadId || !prompt.trim()) return { ok: false, error: "chatId, threadId and prompt are required" };
     if (byChat.has(chatId)) return { ok: false, error: "a turn is already running on this thread" };
 
+    // Another machine's turn: the session is bound to ITS folder there, and
+    // that machine's own perimeter (remote control) is the fence.
+    const toDesktop = p.target === "desktop";
+    const machineId = String(p.machineId ?? "").trim();
+    const workdir = String(p.workdir ?? "").trim();
+    if (toDesktop && (!machineId || (p.mode === "code" && !workdir))) return { ok: false, error: "a turn on another machine needs the machine and its folder" };
+    // A relay run is named here, so its id is known before the machine answers.
+    const relayRunId = toDesktop ? `rl-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}` : "";
+
     let handle: CloudRunHandle;
     try {
-      handle = deps.client().run({
+      handle = toDesktop ? deps.client().run({
+        target: "desktop",
+        runId: relayRunId,
+        machineId,
+        ...(workdir ? { workdir } : {}),
+        threadId,
+        prompt,
+        mode: p.mode === "work" ? "work" : "code",
+        ...(p.model ? { model: p.model } : {}),
+        ...(p.loop ? { loop: p.loop } : {}),
+        ...(p.permission ? { permission: p.permission } : {}),
+        ...(p.images?.length ? { images: p.images } : {}),
+      }) : deps.client().run({
         target: "cloud",
         // THE RUN CARRIES ITS SURFACE (2026-10-06): the pod's window tools keep
         // relaying to THIS desktop; a web run's open on the page instead.
@@ -271,7 +300,7 @@ export function createCloudLane(deps: CloudLaneDeps) {
 
     let runId: string;
     try {
-      runId = (await (handle.whenStarted ?? handle.done)).runId || handle.runId || `cloud-${chatId}`;
+      runId = (await (handle.whenStarted ?? (relayRunId ? Promise.resolve({ runId: relayRunId }) : handle.done))).runId || handle.runId || `cloud-${chatId}`;
     } catch (err) {
       // The pod could not be had (503 worker_unavailable, 412 not-configured,
       // signed out): the done rejection above settles the ledger and the

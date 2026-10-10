@@ -35,6 +35,7 @@ import type { Source } from "./code-source-chip.js";
 import { devicesForRun, foldersForRun, selfMachineId } from "./devices-pick.js";
 import { hostHas } from "./web-surface.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
+import { onOtherDesktop } from "./session-locus.js";
 
 // ── SDK handle mirrors (window.glyphhSdk = the raw @glyphh/sdk client) ─────────
 
@@ -229,6 +230,11 @@ export interface CloudRunStartPayload {
   devices?: string[];
   /** The member's named cloud environment (personal environments, 2026-10-05); absent = Default. */
   environmentId?: string;
+  /** ANOTHER DESKTOP (the picker, 2026-10-09): the relay runs the turn on
+   *  `machineId`, inside `workdir`; absent = the cloud. */
+  target?: "cloud" | "desktop";
+  machineId?: string;
+  workdir?: string;
 }
 
 export type CloudRunDoneEvent = { chatId: string; runId: string } & (
@@ -444,7 +450,20 @@ export function isRemoteSource(source?: Source): boolean {
  *  CLOUD source, on the DESKTOP (main's cloud lane); a desktop local session
  *  stays on the local harness (window.glyphh.glyphhRun → main). */
 export function canRunRemote(source?: Source): boolean {
+  if (onOtherDesktop(source) && !!desktopCloudLane()) return true;   // another desktop, over the relay
   return isRemoteSource(source) && (!!sdk()?.harnessViaApi || !!desktopCloudLane());
+}
+
+/** The attached desktop a source names, NOW: the socket id changes on every
+ *  reconnect, so a stale id is found again by the machine's name. */
+async function attachedIdFor(source: Source): Promise<string | null> {
+  if (source.kind !== "local" || !source.machineId) return null;
+  const read = (window.glyphh as unknown as { attachDevicesList?: () => Promise<DevicesAnswer> }).attachDevicesList;
+  const a = read ? await read().catch(() => null) : null;
+  const rows = a ? deviceRowsOf(a).devices : [];
+  const hit = rows.find((d) => d.machineId === source.machineId) ?? (source.machine ? rows.find((d) => d.name === source.machine) : undefined);
+  if (hit && hit.machineId !== source.machineId) source.machineId = hit.machineId;
+  return hit?.machineId ?? null;
 }
 
 /** The honest typed failure — never thrown to the UI, always rendered as the
@@ -754,8 +773,18 @@ export async function runRemoteTurn(
   const isLocal = chat.source?.kind === "local";
   // The desktop's lane is the CLOUD only: its local sessions are main's own
   // loop (code.ts never routes one here — canRunRemote says no).
-  if (lane && isLocal) {
+  // ...unless the session is bound to ANOTHER desktop (the picker's Remote):
+  // the lane relays it there, inside that machine's grants.
+  const otherDesktop = !!lane && isLocal && onOtherDesktop(chat.source);
+  if (lane && isLocal && !otherDesktop) {
     const u = unavailable("open", new Error("a desktop session runs on this machine's own loop, not the cloud lane"));
+    callbacks.onError?.(u.detail);
+    return u;
+  }
+  const relayTo = otherDesktop && chat.source ? await attachedIdFor(chat.source) : null;
+  if (otherDesktop && !relayTo) {
+    const name = chat.source?.kind === "local" ? chat.source.machine : "";
+    const u = unavailable("open", new Error(`${name || "That desktop"} is not attached right now. Open Glyphh there with remote control on.`));
     callbacks.onError?.(u.detail);
     return u;
   }
@@ -804,6 +833,7 @@ export async function runRemoteTurn(
       threadId,
       prompt,
       mode: modeFor(chat),
+      ...(relayTo ? { target: "desktop" as const, machineId: relayTo, ...(workdir ? { workdir } : {}) } : {}),
       ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
         ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
       ...(repo ? { repo } : {}),

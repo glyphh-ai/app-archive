@@ -278,6 +278,28 @@ export function registerRemoteControlIpc(): void {
   ipcMain.handle("attach-devices:list", () => listAttachedDevices());
   ipcMain.handle("attach-devices:disconnect", (_e, machineId: string) => disconnectAttachedDevice(machineId));
   ipcMain.handle("attach-devices:allow", (_e, device: string) => allowAttachedDevice(device));
+  // THE PICKER'S MACHINES (his order, 2026-10-09): the member's Glyphh
+  // machines, and the folders inside another desktop's grants over the relay.
+  ipcMain.handle("machines:list", () => listGlyphhMachines());
+  ipcMain.handle("attach-fs:list", (_e, path: string | undefined, machineId: string) => listAttachedFolder(path, machineId));
+}
+
+/** The member's Glyphh machines (GET /api/machines); none when the server has no such route. */
+export async function listGlyphhMachines(): Promise<{ machines: Array<Record<string, unknown>> }> {
+  try {
+    const r = await getClient().http.get<{ machines?: Array<Record<string, unknown>> }>("/api/machines");
+    return { machines: Array.isArray(r?.machines) ? r.machines : [] };
+  } catch (err) {
+    if (notFound(err)) return { machines: [] };
+    throw err;
+  }
+}
+
+/** One folder on another attached desktop: that machine answers, inside its own grants. */
+export async function listAttachedFolder(path: string | undefined, machineId: string): Promise<unknown> {
+  const id = String(machineId || "").trim();
+  if (!id) throw new Error("a machine id is required");
+  return getClient().attach.fsList(path ? String(path) : undefined, { machineId: id });
 }
 
 // ── Settings → Devices (the server's /api/attach/devices) ───────────────────

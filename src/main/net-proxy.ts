@@ -155,6 +155,8 @@ export async function ensureNetProxy(): Promise<number> {
     });
   });
   server.on("connect", (req, sock: net.Socket, head) => {
+    // A client that hangs up on a refusal resets the socket: never a crash.
+    sock.on("error", () => sock.destroy());
     const [host, portRaw] = String(req.url ?? "").split(":");
     if (!host || !knows(req)) { sock.end("HTTP/1.1 407 Proxy Authentication Required\r\n\r\n"); return; }
     void decide(chatOf(req) || null, targetKey(host, portRaw || 443)).then((ok) => {
@@ -165,7 +167,7 @@ export async function ensureNetProxy(): Promise<number> {
         up.pipe(sock); sock.pipe(up);
       });
       const close = (): void => { up.destroy(); sock.destroy(); };
-      up.on("error", close); sock.on("error", close);
+      up.on("error", close); sock.on("close", close);
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));

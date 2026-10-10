@@ -310,3 +310,78 @@ export function filterPickerRows(rows: PickerRows, query: string): PickerRows {
     cloud: rows.cloud.filter((c) => `${c.label} ${c.id}`.toLowerCase().includes(q)),
   };
 }
+
+// ── THE MACHINES: LOCAL AND REMOTE (his order, 2026-10-09) ───────────────
+//
+// The picker lists machines, then each machine's folders. LOCAL is this
+// desktop, always (never on the web). REMOTE is every other machine: the
+// member's other desktops attached for remote control (their grants are the
+// perimeter, nothing outside them is offered) and the Glyphh machine. A
+// session is bound to its machine and folder at birth.
+
+export type MachineKind = "local" | "desktop" | "glyphh";
+export interface PickerMachineRow {
+  kind: MachineKind;
+  name: string;
+  /** The attach socket's id (a remote desktop): minted anew per reconnect. */
+  id?: string;
+  /** The folders the machine granted (a remote desktop). */
+  folders: readonly string[];
+  hint: string;
+  /** Why the machine offers nothing, when it does not. */
+  empty?: string;
+  /** The born session runs on another machine. */
+  locked?: string;
+}
+export interface MachinePicker { local: PickerMachineRow | null; remote: PickerMachineRow[] }
+export interface GlyphhMachine { id: string; name: string; state?: string; default?: boolean }
+export interface MachineSource { kind: string; machineId?: string; machine?: string }
+
+/** A local source that names ANOTHER desktop, seen from this one. Local picks
+ *  carry no machine ("local" is the old synthesized id for this desktop). */
+export function onOtherDesktop(source: MachineSource | null | undefined): boolean {
+  return source?.kind === "local" && !!source.machineId && source.machineId !== "local";
+}
+
+/** The row a source runs on, or null when its machine is not listed now. */
+export function machineOfSource(p: MachinePicker, source: MachineSource | null | undefined): PickerMachineRow | null {
+  if (!source) return null;
+  if (source.kind !== "local") return p.remote.find((r) => r.kind === "glyphh") ?? null;
+  if (p.local && !onOtherDesktop(source)) return p.local;
+  return p.remote.find((r) => r.kind === "desktop" && ((!!source.machineId && r.id === source.machineId) || (!!source.machine && r.name === source.machine))) ?? null;
+}
+
+const lockedOn = (name: string | null): string =>
+  name ? `This session runs on ${name}. Start a new session to work somewhere else.` : "This session runs on another machine. Start a new session to work somewhere else.";
+
+export function machinePicker(input: {
+  surface: "desktop" | "web";
+  /** The member's attached desktops (the relay). */
+  desktops: readonly PickerMachine[];
+  /** This desktop among them (the desktop surface): never listed as remote. */
+  selfId: string | null;
+  glyphh: readonly GlyphhMachine[];
+  /** The open session's source once it has a turn; null = nothing is born. */
+  born: MachineSource | null;
+}): MachinePicker {
+  const local: PickerMachineRow | null = input.surface === "desktop"
+    ? { kind: "local", name: "This desktop", folders: [], hint: "Any folder on this computer" }
+    : null;
+  const remote: PickerMachineRow[] = input.desktops
+    .filter((d) => !(input.surface === "desktop" && input.selfId && d.id === input.selfId))
+    .map((d): PickerMachineRow => ({
+      kind: "desktop", name: d.name, ...(d.id ? { id: d.id } : {}), folders: d.folders,
+      hint: d.folders.length ? `Desktop · ${d.folders.length === 1 ? "1 folder" : `${d.folders.length} folders`} granted` : "Desktop",
+      ...(d.folders.length ? {} : { empty: "No folder is granted on this desktop yet. Add one under Settings → System → Remote control there." }),
+    }));
+  // The Glyphh machine: the default one (the rest are the same cloud today).
+  const g = input.glyphh.find((m) => m.default) ?? input.glyphh[0];
+  remote.push({ kind: "glyphh", name: g?.name || "Glyphh machine", ...(g?.id ? { id: g.id } : {}), folders: [], hint: "Glyphh machine · cloud folders" });
+  const picker: MachinePicker = { local, remote };
+  if (input.born) {
+    const home = machineOfSource(picker, input.born);
+    const why = lockedOn(home?.name ?? null);
+    for (const row of [local, ...remote]) if (row && row !== home) row.locked = why;
+  }
+  return picker;
+}
