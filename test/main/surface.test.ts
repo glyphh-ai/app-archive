@@ -192,7 +192,7 @@ describe("settings — the one Customize page is the same on both surfaces; only
   });
   it("what the modal keeps is never also hidden", () => {
     for (const sub of WEB_KEPT_SUBS) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(false);
-    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "artifacts", "usage", "billing", "support", "connections-cfg"]) {
+    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "usage", "billing", "support", "connections-cfg"]) {
       expect(WEB_KEPT_SUBS).toContain(sub);
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");

@@ -8715,31 +8715,6 @@ async function init(): Promise<void> {
     if (slot.view === "terminal") slot.terminals[0].initCmd = cmd;
     placeSlot(slot);
   };
-  // Artifacts gallery (Files section) → workbench. Mount by KIND: code/text/
-  // markdown open in Monaco (fetched as text from the artifact's short-lived
-  // downloadUrl); image/pdf/other open in a preview panel at that url. The
-  // artifact id stands in for a path so Monaco tabs dedupe per artifact.
-  // Shape mirrors @glyphh/sdk FileArtifact (downloadUrl present on files.get).
-  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; downloadUrl?: string; mime?: string; path?: string }
-  (window as unknown as { __wbOpenArtifact?: (a: WbArtifact) => void }).__wbOpenArtifact = (a) => {
-    if (!a) return;
-    const textual = a.kind === "code" || a.kind === "text" || a.kind === "markdown";
-    if (textual) {
-      const node = { name: a.name || a.id, path: `artifact:${a.id}` };
-      if (a.downloadUrl) {
-        void fetch(a.downloadUrl)
-          .then((r) => r.text())
-          .then((text) => openFileInMonaco(node, text))
-          .catch((e) => openFileInMonaco(node, `// Couldn't load ${a.name}: ${String(e)}`));
-        return;
-      }
-      openFileInMonaco(node, "");
-      return;
-    }
-    // pdf / other — a preview panel at the short-lived download url.
-    if (a.downloadUrl) { openPreviewUrl(a.downloadUrl); return; }
-  };
-
   // App bridges — the OS-window replacement surface. main (glyphh agent tools,
   // relay panels_*, the Apps/Layouts pages' IPC) drives these through
   // help/code.ts, which also flips the UI to the Code section first.

@@ -139,7 +139,7 @@ export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-
 /** The pages the web's Settings modal lists (the test pins this list against
  *  the desktop-only ones so a page can never be on both sides). */
 export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
-  "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "connections-cfg",
+  "general", "appearance", "memory", "privacy", "devices", "account", "usage", "connections-cfg",
   "billing", "support", "about",
 ]);
 

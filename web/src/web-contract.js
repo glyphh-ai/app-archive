@@ -799,22 +799,6 @@ export function buildContract(client, deps) {
     voiceConfig: lib(() => client.http.get('/api/voice/config').then((r) => (r && typeof r === 'object' && 'data' in r ? r.data : r))),
     voiceSettingsGet: lib(() => client.profile.voiceSettings()),
     voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
-    // Drive file artifacts — metadata (+ signed URL), delete, and text
-    // content for the editor (browser fetch; R2 CORS permitting, else the
-    // caller falls back to the Browser panel).
-    filesGet: (id) => client.files.get(id).catch(() => null),
-    filesDelete: (id) => client.files.delete(id).then(() => ({ ok: true })).catch((e) => ({ ok: false, error: String(e?.message ?? e) })),
-    filesContent: async (id) => {
-      try {
-        const f = await client.files.get(id);
-        if (!f?.downloadUrl) return { ok: false, error: 'no download url' };
-        const res = await fetch(f.downloadUrl);
-        if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-        const text = await res.text();
-        if (text.length > 2 * 1024 * 1024) return { ok: false, error: 'file exceeds the 2MB editor cap' };
-        return { ok: true, content: text };
-      } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
-    },
     voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),
     voiceSynthesize: lib((text, model, voiceId) => client.voice.synthesize(text, model, voiceId)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
@@ -1120,18 +1104,6 @@ export function buildContract(client, deps) {
     releasesAssetUrl: async (tag, name) => {
       try { return { ok: true, url: (await client.releases.assetUrl(String(tag || ''), String(name || ''))).url }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-
-    // ── Artifacts (files.ts): the server's file list; a peek is the opening text ──
-    filesList: async () => { try { return await client.files.list(); } catch { return []; } },
-    filesPeek: async (id) => {
-      try {
-        const f = await client.files.get(id);
-        if (!f?.downloadUrl) return '';
-        const res = await fetch(f.downloadUrl);
-        if (!res.ok) return '';
-        return (await res.text()).slice(0, 600);
-      } catch { return ''; }
     },
 
     // ── The workbench's UI state (help/ui-state.ts) ───────────────────────────────

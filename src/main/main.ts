@@ -88,7 +88,6 @@ import { registerCloudRunIpc } from "./cloud-run";
 import { registerCloudFsIpc } from "./cloud-fs";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
-import { registerFilesIpc } from "./files-ipc";
 import { registerPopoutIpc } from "./popout";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
@@ -1073,9 +1072,6 @@ async function boot() {
 
   // Settings › Platform (super_admin console) — catalog, plans, usage, orgs.
   registerAdminIpc();
-
-  // Files — the artifacts gallery's transport, same main-process SDK client.
-  registerFilesIpc();
 
   // Panel pop-out — any web panel as a standalone OS window.
   registerPopoutIpc();

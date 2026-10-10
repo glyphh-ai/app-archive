@@ -25,7 +25,6 @@ import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
 import { loadMemorySettings } from "./settings-memory.js";
-import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadAdminPlans, loadAdminOrgs, loadAdminModels, loadAdminUsage } from "./settings-admin.js";
@@ -159,7 +158,6 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "customize") loadSettingsGroup(sec);
-  else if (sec === "files") void loadFiles();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
   else if (sec === "support") loadSupport();
@@ -204,9 +202,6 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
-  if (["files"].includes(section)) {
-    void window.glyphh.railCollapseSet?.(false);
-  }
   void window.glyphh.setPreference?.("homeLastSection", section);
   void window.glyphh.setPreference?.("homeLastSub", sub || "");
   // 2.5.0 shell: "code" is the agent surface; the full-screen pages
@@ -281,10 +276,6 @@ export function closeSettingsModal(): void {
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
-  // Park every adopted section body (the whole-node sections) back into
-  // its own hidden section FIRST, so the settings layout below doesn't carry
-  // any of them back into the settings pen.
-  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   // Park the shared .settings-layout DOM back in its hidden section pen so its
   // ids stay unique and it's ready to be re-adopted next open.
   const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
@@ -342,11 +333,11 @@ function arrangeAppSettingsNav(): void {
       const pick = (sub: string): Element | null =>
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
-      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
+      // Memory, Appearance, Account, Usage, MCP Server.
       // Appearance sits right under General (his order, 2026-09-20).
       // Connections lives in BUILD on both hosts (his order, 2026-10-05: the
       // web's Build page is the desktop's, tab for tab).
-      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp"]) {
+      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "usage", "mcp"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -914,8 +905,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "remote") { void loadRemoteControl(); void loadSandbox(); if (document.getElementById("system-devices")?.classList.contains("hidden") === false) { initDevices(); void loadDevices(); } }
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
-  // Artifacts adopts the FILES section (the gallery page) — same page, second door.
-  else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
 // ── The Customize work-panel ──────────────────────────────────────────────
@@ -1157,9 +1146,6 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
  */
 function returnGroupPanels(): void {
   returnGroupTools();   // a lent search / Add goes home with its panel
-  // Park adopted sections BEFORE moving their hosts: a section mounted into a
-  // group panel makes that panel an ancestor of the pen it must return to.
-  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   for (const sub of Object.keys(groupPanelPen)) {
     const pen = groupPanelPen[sub];
     const panel = document.querySelector<HTMLElement>(`.settings-group-host .settings-panel[data-sub="${sub}"]`);
@@ -1179,48 +1165,6 @@ function rehostOpenGroups(): void {
     const g = sec.dataset.section;
     if (g) loadSettingsGroup(g);
   });
-}
-
-// ── Whole-section in-modal adoption (A2 apps/connections, A3 loops/skills/
-//    agents) ────────────
-//
-// Move-not-clone discipline. These layouts are styled through selectors scoped to
-// `.help-section[data-section=X]` and its DIRECT children — so moving only the
-// children out would break those rules. Instead the WHOLE `.help-section` node
-// is moved into the panel host and given `.active` (so its full-height flex +
-// detail-pane CSS still applies), then parked straight back into #page-body on
-// close. Its `data-section` never triggers the workbench, since nothing routes
-// these sections there anymore.
-const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
-  files: { host: "settings-files-host" },
-};
-
-/** Where a moved section lives when NOT adopted (the hidden #page-body pen),
- *  captured on first mount so it can be parked back precisely. */
-const settingsSectionPen: Record<string, HTMLElement | null> = {};
-
-/** Adopt the whole .help-section[data-section=X] node into its settings-modal
- *  host and activate it. Idempotent — a no-op once already adopted. */
-function mountSettingsSection(section: string): void {
-  const cfg = SETTINGS_SECTIONS[section];
-  if (!cfg) return;
-  const host = document.getElementById(cfg.host);
-  const sec = document.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
-  if (!host || !sec) return;
-  if (sec.parentElement === host) { sec.classList.add("active"); return; }
-  settingsSectionPen[section] = sec.parentElement as HTMLElement | null;
-  sec.classList.add("active");
-  host.appendChild(sec);
-}
-
-/** Park a section's node back into its hidden #page-body pen and deactivate it. */
-function parkSettingsSection(section: string): void {
-  const cfg = SETTINGS_SECTIONS[section];
-  if (!cfg) return;
-  const host = document.getElementById(cfg.host);
-  const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
-  const pen = settingsSectionPen[section];
-  if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
 }
 
 // ── Init ─────────────────────────────────────────────────
@@ -1265,9 +1209,6 @@ export function initHelp() {
   });
 
   // (The rail's nav rows and the More fly-out are gone, his order 2026-10-09.)
-  // (Artifacts rides the same data-settings-sub path — every rail link opens
-  // the settings modal; the files PAGE stays reachable via gotoSection for
-  // other callers, and closing the modal parks the adopted node back.)
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
   // sections live in the Settings modal now, so the rail no longer carries a
@@ -1370,7 +1311,6 @@ export function initHelp() {
   boot("usage", initUsageEvents);
   boot("org", initOrgPanel);
   boot("settings", initSettings);
-  boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
   boot("code", initCode);

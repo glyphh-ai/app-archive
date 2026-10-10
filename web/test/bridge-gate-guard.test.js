@@ -30,9 +30,6 @@ const ALLOWED = {
   // apps.ts: glyphhAppPreviewOpen is SERVED on web since 2026-10-04 (apps
   // live in the cloud — member-library-web.js answers the instance's panel
   // path through this origin's /app-host proxy).
-  'src/renderer/help/files.ts': {
-    filesRename: 'the Rename row is offered only when hostHas("filesRename")',
-  },
   // schedules.ts, drips.ts and settings-skills.ts: every name they read is
   // SERVED on web since 2026-10-04 (member-library-web.js — the library from
   // the server, the machine actions answering NEEDS_DESKTOP, the runs honest
