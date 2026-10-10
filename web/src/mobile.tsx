@@ -682,6 +682,13 @@ function ActivityBadge({ state }: { state?: 'working' | 'waiting' }) {
 
 /** An attached desktop/machine, from glyphh().attach.status(). */
 interface AttachedMachine { id?: string; app: string; version?: string; name?: string; capabilities?: string[]; since?: number }
+/** A member's Glyphh machine (GET /api/machines). Awake, it is also an attached desktop by this name. */
+interface GlyphhMachineRow { id: string; name: string; state: string; default?: boolean }
+/** A machine as people read it: a desktop's hostname without ".local". */
+const machineLabel = (name: string): string => name.replace(/\.local$/i, '') || name;
+/** WAKE THE GLYPHH MACHINE (POST /api/machines/{id}/start): it boots, starts the app and attaches. */
+const wakeGlyphhMachine = (id: string): Promise<unknown> =>
+  (glyphh() as { http: { post: (p: string, b?: unknown) => Promise<unknown> } }).http.post(`/api/machines/${encodeURIComponent(id)}/start`, {});
 
 /* ── The ONE unified session list (spaces are gone). Attached Desktops strip at
    the top, then every session — pinned-first, then time-sorted — each row
@@ -739,7 +746,7 @@ function HomeList({ desktops, sessions, pinnedIds, loading, activity, whereOf, o
             : desktops.map((d) => (
               <button key={d.id || d.name || d.app} className="m-dev-chip" data-status="connected" onClick={() => onOpenDesktop(d)}>
                 <span className="m-dev-ico"><Icon name="laptop" /><i className="m-dev-dot" /></span>
-                <span className="m-dev-name">{d.name || d.app}</span>
+                <span className="m-dev-name">{machineLabel(d.name || d.app)}</span>
               </button>
             ))}
         </div>
@@ -3464,7 +3471,7 @@ function SelectorSheet({ open, section, onClose, roles, roleSel, setRoleSel, mod
                 <>
                   {/* A folder on a connected desktop — the existing picker tray. */}
                   {desktops.length === 0 && (
-                    <div className="m-list-note">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : "Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control."}</div>
+                    <div className="m-list-note">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : "Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → System → Remote control."}</div>
                   )}
                   {desktops.length > 0 && (
                     <div className="m-sel-group">
@@ -4066,9 +4073,11 @@ function AppsSheet({ open, onClose, onPick }: { open: boolean; onClose: () => vo
    policy, .env text kept encrypted on the server). "Create environment" opens
    the form; ⋯ on a row edits it. A born session locks the OTHER section and
    its environment (session-locus.ts: the locus is fixed at birth). ──────── */
-function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, environments, envPick, onPickDesktop, onPickCloud, onCreate, onEdit }: {
+function EnvironmentSheet({ open, onClose, desktops, glyphhMachines, sessionCount, locus, born, environments, envPick, onPickDesktop, onPickCloud, onCreate, onEdit }: {
   open: boolean; onClose: () => void;
   desktops: AttachedMachine[];
+  /** The member's Glyphh machines: awake it is listed as its desktop, asleep a tap wakes it. */
+  glyphhMachines: GlyphhMachineRow[];
   /** How many of the member's sessions live on the named machine. */
   sessionCount: (machineName: string) => number;
   locus: Locus;
@@ -4085,6 +4094,11 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
 }) {
   const lockDesktop = born && locus === 'cloud';
   const lockCloud = born && locus === 'local';
+  const [waking, setWaking] = useState<string>('');
+  const g = glyphhMachines.find((m) => m.default) ?? glyphhMachines[0];
+  const isGlyphh = (d: AttachedMachine): boolean => !!g && (d.name || d.app) === g.name;
+  const asleep = g && !desktops.some(isGlyphh) ? g : null;
+  useEffect(() => { if (!asleep) setWaking(''); }, [asleep]);
   const cloudRow = (id: string, name: string, sub: string | null, row: EnvironmentRow | null) => (
     <div key={id} className="m-env-row">
       <button className="m-opt m-env-opt" disabled={lockCloud || (born && locus === 'cloud')} title={lockCloud ? LOCUS_LOCKED_HINT.local : undefined} onClick={() => { haptic(); onPickCloud(id); }}>
@@ -4102,9 +4116,9 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
         <div className="m-sel-grip" />
         <div className="m-sel-head"><button className="m-sel-x" aria-label="Close" onClick={onClose}><Icon name="close" /></button><span className="m-sel-title">Choose environment</span></div>
         <div className="m-sel-body">
-          <div className="m-code-label">Remote control</div>
-          {desktops.length === 0
-            ? <div className="m-sel-group"><div className="m-list-note m-list-note-tight">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : 'No desktop is attached — turn remote control on in the Glyphh desktop app (Settings → Remote control).'}</div></div>
+          <div className="m-code-label">Remote</div>
+          {desktops.length === 0 && !asleep
+            ? <div className="m-sel-group"><div className="m-list-note m-list-note-tight">{remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on.' : 'No desktop is attached — turn remote control on in the Glyphh desktop app (Settings → System → Remote control).'}</div></div>
             : (
               <div className="m-sel-group">
                 {desktops.map((d) => {
@@ -4112,12 +4126,20 @@ function EnvironmentSheet({ open, onClose, desktops, sessionCount, locus, born, 
                   const n = sessionCount(name);
                   return (
                     <button key={d.id || name} className="m-opt m-env-opt" disabled={lockDesktop} title={lockDesktop ? LOCUS_LOCKED_HINT.cloud : undefined} onClick={() => { haptic(); onPickDesktop(d); }}>
-                      <span className="m-env-ico"><Icon name="laptop" /><i className="m-dev-dot" /></span>
-                      <span className="m-opt-text"><span className="m-opt-name">{name}</span><span className="m-opt-desc">{d.app}</span></span>
+                      <span className="m-env-ico"><Icon name={isGlyphh(d) ? 'cloud' : 'laptop'} /><i className="m-dev-dot" /></span>
+                      <span className="m-opt-text"><span className="m-opt-name">{machineLabel(name)}</span><span className="m-opt-desc">{isGlyphh(d) ? 'Glyphh machine · awake' : d.app}</span></span>
                       <span className="m-env-count">{n} session{n === 1 ? '' : 's'}</span><Icon name="chevron" />
                     </button>
                   );
                 })}
+                {asleep && (
+                  <button key={`gm-${asleep.id}`} className="m-opt m-env-opt" disabled={lockDesktop || waking === asleep.id}
+                    onClick={() => { haptic(); setWaking(asleep.id); void wakeGlyphhMachine(asleep.id).catch(() => setWaking('')); }}>
+                    <span className="m-env-ico"><Icon name="cloud" /></span>
+                    <span className="m-opt-text"><span className="m-opt-name">{asleep.name}</span>
+                      <span className="m-opt-desc">{waking === asleep.id ? 'Waking… it shows here once it is ready' : 'Glyphh machine · asleep, tap to wake'}</span></span>
+                  </button>
+                )}
               </div>
             )}
           {lockDesktop && <div className="m-sel-note">{LOCUS_LOCKED_HINT.cloud}</div>}
@@ -4528,6 +4550,7 @@ function App() {
   const [titles, setTitles] = useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem('yoTitles') || '{}'); } catch { return {}; } });
   const [renameId, setRenameId] = useState<string | null>(null);
   const [desktops, setDesktops] = useState<AttachedMachine[]>([]);   // attached machines (Code strip)
+  const [glyphhMachines, setGlyphhMachines] = useState<GlyphhMachineRow[]>([]);   // the member's Glyphh machines
   const [msgs, setMsgs] = useState<Message[] | null>(null);            // active session's live transcript
   const [connecting, setConnecting] = useState(false);                 // provisioning/connecting a cloud runtime
   const [streaming, setStreaming] = useState(false);                   // a turn is in flight
@@ -4799,7 +4822,7 @@ function App() {
       } else {
         haptic();
         if (desktops[0]) { setFolderPick(desktops[0]); return; }
-        convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → Remote control.' }];
+        convoRef.current = [...convoRef.current, { id: 'nd' + Date.now().toString(36), role: 'glyphh', text: remoteOff() ? 'Remote control is off for your organization — an org admin can turn it on in the console.' : 'Sessions run on your computer. Turn on remote control on your computer — run `glyphh remote-control` in a folder, or open the Glyphh desktop app → Settings → System → Remote control.' }];
         renderConvo();
         return;
       }
@@ -5237,6 +5260,10 @@ function App() {
     const loadDesktops = (): void => { void glyphh().attach.status()
       .then((s: { machines?: AttachedMachine[]; allowed?: boolean }) => { if (on) { setDesktops(Array.isArray(s?.machines) ? s.machines : []); remoteControlOff = s?.allowed === false; } })
       .catch(() => { if (on) setDesktops([]); });
+      // The member's Glyphh machines, on the same beat (awake, one is also an attached desktop).
+      void (glyphh() as { http: { get: (p: string) => Promise<{ machines?: GlyphhMachineRow[] }> } }).http.get('/api/machines')
+        .then((r) => { if (on) setGlyphhMachines(Array.isArray(r?.machines) ? r.machines : []); })
+        .catch(() => { /* keep the last list */ });
       // The threads are the server's: re-read them on the same beat.
       void loadThreads().then((t: ThreadMeta[]) => { if (on) setThreads(t); }).catch(() => { /* keep the last list */ }); };
     loadDesktops();
@@ -5488,7 +5515,7 @@ function App() {
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       {/* The cloud lane's two sheets: WHERE (environment) and WHAT (repos). */}
-      <EnvironmentSheet open={envOpen} onClose={() => { haptic(); setEnvOpen(false); }} desktops={desktops}
+      <EnvironmentSheet open={envOpen} onClose={() => { haptic(); setEnvOpen(false); }} desktops={desktops} glyphhMachines={glyphhMachines}
         sessionCount={(name) => (threads ?? []).filter((t) => t.source?.kind === 'local' && (t.source.machineName === name)).length}
         locus={effLocus} born={sessionBorn}
         environments={environments} envPick={sessionBorn && effLocus === 'cloud' ? environmentIdOf(openSrc as { environmentId?: unknown } | undefined) : envPick}
