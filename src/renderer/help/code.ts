@@ -4741,9 +4741,9 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     return true;
   }
   const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
-    "gpoint", "slides", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
+    "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", design: "gdesign",
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", design: "gdesign",
       image: "gimage", video: "gvideo", sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
@@ -7801,7 +7801,7 @@ export function openRunRef(t: { ref?: string; url?: string }): void {
 
 /** Open a built-in WORK PANEL as a workbench panel — the Apps page's "Work
  *  panels" cards. Same cold-safe mechanics as openAppInWorkbench: flip to the
- *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenGPoint,
+ *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenTool,
  *  __wbOpenMedia, …) is assigned by the workbench init. */
 export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): void {
   showWorkspaceSurface();

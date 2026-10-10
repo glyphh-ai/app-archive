@@ -3,12 +3,12 @@
  * over the SDK client (his order, 2026-10-06: "cloud is first and every
  * surface pulls from it").
  *
- * The web renderer hosts Design / Slides / Images / Video / Audio
- * itself (code-workbench.ts) and reads them through window.glyphh's design*,
- * gpoint* and media* shims. Every shim here IS the store's door —
+ * The web renderer hosts Design / Images / Video / Audio itself
+ * (code-workbench.ts) and reads them through window.glyphh's design* and
+ * media* shims. Every shim here IS the store's door —
  * the same module the desktop's main process runs (main/house-store.ts) over
- * `client.memberLibrary` and the server's byte lane — so a deck saved on the
- * desktop is in the Slides panel here, and one made here is on the desktop.
+ * `client.memberLibrary` and the server's byte lane — so a design saved on the
+ * desktop is in the Design panel here, and one made here is on the desktop.
  * Reads and writes alike; no relay, no desktop.
  *
  * The browser's own part: Upload is an <input type=file>, Download a Blob
@@ -53,7 +53,6 @@ export function createHouseStoreWeb({ client, apiUrl, fetchImpl = (u, i) => fetc
   });
   const {
     designList, designRead, designWrite, designDelete, designAssetUpload, designAssetUrl, designAssetDelete,
-    gpointList, gpointRead, gpointWrite, gpointNew, gpointDelete,
     mediaList, mediaUrl, mediaThumbBytes, mediaDelete,
   } = store;
   const accept = Object.keys(MEDIA_MIME).join(',');
@@ -61,8 +60,6 @@ export function createHouseStoreWeb({ client, apiUrl, fetchImpl = (u, i) => fetc
   return {
     // ── Design (wb-design.ts) ─────────────────────────────────────────────
     designList, designRead, designWrite, designDelete, designAssetUpload, designAssetUrl, designAssetDelete,
-    // ── Slides (wb-gpoint.ts) ─────────────────────────────────────────────
-    gpointList, gpointRead, gpointWrite, gpointNew, gpointDelete,
     // ── Images / Video / Audio (wb-media.ts) ──────────────────────────────
     mediaList, mediaUrl, mediaThumbBytes, mediaDelete,
     // GLYPHH MAKES NO MODEL CALLS (media-panel.ts says the same on the desktop):

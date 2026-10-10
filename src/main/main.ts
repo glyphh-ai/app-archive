@@ -89,9 +89,7 @@ import { registerCloudFsIpc } from "./cloud-fs";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
-import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
-import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
 import { registerDesignIpc } from "./design";
@@ -1089,14 +1087,8 @@ async function boot() {
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
 
-  // Glyphh Office · Slides — the Slides panel's org deck library.
-  registerGPointIpc();
-
-  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
+  // Panel pop-out — any web panel as a standalone OS window.
   registerPopoutIpc();
-
-  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
-  registerOfficeExportIpc();
 
   // Glyphh Office · Docs — the Docs panel's org library transport.
   registerOfficeDocsIpc();

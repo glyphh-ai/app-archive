@@ -1,9 +1,8 @@
 /**
  * house-store.ts — THE HOUSE APPS' STORE ON THE DESKTOP: shared/house-store.ts
  * over the app-wide SDK client (his order, 2026-10-06: cloud is the one home;
- * every surface pulls from it). The panels' IPC (design.ts, gpoints.ts,
- * media-panel.ts, drive.ts, office-export.ts) and the one-time migration
- * (house-migration.ts) all go through here; nothing of theirs is on this disk.
+ * every surface pulls from it). The panels' IPC (design.ts, media-panel.ts)
+ * and the one-time migration (house-migration.ts) all go through here; nothing of theirs is on this disk.
  *
  * Built per client instance: a sign-out resets the client (glyphh-client.ts),
  * so the next call builds a store over the new one and never a stale bearer.

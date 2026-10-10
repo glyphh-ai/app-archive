@@ -23,19 +23,6 @@ import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-
 import { installGlyphhAppBundle, type InstallAnswer } from "./glyphh-app-host";
 import * as appsStore from "./apps-store";
 
-// The ten built-in work panels (Office / Design / Memory / Media) are
-// Apps-page fixtures, not org apps — an install or deploy under their slugs is
-// refused at the manifest, where the slug first exists (glyphh-agent-tools.ts
-// and apps-ipc.ts refuse the slug-carrying seams the same way).
-const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet"]);
-
-/** Throw the refusal when a workdir manifest names a built-in work panel. */
-function refuseBuiltinWorkpanel(slug: string): void {
-  if (BUILTIN_WORKPANELS.has(slug)) {
-    throw new Error("work panels are built in — they cannot be altered or removed");
-  }
-}
-
 /** Zip a text Bundle and run it through the host's real install gate. */
 async function packageAndInstall(bundle: AppBundle): Promise<InstallAnswer> {
   const zip = new AdmZip();
@@ -108,7 +95,6 @@ export async function updateAppFromWorkdir(
     if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
 
     const m = JSON.parse(built.manifestJson) as { slug: string; name: string };
-    refuseBuiltinWorkpanel(m.slug);
     // THE BUILD SHIPS TO THE CLOUD: the compiled dist/ + manifest become (or
     // update) the app's instance, and open_app opens that. Name WHERE it
     // landed — "success" without a place made an open failure undiagnosable.
@@ -129,7 +115,6 @@ export async function updateAppFromWorkdir(
   if (remote.length) throw new Error(`app references remote assets (inline or bundle them instead): ${remote.join("; ")}`);
   const v = validateAppBundle(bundle, lookup);
   if (!v.ok) throw new Error(`source fails validation: ${v.errors.join("; ")}`);
-  refuseBuiltinWorkpanel(v.manifest!.slug);
   const r = await packageAndInstall(bundle);
   if (!r.ok) throw new Error(r.error || "install failed");
   return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, warnings: v.warnings };
@@ -159,8 +144,7 @@ function packProjectSource(dir: string): Buffer {
   return zip.toBuffer();
 }
 
-export async function pullAppSource(slug: string, _opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
-  refuseBuiltinWorkpanel(slug);
+export async function pullAppSource(_slug: string, _opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
   // THE PURGE: the source-of-record service is retired — app source shares
   // through git now (clone/pull the project repo into the working folder).
   throw new Error("app source sync is retired — share this app's project through git (clone or pull its repo into the working folder)");

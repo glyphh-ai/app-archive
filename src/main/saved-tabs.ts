@@ -11,10 +11,6 @@ import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { refreshForceWebSlugs } from "./force-web";
 import { broadcast } from "./broadcast";
 
-/** The work panels are built in — a tab may neither shadow nor remove them. */
-export const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet"]);
-export const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
-
 /** The slug a name yields — the same rule the Tabs page applies. */
 export const tabSlugOf = (s: string): string =>
   String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -34,7 +30,6 @@ export async function addSavedTab(input: { name?: string; url?: string; slug?: s
   if (!/^https?:\/\/\S+$/i.test(url)) throw new Error("a tab needs an http(s) url");
   const slug = tabSlugOf(input.slug || name);
   if (!slug) throw new Error("a tab needs a name that yields a slug (letters or digits)");
-  if (BUILTIN_WORKPANELS.has(slug)) throw new Error(WORKPANEL_REFUSAL);
   const existing = await fetchOrgApps().catch(() => []);
   if (existing.some((a) => a.slug === slug)) throw new Error(`a tab named "${slug}" already exists — pick another slug`);
   await appsStore.createEntry({ kind: "web", slug, name, url });
@@ -48,7 +43,6 @@ export async function removeSavedTab(ref: string): Promise<{ app: string; remove
   const rows = await fetchOrgApps().catch(() => []);
   const row = rows.find((a) => a.slug === key || a.id === key || a.name.toLowerCase() === key);
   const slug = row?.slug ?? key;
-  if (BUILTIN_WORKPANELS.has(slug)) throw new Error(WORKPANEL_REFUSAL);
   if (!row) throw new Error(`no saved tab "${ref}" — panels_available lists them`);
   if (row.system || row.appArchetype === "glyphh-app") throw new Error(`"${slug}" is not a saved tab — an installed app is removed from Settings → Apps`);
   await appsStore.removeEntry(slug);

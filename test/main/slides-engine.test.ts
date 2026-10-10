@@ -2,7 +2,7 @@
  * @license Proprietary — © Glyphh. All rights reserved.
  *
  * The Slides layout engine (@glyphh/sdk/slides) + its interaction with the
- * desktop structure lock (gpoints.lockDeckSections). Pure — no Electron, no
+ * desktop structure lock (deck-document.lockDeckSections). Pure — no Electron, no
  * network: the engine renders typed specs to HTML, the lock re-normalizes it.
  */
 

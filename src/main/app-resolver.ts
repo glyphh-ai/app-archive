@@ -120,7 +120,7 @@ function focusGlyphhWindow(): void {
 const TOOL_BUILTINS: Record<string, string> = {
   plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
   diff: "diff", echo: "echo",
-  slides: "gpoint", gpoint: "gpoint", design: "gdesign", gdesign: "gdesign",
+  design: "gdesign", gdesign: "gdesign",
   image: "gimage", images: "gimage", gimage: "gimage", video: "gvideo", gvideo: "gvideo", sound: "gsound", sounds: "gsound", audio: "gsound", gsound: "gsound",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {

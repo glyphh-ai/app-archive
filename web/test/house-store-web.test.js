@@ -56,22 +56,6 @@ describe('createHouseStoreWeb — the member library is the store, reads and wri
     expect(await house.designRead('brand')).toEqual({ ok: true, title: 'Brand', document: { name: 'Brand' } });
   });
 
-  it('a deck the desktop saved is in the Slides panel here; + New here writes deck.html through the server lane with the bearer', async () => {
-    const { house, lane, memberLibrary } = rig({ seed: { deck: [{ id: 'q3.html', updatedAt: 1_000, data: { title: 'Q3', slides: 4, sizeBytes: 12, folderId: null } }] } });
-    lane.stored.set('deck/q3.html/deck.html', { bytes: new TextEncoder().encode('<html><title>Q3</title></html>'), mime: 'text/html' });
-    const list = await house.gpointList();
-    expect(list.decks).toEqual([{ file: 'q3.html', title: 'Q3', slides: 4, mtime: 1_000, size: 12 }]);
-    expect(await house.gpointRead('q3')).toEqual({ ok: true, content: '<html><title>Q3</title></html>' });
-    const n = await house.gpointNew('Pitch', 'Pitch');
-    expect(n).toEqual({ ok: true, file: 'pitch.html', title: 'Pitch' });
-    const put = lane.fetchImpl.mock.calls.find(([u, i]) => i.method === 'PUT' && u.endsWith('/deck/pitch.html/files/deck.html'));
-    expect(put[1].headers).toEqual({ authorization: 'Bearer tok', 'content-type': 'text/html' });
-    expect(new TextDecoder().decode(put[1].body)).toContain('<title>Pitch</title>');
-    expect(memberLibrary.rows.get('deck:pitch.html').data).toMatchObject({ title: 'Pitch', slides: 1 });
-    expect(memberLibrary.rows.get('deck:pitch.html').files[0]).toMatchObject({ path: 'deck.html' });
-    expect(memberLibrary.rows.get('deck:pitch.html').files[0].sha256).toMatch(/^[0-9a-f]{64}$/);
-  });
-
   it('upload is the browser picker into the library; the url a card plays is the presigned GET; download is a Blob the browser saves', async () => {
     const png = new Uint8Array([1, 2, 3]);
     const file = { name: 'Sunset beach.png', type: 'image/png', arrayBuffer: async () => png.buffer };
