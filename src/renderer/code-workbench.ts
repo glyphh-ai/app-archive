@@ -7591,7 +7591,9 @@ async function init(): Promise<void> {
       flushEditorModel();
       const tab = slot.tabs[slot.activeIdx];
       const pathRow = body.querySelector<HTMLElement>(".ws-monaco-path");
-      if (pathRow) pathRow.style.display = tab ? "" : "none";
+      // The bar stays up with no file open: it carries the editor's theme
+      // dropdown (his report, 2026-10-09: "i didn't see the editors dropdown").
+      if (pathRow) pathRow.style.display = "";
       if (!tab) {
         pathText.textContent = "";
         // The landing: the website hero's gradient with the ghost mark
