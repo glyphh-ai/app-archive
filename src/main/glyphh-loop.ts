@@ -19,14 +19,16 @@ import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { listSkills } from "./skills-fs.js";
 import { GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
-import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
 import { hostTools } from "./host-tools.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
-import { getWorkingDirectory } from "./working-directory.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { inTurnFolder } from "./turn-folder.js";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { onModelStateChanged } from "./model-watch.js";
 import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
@@ -70,6 +72,12 @@ const callTags = new AsyncLocalStorage<string[]>();
  *  which team is asking). Set around every panel turn, like the tags. */
 const turnChat = new AsyncLocalStorage<string>();
 export function currentTurnChat(): string | null { return turnChat.getStore() ?? null; }
+
+/** A run with no folder of its own (a schedule, a skill run, the Bots panel)
+ *  works in a fresh, empty folder of its own — never the working folder or home. */
+function scratchFolder(): string {
+  return mkdtempSync(path.join(tmpdir(), "glyphh-run-"));
+}
 function taggedFetch(input: string, init: RequestInit): Promise<Response> {
   const tags = callTags.getStore();
   if (tags?.length && /\/v1\/messages$/.test(input)) {
@@ -119,19 +127,6 @@ async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
       readOnly: readsByName(t.name), ...(CORE_BELT.has(t.name) ? { belt: true } : {}),
       run: (args) => t.run(args),
     });
-  }
-  const apps = await listInstanceTools().catch(() => []);
-  for (const a of apps) {
-    for (const t of a.tools) {
-      out.push({
-        name: safe(`${a.app}_${t.name}`), description: (t.description || `${a.name}: ${t.name}`).slice(0, 1000), family: `app: ${a.name}`,
-        ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}),
-        run: async (args) => {
-          try { return { text: asText(await callInstanceTool(a.app, t.name, args)), failed: false }; }
-          catch (err) { return { text: err instanceof Error ? err.message : String(err), failed: true }; }
-        },
-      });
-    }
   }
   // RPA ON A TAB (his order, 2026-10-07): every command mapped on a saved tab,
   // and every sequence, is a tool of its own, <tab>_<key>, that drives the
@@ -448,7 +443,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
-  const started = await turnChat.run(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run()));
+  const started = await inTurnFolder(p.workdir ?? "", () => turnChat.run(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run())));
   return started;
 }
 
@@ -497,17 +492,17 @@ export async function runBotTurn(
   if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
   const model = picked || orgRequiredModel();
   if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
-  return loop.run({
+  // The bot's folder, else one of its own: never the working folder or home.
+  const workdir = p.workdir || scratchFolder();
+  return inTurnFolder(workdir, () => loop.run({
     chatId: p.chatId, text: p.text, model, permission: "auto",
-    // ONE TYPE (2026-10-08): every turn works in a folder — the bot's, else
-    // the member's working folder (working-directory.ts: the set folder, else home).
-    workdir: p.workdir || getWorkingDirectory(),
+    workdir,
     ...(p.history?.length ? { history: p.history } : {}),
   }, (ev) => {
     const frame = ev as LoopFrame;
     recordSwarmFrame(p.chatId, frame);
     onFrame(frame);
-  });
+  }));
 }
 
 export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId); }
@@ -534,20 +529,22 @@ export async function runGlyphhHeadless(
   const chatId = opts.chatId || `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   let text = "";
   let error = "";
+  // A run with no folder of its own gets an empty one, removed after: never the working folder or home.
+  const scratch = opts.workdir ? "" : scratchFolder();
+  const workdir = opts.workdir || scratch;
   try {
-    await unattendedLoop.run({
+    await inTurnFolder(workdir, () => unattendedLoop.run({
       chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
-      // ONE TYPE (2026-10-08): a run with no folder of its own works in the
-      // member's working folder (the set folder, else home).
-      workdir: opts.workdir || getWorkingDirectory(),
+      workdir,
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");
       else if (ev.type === "error") error = String((ev as { error?: string }).error ?? "");
       else if (ev.type === "approval" && opts.declineApprovals) unattendedLoop.respondApproval((ev as { id: string }).id, false);
       try { opts.onEvent?.(ev); } catch { /* a watcher's failure is its own */ }
-    });
+    }));
   } finally {
     unattendedLoop.forget(chatId);
+    if (scratch) { try { rmSync(scratch, { recursive: true, force: true }); } catch { /* the OS clears tmp */ } }
   }
   return error ? { ok: false, text, error } : { ok: true, text };
 }

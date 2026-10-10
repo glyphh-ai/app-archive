@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildAgentRow } from "../../src/shared/member-library.js";
-import { botExtraFolders, botPowersNote, botWorkFolder } from "../../src/shared/bot-powers.js";
+import { botPowersNote, botWorkFolder, withinFolder } from "../../src/shared/bot-powers.js";
 
 describe("the agent row keeps its powers", () => {
   it("starts with none, takes a list, and keeps it through a save that leaves it out", () => {
@@ -27,13 +27,17 @@ describe("the agent row keeps its powers", () => {
 });
 
 describe("a bot's turn reads its powers", () => {
-  it("works in its first folder unless the thread picked another of its own", () => {
-    expect(botWorkFolder({ folders: ["/a", "/b"] }, "")).toBe("/a");
-    expect(botWorkFolder({ folders: ["/a", "/b"] }, "/b")).toBe("/b");
-    expect(botWorkFolder({ folders: ["/a", "/b"] }, "/elsewhere")).toBe("/a");
+  it("works inside the session's folder only: its own folders can narrow it, never widen it (2026-10-09)", () => {
+    expect(botWorkFolder({ folders: ["/a", "/b"] }, ""), "no session folder, nowhere").toBe("");
+    expect(botWorkFolder({ folders: ["/elsewhere", "/s/sub"] }, "/s")).toBe("/s/sub");
+    expect(botWorkFolder({ folders: ["/a", "/b"] }, "/s"), "its folders are outside: the session's").toBe("/s");
+    expect(botWorkFolder({ folders: ["/s2"] }, "/s"), "a sibling with the same prefix is outside").toBe("/s");
     expect(botWorkFolder({ folders: [] }, "/picked")).toBe("/picked");
     expect(botWorkFolder(null, "/picked")).toBe("/picked");
-    expect(botExtraFolders({ folders: ["/a", "/b", "/c"] }, "/b")).toEqual(["/a", "/c"]);
+    expect(withinFolder("/s", "/s")).toBe(true);
+    expect(withinFolder("/s/", "/s/x")).toBe(true);
+    expect(withinFolder("/s", "/s2/x")).toBe(false);
+    expect(withinFolder("", "/s")).toBe(false);
   });
 
   it("names its folders, connections, other models and powers, and nothing when it has none", () => {
@@ -42,7 +46,7 @@ describe("a bot's turn reads its powers", () => {
     const note = botPowersNote({ model: "m1", folders: ["/a", "/b"], connections: ["gmail", "slack"], models: ["m1", "m2"], skills: ["pdf"] }, "/a");
     expect(note).toBe([
       "Your powers:",
-      "- Folders: you work in /a. You can also read /b.",
+      "- Folder: you work in /a, and nowhere else.",
       "- Connections: gmail, slack. Use these accounts for this work.",
       "- Models: you run on m1; you may also use m2.",
       "- Powers you may load: pdf.",

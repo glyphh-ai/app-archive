@@ -10,12 +10,12 @@ import { ipcMain, nativeImage } from "electron";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getClient } from "./glyphh-client";
-import { getWorkingDirectory } from "./working-directory.js";
 import { avatarImagePrompt } from "../shared/avatar-style.js";
 import { figureTooSmall, keyOutGreen, mascotFit, placeFigure } from "../shared/avatar-cutout.js";
 import { guardAvatarAsk, guardAvatarImage } from "./avatar-guard.js";
 import { gatewayCreds } from "./gateway-token.js";
 import { POWERS, modelsForPower, pickPowerModel, powerById, safeSaveName, type CatalogModelLike, type PowerDef, type PowerId } from "../shared/powers.js";
+import { turnPath } from "./turn-folder.js";
 
 export interface PowerOffer { id: PowerId; name: string; blurb: string; tool: string; models: string[]; avatar: PowerDef["avatar"] }
 
@@ -53,17 +53,13 @@ export async function runPower(id: PowerId, input: PowerRunInput): Promise<Power
   const out: PowerRunResult = { power: id, model, assetId: job.assetId, url, usd: job.usdCharged };
   const name = safeSaveName(input.saveAs);
   if (name && url) {
-    const root = String(input.folder || getWorkingDirectory() || "").trim();
-    if (root) {
-      const dest = path.resolve(root, name);
-      if (dest.startsWith(path.resolve(root) + path.sep)) {
-        const res = await fetch(url);
-        if (res.ok) {
-          mkdirSync(path.dirname(dest), { recursive: true });
-          writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
-          out.saved = dest;
-        }
-      }
+    // Saved inside the turn's folder only (turn-folder.ts): `folder` is a place IN it.
+    const dest = await turnPath(path.join(String(input.folder || "."), name));
+    const res = await fetch(url);
+    if (res.ok) {
+      mkdirSync(path.dirname(dest), { recursive: true });
+      writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+      out.saved = dest;
     }
   }
   return out;

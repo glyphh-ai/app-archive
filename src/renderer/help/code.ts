@@ -6834,8 +6834,14 @@ async function runTeamTurn(req: { id: string; team: string; member: string; name
     };
     document.addEventListener("glyphh-agent:turn-finished", on);
   });
+  // THE LEAD'S FOLDER IS THE PERIMETER (his rule, 2026-10-09: the session is bound
+  // to its folder and nothing gets out): the member works in the team thread's
+  // folder, under the team thread's permission mode — never auto by default.
+  const folder = threadFolder(team);
+  if (!folder) { liveRuns.delete(memberId); teamRuns.delete(req.id); card.status = "failed"; card.endedAt = Date.now(); void saveStore(); renderThread(); reply({ ok: false, text: "", error: "this conversation has no folder; pick one before handing work off" }); return; }
+  member.workdir = folder;
   try {
-    await window.glyphh.glyphhRun({ chatId: memberId, mode: SESSION_MODE, permission: "auto" });
+    await window.glyphh.glyphhRun({ chatId: memberId, mode: SESSION_MODE, workdir: folder, permission: team.permission ?? defaultMode });
   } catch (err) {
     liveRuns.delete(memberId);
     card.status = "failed";

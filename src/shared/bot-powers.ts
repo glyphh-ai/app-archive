@@ -28,27 +28,26 @@ export interface BotPowersLike {
 const list = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
 
-/** The folder a bot's turn runs in: the picked one when it is the bot's, else the bot's first, else the picked one. */
-export function botWorkFolder(bot: BotPowersLike | null, picked: string): string {
-  const folders = list(bot?.folders);
-  const p = String(picked ?? "").trim();
-  if (!folders.length) return p;
-  return folders.includes(p) ? p : folders[0]!;
+/** `p` is `root` or inside it, by path segments (callers pass real paths). */
+export function withinFolder(root: string, p: string): boolean {
+  const r = root.replace(/\/+$/, "");
+  return !!r && (p === r || p.startsWith(`${r}/`));
 }
 
-/** The bot's other folders: everything but the one it works in. */
-export function botExtraFolders(bot: BotPowersLike | null, workdir: string): string[] {
-  return list(bot?.folders).filter((f) => f !== workdir);
+/** THE SESSION'S FOLDER IS THE PERIMETER (his rule, 2026-10-09): a bot's grant can
+ *  only NARROW it. The bot works in its first folder inside the session's
+ *  folder, else in the session's folder; with no session folder, nowhere. */
+export function botWorkFolder(bot: BotPowersLike | null, picked: string): string {
+  const p = String(picked ?? "").trim();
+  if (!p) return "";
+  return list(bot?.folders).find((f) => withinFolder(p, f)) ?? p;
 }
 
 /** The lines that tell the bot what it has. Empty when it has nothing to name. */
 export function botPowersNote(bot: BotPowersLike | null, workdir: string): string {
   if (!bot) return "";
   const lines: string[] = [];
-  const extra = botExtraFolders(bot, workdir);
-  if (list(bot.folders).length) {
-    lines.push(`- Folders: you work in ${workdir}.${extra.length ? ` You can also read ${extra.join(", ")}.` : ""}`);
-  }
+  if (list(bot.folders).length) lines.push(`- Folder: you work in ${workdir}, and nowhere else.`);
   const conns = list(bot.connections);
   if (conns.length) lines.push(`- Connections: ${conns.join(", ")}. Use these accounts for this work.`);
   const main = String(bot.model ?? "").trim();
