@@ -25,6 +25,7 @@ import { openPowersModal } from "./powers-modal.js";
 import { mountPowerMap, type MapGroup, type PowerMapModel } from "./power-map.js";
 import { cronToWords } from "./schedules.js";
 import { createGlyphhSpinner } from "../glyphh-spinner.js";
+import { NOTHING, glyphhPatch, glyphhView, withheldFor, type Everything, type Withheld } from "./glyphh-holds.js";
 
 export interface BotVoice { model: string; voiceId: string; name?: string }
 export interface BotRow {
@@ -36,6 +37,8 @@ export interface BotRow {
   folders?: string[]; connections?: string[]; models?: string[]; skills?: string[];
   /** The other super powers it holds (2026-10-09). */
   superPowers?: string[];
+  /** Glyphh's record only: what it was denied. */
+  withheld?: Withheld;
   /** Where its map's cards sit (2026-10-09); absent = the automatic layout. */
   mapLayout?: Record<string, { x: number; y: number }>;
 }
@@ -62,6 +65,8 @@ interface Api extends PlusApi {
   modelsCatalog?: () => Promise<{ ok: boolean; data: unknown[]; error?: string }>;
   /** A power that runs on its own: its schedule and slots (task-runner.ts getTaskSpec). */
   taskSpec?: (slug: string) => Promise<Envelope>;
+  /** The folders granted under Settings → System (Glyphh's perimeter). */
+  remoteControlGet?: () => Promise<{ folders?: string[] }>;
 }
 export interface BotPageHandle { back(): boolean; destroy(): void }
 export type PowerKind = "folders" | "connections" | "models" | "skills" | "superPowers";
@@ -195,6 +200,22 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   };
   let skills: Array<{ id: string; name: string; type?: string }> = [];
   let picked: BotAvatar = { variant: DEFAULT_VARIANT, color: AVATAR_COLORS[0]! };
+  /** Glyphh wears the mascot until the member picks a face for it. */
+  let faceSet = !isGlyphh;
+  /** Glyphh's page: everything the member has, and what was taken away. */
+  let all: Everything = NOTHING;
+  let withheld: Withheld = {};
+  let catalogNames: string[] = [];
+  const readEverything = async (): Promise<Everything> => {
+    const rc = await api().remoteControlGet?.().catch(() => null);
+    return {
+      folders: Array.isArray(rc?.folders) ? rc!.folders!.map(String) : [],
+      connections: conns.filter((c) => c.on).map((c) => c.slug),
+      models: catalogNames.length ? catalogNames : models.map((m) => m.id),
+      skills: skills.map((k) => k.id),
+      superPowers: roster.map((r) => r.slug).filter((x) => x !== "glyphh"),
+    };
+  };
   let destroyed = false;
   let modal: HTMLElement | null = null;
 
@@ -351,9 +372,9 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** THE AVATAR, LEFT OF THE NAME, AS A DROPDOWN (his order, 2026-10-09):
    *  the sixteen faces, the picture it wears if one was made, + Add new. */
   function paintFaceBtn(): void {
-    // Glyphh wears its own mark, always (his order, 2026-10-09: "a fixed… face").
-    if (isGlyphh) { faceBtn.innerHTML = `<span class="botp-face-mark"><img src="brand/glyphh-mark.png" alt="" width="40" height="40" draggable="false" /></span>`; return; }
-    faceBtn.innerHTML = `<span class="botp-face-mark">${botAvatarSvg(picked, "idle", { size: 40 })}</span><span class="botp-face-caret">${CARET_SVG}</span>`;
+    // Glyphh wears the mascot until a face is picked for it (his order, 2026-10-09).
+    const face = faceSet ? botAvatarSvg(picked, "idle", { size: 40 }) : `<img src="brand/glyphh-mark.png" alt="" width="40" height="40" draggable="false" />`;
+    faceBtn.innerHTML = `<span class="botp-face-mark">${face}</span><span class="botp-face-caret">${CARET_SVG}</span>`;
   }
   let faceMenu: HTMLElement | null = null;
   function closeFaceMenu(): void {
@@ -372,7 +393,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     const m = el("div", "botp-face-menu");
     m.setAttribute("role", "menu");
     const grid = el("div", "agents2-faces botp-face-grid");
-    const pick = (a: BotAvatar): void => { picked = a; paintFaceBtn(); paintHead(); closeFaceMenu(); };
+    const pick = (a: BotAvatar): void => { picked = a; faceSet = true; paintFaceBtn(); paintHead(); paintMap(); closeFaceMenu(); };
     // The picture it wears (made with + Add new), first.
     const pictures = [picked.image, bot?.avatar?.image].filter((x, i, all): x is string => !!x && all.indexOf(x) === i);
     for (const image of pictures) {
@@ -402,13 +423,12 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     faceBtn.setAttribute("aria-expanded", "true");
     setTimeout(() => { document.addEventListener("mousedown", onFaceAway, true); document.addEventListener("keydown", onFaceKey, true); }, 0);
   }
-  faceBtn.addEventListener("click", () => { if (!isGlyphh) openFaceMenu(); });
-  // GLYPHH'S PAGE (his order, 2026-10-09): no Delete, a fixed face, a free name.
+  faceBtn.addEventListener("click", () => openFaceMenu());
+  // GLYPHH'S PAGE (his order, 2026-10-09): no Delete, a free name, and a face
+  // the member may pick (the mascot until then).
   if (isGlyphh) {
     // Hidden, not removed: the page wires every control by its selector.
     q<HTMLElement>(".botp-delete").hidden = true;
-    faceBtn.disabled = true;
-    faceBtn.title = "Glyphh";
   }
 
   // ── THE VOICE, its own dropdown on the identity row (his order, 2026-10-09:
@@ -670,6 +690,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     descIn.value = bot.description ?? "";
     briefIn.value = bot.prompt ?? "";
     picked = avatarOf({ slug: bot.slug, avatar: bot.avatar });
+    faceSet = !isGlyphh || !!bot.avatar;
     paintFaceBtn();
     paintHead();
     persIn.value = String(bot.personality ?? 3);
@@ -687,7 +708,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   async function save(): Promise<void> {
     if (!bot) return;
     const input = {
-      name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: picked,
+      name: nameIn.value.trim(), description: descIn.value.trim(), prompt: briefIn.value.trim(), avatar: faceSet ? picked : null,
       personality: Number(persIn.value), directness: Number(directIn.value), temperament: Number(tempIn.value), voice: pickedVoice,
       // Untouched and never set, the effort stays the chat's own dial.
       ...(effortTouched || bot.effort ? { effort: EFFORTS[Number(effortIn.value) - 1] } : {}),
@@ -759,7 +780,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   const SEARCH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
   const CHEVRON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
   const EMPTY_TEXT: Record<PowerKind, string> = {
-    folders: "No folders yet.",
+    folders: isGlyphh ? "No folders granted. Grant them under Settings → System." : "No folders yet.",
     connections: "No connections yet.",
     models: "No models yet. It runs on the main agent's.",
     skills: "None yet.",
@@ -792,7 +813,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** What one section lists for the bot as saved. */
   function itemsOf(kind: PowerKind): PowerItem[] {
     if (!bot) return [];
-    if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 ? { tag: "Works here" } : {}) }));
+    if (kind === "folders") return powersOf(bot, "folders").map((f, i) => ({ icon: PLUS_ICONS.folder, name: baseName(f), sub: f, stored: f, ...(i === 0 && !isGlyphh ? { tag: "Works here" } : {}) }));
     if (kind === "superPowers") return powersOf(bot, "superPowers").map((slug) => {
       const r = roster.find((x) => x.slug === slug);
       return { icon: botAvatarSvg(avatarOf({ slug, avatar: r?.avatar ?? null }), "idle", { size: 24 }), name: r?.name ?? slug, sub: r ? "Hands work to it" : "Gone", stored: slug };
@@ -931,7 +952,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       })),
     });
     const model: PowerMapModel = {
-      center: { name: nameIn.value.trim() || bot.name, face: isGlyphh ? `<img src="brand/glyphh-mark.png" alt="" width="84" height="84" draggable="false" />` : botAvatarSvg(picked, "idle", { size: 84 }) },
+      center: { name: nameIn.value.trim() || bot.name, face: faceSet ? botAvatarSvg(picked, "idle", { size: 84 }) : `<img src="brand/glyphh-mark.png" alt="" width="84" height="84" draggable="false" />` },
       groups: [group("connections", "Connections"), group("folders", "Folders"), group("superPowers", "Super powers"), group("skills", "Powers"), group("models", "Models")],
     };
     map.update(model, bot.mapLayout ?? {});
@@ -940,6 +961,7 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
   /** Remove one power from the list, saved at once. */
   async function setPower(kind: PowerKind, name: string, on: boolean): Promise<void> {
     if (!bot) return;
+    if (isGlyphh) { await saveGlyphhHolds({ ...heldOf(bot), [kind]: on ? [...powersOf(bot, kind), name] : powersOf(bot, kind).filter((x) => x !== name) }); return; }
     const chat = new Set(models.map((m) => m.id));
     const patch = powerPatch(bot, kind, name, on, (n) => chat.has(n));
     const r = await api().libraryAgentUpdate?.(bot.slug, patch).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
@@ -947,6 +969,23 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     showErr(sideErr, "");
     bot = { ...bot, ...(patch as Partial<BotRow>) };
     paintPowers();
+  }
+
+  /** What Glyphh's page shows it holding, by kind. */
+  function heldOf(b: BotRow): Record<PowerKind, string[]> {
+    return { folders: powersOf(b, "folders"), connections: powersOf(b, "connections"), models: modelList(b), skills: powersOf(b, "skills"), superPowers: powersOf(b, "superPowers") };
+  }
+  /** Glyphh's record keeps only what is withheld from everything. */
+  async function saveGlyphhHolds(held: Partial<Record<PowerKind, readonly string[]>>): Promise<{ ok: boolean; error?: string }> {
+    if (!bot) return { ok: false, error: "Glyphh's record is gone." };
+    const next = withheldFor(all, held);
+    const r = await api().libraryAgentUpdate?.(bot.slug, glyphhPatch(next)).catch((e: unknown): Envelope => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    if (!r?.ok) { showErr(sideErr, r?.error || "The power could not be saved."); return { ok: false, error: r?.error || "The powers could not be saved." }; }
+    showErr(sideErr, "");
+    withheld = next;
+    bot = glyphhView(bot, all, withheld);
+    paintPowers();
+    return { ok: true };
   }
 
   // ── + ADD A POWER: the one powers modal (help/powers-modal.ts), picking for
@@ -961,6 +1000,15 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       self: b.slug,
       onSave: async (picked) => {
         if (!bot) return { ok: false, error: "This super power is gone." };
+        if (isGlyphh) {
+          // A connection made inside the modal is part of everything now.
+          conns = await readConnectorRows(api()).catch(() => conns);
+          all = await readEverything();
+          // Glyphh's folders are the perimeter set under Settings → System.
+          const outside = picked.folders.filter((f) => !all.folders.includes(f));
+          if (outside.length) return { ok: false, error: `Grant ${outside.map(baseName).join(", ")} under Settings → System first: Glyphh's folders are the ones granted there.` };
+          return saveGlyphhHolds(picked);
+        }
         const patch: Record<string, unknown> = {};
         for (const k of ["folders", "connections", "skills", "superPowers"] as const) {
           if (JSON.stringify(picked[k]) !== JSON.stringify(powersOf(bot, k))) patch[k] = picked[k];
@@ -995,8 +1043,10 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
       api().skillsList?.(["skill", "task"]).catch(() => null),
       api().modelsCatalog?.().catch(() => null),
     ]);
-    for (const m of (cat?.ok && Array.isArray(cat.data) ? cat.data : []) as Array<{ name?: string; iconUrl?: string | null }>) {
+    for (const m of (cat?.ok && Array.isArray(cat.data) ? cat.data : []) as Array<{ name?: string; iconUrl?: string | null; modality?: string; active?: boolean }>) {
       if (m && typeof m.name === "string" && m.iconUrl) modelIcons.set(m.name, m.iconUrl);
+      // Every model the member may use (Ada is never a model for turns).
+      if (m && typeof m.name === "string" && m.modality !== "ada" && m.active !== false && !catalogNames.includes(m.name)) catalogNames.push(m.name);
     }
     if (destroyed) return;
     // Glyphh's record is made the first time its page opens.
@@ -1012,6 +1062,11 @@ export function mountBotPage(host: HTMLElement, opts: { slug: string; onClose: (
     conns = cs;
     skills = sk?.ok && Array.isArray(sk.data) ? (sk.data as Array<{ id: string; name: string; type?: string }>) : [];
     roster = await readRoster();
+    if (isGlyphh) {
+      all = await readEverything();
+      withheld = bot.withheld ?? {};
+      bot = glyphhView(bot, all, withheld);
+    }
     fillForm();
     paintPowers();
     doneLoading();

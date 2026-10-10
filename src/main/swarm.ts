@@ -28,6 +28,7 @@ import { ipcMain } from "electron";
 import { currentTurnChat, loopSenderOf } from "./glyphh-loop.js";
 import { storedChat } from "./agent-ipc.js";
 import { glyphhRow, listAgents } from "./local-agents.js";
+import { glyphhHolds } from "../shared/member-library.js";
 
 export interface HandOffResult { ok: boolean; text: string; error?: string }
 
@@ -75,10 +76,11 @@ const busy = new Map<string, Promise<HandOffResult>>();
 const HANDOFF_LIMIT_MS = 20 * 60 * 1000;
 let seq = 0;
 
-/** Who Glyphh may hand work to in this team: its members, then what Glyphh holds (or anyone, holding none). */
+/** Who Glyphh may hand work to in this team: its members, then what Glyphh
+ *  holds — every super power but the ones withheld (2026-10-09); null = all. */
 export function teamReach(members: readonly string[], glyphhHolds: readonly string[] | null, roster: readonly string[]): { allowed: Set<string>; joins: Set<string> } {
   const allowed = new Set(members);
-  const extra = glyphhHolds && glyphhHolds.length ? glyphhHolds : roster;
+  const extra = glyphhHolds ?? roster;
   const joins = new Set<string>();
   for (const s of extra) if (roster.includes(s) && !allowed.has(s)) { allowed.add(s); joins.add(s); }
   return { allowed, joins };
@@ -103,7 +105,7 @@ export async function handOff(input: { member?: unknown; task?: unknown; taskId?
   const holder = at.as === "glyphh" ? null : roster.find((a) => a.slug === at.as) ?? null;
   const { allowed, joins } = holder
     ? teamReach([], holder.superPowers ?? [], roster.map((a) => a.slug).filter((s) => s !== holder.slug))
-    : teamReach(members, glyphhRow()?.superPowers ?? null, roster.map((a) => a.slug));
+    : teamReach(members, glyphhHolds(roster.map((a) => a.slug), glyphhRow()?.withheld, "superPowers"), roster.map((a) => a.slug));
   if (holder && !(holder.superPowers ?? []).length) return { ok: false, text: "", error: `${holder.name} holds no super powers to hand work to — do it yourself, or tell the lead` };
   if (!allowed.has(hit.slug)) return { ok: false, text: "", error: holder ? `${holder.name} doesn't hold ${hit.name}` : `${hit.name} isn't on this team, and Glyphh doesn't hold it` };
   const taskId = String(input.taskId ?? "").trim() || null;

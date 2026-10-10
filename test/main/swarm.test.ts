@@ -20,10 +20,13 @@ describe("who Glyphh may hand work to", () => {
     expect([...r.allowed].sort()).toEqual(["ui-builder", "video"]);
     expect([...r.joins]).toEqual(["video"]);
   });
-  it("holding none, any super power may be brought in", () => {
-    const r = teamReach([], [], ROSTER);
+  it("nothing withheld, any super power may be brought in", () => {
+    const r = teamReach([], null, ROSTER);
     expect([...r.allowed].sort()).toEqual(ROSTER);
     expect([...r.joins].sort()).toEqual(ROSTER);
+  });
+  it("every one withheld, only the members", () => {
+    expect([...teamReach(["writer"], [], ROSTER).allowed]).toEqual(["writer"]);
   });
   it("a held slug that is no super power is ignored", () => {
     expect([...teamReach([], ["ghost"], ROSTER).allowed]).toEqual([]);

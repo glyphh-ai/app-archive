@@ -33,7 +33,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, checkSuperPowers, GLYPHH_AGENT, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, checkSuperPowers, GLYPHH_AGENT, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentWithheld, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -67,6 +67,8 @@ export interface AgentRow {
   models?: string[];
   /** The super powers it holds and may hand work to (2026-10-09). */
   superPowers?: string[];
+  /** What Glyphh was denied (Glyphh's record only; shared/member-library.ts). */
+  withheld?: AgentWithheld;
   /** Where its map's cards sit (2026-10-09). */
   mapLayout?: Record<string, { x: number; y: number }>;
   /** Directness 1 gentle … 5 blunt; temperament 1 kind … 5 spicy (2026-10-09). */
@@ -157,6 +159,7 @@ interface AgentInput {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
+  withheld?: AgentWithheld | null;
   mapLayout?: Record<string, { x: number; y: number }> | null;
   personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;

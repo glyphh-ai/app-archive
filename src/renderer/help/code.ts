@@ -6111,12 +6111,7 @@ function sessMarkEl(sess: RailSession): HTMLSpanElement {
     mark.title = "Bot";
     return mark;
   }
-  {
-    const img = document.createElement("img");
-    img.src = GLYPHH_MASCOT_SRC;
-    img.alt = "";
-    mark.appendChild(img);
-  }
+  mark.innerHTML = glyphhFace(18);
   mark.title = "Glyphh";
   return mark;
 }
@@ -6180,6 +6175,14 @@ function missingConnections(b: { connections: string[] }): string[] {
   return railConnected ? b.connections.filter((c) => !railConnected!.has(c)) : [];
 }
 
+/** Glyphh's own face, picked on its page; null = the mascot. */
+let glyphhAvatar: { variant: number; color: string; image?: string } | null = null;
+function glyphhFace(size: number): string {
+  return glyphhAvatar
+    ? botAvatarSvg(avatarOf({ slug: "glyphh", avatar: glyphhAvatar }), "idle", { size })
+    : `<img src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
+}
+
 /** Each super power's own voice, by slug (voice-mic.ts setSpeakerVoice reads it). */
 const railBotVoices = new Map<string, { model: string; voiceId: string }>();
 
@@ -6203,9 +6206,15 @@ async function primeBotAvatars(): Promise<boolean> {
   rosterKnown = true;
   // GLYPHH'S OWN RECORD (2026-10-09): its name on the rail, its voice on its threads.
   void (window.glyphh as unknown as { libraryAgentGet?: (ref: string) => Promise<{ ok: boolean; data?: unknown }> }).libraryAgentGet?.("glyphh").then((r) => {
-    const g = r?.ok ? r.data as { name?: string; voice?: { model?: string; voiceId?: string } | null } : null;
+    const g = r?.ok ? r.data as { name?: string; avatar?: { variant: number; color: string; image?: string } | null; voice?: { model?: string; voiceId?: string } | null } : null;
     const nameEl = document.getElementById("rail-glyphh-name");
     if (nameEl) nameEl.textContent = (g?.name || "Glyphh").trim() || "Glyphh";
+    // GLYPHH'S FACE (his order, 2026-10-09): the one picked on its page, else the mascot.
+    const before = JSON.stringify(glyphhAvatar);
+    glyphhAvatar = g?.avatar ?? null;
+    const markEl = document.querySelector("#rail-glyphh .rail-glyphh-mark");
+    if (markEl) markEl.outerHTML = glyphhAvatar ? `<span class="rail-glyphh-mark">${glyphhFace(52)}</span>` : `<img class="rail-glyphh-mark" src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
+    if (JSON.stringify(glyphhAvatar) !== before) renderRailSessions();
     if (g?.voice?.model && g.voice.voiceId) railBotVoices.set("glyphh", { model: g.voice.model, voiceId: g.voice.voiceId });
     else railBotVoices.delete("glyphh");
   }).catch(() => { /* the rail keeps "Glyphh" */ });
@@ -6816,7 +6825,7 @@ function teamName(slug: string): string {
 }
 /** A face for the board: a super power's cat, or Glyphh's mark. */
 function teamFace(slug: string): string {
-  if (slug === "glyphh") return `<img src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
+  if (slug === "glyphh") return glyphhFace(20);
   return botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 20 });
 }
 /** Who may own a task on this team: Glyphh and its members. */
@@ -7114,10 +7123,9 @@ function openSuperPowerFilterMenu(anchor: HTMLElement, shown: Set<string>, chang
     });
     m.appendChild(b);
   };
-  const glyphh = document.createElement("img");
+  const glyphh = document.createElement("span");
   glyphh.className = "loop-mark sp-filter-face";
-  glyphh.src = GLYPHH_MASCOT_SRC;
-  glyphh.alt = "";
+  glyphh.innerHTML = glyphhFace(18);
   row("glyphh", "Glyphh", glyphh);
   for (const b of railBots) {
     const face = document.createElement("span");

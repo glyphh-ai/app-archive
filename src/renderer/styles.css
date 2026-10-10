@@ -22899,3 +22899,6 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .team-mark-face { width: 16px; height: 16px; display: inline-flex; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--surface); }
 .team-mark-face + .team-mark-face { margin-left: -6px; }
 .team-mark-face svg { width: 16px; height: 16px; }
+/* Glyphh's picked face on the rail (2026-10-09): the cat in the mascot's box. */
+.rail-glyphh-row span.rail-glyphh-mark { display: inline-flex; align-items: center; justify-content: center; }
+.rail-glyphh-row span.rail-glyphh-mark .bot-cat { width: 52px; height: 52px; }

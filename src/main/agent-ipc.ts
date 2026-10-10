@@ -327,9 +327,11 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   // super powers. Its folder stays the thread's own (a thread's folder is its
   // sandbox); a super power's or a power's thread is unchanged.
   const self = bot ?? (power ? null : glyphhRow());
+  // Glyphh holds everything but what was withheld (2026-10-09), so its brief
+  // names no list of powers; a super power's names the ones it holds.
   // A TEAM THREAD (swarm.ts): Glyphh leads the super powers the member dragged in.
   const team = !bot && !power ? teamNote(storedChat(p.chatId)?.members ?? []) : "";
-  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(self, folder), team].filter(Boolean).join("\n\n");
+  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(bot ?? null, folder), team].filter(Boolean).join("\n\n");
   // The effort slider: a super power's own setting (or Glyphh's) leads its turns.
   const effort = self ? botEffort(self, p.effort) : p.effort;
   const attachments = p.attachments ?? [];

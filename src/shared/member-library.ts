@@ -394,6 +394,11 @@ export interface AgentRowLike {
    *  hold other super powers… agree"): the slugs of the other super powers it
    *  may hand work to — and the only ones. Never itself, never a loop. */
   superPowers?: string[];
+  /** WHAT GLYPHH WAS DENIED (his order, 2026-10-09: Glyphh's record holds
+   *  EVERYTHING — every connection, power, super power and model, and the
+   *  folders granted under Settings → System — until the member takes one
+   *  away). Glyphh's record only; a super power's lists say what it holds. */
+  withheld?: AgentWithheld;
   /** WHERE ITS MAP'S CARDS SIT (his order, 2026-10-09: "drag things around and
    *  have it save"): card key → canvas position. Absent = the automatic layout. */
   mapLayout?: Record<string, { x: number; y: number }>;
@@ -437,10 +442,30 @@ export interface AgentInputLike {
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
   folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
+  withheld?: AgentWithheld | null;
   mapLayout?: Record<string, { x: number; y: number }> | null;
   personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
   modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
+}
+
+/** What Glyphh was denied, by kind (AgentRowLike.withheld). */
+export interface AgentWithheld { folders?: string[]; connections?: string[]; models?: string[]; skills?: string[]; superPowers?: string[] }
+export const WITHHELD_KINDS = ["folders", "connections", "models", "skills", "superPowers"] as const;
+/** Withheld as stored: the five kinds, names cleaned, empty kinds dropped. */
+export function cleanWithheld(v: unknown): AgentWithheld {
+  const out: AgentWithheld = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const k of WITHHELD_KINDS) {
+    const names = cleanNames((v as Record<string, unknown>)[k]);
+    if (names.length) out[k] = names;
+  }
+  return out;
+}
+/** What Glyphh holds of one kind: everything there is, less what was withheld. */
+export function glyphhHolds(everything: readonly string[], withheld: AgentWithheld | null | undefined, kind: keyof AgentWithheld): string[] {
+  const no = new Set(withheld?.[kind] ?? []);
+  return everything.filter((x) => !no.has(x));
 }
 
 /** GLYPHH'S OWN RECORD (his order, 2026-10-09: "give Glyphh a record with no
@@ -561,6 +586,7 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
     mapLayout: input.mapLayout === undefined ? cleanMapLayout(existing?.mapLayout) : cleanMapLayout(input.mapLayout),
     superPowers: (Array.isArray(input.superPowers) ? cleanNames(input.superPowers) : cleanNames(existing?.superPowers)).filter((s) => s !== slug),
+    ...(slug === GLYPHH_AGENT ? { withheld: input.withheld === undefined ? cleanWithheld(existing?.withheld) : cleanWithheld(input.withheld) } : {}),
     ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
     ...optional("directness", input.directness === undefined ? cleanPersonality(existing?.directness) : cleanPersonality(input.directness)),
     ...optional("temperament", input.temperament === undefined ? cleanPersonality(existing?.temperament) : cleanPersonality(input.temperament)),
