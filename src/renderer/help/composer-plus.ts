@@ -20,9 +20,6 @@
  *                              Memory switches `memoryInject` + `memoryCapture`
  *                              — there is no per-session memory flag, so this
  *                              is the same preference the page toggles)
- *   ── desktop only ──
- *   Add folder…                a folder rides the next message (Code); the
- *                              session's own folder is the folder chip's
  *
  * The MODEL (rows per surface + the door calls) is pure, so the unit test
  * runs it bare; mountComposerPlus paints it into the composer's drop-up.
@@ -32,7 +29,7 @@ import { appIconInner } from "./app-icon.js";
 
 export type PlusSurface = "desktop" | "web";
 export type PlusSpace = "code";
-export type PlusRowId = "attach" | "skills" | "connectors" | "models" | "browse" | "memory" | "add-folder";
+export type PlusRowId = "attach" | "skills" | "connectors" | "models" | "browse" | "memory";
 export type PlusRowKind = "action" | "submenu" | "check";
 
 export interface PlusRow {
@@ -43,10 +40,6 @@ export interface PlusRow {
   shortcut?: string;
   /** A check row's state. */
   checked?: boolean;
-  /** A row the web never shows (a native window / the OS filesystem). */
-  desktopOnly?: boolean;
-  /** A row Code alone shows (a folder is a Code idea; Work has no walker). */
-  codeOnly?: boolean;
   /** A separator above this row. */
   sepBefore?: boolean;
   hint?: string;
@@ -82,7 +75,6 @@ export const PLUS_ICONS = {
   connectors: `<svg viewBox="0 0 24 24" ${S}><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`,
   memory: `<svg viewBox="0 0 24 24" ${S}><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg>`,
   folder: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
-  folderPlus: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6M9 14h6"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" ${S}><path d="M12 5v14M5 12h14"/></svg>`,
   models: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>`,
   powers: `<svg viewBox="0 0 24 24" ${S}><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`,
@@ -120,12 +112,6 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.skills) rows.push({ id: "skills", label: POWERS_LABELS.skills, icon: PLUS_ICONS.powers, kind: "action", sepBefore: rows.length > 0 && rows.length === powersFrom, hint: "What you built with Glyphh, and a new one" });
   if (caps.skills || caps.connectors) rows.push({ id: "browse", label: BROWSE_POWERS_LABEL, icon: PLUS_ICONS.chest, kind: "action", hint: "Every power: connections, models, the ones you and your team built" });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
-  // The folder family is the DESKTOP's (the OS pickers), where a session has
-  // a folder to walk.
-  if (st.surface === "desktop") {
-    // The session's own folder is the folder chip's (2026-10-09): only Add folder… stays here.
-    if (caps.attach) rows.push({ id: "add-folder", label: "Add folder…", icon: PLUS_ICONS.folderPlus, kind: "action", desktopOnly: true, codeOnly: true, sepBefore: rows.length > 0, hint: "Give Glyphh read access to another directory" });
-  }
   return rows;
 }
 
@@ -225,7 +211,6 @@ export interface PlusDoors {
   api: PlusApi;
   space: () => PlusSpace;
   attachFiles: () => void;
-  attachFolder: () => void;
   /** Opens a Manage target (navigation.ts on the live renderer). */
   openTarget: (t: ManageTarget) => void;
   /** THE POWERS MODAL on a tab (help/powers-modal.ts). */
@@ -334,12 +319,10 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
       if (r.sepBefore) pane.appendChild(sepEl());
       const b = rowEl({ label: r.label, icon: r.icon, kind: r.kind, checked: r.checked, shortcut: r.shortcut, hint: r.hint });
       b.dataset.plusRow = r.id;
-      if (r.codeOnly) b.classList.add("plus-folder-only");
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         switch (r.id) {
           case "attach": close(); doors.attachFiles(); break;
-          case "add-folder": close(); doors.attachFolder(); break;
           case "skills": close(); doors.openPowers("skills"); break;
           case "connectors": close(); doors.openPowers("connections"); break;
           case "models": close(); doors.openPowers("models"); break;

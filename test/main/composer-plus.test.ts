@@ -30,15 +30,13 @@ describe("the rows, per surface", () => {
     expect(rows.find((r) => r.id === "browse")).toMatchObject({ label: "Browse all powers…", kind: "action" });
     expect(rows.find((r) => r.id === "memory")).toMatchObject({ kind: "check", checked: true });
   });
-  it("desktop: Add folder… only — the session's own folder is the folder chip's (2026-10-09)", () => {
+  it("desktop: no folder rows — the session's folder is the folder chip's (2026-10-09)", () => {
     const rows = plusMenuRows(desktop, st());
-    expect(rows.map((r) => r.id)).toEqual(["attach", "connectors", "models", "skills", "browse", "memory", "add-folder"]);
-    expect(rows.filter((r) => r.desktopOnly).every((r) => r.codeOnly)).toBe(true);
+    expect(rows.map((r) => r.id)).toEqual(["attach", "connectors", "models", "skills", "browse", "memory"]);
   });
   it("the web never lists a native row — no attach picker, no folder rows, even in Code", () => {
     const rows = plusMenuRows(web, st({ surface: "web" }));
     expect(rows.map((r) => r.id)).toEqual(["connectors", "skills", "browse", "memory"]);
-    expect(rows.some((r) => r.desktopOnly)).toBe(false);
     expect(rows[0].sepBefore).toBe(false);
   });
   it("a desktop host read with the web's doors shows the same rows as the web (capability, not surface)", () => {

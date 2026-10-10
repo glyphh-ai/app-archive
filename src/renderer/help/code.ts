@@ -4424,7 +4424,6 @@ function wireComposerAttachments(): void {
       attachFiles: () => { void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); }); },
       // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea
       // (Work has no tool to walk one with; the row is Code-only).
-      attachFolder: () => { void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); }); },
       openTarget: toTarget,
       // EVERY POWER OPENS IN THE ONE MODAL (his order, 2026-10-09: "the + at the
       // bottom of the page by the agent input launches every power add etc.
