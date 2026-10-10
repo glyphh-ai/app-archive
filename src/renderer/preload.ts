@@ -494,6 +494,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   attachDeviceAllow: (device: string) => ipcRenderer.invoke("attach-devices:allow", device) as Promise<{ allowed: boolean }>,
   // The folder picker's machines (main/remote-control.ts): Glyphh machines, and another desktop's folders.
   machinesList: () => ipcRenderer.invoke("machines:list") as Promise<{ machines: Array<Record<string, unknown>> }>,
+  attachFsMkdir: (parent: string, name: string, machineId: string) => ipcRenderer.invoke("attach-fs:mkdir", parent, name, machineId) as Promise<{ path?: string }>,
   attachFsList: (path: string | undefined, machineId: string) => ipcRenderer.invoke("attach-fs:list", path, machineId) as Promise<{ path: string; parent: string | null; root?: string; entries: Array<{ name: string; path: string; dir: boolean; git?: boolean }> }>,
   onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
     const h = (_e: unknown, v: RemoteControlView) => cb(v);

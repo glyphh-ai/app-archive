@@ -385,3 +385,14 @@ export function machinePicker(input: {
   }
   return picker;
 }
+
+/** A named folder on the Glyphh machine is a workspace of its own, keyed
+ *  `f-<name>` (a run's thread id: letters, digits, - and _, up to 64). */
+export function namedFolderId(name: string): string {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return slug ? `f-${slug}` : "";
+}
+/** The name of a named folder's workspace, or "" for a session's own. */
+export function namedFolderOf(id: string): string {
+  return id.startsWith("f-") ? id.slice(2) : "";
+}

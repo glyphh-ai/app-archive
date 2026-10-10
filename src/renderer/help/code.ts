@@ -17,7 +17,7 @@ import {
   LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
   recentsKeeps, sessionLocked, sourceLocus, defaultLocus,
   type Locus, type RecentsFilter, type RecentsRowLike, newSessionSource,
-  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank,
+  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank, onOtherDesktop,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
@@ -56,7 +56,7 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
-import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, openNewFolder, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
@@ -3893,14 +3893,13 @@ function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
   const cloud = activeSource().kind !== "local";
-  // A CLOUD source browses the POD workspace with the folder chip (his ask,
-  // 2026-08-20) — only the + (a machine mkdir) has nothing to do there.
-  const FOLDER_CHIPS = new Set(["dash-wd-add", "code-workdir-add"]);
+  // THE + IS UNIVERSAL (his order, 2026-10-09): it makes a folder on every
+  // machine, so no source hides it (a started session does, below).
   for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
     el2.classList.remove("chip-disabled");
-    el2.classList.toggle("hidden", cloud && FOLDER_CHIPS.has(id));
+    el2.classList.remove("hidden");
     el2.setAttribute("title", title);
   }
   // The source is changeable ONLY on a NEW (unborn) session. Once a session is
@@ -3983,7 +3982,9 @@ function paintSourceDependents(): void {
     }
     if (src.kind !== "local") {
       const dir = (src as { dir?: string }).dir || "";
-      const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir) : "workspace";
+      // A Glyphh machine folder by its name; a fresh one until the first send names it.
+      const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir)
+        : src.kind === "cloud-space" ? (src.label || "folder") : "New folder";
       for (const id of ["dash-wd-name", "code-workdir-name"]) {
         const nameEl = document.getElementById(id);
         if (nameEl) nameEl.textContent = leaf;
@@ -4067,22 +4068,23 @@ function initFolderLocusChips(): void {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (bornLocus()) return;   // the title says why
-      openFolderPicker(chip, {
-        getSource: activeSource,
-        onPick: pickSource,
-        cloudScope: cloudBrowseScope(),
-        onPickCloudDir: (rel: string) => setCloudDir(rel),
-        recentFolders: recentDesktopFolders,
-      });
+      openFolderPicker(chip, { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders });
     }, true);
   }
-  if (!onWebTarget()) return;
+  // THE + MAKES A FOLDER ON THE SESSION'S MACHINE (his order, 2026-10-09):
+  // on this desktop it is the OS file chooser (the workbench's own handler);
+  // on another desktop or the Glyphh machine a modal asks the folder's name.
   for (const id of ["dash-wd-add", "code-workdir-add"]) {
     const chip = document.getElementById(id);
     chip?.addEventListener("click", (e) => {
+      if (bornLocus()) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      const src = activeSource();
+      const here = src.kind === "local" && !onOtherDesktop(src);
+      if (here && !onWebTarget()) return;   // the file chooser runs
       e.preventDefault();
       e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
-      openNewFolderDrop(chip, { getSource: activeSource, onPick: pickSource });
+      if (here) openNewFolderDrop(chip, { getSource: activeSource, onPick: pickSource });   // the web's own desktop, over the relay
+      else openNewFolder({ getSource: activeSource, onPick: pickSource });
     }, true);
   }
 }

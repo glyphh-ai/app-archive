@@ -282,6 +282,7 @@ export function registerRemoteControlIpc(): void {
   // machines, and the folders inside another desktop's grants over the relay.
   ipcMain.handle("machines:list", () => listGlyphhMachines());
   ipcMain.handle("attach-fs:list", (_e, path: string | undefined, machineId: string) => listAttachedFolder(path, machineId));
+  ipcMain.handle("attach-fs:mkdir", (_e, parent: string, name: string, machineId: string) => makeAttachedFolder(parent, name, machineId));
 }
 
 /** The member's Glyphh machines (GET /api/machines); none when the server has no such route. */
@@ -293,6 +294,13 @@ export async function listGlyphhMachines(): Promise<{ machines: Array<Record<str
     if (notFound(err)) return { machines: [] };
     throw err;
   }
+}
+
+/** A new folder on another attached desktop: that machine makes it, inside its own grants (fs.mkdir refuses outside them). */
+export async function makeAttachedFolder(parent: string, name: string, machineId: string): Promise<unknown> {
+  const id = String(machineId || "").trim();
+  if (!id) throw new Error("a machine id is required");
+  return getClient().attach.dispatch("fs.mkdir", { path: String(parent || ""), name: String(name || "") }, { machineId: id });
 }
 
 /** One folder on another attached desktop: that machine answers, inside its own grants. */

@@ -4,7 +4,7 @@
  * grants, then the Glyphh machine. A born session is bound to its machine.
  */
 import { describe, expect, it } from "vitest";
-import { machineOfSource, machinePicker, onOtherDesktop } from "../../src/renderer/help/session-locus";
+import { machineOfSource, machinePicker, namedFolderId, namedFolderOf, onOtherDesktop } from "../../src/renderer/help/session-locus";
 
 const desktops = [
   { id: "sock-self", name: "chris-mbp", folders: ["/Users/chris/code"] },
@@ -47,5 +47,16 @@ describe("the machines", () => {
     expect(onOtherDesktop({ kind: "local", machineId: "local" })).toBe(false);
     expect(onOtherDesktop({ kind: "local", machineId: "sock-b" })).toBe(true);
     expect(onOtherDesktop({ kind: "cloud-new", machineId: "sock-b" })).toBe(false);
+  });
+});
+
+describe("a named folder on the Glyphh machine", () => {
+  it("is a workspace of its own, keyed by its name within a run's thread-id rules", () => {
+    expect(namedFolderId("Acme Site")).toBe("f-acme-site");
+    expect(namedFolderId("  ")).toBe("");
+    expect(namedFolderId("x".repeat(100))).toMatch(/^f-x{60}$/);
+    expect(namedFolderId("Q3 report!")).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    expect(namedFolderOf("f-acme-site")).toBe("acme-site");
+    expect(namedFolderOf("c1k2j3")).toBe("");
   });
 });
