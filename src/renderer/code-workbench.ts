@@ -3083,9 +3083,9 @@ async function init(): Promise<void> {
         hush();
       });
     }
-    /** ONE DRAG OF A CARD, whatever starts it: a press on its grip or its
-     *  title (wireCardDrag), the in-document agent's row, or an agent panel's
-     *  row relayed from its webview. `move` takes this document's client
+    /** ONE DRAG OF THE AGENT'S CARD: the in-document agent's row, or an
+     *  agent panel's row relayed from its webview (every other card drags by
+     *  its name or grip, openShell's mousedown). `move` takes this document's client
      *  point; `end` always lands the card and clears every drag state. */
     interface CardDrag { move: (cx: number, cy: number) => void; end: () => void }
     let liveDrag: CardDrag | null = null;
@@ -3242,32 +3242,6 @@ async function init(): Promise<void> {
     // a release anywhere in this document with no drag live clears the shield.
     window.addEventListener("blur", () => liveDrag?.end());
     document.addEventListener("pointerup", () => { if (!liveDrag) document.body.classList.remove("echo-drag"); }, true);
-    /** A press on a card's grip or title starts its drag. The press is the
-     *  name's old, proven mechanics (his report, 2026-10-10: "it was working
-     *  by clicking on the name"): mousedown with preventDefault (no text
-     *  selection or native drag steals the gesture) and the moves read off
-     *  the DOCUMENT, with the webviews shielded (body.echo-drag) so none
-     *  swallows them. Pointer capture on the handle never held in the app. */
-    const wireCardDrag = (e: TileEntry, card: HTMLElement, handles: Array<HTMLElement | null>): void => {
-      for (const h of handles) {
-        if (!h) continue;
-        h.addEventListener("mousedown", (ev) => {
-          if (ev.button !== 0) return;
-          if ((ev.target as HTMLElement).closest("button, input, .ws-app-chrome")) return;
-          const d = beginCardDrag(e, card, ev.clientX, ev.clientY, true);
-          if (!d) return;
-          ev.preventDefault();
-          const mv = (m: MouseEvent): void => d.move(m.clientX, m.clientY);
-          const up = (): void => {
-            document.removeEventListener("mousemove", mv);
-            document.removeEventListener("mouseup", up);
-            d.end();
-          };
-          document.addEventListener("mousemove", mv);
-          document.addEventListener("mouseup", up);
-        });
-      }
-    };
     const setRect = (el: HTMLElement, r: { left: number; top: number; width: number; height: number }): void => {
       el.style.left = `${Math.round(r.left)}px`;
       el.style.top = `${Math.round(r.top)}px`;
@@ -4025,9 +3999,6 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")?.addEventListener("click", () => { closeCard(e); persistOpenWorkspace(); });
-      // THE GRABBER (his report, 2026-10-09: "we lost the grabber at the top of
-      // all work panel pages"): the grip at the top centre, and the title.
-      wireCardDrag(e, card, [card.querySelector<HTMLElement>(".echo-card-grip"), card.querySelector<HTMLElement>(".echo-card-head")]);
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();   // the slot menu would close the ECHO PANEL
@@ -4064,6 +4035,72 @@ async function init(): Promise<void> {
         document.addEventListener("mousedown", onAway, true);
         document.addEventListener("keydown", onEsc, true);
       });
+      // DRAG the card by its NAME or its GRIP into another slot — the list
+      // reorders and every card animates to its new rect (the transitions do
+      // the motion). One handler for both, the name's proven one (his report,
+      // 2026-10-10: "it was working by clicking on the name").
+      for (const handle of [card.querySelector<HTMLElement>(".echo-card-head"), card.querySelector<HTMLElement>(".echo-card-grip")]) {
+      if (!handle) continue;
+      handle.addEventListener("mousedown", (ev) => {
+        if (ev.button !== 0) return;
+        if ((ev.target as HTMLElement).closest("button")) return;
+        if (card.classList.contains("expanded")) return;
+        ev.preventDefault();
+        const r0 = card.getBoundingClientRect();
+        const stageR = stage.getBoundingClientRect();
+        const offX = ev.clientX - r0.left, offY = ev.clientY - r0.top;
+        let dragMoved = false;
+        const onMove = (mv: MouseEvent): void => {
+          if (!dragMoved && Math.abs(mv.clientX - ev.clientX) + Math.abs(mv.clientY - ev.clientY) < 5) return;
+          dragMoved = true;
+          card.classList.add("dragging");
+          card.style.left = `${mv.clientX - stageR.left - offX}px`;
+          card.style.top = `${mv.clientY - stageR.top - offY}px`;
+        };
+        const onUp = (mv: MouseEvent): void => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          if (!dragMoved) return;
+          card.classList.remove("dragging");
+          const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
+          // GRID cards live in SLOTS — dropping on another slot SWAPS the two
+          // cells (the old layout manager's move); flow cards reorder.
+          const grid = gridRects();
+          if (grid && echoGrid && grid.has(e)) {
+            let target: TileEntry | null = null;
+            let bestD = Infinity;
+            for (const [entry, rc] of grid) {
+              if (entry === e) continue;
+              const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
+              if (d < bestD) { bestD = d; target = entry; }
+            }
+            const a = echoGrid.cells.find((c) => c.entry === e);
+            const b = target ? echoGrid.cells.find((c) => c.entry === target) : null;
+            if (a && b) {
+              [a.col, b.col] = [b.col, a.col];
+              [a.row, b.row] = [b.row, a.row];
+              [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
+              [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
+              saveEchoLayoutMem();
+              persistOpenWorkspace();
+            }
+            layoutCards();
+            return;
+          }
+          const from = openList.indexOf(e);
+          const rects = [...flowRects(openList).values()];
+          let to = from, best = Infinity;
+          rects.forEach((rc, i) => {
+            const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
+            if (d < best) { best = d; to = i; }
+          });
+          if (from >= 0 && to !== from) openList.splice(to, 0, ...openList.splice(from, 1));
+          layoutCards();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      }
       setRect(card, iconRect(e) ?? centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
