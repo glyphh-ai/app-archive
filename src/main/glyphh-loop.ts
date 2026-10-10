@@ -61,7 +61,7 @@ export interface LoopRunPayload {
   /** What the composer attached: images ride as vision blocks, files and
    *  folders as a manifest the loop's read tools open. */
   attachments?: AttachRef[];
-  /** Gateway tags every model call of this turn carries (x-litellm-tags):
+  /** Gateway tags every model call of this turn carries (x-glyphh-router-tags):
    *  a super power's `glyphh-power:<slug>`, which its monthly caps meet. */
   tags?: string[];
 }
@@ -84,7 +84,7 @@ function taggedFetch(input: string, init: RequestInit): Promise<Response> {
   const tags = callTags.getStore();
   if (tags?.length && /\/v1\/messages$/.test(input)) {
     const headers = new Headers(init.headers);
-    headers.set("x-litellm-tags", tags.join(","));
+    headers.set("x-glyphh-router-tags", tags.join(","));
     return fetch(input, { ...init, headers });
   }
   return fetch(input, init);
