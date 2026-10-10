@@ -319,7 +319,13 @@ export function filterPickerRows(rows: PickerRows, query: string): PickerRows {
 // perimeter, nothing outside them is offered) and the Glyphh machine. A
 // session is bound to its machine and folder at birth.
 
-export type MachineKind = "local" | "desktop" | "glyphh";
+/** local: this desktop. desktop: another attached desktop, the Glyphh machine
+ *  too once it is awake (it runs this app, 2026-10-10). glyphh: the Glyphh
+ *  machine asleep (picking it wakes it). cloud: the cloud workspace lane, for a
+ *  member with no Glyphh machine yet. */
+export type MachineKind = "local" | "desktop" | "glyphh" | "cloud";
+/** The Glyphh machine's one granted folder (rrotor machine/desktop.ts GLYPHH_WORKSPACE). */
+export const GLYPHH_MACHINE_WORKSPACE = "/data/workspace";
 export interface PickerMachineRow {
   kind: MachineKind;
   name: string;
@@ -332,6 +338,8 @@ export interface PickerMachineRow {
   empty?: string;
   /** The born session runs on another machine. */
   locked?: string;
+  /** The Glyphh machine's own id (/api/machines), on its row asleep or awake. */
+  glyphhId?: string;
 }
 export interface MachinePicker { local: PickerMachineRow | null; remote: PickerMachineRow[] }
 export interface GlyphhMachine { id: string; name: string; state?: string; default?: boolean }
@@ -340,15 +348,17 @@ export interface MachineSource { kind: string; machineId?: string; machine?: str
 /** A local source that names ANOTHER desktop, seen from this one. Local picks
  *  carry no machine ("local" is the old synthesized id for this desktop). */
 export function onOtherDesktop(source: MachineSource | null | undefined): boolean {
-  return source?.kind === "local" && !!source.machineId && source.machineId !== "local";
+  return source?.kind === "local" && ((!!source.machineId && source.machineId !== "local") || !!source.machine);
 }
 
 /** The row a source runs on, or null when its machine is not listed now. */
 export function machineOfSource(p: MachinePicker, source: MachineSource | null | undefined): PickerMachineRow | null {
   if (!source) return null;
-  if (source.kind !== "local") return p.remote.find((r) => r.kind === "glyphh") ?? null;
+  if (source.kind !== "local") return p.remote.find((r) => r.kind === "cloud") ?? p.remote.find((r) => r.kind === "glyphh" || !!r.glyphhId) ?? null;
   if (p.local && !onOtherDesktop(source)) return p.local;
-  return p.remote.find((r) => r.kind === "desktop" && ((!!source.machineId && r.id === source.machineId) || (!!source.machine && r.name === source.machine))) ?? null;
+  return p.remote.find((r) => r.kind === "desktop" && ((!!source.machineId && r.id === source.machineId) || (!!source.machine && r.name === source.machine)))
+    ?? p.remote.find((r) => r.kind === "glyphh" && !!source.machine && r.name === source.machine)
+    ?? null;
 }
 
 const lockedOn = (name: string | null): string =>
@@ -367,16 +377,28 @@ export function machinePicker(input: {
   const local: PickerMachineRow | null = input.surface === "desktop"
     ? { kind: "local", name: "This desktop", folders: [], hint: "Any folder on this computer" }
     : null;
-  const remote: PickerMachineRow[] = input.desktops
-    .filter((d) => !(input.surface === "desktop" && input.selfId && d.id === input.selfId))
+  const g = input.glyphh.find((m) => m.default) ?? input.glyphh[0];
+  const others = input.desktops.filter((d) => !(input.surface === "desktop" && input.selfId && d.id === input.selfId));
+  // THE GLYPHH MACHINE AWAKE is an attached desktop by its own name (it runs this app).
+  const awake = g ? others.find((d) => d.name === g.name) : undefined;
+  const remote: PickerMachineRow[] = others
+    .filter((d) => d !== awake)
     .map((d): PickerMachineRow => ({
       kind: "desktop", name: d.name, ...(d.id ? { id: d.id } : {}), folders: d.folders,
       hint: d.folders.length ? `Desktop · ${d.folders.length === 1 ? "1 folder" : `${d.folders.length} folders`} granted` : "Desktop",
       ...(d.folders.length ? {} : { empty: "No folder is granted on this desktop yet. Add one under Settings → System → Remote control there." }),
     }));
-  // The Glyphh machine: the default one (the rest are the same cloud today).
-  const g = input.glyphh.find((m) => m.default) ?? input.glyphh[0];
-  remote.push({ kind: "glyphh", name: g?.name || "Glyphh machine", ...(g?.id ? { id: g.id } : {}), folders: [], hint: "Glyphh machine · cloud folders" });
+  if (g && awake) {
+    remote.push({
+      kind: "desktop", name: g.name, ...(awake.id ? { id: awake.id } : {}), folders: awake.folders, glyphhId: g.id, hint: "Glyphh machine · awake",
+      ...(awake.folders.length ? {} : { empty: "The machine is starting up. Its folders show here in a moment." }),
+    });
+  } else if (g) {
+    const starting = g.state === "running" || g.state === "starting";
+    remote.push({ kind: "glyphh", name: g.name, folders: [], glyphhId: g.id, hint: starting ? "Glyphh machine · starting" : "Glyphh machine · asleep, wakes when you pick it" });
+  } else {
+    remote.push({ kind: "cloud", name: "Glyphh cloud", folders: [], hint: "Cloud folders" });
+  }
   const picker: MachinePicker = { local, remote };
   if (input.born) {
     const home = machineOfSource(picker, input.born);

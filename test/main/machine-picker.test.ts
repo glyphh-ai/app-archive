@@ -25,7 +25,8 @@ describe("the machines", () => {
   it("on the web: no Local, every attached desktop is remote", () => {
     const p = machinePicker({ surface: "web", desktops, selfId: null, glyphh: [], born: null });
     expect(p.local).toBeNull();
-    expect(p.remote.map((r) => r.name)).toEqual(["chris-mbp", "laptop-b", "studio", "Glyphh machine"]);
+    expect(p.remote.map((r) => r.name)).toEqual(["chris-mbp", "laptop-b", "studio", "Glyphh cloud"]);
+    expect(p.remote.at(-1)!.kind).toBe("cloud");
   });
 
   it("a born session is bound to its machine: every other one is locked", () => {
@@ -47,6 +48,7 @@ describe("the machines", () => {
     expect(onOtherDesktop({ kind: "local", machineId: "local" })).toBe(false);
     expect(onOtherDesktop({ kind: "local", machineId: "sock-b" })).toBe(true);
     expect(onOtherDesktop({ kind: "cloud-new", machineId: "sock-b" })).toBe(false);
+    expect(onOtherDesktop({ kind: "local", machine: "amber-otter-4f2a" })).toBe(true);
   });
 });
 
@@ -70,5 +72,23 @@ describe("a chip drop stays its height (his order, 2026-10-09)", () => {
     expect(pageSlice(many, 9)).toMatchObject({ page: 3, items: [18, 19] });
     expect(pageSlice(many, -2).page).toBe(0);
     expect(pageSlice([], 0)).toEqual({ items: [], page: 0, pages: 1 });
+  });
+});
+
+describe("the Glyphh machine runs this app (2026-10-10)", () => {
+  const g = [{ id: "m1", name: "amber-otter-4f2a", state: "stopped", default: true }];
+  it("asleep, it is one row that wakes when picked", () => {
+    const p = machinePicker({ surface: "desktop", desktops, selfId: "sock-self", glyphh: g, born: null });
+    const row = p.remote.find((r) => r.glyphhId === "m1")!;
+    expect(row).toMatchObject({ kind: "glyphh", name: "amber-otter-4f2a", hint: expect.stringMatching(/asleep/) });
+    expect(machineOfSource(p, { kind: "local", machine: "amber-otter-4f2a", path: "/data/workspace" } as never)).toBe(row);
+  });
+  it("awake, it is the attached desktop by its name, listed once, with its workspace", () => {
+    const attached = [...desktops, { id: "sock-m1", name: "amber-otter-4f2a", folders: ["/data/workspace"] }];
+    const p = machinePicker({ surface: "desktop", desktops: attached, selfId: "sock-self", glyphh: [{ ...g[0]!, state: "running" }], born: null });
+    const rows = p.remote.filter((r) => r.name === "amber-otter-4f2a");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "desktop", id: "sock-m1", glyphhId: "m1", folders: ["/data/workspace"], hint: "Glyphh machine · awake" });
+    expect(machineOfSource(p, { kind: "local", machine: "amber-otter-4f2a" } as never)).toBe(rows[0]);
   });
 });

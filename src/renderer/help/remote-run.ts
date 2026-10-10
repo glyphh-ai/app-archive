@@ -454,10 +454,30 @@ export function canRunRemote(source?: Source): boolean {
   return isRemoteSource(source) && (!!sdk()?.harnessViaApi || !!desktopCloudLane());
 }
 
+/** THE GLYPHH MACHINE ASLEEP (2026-10-10): a send to it wakes it and waits for
+ *  it to attach (the first start fetches the app, so allow a few minutes).
+ *  Null when the source names no Glyphh machine, or it never came. */
+async function wakeAndWait(source: Source, callbacks: RemoteRunCallbacks, signal?: AbortSignal): Promise<string | null> {
+  if (source.kind !== "local" || !source.machine) return null;
+  const g = window.glyphh as unknown as { machinesList?: () => Promise<{ machines?: Array<Record<string, unknown>> }>; machinesStart?: (id: string) => Promise<unknown> };
+  const mine = await g.machinesList?.().catch(() => null);
+  const hit = (mine?.machines ?? []).find((m) => String(m.name ?? "") === source.machine);
+  if (!hit || !g.machinesStart) return null;
+  callbacks.onStep?.({ id: "wake", type: "wake", status: `Waking ${source.machine}…` });
+  await g.machinesStart(String(hit.id)).catch(() => undefined);
+  const until = Date.now() + 6 * 60_000;
+  while (Date.now() < until && !signal?.aborted) {
+    await new Promise((r) => setTimeout(r, 4_000));
+    const id = await attachedIdFor(source);
+    if (id) { callbacks.onStep?.({ id: "wake", type: "wake", status: "done" }); return id; }
+  }
+  return null;
+}
+
 /** The attached desktop a source names, NOW: the socket id changes on every
  *  reconnect, so a stale id is found again by the machine's name. */
 async function attachedIdFor(source: Source): Promise<string | null> {
-  if (source.kind !== "local" || !source.machineId) return null;
+  if (source.kind !== "local" || (!source.machineId && !source.machine)) return null;
   const read = (window.glyphh as unknown as { attachDevicesList?: () => Promise<DevicesAnswer> }).attachDevicesList;
   const a = read ? await read().catch(() => null) : null;
   const rows = a ? deviceRowsOf(a).devices : [];
@@ -781,7 +801,7 @@ export async function runRemoteTurn(
     callbacks.onError?.(u.detail);
     return u;
   }
-  const relayTo = otherDesktop && chat.source ? await attachedIdFor(chat.source) : null;
+  const relayTo = otherDesktop && chat.source ? (await attachedIdFor(chat.source)) ?? (await wakeAndWait(chat.source, callbacks, opts.signal)) : null;
   if (otherDesktop && !relayTo) {
     const name = chat.source?.kind === "local" ? chat.source.machine : "";
     const u = unavailable("open", new Error(`${name || "That desktop"} is not attached right now. Open Glyphh there with remote control on.`));

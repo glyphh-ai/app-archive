@@ -1,6 +1,6 @@
 import { hostHas } from "./web-surface.js";
 import { DROP_PAGE, dropPager, pageSlice } from "./drop-page.js";
-import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, namedFolderId, namedFolderOf, onOtherDesktop, pickerRecent, type GlyphhMachine, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
+import { GLYPHH_MACHINE_WORKSPACE, LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, namedFolderId, namedFolderOf, onOtherDesktop, pickerRecent, type GlyphhMachine, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { selfMachineId } from "./devices-pick.js";
 import { placeMenu, type PlaceBox } from "./menu-place.js";
@@ -64,7 +64,7 @@ interface SdkHandle {
   sessions?: { list?: () => Promise<unknown[]> };
   git?: { status?: () => Promise<GitConnection>; repos?: () => Promise<Repo[]>; connect?: () => Promise<GitConnectLink>; disconnect?: () => Promise<void> };
   attach?: { status?: () => Promise<AttachStatus>; fsList?: (path?: string, opts?: { machineId?: string }) => Promise<FsListing>; dispatch?: (method: string, params?: Record<string, unknown>, opts?: { machineId?: string }) => Promise<unknown> };
-  http?: { get?: <T>(path: string) => Promise<T> };
+  http?: { get?: <T>(path: string) => Promise<T>; post?: <T>(path: string, body?: unknown) => Promise<T> };
 }
 interface WbHandle {
   listDir?: (dir: string) => Promise<Array<{ name: string; isDir: boolean }>>;
@@ -337,7 +337,7 @@ export async function loadMachines(born: Source | null = null): Promise<MachineP
     glyphh = glyphhMachinesOf(mine?.machines);
   }
   const picker = machinePicker({ surface, desktops, selfId, glyphh, born });
-  lastGlyphhName = picker.remote.find((r) => r.kind === "glyphh")?.name ?? lastGlyphhName;
+  lastGlyphhName = picker.remote.find((r) => !!r.glyphhId || r.kind === "cloud")?.name ?? lastGlyphhName;
   return picker;
 }
 
@@ -440,8 +440,11 @@ export function openMachinePicker(anchor: HTMLElement, opts: {
       const shown = pageSlice(model.remote, page);
       page = shown.page;
       for (const m of shown.items) {
-        if (m.kind === "glyphh") {
-          row(m, () => pick({ kind: "cloud-new" }), reach.cloud === false ? (reach.cloudWhy || "Can't reach the Glyphh machine right now") : undefined);
+        if (m.kind === "cloud") {
+          row(m, () => pick({ kind: "cloud-new" }), reach.cloud === false ? (reach.cloudWhy || "Can't reach the cloud right now") : undefined);
+        } else if (m.kind === "glyphh") {
+          // Asleep: picking it wakes it; the session runs there once it attaches.
+          row(m, () => { void wakeGlyphhMachine(m.glyphhId ?? ""); pick({ kind: "local", path: GLYPHH_MACHINE_WORKSPACE, machine: m.name }); });
         } else {
           row(m, () => pick({ kind: "local", path: startFolderOn(m, src, opts.recentFolders?.() ?? []), ...(m.id ? { machineId: m.id } : {}), machine: m.name }), m.empty);
         }
@@ -580,8 +583,21 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       return;
     }
 
-    // ── the Glyphh machine: its folders; New folder… names one ──
+    // ── the Glyphh machine asleep: it wakes, then its folders show ──
     if (here?.kind === "glyphh") {
+      menu.textContent = "";
+      dropHead(menu, `Folder on ${here.name}`);
+      const note = drillItem(`${here.name} is asleep`, "It wakes when you send, or now. Its folders show here once it's awake.", "");
+      markUnreachable(note, `${here.name} is asleep`);
+      menu.appendChild(note);
+      const wake = drillItem("Wake it now", "Starts the machine; the first start takes a few minutes", "");
+      wake.addEventListener("click", () => { void wakeGlyphhMachine(here.glyphhId ?? ""); close(); });
+      menu.appendChild(wake);
+      return;
+    }
+
+    // ── the cloud workspace lane (a member with no Glyphh machine): its folders; New folder… names one ──
+    if (here?.kind === "cloud") {
       const spaces = await listSpaces();
       if (!menu.isConnected) return;
       const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
@@ -649,6 +665,17 @@ async function mkdirOn(machineId: string, parent: string, name: string): Promise
     : await (sdk()?.attach?.dispatch?.("fs.mkdir", { path: parent, name }, machineId ? { machineId } : {}) ?? Promise.reject(new Error("no desktop attached"))) as { path?: string };
   if (!made?.path) throw new Error("the desktop did not make it");
   return made.path;
+}
+
+/** WAKE THE GLYPHH MACHINE (POST /api/machines/{id}/start): it boots, starts the app and attaches. */
+export async function wakeGlyphhMachine(id: string): Promise<boolean> {
+  if (!id) return false;
+  const g = window as unknown as { glyphh?: { machinesStart?: (id: string) => Promise<unknown> } };
+  try {
+    if (!isWeb() && hostHas("machinesStart")) await g.glyphh!.machinesStart!(id);
+    else await sdk()?.http?.post?.(`/api/machines/${encodeURIComponent(id)}/start`, {});
+    return true;
+  } catch { return false; }
 }
 
 /** A machine as people read it: a desktop's hostname without ".local". */

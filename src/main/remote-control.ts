@@ -286,6 +286,7 @@ export function registerRemoteControlIpc(): void {
   // THE PICKER'S MACHINES (his order, 2026-10-09): the member's Glyphh
   // machines, and the folders inside another desktop's grants over the relay.
   ipcMain.handle("machines:list", () => listGlyphhMachines());
+  ipcMain.handle("machines:start", (_e, id: string) => getClient().http.post(`/api/machines/${encodeURIComponent(String(id || ""))}/start`, {}));
   ipcMain.handle("attach-fs:list", (_e, path: string | undefined, machineId: string) => listAttachedFolder(path, machineId));
   ipcMain.handle("attach-fs:mkdir", (_e, parent: string, name: string, machineId: string) => makeAttachedFolder(parent, name, machineId));
 }
