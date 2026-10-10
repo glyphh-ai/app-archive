@@ -22,7 +22,10 @@
 import { broadcast as broadcastToRenderers } from "./broadcast";
 import fs from "fs";
 import path from "path";
-import { app, utilityProcess, type UtilityProcess, ipcMain } from "electron";
+import { app, ipcMain } from "electron";
+import { tmpdir } from "os";
+import { spawnFenced, type TaskProc } from "./program-sandbox.js";
+import { currentTurnFolder } from "./turn-folder.js";
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
@@ -276,7 +279,7 @@ function saveJournal(runId: string, journal: RunJournal): void {
 
 // ── the ctx verbs main answers ───────────────────────────────────────────────
 
-interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string; /** Cut when the run ends: a CLI turn still going is aborted with it. */ abort: AbortController }
+interface Live { proc: TaskProc; /** The run's own empty folder, removed when it ends (a run with no turn's folder). */ scratch: string | null; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string; /** Cut when the run ends: a CLI turn still going is aborted with it. */ abort: AbortController }
 const live = new Map<string, Live>();
 /** How many restarts a single run may survive before it is called dead. */
 const MAX_RESUMES = 2;
@@ -428,7 +431,10 @@ function finish(runId: string, startedAt: string, status: "ok" | "failed", error
   // run that had died). A failing write must never leave the slot held, or the
   // task can never be started again for the life of the session.
   const l = live.get(runId);
-  if (l) { clearTimeout(l.timer); live.delete(runId); l.abort.abort(); }
+  if (l) {
+    clearTimeout(l.timer); live.delete(runId); l.abort.abort();
+    if (l.scratch) { try { fs.rmSync(l.scratch, { recursive: true, force: true }); } catch { /* the OS clears tmp */ } }
+  }
   try {
     getLocalDb().prepare("UPDATE loop_runs SET duration_ms = ?, status = ?, error = ?, result = ?, output = ? WHERE id = ?")
       .run(Date.now() - Date.parse(startedAt), status, error, result === undefined ? null : JSON.stringify(result), error ? error.slice(0, 20_000) : JSON.stringify(result ?? null).slice(0, 20_000), runId);
@@ -442,16 +448,19 @@ function hostPath(): string {
   return path.join(__dirname, "task-host.js");
 }
 
-function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
+/** THE PROGRAM'S FOLDER, its fence (program-sandbox.ts): the turn's folder when
+ *  a session asked for the run, else an empty folder of its own. */
+function launch(run: TaskRun, spec: TaskSpec, resumed: boolean, folder?: string | null): void {
   const manifest = readManifest(spec.dir);
-  const proc = utilityProcess.fork(hostPath(), [], { serviceName: `glyphh-task:${spec.slug}` });
+  const scratch = folder ? null : fs.mkdtempSync(path.join(tmpdir(), "glyphh-task-"));
+  const proc = spawnFenced(hostPath(), folder || scratch!);
   const journal = run.journal;
   if (resumed) { journal.events.push({ t: now(), kind: "resume" }); saveJournal(run.id, journal); }
   const timer = setTimeout(() => {
     try { proc.kill(); } catch { /* gone */ }
     finish(run.id, run.startedAt, "failed", `timed out after ${Math.round((manifest.timeoutMs || DEFAULT_TIMEOUT_MS) / 60000)} min`, null);
   }, manifest.timeoutMs || DEFAULT_TIMEOUT_MS);
-  const l: Live = { proc, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt, abort: new AbortController() };
+  const l: Live = { proc, scratch, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt, abort: new AbortController() };
   live.set(run.id, l);
   proc.on("message", (msg: { type: string; id?: number; kind?: string; args?: unknown[]; result?: unknown; error?: string }) => {
     if (msg.type === "call" && typeof msg.id === "number") {
@@ -477,7 +486,7 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
 }
 
 /** Start a run. Resolves as soon as the process is up; the journal tells the rest. */
-export function runTask(slug: string, input: unknown = {}, trigger: { kind: "manual" | "schedule" | "agent"; scheduleId?: string } = { kind: "manual" }): TaskRun {
+export function runTask(slug: string, input: unknown = {}, trigger: { kind: "manual" | "schedule" | "agent"; scheduleId?: string } = { kind: "manual" }, folder: string | null = null): TaskRun {
   const spec = getTaskSpec(slug);
   if (!spec.enabled) throw new Error(`task "${slug}" is turned off`);
   // A HELD SLOT MUST BE A LIVING PROCESS. One whose process is gone is swept
@@ -495,14 +504,16 @@ export function runTask(slug: string, input: unknown = {}, trigger: { kind: "man
   getLocalDb().prepare("INSERT INTO loop_runs (id, schedule_id, started_at, status, task_slug, trigger, input, journal) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)")
     .run(id, trigger.scheduleId ?? "", startedAt, slug, trigger.kind, JSON.stringify(input ?? {}), JSON.stringify(journal));
   const run: TaskRun = { id, taskSlug: slug, scheduleId: trigger.scheduleId ?? null, trigger: trigger.kind, startedAt, durationMs: null, status: "running", error: null, input, result: null, journal };
-  launch(run, spec, false);
+  try { launch(run, spec, false, folder); }
+  catch (err) { finish(id, startedAt, "failed", err instanceof Error ? err.message : String(err), null); throw err; }
   broadcast();
   return run;
 }
 
 /** Start a run and wait for it: the MCP task_run lane. */
 export async function runTaskAndWait(slug: string, input: unknown = {}): Promise<TaskRun> {
-  const run = runTask(slug, input, { kind: "agent" });
+  // Asked from a session: the program works in that session's folder, and only there.
+  const run = runTask(slug, input, { kind: "agent" }, currentTurnFolder());
   return new Promise((resolve) => {
     const tick = (): void => {
       const r = getTaskRun(run.id);

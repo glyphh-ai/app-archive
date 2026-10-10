@@ -1,5 +1,5 @@
 /**
- * task-host.ts — the UTILITY PROCESS a Glyphh task runs in.
+ * task-host.ts — the PROCESS a Glyphh task runs in, fenced to its folder (program-sandbox.ts).
  *
  * The desktop is the runner, the program is the process (his ruling,
  * 2026-09-17): a task's script exports one function, run(ctx, input), and
@@ -29,7 +29,11 @@ interface StartMsg {
 type HostCall = { type: "call"; id: number; kind: string; args: unknown[] };
 type MainReply = { type: "reply"; id: number; ok: boolean; value?: unknown; error?: string };
 
-const port = (process as unknown as { parentPort: { on: (ev: "message", fn: (e: { data: unknown }) => void) => void; postMessage: (m: unknown) => void } }).parentPort;
+// The runner starts this host fenced, as a Node child on an IPC channel (program-sandbox.ts).
+const port = {
+  on: (_ev: "message", fn: (e: { data: unknown }) => void): void => { process.on("message", (data: unknown) => fn({ data })); },
+  postMessage: (m: unknown): void => { process.send?.(m as never); },
+};
 
 let nextId = 1;
 const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
