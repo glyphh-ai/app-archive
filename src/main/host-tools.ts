@@ -848,15 +848,15 @@ function registerTools(mcp: ToolRegistrar): void {
   const memText = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });
   mcp.tool(
     "memory_turns",
-    "The user's remembered turns on this machine (what they said and what the loop answered), newest first, with the folder and workspace each ran in. Read these to compile memory pages.",
+    "The user's remembered turns from every machine (what they said and what the loop answered), newest first, with the machine, folder and workspace each ran in. Read these to compile memory pages.",
     { limit: z.number().int().min(1).max(500).optional().describe("How many turns (default 100)"), days: z.number().int().min(1).max(365).optional().describe("Only turns from the last N days") },
-    async ({ limit, days }) => { const { memoryTurns } = await import("./memory.js"); return memText(memoryTurns({ limit, days })); },
+    async ({ limit, days }) => { const { memoryTurns } = await import("./memory.js"); try { return memText(await memoryTurns({ limit, days })); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
   );
   mcp.tool(
     "memory_pages",
     "The memory pages that exist today: the Profile (section you), topics and areas, each with title, summary and details. Update a page by writing it again with the same title.",
     {},
-    async () => { const { memoryPages } = await import("./memory.js"); return memText(memoryPages()); },
+    async () => { const { memoryPages } = await import("./memory.js"); try { return memText(await memoryPages()); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
   );
   mcp.tool(
     "memory_page_write",
@@ -868,7 +868,7 @@ function registerTools(mcp: ToolRegistrar): void {
     "memory_page_delete",
     "Delete a memory page by its id (from memory_pages).",
     { id: z.string().min(1) },
-    async ({ id }) => { const { deleteMemoryPage } = await import("./memory.js"); return memText(deleteMemoryPage(id)); },
+    async ({ id }) => { const { deleteMemoryPage } = await import("./memory.js"); try { return memText(await deleteMemoryPage(id)); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
   );
   // ── THE POWERS (his order, 2026-10-09): one tool per power, on the
   //    server's metered media pipeline (main/powers.ts). Glyphh combines them,

@@ -22,6 +22,7 @@ import { GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js"
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
+import { projectStanding } from "./project-notes.js";
 import { hostTools } from "./host-tools.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
@@ -277,6 +278,8 @@ const loop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
+  standing: projectStanding,
   fetch: taggedFetch,
   // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
   shell: fencedShell,
@@ -295,6 +298,8 @@ const unattendedLoop = new GlyphhLoop({
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
+  standing: projectStanding,
   fetch: taggedFetch,
   // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
   shell: fencedShell,

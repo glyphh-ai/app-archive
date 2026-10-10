@@ -173,7 +173,7 @@ export function connectorIcon(app: { iconUrl: string | null; connection?: { acco
 }
 
 // ── Memory: the member's preference (there is no per-session flag) ───────
-export const MEMORY_PREFS = { accepted: "memoryPolicyAcceptedAt", inject: "memoryInject", capture: "memoryCapture" } as const;
+export const MEMORY_PREFS = { accepted: "memoryPolicyServerAcceptedAt", inject: "memoryInject", capture: "memoryCapture" } as const;
 export interface MemoryState { accepted: boolean; on: boolean }
 /** On = the policy is accepted and memory is searched (`memoryInject`, the
  *  Settings → Memory "search past sessions" switch; capture rides with it). */

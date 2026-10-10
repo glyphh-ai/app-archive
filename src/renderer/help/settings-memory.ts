@@ -33,7 +33,7 @@ export async function loadMemorySettings(): Promise<void> {
   invalidatePlanGates();
   const gates = await planGates() as unknown as { memoryPolicy?: MemoryPolicy };
   const policy: MemoryPolicy = gates.memoryPolicy ?? {};
-  const accepted = !!(await g.getPreference?.("memoryPolicyAcceptedAt", ""));
+  const accepted = !!(await g.getPreference?.("memoryPolicyServerAcceptedAt", ""));
 
   const acceptBox = el<HTMLInputElement>("toggle-memory-policy");
   const acceptDesc = el("memory-policy-desc");
@@ -41,7 +41,7 @@ export async function loadMemorySettings(): Promise<void> {
     acceptBox.checked = accepted;
     if (acceptDesc) acceptDesc.textContent = accepted ? "Accepted. Memory follows the preferences below." : "Memory stays off until you accept.";
     acceptBox.onchange = () => {
-      g.setPreference?.("memoryPolicyAcceptedAt", acceptBox.checked ? new Date().toISOString() : "");
+      g.setPreference?.("memoryPolicyServerAcceptedAt", acceptBox.checked ? new Date().toISOString() : "");
       void loadMemorySettings();
     };
   }
@@ -102,13 +102,13 @@ export async function loadMemorySettings(): Promise<void> {
   if (stats) {
     const r = await g.memoryStats?.().catch(() => null);
     stats.textContent = r?.ok
-      ? `${r.turns ?? 0} turns in ${r.chunks ?? 0} pieces on this machine${r.facts ? `, ${r.facts} saved facts` : ""}.`
+      ? `${r.turns ?? 0} turns in ${r.chunks ?? 0} pieces in your account${r.facts ? `, ${r.facts} saved facts` : ""}.`
       : "Nothing yet.";
   }
   const clearBtn = el<HTMLButtonElement>("memory-clear-btn");
   if (clearBtn) {
     clearBtn.onclick = async () => {
-      const sure = await confirmAction({ title: "Clear memory?", body: "Every remembered turn on this machine is deleted. Saved facts stay.", confirmLabel: "Clear", danger: true });
+      const sure = await confirmAction({ title: "Clear memory?", body: "Every remembered turn in your account is deleted, on every machine. Saved facts stay.", confirmLabel: "Clear", danger: true });
       if (!sure) return;
       const r = await g.memoryClear?.();
       if (r?.ok) { notice("Memory cleared"); void loadMemorySettings(); }
@@ -149,7 +149,7 @@ function memFolderName(p: string): string {
   return (i === -1 ? t : t.slice(i + 1)) || t;
 }
 async function memForget(row: MemoryRow): Promise<boolean> {
-  const sure = await confirmAction({ title: `Delete "${row.title.slice(0, 50)}"?`, body: "It leaves memory on this machine for good.", confirmLabel: "Delete", danger: true });
+  const sure = await confirmAction({ title: `Delete "${row.title.slice(0, 50)}"?`, body: "It leaves your memory for good, on every machine.", confirmLabel: "Delete", danger: true });
   if (!sure) return false;
   const res = await memApi().memoryTurnForget?.(row.id);
   if (!res?.ok) { notice(res?.error || "Couldn't delete it."); return false; }
