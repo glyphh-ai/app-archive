@@ -101,14 +101,12 @@ import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerLoopModelsIpc } from "./loop-models";
 import { registerSpendStateIpc } from "./spend-state";
-import { registerSubAgentIpc } from "./subagent-ledger";
 import { registerAgentBriefIpc } from "./agent-brief";
 import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
-import { installBotsIpc } from "./bots";
 import { registerPowersIpc } from "./powers";
 import { registerPowerBuildIpc } from "./power-build-ipc.js";
 import { registerSuperPowerBuildIpc } from "./super-power-build-ipc.js";
@@ -474,7 +472,6 @@ async function boot() {
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
     registerNotifyIpc();
     registerAgentLiveIpc();
-    installBotsIpc();
     registerPowersIpc();
     registerPowerBuildIpc();
     registerSuperPowerBuildIpc();
@@ -1092,7 +1089,6 @@ async function boot() {
   registerWorkspaceStateIpc();
   registerLoopModelsIpc();
   registerSpendStateIpc();
-  registerSubAgentIpc();
   registerAgentBriefIpc();
   registerSkillsIpc();
   registerEmbeddingsIpc();

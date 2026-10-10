@@ -74,7 +74,6 @@ import {
   type RemoteChat, type AttachHandle, stopRunById, parseOpenRef,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
-import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
@@ -1494,9 +1493,6 @@ function observeIfRunning(chat: CodeChat): void {
         r.thinking = (r.thinking ?? "") + text;
         queueStreamPaint(chatId);
       },
-      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
-      // Agents panel's rows here, never this thread's bubble.
-      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       // The run settled — land it, but KEEP the observer: the watcher keeps polling and
       // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
@@ -4740,9 +4736,9 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
     return true;
   }
-  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents"]);
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents" };
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
   }
@@ -5221,9 +5217,6 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         r.thinking = (r.thinking ?? "") + text;
         queueStreamPaint(chatId);
       },
-      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
-      // Agents panel's rows here, never this thread's bubble.
-      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       onDone: (text) => { finishRun(chatId, text); },
       onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
@@ -5395,7 +5388,6 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   // artifact — it sends through the seated agent and paints the reply from
   // here. Detail: the session, the reply text, whether it was stopped.
   document.dispatchEvent(new CustomEvent("glyphh-agent:turn-finished", { detail: { chatId, text, stopped } }));
-  subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)

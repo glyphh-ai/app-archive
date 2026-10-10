@@ -1333,28 +1333,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** Write an agent's brief with AI, on the member's default model (agent-brief.ts). */
   agentBriefGenerate: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
     ipcRenderer.invoke("agent-brief-generate", input) as Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>,
-  // ── THE BOTS PANEL (his order, 2026-10-08; main/bots.ts): a bot's thread,
-  //    asking it (the Glyphh loop on `bots/<slug>`), stopping it, the frames.
   /** THE POWERS this member's plan carries (main/powers.ts): Images, Video, Audio… */
   powersList: () => ipcRenderer.invoke("powers-list") as Promise<{ ok: boolean; data: Array<{ id: string; name: string; blurb: string; tool: string; models: string[]; avatar: { variant: number; color: string } }>; error?: string }>,
-  botsThread: (agent: string) =>
-    ipcRenderer.invoke("bots-thread", { agent }) as Promise<{ ok: true; chatId: string; messages: Array<{ role: "user" | "assistant"; text: string; at: number }>; running: boolean; partial?: string; startedAt?: number }>,
-  botsAsk: (agent: string, text: string, opts?: { workdir?: string }) =>
-    ipcRenderer.invoke("bots-ask", { agent, text, ...(opts?.workdir ? { workdir: opts.workdir } : {}) }) as Promise<{ ok: true; runId: string; text: string } | { ok: false; error: string; text?: string }>,
-  botsStop: (agent: string) => ipcRenderer.invoke("bots-stop", { agent }) as Promise<{ ok: true; stopped: boolean }>,
-  botsOrchestratorBrief: () => ipcRenderer.invoke("bots-orchestrator-brief") as Promise<string>,
-  onBotsFrame: (callback: (d: { bot: string; type: string; runId: string; [k: string]: unknown }) => void) => {
-    const handler = (_e: unknown, d: { bot: string; type: string; runId: string }): void => callback(d);
-    ipcRenderer.on("bots:frame", handler);
-    return () => { ipcRenderer.removeListener("bots:frame", handler); };
-  },
-  /** THE AGENTS PANEL's source: main's ledger of the sub-agents working under a live turn. */
-  subAgentsList: () => ipcRenderer.invoke("subagents-list") as Promise<unknown[]>,
-  onSubAgentsUpdate: (callback: (runs: unknown[]) => void) => {
-    const handler = (_e: unknown, runs: unknown): void => callback(Array.isArray(runs) ? runs : []);
-    ipcRenderer.on("subagents:update", handler);
-    return () => { ipcRenderer.removeListener("subagents:update", handler); };
-  },
   glyphhApprovalRespond: (id: string, allow: boolean) =>
     ipcRenderer.invoke("glyphh-agent-approval-respond", { id, allow }) as Promise<boolean>,
   onGlyphhAgentApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {

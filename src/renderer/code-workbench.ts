@@ -17,7 +17,6 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
-import { mountBotsPanel } from "./bots-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
@@ -110,7 +109,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "agents" | "artifacts";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "artifacts";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -203,7 +202,6 @@ interface PreviewSlot {
 /** THE AGENTS PANEL (his order, 2026-09-29): every sub-agent the Glyphh loop
  *  started, each an expandable row with its own feed. It holds no state of its
  *  own — main's ledger is the source (agents-panel.ts). */
-interface AgentsSlot { id: number; view: "agents"; sticky?: boolean }
 /** THE ARTIFACTS PANEL (his order, 2026-10-05) — help/artifacts-panel.ts owns the body; `panel` is its handle for teardown. */
 interface ArtifactsSlot { id: number; view: "artifacts"; sticky?: boolean; panel?: ArtifactsPanelHandle }
 
@@ -233,7 +231,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -1199,7 +1197,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "agents" || v === "echo" || v === "monaco") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco") {
           slots.push(makeSlot(v));
         }
       }
@@ -1358,7 +1356,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "artifacts");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1437,7 +1435,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "artifacts"): void;
     /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/surface.ts):
      *  Artifacts / Build / Customize fill the page over the agent and every
      *  open card (kept mounted); close restores exactly what was showing. */
@@ -1572,7 +1570,6 @@ async function init(): Promise<void> {
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
-    if (view === "agents") return { id, view };
     if (view === "artifacts") return { id, view };
     return { id, view: "preview", url: "" };
   }
@@ -2161,7 +2158,6 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "agents") mountBotsPanel(body);
     else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
@@ -5056,7 +5052,6 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-        else if (slot.view === "agents") mountBotsPanel(body);
         else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
     };
 
@@ -5625,7 +5620,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "artifacts"): TileEntry => {
       // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
       // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
       // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
@@ -9357,7 +9352,7 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "artifacts"].includes(v)) return;
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "artifacts"].includes(v)) return;
     // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
     // not reachable on the web from any door (help/surface.ts).
     if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[surface] the Browser needs a streamed panel — not reachable here:", v); return; }
@@ -9374,7 +9369,7 @@ async function init(): Promise<void> {
         ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
       return;
     }
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"); return; }
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "artifacts"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
