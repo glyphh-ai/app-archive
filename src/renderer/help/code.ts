@@ -3933,11 +3933,14 @@ function paintSourceDependents(): void {
     const set = composerChipSet({ surface: "web", locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
     cloudChips.refresh();
     const [envEl, repoEl] = cloudChips.els;
-    envEl.classList.toggle("hidden", !set.environment);
+    // THE MACHINE CHIP SAYS WHERE A SESSION RUNS on the web too (his report,
+    // 2026-10-10: "the app web is still showing this?"): the old environment
+    // chip and its Choose environment menu stay off.
+    envEl.classList.add("hidden");
     if (!set.repo) repoEl.classList.add("hidden");
     // A menu anchored to a chip that just hid would paint as a stray
     // scrollbar capsule (his report, 2026-10-05): it closes with the chip.
-    if (!set.environment || !set.repo) cloudChips.closeMenus();
+    cloudChips.closeMenus();
     for (const id of ["dash-wd-btn", "code-workdir-btn", "dash-wd-branch-wrap", "code-workdir-branch-wrap"]) {
       document.getElementById(id)?.classList.toggle("hidden", !set.folder);
     }
@@ -3953,7 +3956,7 @@ function paintSourceDependents(): void {
     // then its name; the folder chip beside it names the folder.
     for (const id of ["dash-machine-name", "code-machine-name"]) {
       const nameEl = document.getElementById(id);
-      if (nameEl) nameEl.textContent = machineChipLabel(src);
+      if (nameEl) nameEl.textContent = machineChipLabel(src, webMachineName(src));
     }
     // BOTH CHIPS LOCK once the session has a turn, and say why.
     {
@@ -3962,7 +3965,7 @@ function paintSourceDependents(): void {
       for (const id of ["dash-machine-btn", "code-machine-btn"]) {
         const b = document.getElementById(id);
         b?.classList.toggle("chip-locked", born);
-        b?.setAttribute("title", born ? `This session runs on ${machineChipLabel(src)}. Start a new session to work somewhere else.` : "Where this session runs");
+        b?.setAttribute("title", born ? `This session runs on ${machineChipLabel(src, webMachineName(src))}. Start a new session to work somewhere else.` : "Where this session runs");
       }
       for (const id of ["dash-wd-btn", "code-workdir-btn"]) document.getElementById(id)?.classList.toggle("chip-locked", born);
       if (born) {
@@ -4008,6 +4011,13 @@ function paintSourceDependents(): void {
       }
     }
   }
+}
+
+/** On the web, the attached desktop a local source runs on, by its id, else the only one attached. */
+function webMachineName(src: Source): string {
+  if (!onWebTarget() || src.kind !== "local") return "";
+  const known = threadStore.attachedMachines();
+  return (src.machineId && known.find((m) => m.id === src.machineId)?.name) || src.machine || (known.length === 1 ? known[0]!.name ?? "" : "");
 }
 
 /** Web target check (the bridge stamps the html class; the global came later). */

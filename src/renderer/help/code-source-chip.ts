@@ -344,10 +344,10 @@ export async function loadMachines(born: Source | null = null): Promise<MachineP
 /** The Glyphh machine's name as last read: the machine chip labels a cloud source with it. */
 let lastGlyphhName = "";
 /** The machine chip's words for a source: "Local", another desktop's name, the Glyphh machine's. */
-export function machineChipLabel(src: Source): string {
+export function machineChipLabel(src: Source, known = ""): string {
   if (src.kind !== "local") return lastGlyphhName || "Glyphh machine";
-  if (!onOtherDesktop(src)) return isWeb() ? machineLabel(src.machine || "Your desktop") : "Local";
-  return machineLabel(src.machine || "Another desktop");
+  if (!onOtherDesktop(src) && !isWeb()) return "Local";
+  return machineLabel(known || src.machine || (isWeb() ? "Your desktop" : "Another desktop"));
 }
 
 /** One drop under a chip: opened, clamped, closed on a click away. */
