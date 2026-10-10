@@ -443,8 +443,7 @@ export function openMachinePicker(anchor: HTMLElement, opts: {
 /** THE FOLDER CHIP'S PICKER, ONE FLOW ON EVERY MACHINE (his order,
  *  2026-10-09: "literally the exact same thing but with remote it is a modal
  *  to add the folder name... local is the file chooser on the new icon"): the
- *  machine's folders, searchable. The + beside the chip makes a new one
- *  (openNewFolder). */
+ *  machine's folders, searchable, then New folder…. */
 export function openFolderPicker(anchor: HTMLElement, opts: {
   getSource: () => Source;
   onPick: (s: Source) => void;
@@ -458,7 +457,9 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
   menu.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking its folders…</div>`);
 
   interface Row { main: string; hint: string; sel: boolean; go: () => void }
-  const paint = (title: string, rows: Row[]): void => {
+  /** The last row, the same on every machine (his order, 2026-10-09: the
+   *  third chip was redundant): the file chooser here, a name modal on Remote. */
+  const paint = (title: string, rows: Row[], fresh: { hint: string; go: () => void }): void => {
     menu.textContent = "";
     dropHead(menu, title);
     const search = document.createElement("input");
@@ -483,7 +484,12 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
         b.addEventListener("click", r.go);
         list.appendChild(b);
       }
-      if (!shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">${q ? "No folder matches." : "No folders yet. The + beside this chip makes one."}</div>`);
+      if (q && !shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No folder matches.</div>`);
+      if (!q) {
+        const b = drillItem("New folder…", fresh.hint, "");
+        b.addEventListener("click", fresh.go);
+        list.appendChild(b);
+      }
     };
     search.addEventListener("input", draw);
     draw();
@@ -503,7 +509,8 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       const recents = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
       if (!menu.isConnected) return;
       const dirs = pickerRecent({ surface: "desktop", current: currentFolder, recents, granted: [], spaces: [] }).desktop;
-      paint("Folder on this desktop", dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick({ kind: "local", path: d }) })));
+      paint("Folder on this desktop", dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick({ kind: "local", path: d }) })),
+        { hint: "Choose or make any folder on this computer", go: () => { void w?.pickCwd?.({ nullOnCancel: true }).then((d) => { if (d) pick({ kind: "local", path: d }); }); } });
       return;
     }
 
@@ -522,7 +529,7 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       paint(`Folder on ${here.name}`, rows.map((c) => ({
         main: c.label, hint: c.updatedAt ? `Used ${new Date(c.updatedAt).toLocaleDateString()}` : "Folder", sel: c.id === currentSpace,
         go: () => pick({ kind: "cloud-space", space: c.id, label: c.label }),
-      })));
+      })), { hint: `Name a new folder on ${here.name}`, go: () => { close(); openNewFolder(opts); } });
       return;
     }
 
@@ -539,7 +546,8 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       const at = (dir: string): Source => ({ kind: "local", path: dir, ...(here.id ? { machineId: here.id } : {}), machine: here.name });
       const recents = pickerRecent({ surface: "web", current: currentFolder, recents: opts.recentFolders?.() ?? [], granted: here.folders, spaces: [] }).desktop;
       const dirs = [...recents, ...here.folders.filter((g) => !recents.includes(g))];
-      paint(`Folder on ${label}`, dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick(at(d)) })));
+      paint(`Folder on ${label}`, dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick(at(d)) })),
+        { hint: `Name a new folder on ${label}`, go: () => { close(); openNewFolder(opts); } });
       return;
     }
 
@@ -552,10 +560,9 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
   })();
 }
 
-/** THE + BESIDE THE FOLDER CHIP on another desktop or the Glyphh machine:
- *  a modal asks the new folder's name, and the session works there. (On this
- *  desktop the + is the OS file chooser, the workbench's own handler.) */
-export function openNewFolder(opts: { getSource: () => Source; onPick: (s: Source) => void }): void {
+/** NEW FOLDER on another desktop or the Glyphh machine: a modal asks its
+ *  name, and the session works there. (On this desktop it is the file chooser.) */
+function openNewFolder(opts: { getSource: () => Source; onPick: (s: Source) => void }): void {
   const src = opts.getSource();
   void (async () => {
     const model = await loadMachines();
@@ -799,58 +806,6 @@ export function clampDropUp(menu: HTMLElement, anchor: HTMLElement, maxPx: numbe
   menu.style.overflowY = "auto";
 }
 
-/** The "+" chip: NEW FOLDER only — no browsing. Creates one directory inside
- *  the source's current folder (Home when unset) on the machine and picks it. */
-export function openNewFolderDrop(anchor: HTMLElement, opts: {
-  getSource: () => Source;
-  onPick: (s: Source) => void;
-}): void {
-  const wrap = anchor.parentElement || anchor;
-  wrap.querySelector(".ws-source-drop")?.remove();
-  closeAllDrops();
-  const menu = document.createElement("div");
-  menu.className = "code-drop-up ws-source-drop";
-  (wrap as HTMLElement).style.position ||= "relative";
-  wrap.appendChild(menu);
-  const close = (): void => menu.remove();
-  const src = opts.getSource();
-  const parent = src.kind === "local" && src.path ? src.path : undefined;
-  // The one interpolated value is escaped above; the rule cannot see it.
-  // nosemgrep: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
-  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>New folder${parent ? ` in ${escapeHtml(lastSeg(parent))}` : " in Home"}</span></div>`);
-  const nf = document.createElement("div");
-  nf.className = "ws-fs-newfolder";
-  nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="Folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn primary">Create</button><span class="ws-fs-newfolder-err"></span>`;
-  menu.appendChild(nf);
-  // Same edge rule as every other chip drop: hang from the CHIP's edge, not
-  // the row's. Without these it inherited the stylesheet's `left: 0`, which is
-  // the chips ROW — so the new-folder drop sat left of the + it belongs to.
-  clampDropUp(menu, anchor);
-  clampDropX(menu, anchor);
-  const input = nf.querySelector("input") as HTMLInputElement;
-  const btn = nf.querySelector("button") as HTMLButtonElement;
-  const err = nf.querySelector(".ws-fs-newfolder-err") as HTMLElement;
-  input.addEventListener("mousedown", (ev) => ev.stopPropagation());
-  const create = (): void => {
-    const name = input.value.trim();
-    if (!name) return;
-    btn.disabled = true; err.textContent = "";
-    void (sdk()?.attach?.dispatch?.("fs.mkdir", { ...(parent ? { path: parent } : {}), name }) ?? Promise.reject(new Error("no attached machine")))
-      .then((made) => {
-        const mid = src.kind === "local" ? src.machineId : undefined;
-        opts.onPick({ kind: "local", path: (made as { path: string }).path, ...(mid ? { machineId: mid } : {}) });
-        close();
-      })
-      .catch((e2) => { btn.disabled = false; err.textContent = (e2 as Error).message || "could not create"; });
-  };
-  btn.addEventListener("click", create);
-  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") create(); });
-  requestAnimationFrame(() => input.focus());
-  const away = (e: MouseEvent): void => {
-    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
-  };
-  document.addEventListener("mousedown", away, true);
-}
 
 // ── Root view: CLOUD + LOCAL sections ────────────────────────────────────
 
@@ -1284,8 +1239,7 @@ function renderLocal(
       list.appendChild(row);
     }
     if (!dirs.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No sub-folders here.</div>`);
-    // Browse + pick ONLY — creating a folder is the '+' chip's job
-    // (openNewFolderDrop), not the picker's.
+    // Browse + pick ONLY: making a folder is the folder picker's New folder….
     const use = document.createElement("button");
     use.type = "button";
     use.className = "action-btn primary ws-use-folder";

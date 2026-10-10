@@ -56,7 +56,7 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
-import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, openNewFolder, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
@@ -3669,9 +3669,7 @@ function initWorkdirGate(): void {
  */
 const CHIP_TITLES: Record<string, string> = {
   "dash-wd-btn": "Pick the working folder",
-  "dash-wd-add": "Add folder",
   "code-workdir-btn": "Pick the working folder",
-  "code-workdir-add": "Add folder",
   "code-plus-chip": "Attach files",
 };
 
@@ -3893,8 +3891,6 @@ function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
   const cloud = activeSource().kind !== "local";
-  // THE + IS UNIVERSAL (his order, 2026-10-09): it makes a folder on every
-  // machine, so no source hides it (a started session does, below).
   for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
@@ -3967,8 +3963,6 @@ function paintSourceDependents(): void {
           document.getElementById(id)?.setAttribute("title", `This session works in ${folderNow || "its folder"}, and only there. Start a new session to work in another folder.`);
         }
       }
-      // The + makes a folder and moves the shell there: never on a started session.
-      for (const id of ["dash-wd-add", "code-workdir-add"]) { if (born) document.getElementById(id)?.classList.add("hidden"); }
     }
     for (const id of ["dash-machine-btn", "code-machine-btn"]) {
       const svg = document.getElementById(id)?.querySelector(":scope > svg");
@@ -4069,22 +4063,6 @@ function initFolderLocusChips(): void {
       e.stopImmediatePropagation();
       if (bornLocus()) return;   // the title says why
       openFolderPicker(chip, { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders });
-    }, true);
-  }
-  // THE + MAKES A FOLDER ON THE SESSION'S MACHINE (his order, 2026-10-09):
-  // on this desktop it is the OS file chooser (the workbench's own handler);
-  // on another desktop or the Glyphh machine a modal asks the folder's name.
-  for (const id of ["dash-wd-add", "code-workdir-add"]) {
-    const chip = document.getElementById(id);
-    chip?.addEventListener("click", (e) => {
-      if (bornLocus()) { e.preventDefault(); e.stopImmediatePropagation(); return; }
-      const src = activeSource();
-      const here = src.kind === "local" && !onOtherDesktop(src);
-      if (here && !onWebTarget()) return;   // the file chooser runs
-      e.preventDefault();
-      e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
-      if (here) openNewFolderDrop(chip, { getSource: activeSource, onPick: pickSource });   // the web's own desktop, over the relay
-      else openNewFolder({ getSource: activeSource, onPick: pickSource });
     }, true);
   }
 }

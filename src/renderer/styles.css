@@ -17463,9 +17463,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    attachment dialog and the OS folder pickers are not among them there. */
 
 /* Machine folder browser: the "+ new folder" row (input + Create + error). */
-.ws-fs-newfolder { display: flex; align-items: center; gap: 6px; padding: 2px 8px 4px; }
-.ws-fs-newfolder .loop-drop-search { flex: 1; margin: 0; }
-.ws-fs-newfolder-err { font-size: 11px; color: var(--danger, #e5484d); }
 
 /* Drop-up pickers: the MENU is a flex column capped to the space above its
    anchor — the LIST is the only scrolling part (path header + "Use this

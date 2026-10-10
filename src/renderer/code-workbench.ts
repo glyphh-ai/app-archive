@@ -776,14 +776,12 @@ async function init(): Promise<void> {
   // ── Workdir bar — mirrors agent.ts ──
   const workdirBtn = document.getElementById("code-workdir-btn") as HTMLButtonElement | null;
   const workdirName = document.getElementById("code-workdir-name");
-  const workdirAdd = document.getElementById("code-workdir-add") as HTMLButtonElement | null;
   const branchWrap = document.getElementById("code-workdir-branch-wrap");
   const branchEl = document.getElementById("code-workdir-branch");
   // The Work landing's copy of the same chips (dashboard.html, no git chip) —
   // painted and wired alongside the header originals.
   const dashWdBtn = document.getElementById("dash-wd-btn") as HTMLButtonElement | null;
   const dashWdName = document.getElementById("dash-wd-name");
-  const dashWdAdd = document.getElementById("dash-wd-add") as HTMLButtonElement | null;
   const dashBranchWrap = document.getElementById("dash-wd-branch-wrap");
   const dashBranchEl = document.getElementById("dash-wd-branch");
 
@@ -868,17 +866,9 @@ async function init(): Promise<void> {
     e.stopPropagation();
     isDropdownOpen() ? closeDropdown() : void openDropdown();
   });
-  workdirAdd?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void window.wb.pickCwd();
-  });
   dashWdBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     isDropdownOpen() ? closeDropdown() : void openDropdown(dashWdBtn);
-  });
-  dashWdAdd?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void window.wb.pickCwd();
   });
   document.addEventListener("click", (e) => {
     if (!isDropdownOpen()) return;
