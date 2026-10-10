@@ -16,6 +16,7 @@ import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./com
 import { dictationText, partialDue, transcribeErrorText, SPEECH_STEER } from "./voice-text.js";
 export { SPEECH_STEER };
 import { micChecked, micRows } from "./mic-devices.js";
+import { toast } from "./toast.js";
 
 interface VoicePref {
   mode?: "off" | "push-to-talk" | "continuous";
@@ -411,7 +412,14 @@ async function startRecording(): Promise<boolean> {
   const p = await voicePref();
   if (!p.inputModel || recorder) return false;
   stopReply();                       // never capture the agent's own voice
-  if (!navigator.mediaDevices?.getUserMedia) { micError("This browser can't access the microphone."); handsFree = false; return false; }
+  if (!navigator.mediaDevices?.getUserMedia) { micError("This browser can't access the microphone.", true); handsFree = false; return false; }
+  // NO MICROPHONE AT ALL (his report, 2026-10-10: "I don't have a mic input
+  // device on this machine... it should fail or throw an error"): said at once.
+  if (!(await hasMicInput())) {
+    micError("No microphone found on this computer. Plug one in, or pick one under Settings › Voice.", true);
+    handsFree = false;
+    return false;
+  }
   // DESKTOP: settle the OS permission BEFORE asking Chromium for the stream
   // (his report, 2026-08-29: the button flashed and went cold). A macOS TCC
   // denial surfaces from getUserMedia as a bare NotAllowedError — the same
@@ -454,7 +462,7 @@ async function startRecording(): Promise<boolean> {
   }
   micError("");                       // clear any prior error
   try { recorder = new MediaRecorder(stream); }
-  catch (e) { micError("Recording isn't supported here."); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
+  catch (e) { micError("Recording isn't supported here.", true); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
   chunks = [];
   startedAt = Date.now();
   takeId += 1;
@@ -475,10 +483,24 @@ async function startRecording(): Promise<boolean> {
   return true;
 }
 
-/** Surface a mic problem where the user can see it: the chip tooltip + a brief
- *  error flash. Empty string clears it. */
+/** Is any audio input there to record from? (Unknown = yes: getUserMedia decides.) */
+async function hasMicInput(): Promise<boolean> {
+  if (!navigator.mediaDevices?.enumerateDevices) return true;
+  try { return (await navigator.mediaDevices.enumerateDevices()).some((d) => d.kind === "audioinput"); }
+  catch { return true; }
+}
+
+/** The last failure said out loud, so a retry that fails the same way does not stack toasts. */
+let lastToasted = { msg: "", at: 0 };
+
+/** Surface a mic problem where the user can see it: a message on screen, the
+ *  chip's tooltip and its error look. Empty string clears it. */
 function micError(msg: string, sticky = false): void {
   const chip = el("code-mic-chip");
+  if (msg && sticky && (msg !== lastToasted.msg || Date.now() - lastToasted.at > 10_000)) {
+    lastToasted = { msg, at: Date.now() };
+    toast(msg, { kind: "error" });
+  }
   if (!chip) return;
   if (msg) {
     chip.title = msg;
@@ -495,6 +517,22 @@ function micError(msg: string, sticky = false): void {
     chip.classList.remove("mic-error");
     osDenied = false;
   }
+}
+
+const STUCK_MS = 30_000;
+/** Drop a take that will never finish: the recorder, its stream, every busy look. */
+function resetTake(): void {
+  try { if (recorder && recorder.state === "recording") recorder.stop(); } catch { /* already stopped */ }
+  recorder = null;
+  chunks = [];
+  stream?.getTracks().forEach((t) => t.stop());
+  stream = null;
+  stopMeter();
+  stopPartials();
+  handsFree = false;
+  const chip = el("code-mic-chip");
+  chip?.classList.remove("recording", "transcribing");
+  setVoiceState("off");
 }
 
 function stopRecording(): void {
@@ -636,6 +674,12 @@ async function chipClick(): Promise<void> {
     void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.();
     return;
   }
+  // AN ERROR TURNS OFF WITH A CLICK (his report, 2026-10-10: it "locks on and
+  // can't turn off"): the first click clears it; the next one tries again.
+  if (el("code-mic-chip")?.classList.contains("mic-error")) { micError(""); el("code-mic-chip")!.title = "Dictate"; return; }
+  // A take that stopped but never finished (the device went away mid-take)
+  // must never hold the button: after a while a click lets it go.
+  if (recorder && recorder.state !== "recording" && Date.now() - startedAt > STUCK_MS) { resetTake(); return; }
   // Already recording → the user is stopping. In a HANDS-FREE session the
   // click means "done talking": what was captured still submits, then the
   // session ends. Killing handsFree here instead routed the transcript down
