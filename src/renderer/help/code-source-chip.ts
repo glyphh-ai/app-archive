@@ -1,4 +1,3 @@
-import { escapeHtml, promptAction } from "./shared.js";
 import { hostHas } from "./web-surface.js";
 import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, namedFolderId, namedFolderOf, onOtherDesktop, pickerRecent, type GlyphhMachine, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
@@ -441,9 +440,10 @@ export function openMachinePicker(anchor: HTMLElement, opts: {
 }
 
 /** THE FOLDER CHIP'S PICKER, ONE FLOW ON EVERY MACHINE (his order,
- *  2026-10-09: "literally the exact same thing but with remote it is a modal
- *  to add the folder name... local is the file chooser on the new icon"): the
- *  machine's folders, searchable, then New folder…. */
+ *  2026-10-09): the machine's folders, searchable, then New folder…. On this
+ *  desktop New folder… is the file chooser; on another desktop or the Glyphh
+ *  machine it steps (→) to a name field in this same drop, and a made folder
+ *  comes back to the list, picked ("not another odd modal"). */
 export function openFolderPicker(anchor: HTMLElement, opts: {
   getSource: () => Source;
   onPick: (s: Source) => void;
@@ -451,15 +451,12 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
 }): void {
   const { menu, close } = chipDrop(anchor);
   const pick = (next: Source): void => { opts.onPick(next); close(); };
-  const src = opts.getSource();
-  const currentFolder = src.kind === "local" ? src.path || "" : "";
-  const currentSpace = src.kind === "cloud-space" ? src.space : "";
   menu.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking its folders…</div>`);
 
   interface Row { main: string; hint: string; sel: boolean; go: () => void }
-  /** The last row, the same on every machine (his order, 2026-10-09: the
-   *  third chip was redundant): the file chooser here, a name modal on Remote. */
-  const paint = (title: string, rows: Row[], fresh: { hint: string; go: () => void }): void => {
+  interface Fresh { hint: string; step: boolean; go: () => void }
+  /** The list view: the folders, then New folder…, the same on every machine. */
+  const paint = (title: string, rows: Row[], fresh: Fresh): void => {
     menu.textContent = "";
     dropHead(menu, title);
     const search = document.createElement("input");
@@ -486,7 +483,7 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       }
       if (q && !shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No folder matches.</div>`);
       if (!q) {
-        const b = drillItem("New folder…", fresh.hint, "");
+        const b = drillItem("New folder…", fresh.hint, fresh.step ? CHEV : "");
         b.addEventListener("click", fresh.go);
         list.appendChild(b);
       }
@@ -498,42 +495,95 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
     requestAnimationFrame(() => search.focus());
   };
 
-  void (async () => {
+  /** The name step: ‹ back to the list; Create makes it, picks it and shows the list again. */
+  const paintName = (label: string, make: (name: string) => Promise<Source>): void => {
+    menu.textContent = "";
+    backHead(menu, `New folder on ${label}`, () => { void render(); });
+    const row = document.createElement("div");
+    row.className = "ws-fs-newfolder";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "loop-drop-search repo-drop-search";
+    input.placeholder = "Folder name";
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.addEventListener("mousedown", (ev) => ev.stopPropagation());
+    const create = document.createElement("button");
+    create.type = "button";
+    create.className = "action-btn primary";
+    create.textContent = "Create";
+    row.append(input, create);
+    const err = document.createElement("div");
+    err.className = "ws-fs-newfolder-err";
+    menu.append(row, err);
+    const go = async (): Promise<void> => {
+      const name = input.value.trim();
+      if (!name || create.disabled) return;
+      create.disabled = true;
+      err.textContent = "";
+      try {
+        opts.onPick(await make(name));
+        void render();
+      } catch (e) {
+        create.disabled = false;
+        err.textContent = `Couldn't make it: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    };
+    create.addEventListener("click", () => { void go(); });
+    input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void go(); });
+    clampDropUp(menu, anchor);
+    clampDropX(menu, anchor);
+    requestAnimationFrame(() => input.focus());
+  };
+
+  /** The list for the session's machine, read fresh (a made folder shows, picked). */
+  const render = async (): Promise<void> => {
+    const src = opts.getSource();
+    const currentFolder = src.kind === "local" ? src.path || "" : "";
+    const currentSpace = src.kind === "cloud-space" ? src.space : "";
     const model = await loadMachines();
     if (!menu.isConnected) return;
     const here = machineOfSource(model, src);
 
-    // ── this desktop: its recent folders; the + is the file chooser ──
+    // ── this desktop: its recent folders; New folder… is the file chooser ──
     if (here?.kind === "local") {
       const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
       const recents = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
       if (!menu.isConnected) return;
       const dirs = pickerRecent({ surface: "desktop", current: currentFolder, recents, granted: [], spaces: [] }).desktop;
       paint("Folder on this desktop", dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick({ kind: "local", path: d }) })),
-        { hint: "Choose or make any folder on this computer", go: () => { void w?.pickCwd?.({ nullOnCancel: true }).then((d) => { if (d) pick({ kind: "local", path: d }); }); } });
+        { hint: "Choose or make any folder on this computer", step: false, go: () => { void w?.pickCwd?.({ nullOnCancel: true }).then((d) => { if (d) pick({ kind: "local", path: d }); }); } });
       return;
     }
 
-    // ── the Glyphh machine: its folders; the + names a new one ──
+    // ── the Glyphh machine: its folders; New folder… names one ──
     if (here?.kind === "glyphh") {
       const spaces = await listSpaces();
       if (!menu.isConnected) return;
       const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
       const labelOf = (sp: { id: string; top: readonly string[] }): string =>
         namedFolderOf(sp.id) || (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `folder ${shortId(sp.id)}`);
-      const rows = pickerRecent({
-        surface: "web", current: "", recents: [], granted: [],
-        spaces: spaces.map((sp) => ({ id: sp.id, label: labelOf(sp), updatedAt: sp.updatedAt })),
-        ...(currentSpace ? { currentSpace } : {}),
-      }).cloud;
+      const listed = spaces.map((sp) => ({ id: sp.id, label: labelOf(sp), updatedAt: sp.updatedAt }));
+      // A folder just named exists from its first send: listed (and picked) until then.
+      if (currentSpace && !listed.some((sp) => sp.id === currentSpace)) {
+        listed.unshift({ id: currentSpace, label: (src.kind === "cloud-space" && src.label) || namedFolderOf(currentSpace) || currentSpace, updatedAt: 0 });
+      }
+      const rows = pickerRecent({ surface: "web", current: "", recents: [], granted: [], spaces: listed, ...(currentSpace ? { currentSpace } : {}) }).cloud;
       paint(`Folder on ${here.name}`, rows.map((c) => ({
-        main: c.label, hint: c.updatedAt ? `Used ${new Date(c.updatedAt).toLocaleDateString()}` : "Folder", sel: c.id === currentSpace,
+        main: c.label, hint: c.updatedAt ? `Used ${new Date(c.updatedAt).toLocaleDateString()}` : "New", sel: c.id === currentSpace,
         go: () => pick({ kind: "cloud-space", space: c.id, label: c.label }),
-      })), { hint: `Name a new folder on ${here.name}`, go: () => { close(); openNewFolder(opts); } });
+      })), {
+        hint: `Name a new folder on ${here.name}`, step: true,
+        go: () => paintName(here.name, async (name) => {
+          const id = namedFolderId(name);
+          if (!id) throw new Error("use letters, numbers, - or _");
+          return { kind: "cloud-space", space: id, label: name };
+        }),
+      });
       return;
     }
 
-    // ── another desktop: its folders inside the grants; the + names a new one there ──
+    // ── another desktop: its folders inside the grants; New folder… names one there ──
     if (here) {
       const label = machineLabel(here.name);
       if (here.empty) {
@@ -546,8 +596,14 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
       const at = (dir: string): Source => ({ kind: "local", path: dir, ...(here.id ? { machineId: here.id } : {}), machine: here.name });
       const recents = pickerRecent({ surface: "web", current: currentFolder, recents: opts.recentFolders?.() ?? [], granted: here.folders, spaces: [] }).desktop;
       const dirs = [...recents, ...here.folders.filter((g) => !recents.includes(g))];
-      paint(`Folder on ${label}`, dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick(at(d)) })),
-        { hint: `Name a new folder on ${label}`, go: () => { close(); openNewFolder(opts); } });
+      paint(`Folder on ${label}`, dirs.map((d) => ({ main: lastSeg(d), hint: d, sel: d === currentFolder, go: () => pick(at(d)) })), {
+        hint: `Name a new folder on ${label}`, step: true,
+        go: () => paintName(label, async (name) => {
+          // Inside a grant: the current folder when it is in one, else the first grant.
+          const parent = currentFolder && folderGranted(currentFolder, here.folders) ? currentFolder : here.folders[0]!;
+          return at(await mkdirOn(here.id ?? "", parent, name));
+        }),
+      });
       return;
     }
 
@@ -557,39 +613,8 @@ export function openFolderPicker(anchor: HTMLElement, opts: {
     const note = drillItem(`${name} is not attached`, "Open Glyphh there with remote control on, then pick its folder.", "");
     markUnreachable(note, `${name} is not attached right now`);
     menu.appendChild(note);
-  })();
-}
-
-/** NEW FOLDER on another desktop or the Glyphh machine: a modal asks its
- *  name, and the session works there. (On this desktop it is the file chooser.) */
-function openNewFolder(opts: { getSource: () => Source; onPick: (s: Source) => void }): void {
-  const src = opts.getSource();
-  void (async () => {
-    const model = await loadMachines();
-    const here = machineOfSource(model, src);
-    if (!here || here.kind === "local") return;
-    const label = here.kind === "glyphh" ? here.name : machineLabel(here.name);
-    if (here.kind === "desktop" && here.empty) { await promptAction(`${here.empty}`, "", "", "OK"); return; }
-    const make = async (name: string): Promise<Source> => {
-      if (here.kind === "glyphh") {
-        const id = namedFolderId(name);
-        if (!id) throw new Error("use letters, numbers, - or _");
-        return { kind: "cloud-space", space: id, label: name };
-      }
-      // Inside a grant: the current folder when it is in one, else the first grant.
-      const cur = src.kind === "local" ? src.path || "" : "";
-      const parent = cur && folderGranted(cur, here.folders) ? cur : here.folders[0]!;
-      const made = await mkdirOn(here.id ?? "", parent, name);
-      return { kind: "local", path: made, ...(here.id ? { machineId: here.id } : {}), machine: here.name };
-    };
-    let why = "";
-    for (;;) {
-      const name = (await promptAction(why ? `${why}\n\nNew folder on ${label}` : `New folder on ${label}`, "", "Folder name", "Create"))?.trim();
-      if (!name) return;
-      try { opts.onPick(await make(name)); return; }
-      catch (err) { why = `Couldn't make "${name}": ${err instanceof Error ? err.message : String(err)}`; }
-    }
-  })();
+  };
+  void render();
 }
 
 /** Make `name` inside `parent` on another desktop, over the relay; answers its path. */
