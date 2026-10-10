@@ -44,12 +44,20 @@ export function fmtTokens(n: number): string {
   return String(Math.round(n));
 }
 
+/** The popover's row name, short (his order, 2026-10-10: "should just say
+ *  balance"): the server's label is a phrase for the banner's sentence
+ *  ("your organization's balance"); the row drops the "your … 's". */
+export function shortLabel(label: string): string {
+  const s = label.trim().replace(/^your\s+(organization|org)['’]s\s+/i, "").replace(/^your\s+/i, "");
+  return s ? s[0]!.toUpperCase() + s.slice(1) : "Budget";
+}
+
 export function usageView(spend: SpendLike | null, ctx: ContextLike | null): UsageView {
   const rows: UsageRow[] = [];
   const t = spend?.tightest ?? null;
   if (t) {
     const pct = clamp(t.pct);
-    rows.push({ label: t.label || "Budget", detail: `${fmtUsd(t.spentUsd)} of ${fmtUsd(t.limitUsd)}`, pct, hot: pct >= HOT_PCT });
+    rows.push({ label: shortLabel(t.label || ""), detail: `${fmtUsd(t.spentUsd)} of ${fmtUsd(t.limitUsd)}`, pct, hot: pct >= HOT_PCT });
   }
   if (ctx && ctx.budget > 0) {
     const pct = clamp((ctx.tokens / ctx.budget) * 100);

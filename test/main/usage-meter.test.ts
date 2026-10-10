@@ -4,7 +4,7 @@
  * context window rides beside it when the desktop can say, nothing invented.
  */
 import { describe, expect, it } from "vitest";
-import { HOT_PCT, fmtTokens, fmtUsd, ringOffset, usageView } from "../../src/renderer/help/usage-meter.js";
+import { HOT_PCT, fmtTokens, fmtUsd, ringOffset, shortLabel, usageView } from "../../src/renderer/help/usage-meter.js";
 
 const spend = (pct: number, extra = {}) => ({ hasPlan: true, plan: "Solo", tightest: { label: "Your budget", limitUsd: 20, spentUsd: (20 * pct) / 100, pct }, ...extra });
 
@@ -37,13 +37,13 @@ describe("the popover", () => {
   it("heads with the plan — Free when there is none — and lists budget then context", () => {
     const v = usageView(spend(50), { tokens: 1_200, budget: 8_000 });
     expect(v.plan).toBe("Solo plan");
-    expect(v.rows.map((r) => r.label)).toEqual(["Your budget", "Context"]);
+    expect(v.rows.map((r) => r.label)).toEqual(["Budget", "Context"]);
     expect(v.rows[0]!.detail).toBe("$10.00 of $20.00");
     expect(v.rows[1]!.pct).toBe(15);
     expect(usageView({ hasPlan: false, plan: "", tightest: null }, null).plan).toBe("Free");
   });
   it("a context window with no budget is not a row (nothing invented)", () => {
-    expect(usageView(spend(10), { tokens: 10, budget: 0 }).rows.map((r) => r.label)).toEqual(["Your budget"]);
+    expect(usageView(spend(10), { tokens: 10, budget: 0 }).rows.map((r) => r.label)).toEqual(["Budget"]);
   });
   it("formats money and tokens the short way", () => {
     expect(fmtUsd(0)).toBe("$0.00");
@@ -54,5 +54,15 @@ describe("the popover", () => {
     expect(fmtTokens(200_000)).toBe("200k");
     expect(fmtTokens(2_000_000)).toBe("2M");
     expect(fmtTokens(-3)).toBe("0");
+  });
+});
+
+describe("the row name", () => {
+  it("just says balance (his order, 2026-10-10)", () => {
+    expect(shortLabel("your organization's balance")).toBe("Balance");
+    expect(shortLabel("your organization's spend limit")).toBe("Spend limit");
+    expect(shortLabel("your monthly limit")).toBe("Monthly limit");
+    expect(shortLabel("your team Ops's budget")).toBe("Team Ops's budget");
+    expect(shortLabel("")).toBe("Budget");
   });
 });
