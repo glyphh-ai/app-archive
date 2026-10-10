@@ -3197,9 +3197,19 @@ async function init(): Promise<void> {
     let liveDrag: CardDrag | null = null;
     const beginCardDrag = (e: TileEntry, card: HTMLElement, startX: number, startY: number, shieldFrames: boolean): CardDrag | null => {
       if (card.classList.contains("expanded")) return null;
-      if (gridRects()?.has(e)) return null;
       if (isAgentEntry(e) && !agentCardMovable(IS_WEB_TARGET)) return null;
       liveDrag?.end();
+      // A LAYOUT GRID's card lives in a SLOT (the old layout manager's move):
+      // it follows the pointer and, released, SWAPS cells with the slot
+      // nearest the drop. Flow cards reorder live. One drag for both, from
+      // the grip or the name (his report, 2026-10-10: "the grabbing is not
+      // consistent… you grab by the name but it should [be] that and the
+      // grabber at the top of the panel").
+      const inGrid = !!gridRects()?.has(e);
+      const stageR0 = stage.getBoundingClientRect();
+      const cardR0 = card.getBoundingClientRect();
+      const offX = startX - cardR0.left, offY = startY - cardR0.top;
+      let lastX = startX, lastY = startY;
       let dragging = false;
       let ended = false;
       let lastSwapAt = 0;
@@ -3216,9 +3226,17 @@ async function init(): Promise<void> {
           if (Math.hypot(cx - startX, cy - startY) < 6) return;
           dragging = true;
           card.classList.add("echo-card-dragging");
+          if (inGrid) card.classList.add("dragging");
           // Embedded pages under the pointer must not swallow a drag this
           // document's own pointer drives; a relayed drag keeps its webview's.
           if (shieldFrames) document.body.classList.add("echo-drag");
+        }
+        lastX = cx;
+        lastY = cy;
+        if (inGrid) {
+          card.style.left = `${cx - stageR0.left - offX}px`;
+          card.style.top = `${cy - stageR0.top - offY}px`;
+          return;
         }
         // DRIVE TO A SIDE: holding the drag inside the band's left/right
         // edge parks the card as its own flanking column on release.
@@ -3273,7 +3291,29 @@ async function init(): Promise<void> {
         if (ended) return;
         ended = true;
         if (liveDrag === drag) liveDrag = null;
-        if (dragging) {
+        const grid = inGrid ? gridRects() : null;
+        if (dragging && grid && echoGrid && grid.has(e)) {
+          const px = lastX - stageR0.left, py = lastY - stageR0.top;
+          let target: TileEntry | null = null;
+          let bestD = Infinity;
+          for (const [entry, rc] of grid) {
+            if (entry === e) continue;
+            const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
+            if (d < bestD) { bestD = d; target = entry; }
+          }
+          const a = echoGrid.cells.find((c) => c.entry === e);
+          const b = target ? echoGrid.cells.find((c) => c.entry === target) : null;
+          if (a && b) {
+            [a.col, b.col] = [b.col, a.col];
+            [a.row, b.row] = [b.row, a.row];
+            [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
+            [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
+            saveEchoLayoutMem();
+            persistOpenWorkspace();
+          }
+          card.classList.remove("dragging");
+          layoutCards();
+        } else if (dragging) {
           // Edge release: the card becomes the FIRST (left) or LAST (right)
           // flow position — with the breadth-first fill that is its own
           // side-by-side column next to the rest.
@@ -3297,7 +3337,7 @@ async function init(): Promise<void> {
         }
         // Whatever happened, nothing stays in drag mode.
         setEdgeIntent(null);
-        card.classList.remove("echo-card-dragging");
+        card.classList.remove("echo-card-dragging", "dragging");
         document.body.classList.remove("echo-drag");
       };
       const drag: CardDrag = { move, end };
@@ -4128,68 +4168,6 @@ async function init(): Promise<void> {
         if (mr.bottom > window.innerHeight - 8) menu.style.top = `${window.innerHeight - mr.height - 8}px`;
         document.addEventListener("mousedown", onAway, true);
         document.addEventListener("keydown", onEsc, true);
-      });
-      // DRAG the card by its head into another slot — the list reorders and
-      // every card animates to its new rect (the transitions do the motion).
-      const head = card.querySelector<HTMLElement>(".echo-card-head")!;
-      head.addEventListener("mousedown", (ev) => {
-        if (ev.button !== 0) return;
-        if ((ev.target as HTMLElement).closest("button")) return;
-        if (card.classList.contains("expanded")) return;
-        ev.preventDefault();
-        const r0 = card.getBoundingClientRect();
-        const stageR = stage.getBoundingClientRect();
-        const offX = ev.clientX - r0.left, offY = ev.clientY - r0.top;
-        let dragMoved = false;
-        const onMove = (mv: MouseEvent): void => {
-          if (!dragMoved && Math.abs(mv.clientX - ev.clientX) + Math.abs(mv.clientY - ev.clientY) < 5) return;
-          dragMoved = true;
-          card.classList.add("dragging");
-          card.style.left = `${mv.clientX - stageR.left - offX}px`;
-          card.style.top = `${mv.clientY - stageR.top - offY}px`;
-        };
-        const onUp = (mv: MouseEvent): void => {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
-          if (!dragMoved) return;
-          card.classList.remove("dragging");
-          const px = mv.clientX - stageR.left, py = mv.clientY - stageR.top;
-          // GRID cards live in SLOTS — dropping on another slot SWAPS the two
-          // cells (the old layout manager's move); flow cards reorder.
-          const grid = gridRects();
-          if (grid && echoGrid && grid.has(e)) {
-            let target: TileEntry | null = null;
-            let bestD = Infinity;
-            for (const [entry, rc] of grid) {
-              if (entry === e) continue;
-              const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
-              if (d < bestD) { bestD = d; target = entry; }
-            }
-            const a = echoGrid.cells.find((c) => c.entry === e);
-            const b = target ? echoGrid.cells.find((c) => c.entry === target) : null;
-            if (a && b) {
-              [a.col, b.col] = [b.col, a.col];
-              [a.row, b.row] = [b.row, a.row];
-              [a.colSpan, b.colSpan] = [b.colSpan, a.colSpan];
-              [a.rowSpan, b.rowSpan] = [b.rowSpan, a.rowSpan];
-              saveEchoLayoutMem();
-              persistOpenWorkspace();
-            }
-            layoutCards();
-            return;
-          }
-          const from = openList.indexOf(e);
-          const rects = [...flowRects(openList).values()];
-          let to = from, best = Infinity;
-          rects.forEach((rc, i) => {
-            const d = Math.hypot(rc.left + rc.width / 2 - px, rc.top + rc.height / 2 - py);
-            if (d < best) { best = d; to = i; }
-          });
-          if (from >= 0 && to !== from) openList.splice(to, 0, ...openList.splice(from, 1));
-          layoutCards();
-        };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
       });
       setRect(card, iconRect(e) ?? centerRect());   // start AT the tile
       cardsLayer.appendChild(card);

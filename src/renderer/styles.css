@@ -20478,6 +20478,13 @@ img.bot-cat-img { display: block; object-fit: contain; flex: none; }
   position: fixed; inset: 18px; z-index: 99000; height: auto; border-radius: 16px;
   box-shadow: 0 0 0 100vmax color-mix(in srgb, #000 62%, transparent), 0 24px 80px -20px #000;
 }
+/* Full screen respects the left rail (his report, 2026-10-10: "the canvas in
+   full screen is not respecting the left rail"): it starts past the rail,
+   and its dim backdrop stops at the rail's edge (--rail-w is 0 collapsed). */
+.pmap.pmap-full {
+  left: calc(var(--rail-w, 0px) + 18px);
+  clip-path: inset(-100vmax -100vmax -100vmax -18px);
+}
 
 /* The Edit page's loading screen (his order, 2026-10-09). */
 .botp { position: relative; }
