@@ -491,8 +491,6 @@ void (async () => {
   };
   link.addEventListener("click", (e) => { e.stopPropagation(); act(); });
   close?.addEventListener("click", (e) => { e.stopPropagation(); dismissed = version || "next"; card.classList.add("hidden"); });
-  // The icon-strip rail hides the text and link; the card itself is the door.
-  card.addEventListener("click", () => { if (document.getElementById("app-rail")?.classList.contains("rail-icons")) act(); });
 
   let version = "";
   window.glyphh.onUpdateStatus?.((info) => {

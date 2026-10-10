@@ -110,7 +110,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "agents" | "artifacts";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "agents" | "artifacts";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -166,23 +166,6 @@ interface TermSlot {
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
-/** Rail — the app's left rail as a PANEL: the menu, Recents, the Apps and
- *  Workspaces trays, and the account footer. It HOSTS the one `#app-rail`
- *  (retired from the shell) through the same overlay mechanism the agent seat
- *  uses, so every existing binding — recents rendering, nav, search, the user
- *  menu — keeps working untouched. The three flags are the workspace cell's
- *  configs (Workspaces → the panel setup pane); absent = shown. */
-interface RailPanelSlot {
-  id: number; view: "rail";
-  menu?: boolean; recents?: boolean; layouts?: boolean;
-  /** The header's collapse affordances — OFF by default; a workspace cell
-   *  enables either via its config (railHideLeft/railHideRight). */
-  hideLeft?: boolean; hideRight?: boolean;
-  /** Collapse state — the rail is an icon strip pinned to this edge. Persisted
-   *  through the layout snapshot so a reopen comes back the way it was left. */
-  collapsed?: "left" | "right";
-  sticky?: boolean;
-}
 /** Releases — the release-management view for BUILT (glyphh-hosted) apps:
  *  pick an app, see its release history, cut a build, promote to live.
  *  `slug` remembers the picked app across renders/layout saves. */
@@ -250,7 +233,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -272,12 +255,7 @@ const MAXIMIZE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 // Panel-edge collapse glyphs (the Rail's hide-to-icons affordance): a panel
 // frame with its rail bar, arrow pointing INTO the bar to collapse; the arrow
 // flips outward while collapsed (the same button expands).
-const RAIL_HIDE_LEFT_SVG    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><path d="m16 15-3-3 3-3"/></svg>`;
-const RAIL_SHOW_LEFT_SVG    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><path d="m13 9 3 3-3 3"/></svg>`;
-const RAIL_HIDE_RIGHT_SVG   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/><path d="m8 9 3 3-3 3"/></svg>`;
-const RAIL_SHOW_RIGHT_SVG   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/><path d="m11 15-3-3 3-3"/></svg>`;
 /** The collapsed Rail's icon-strip width — what the panel's column narrows to. */
-const RAIL_STRIP_W = 64;
 const RESTORE_SVG  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
 
 const VIEW_META: Record<string, { title: string; icon: string }> = {
@@ -1139,21 +1117,8 @@ async function init(): Promise<void> {
   /** Per-cell app setup a workspace applies on open. Flat by design — it
    *  round-trips verbatim through the desktop IPC, the web bridge and the
    *  server's opaque `data` JSON, so a new key needs no migration. */
-  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" };
-  /** The Rail panel's section toggles, read off a cell config. Absent = shown,
-   *  so only an explicit `false` hides — a workspace saved before the panel
-   *  existed opens the full rail. */
-  function railFlagsOf(cfg: CellConfig | undefined): { menu: boolean; recents: boolean; layouts: boolean; hideLeft: boolean; hideRight: boolean } {
-    return {
-      menu: cfg?.railMenu !== false,
-      recents: cfg?.railRecents !== false,
-      layouts: cfg?.railLayouts !== false,
-      // The hide affordances INVERT the default: off unless the cell opts in.
-      hideLeft: cfg?.railHideLeft === true,
-      hideRight: cfg?.railHideRight === true,
-    };
-  }
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string } | { view: "rail"; collapsed?: "left" | "right" };
+  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> };
@@ -1205,12 +1170,7 @@ async function init(): Promise<void> {
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
               : s.view === "section"
                 ? { view: "section", section: s.section }
-                // A collapsed Rail rides its edge-strip state through the
-                // snapshot; an expanded one stays the bare "rail" string so
-                // untouched rails keep their compact form.
-                : s.view === "rail" && s.collapsed
-                  ? { view: "rail", collapsed: s.collapsed }
-                  : s.view),
+                : s.view),
         })).filter((r) => r.views.length > 0),
       };
       uiStateSet(layoutKey(), JSON.stringify(data));
@@ -1233,9 +1193,6 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
-        } else if ((typeof v === "object" && v !== null && v.view === "rail") || v === "rail") {
-          // The rail is the fixed sidebar (his order, 2026-09-16): a saved Rail panel is dropped.
-          continue;
         } else if (v === "coding" || v === "thread") {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
@@ -1305,14 +1262,8 @@ async function init(): Promise<void> {
     // only the column rails (and their drop strips) share the budget.
     const sized = rails.filter((r) => !r.banner);
     const stripsW = 0;   // drop strips are zero-width until a drag opens them
-    // A column holding only a COLLAPSED Rail panel pins to the icon-strip
-    // width; the flexible columns share what's left (the neighbor takes the
-    // reclaimed space — that's the point of the collapse).
-    const isStripRail = (r: Rail): boolean =>
-      r.slots.length > 0 && r.slots.every((sl) => sl.view === "rail" && !!(sl as RailPanelSlot).collapsed);
-    const flex = sized.filter((r) => !isStripRail(r));
-    const available = Math.max(0, containerW - stripsW - (sized.length - flex.length) * RAIL_STRIP_W);
-    const prefs = flex.map((r) => r.prefWidth ?? 320);
+    const available = Math.max(0, containerW - stripsW);
+    const prefs = sized.map((r) => r.prefWidth ?? 320);
     const widths = prefs.slice();
     let total = widths.reduce((a, b) => a + b, 0);
     for (let i = widths.length - 1; i >= 0 && total > available; i--) {
@@ -1343,7 +1294,6 @@ async function init(): Promise<void> {
       const el = railEls[idx];
       if (!el) return;
       if (r.banner) { el.style.width = ""; return; }
-      if (isStripRail(r)) { el.style.width = RAIL_STRIP_W + "px"; return; }
       el.style.width = widths[si++] + "px";
     });
   }
@@ -1408,7 +1358,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "agents" | "artifacts");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1487,7 +1437,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "agents" | "artifacts"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"): void;
     /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/surface.ts):
      *  Artifacts / Build / Customize fill the page over the agent and every
      *  open card (kept mounted); close restores exactly what was showing. */
@@ -1621,7 +1571,6 @@ async function init(): Promise<void> {
     if (view === "coding") return { id, view };
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
-    if (view === "rail") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     if (view === "agents") return { id, view };
     if (view === "artifacts") return { id, view };
@@ -2022,7 +1971,6 @@ async function init(): Promise<void> {
     // Re-arm the agent overlay: a rebuild may have added a coding-seat
     // placeholder (follow it) or removed one (park the agent home).
     scheduleAgentSync();
-    scheduleRailSync();
     // Fresh headers after every render: re-mark the one under the strip.
     markHeadsUnderStrip();
   }
@@ -2108,24 +2056,12 @@ async function init(): Promise<void> {
     const popoutBtn = canPopout
       ? `<button class="ws-icon-btn slot-popout" title="Pop out — its own window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
       : "";
-    // Rail-hide (collapse to icons): only when the panel provides the override
-    // (a workspace cell's railHideLeft/railHideRight). While collapsed the
-    // SAME button expands — CSS hides everything else in the strip header.
-    const railHideBtns = slot.view === "rail"
-      ? (["left", "right"] as const).filter((d) => (d === "left" ? slot.hideLeft : slot.hideRight)).map((d) => {
-          const on = slot.collapsed === d;
-          const svg = d === "left" ? (on ? RAIL_SHOW_LEFT_SVG : RAIL_HIDE_LEFT_SVG) : (on ? RAIL_SHOW_RIGHT_SVG : RAIL_HIDE_RIGHT_SVG);
-          return `<button class="ws-icon-btn slot-rail-hide${on ? " active" : ""}" data-dir="${d}" title="${on ? "Expand the rail" : `Collapse to icons (${d})`}">${svg}</button>`;
-        }).join("")
-      : "";
-    if (slot.view === "rail" && slot.collapsed) wrap.classList.add("rail-strip", `rail-strip-${slot.collapsed}`);
     wrap.innerHTML = `
       <div class="ws-rail-slot-header" draggable="true" title="Drag to rearrange">
         ${icon}
         <span class="title"></span>
         ${urlToggle}
         ${popoutBtn}
-        ${railHideBtns}
         <button class="ws-icon-btn slot-maximize" title="${isMax ? "Restore" : "Maximize"}">
           ${isMax ? RESTORE_SVG : MAXIMIZE_SVG}
         </button>
@@ -2146,16 +2082,6 @@ async function init(): Promise<void> {
       if (!/^https?:\/\//i.test(url)) return;
       void yo.panelPopout({ kind: "url", url, title });
       closeSlot(slot.id);
-    });
-    wrap.querySelectorAll<HTMLElement>(".slot-rail-hide").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (slot.view !== "rail") return;
-        const dir = btn.dataset.dir as "left" | "right";
-        slot.collapsed = slot.collapsed === dir ? undefined : dir;
-        renderRails();   // rebuild — the column width and header change shape
-        saveLayout();    // persist the collapse like every other layout change
-      });
     });
     wrap.querySelector(".slot-maximize")!.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -2237,7 +2163,6 @@ async function init(): Promise<void> {
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "agents") mountBotsPanel(body);
     else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
-    else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
@@ -3629,19 +3554,7 @@ async function init(): Promise<void> {
         return a.map((v) => v / sum);
       };
       const cw = norm(echoGrid.colWidths);
-      // A column whose every cell is a COLLAPSED Rail panel pins to the
-      // icon-strip width; the flexible columns split the remaining band
-      // proportionally — the Rail's neighbor takes the reclaimed space.
-      const isStripEntry = (e: TileEntry): boolean =>
-        e.toolSlot?.view === "rail" && !!(e.toolSlot as RailPanelSlot).collapsed;
-      const pinned = new Set<number>();
-      for (let i = 0; i < cw.length; i++) {
-        const inCol = echoGrid.cells.filter((c) => c.col <= i && i < c.col + c.colSpan);
-        if (inCol.length && inCol.every((c) => c.colSpan === 1 && isStripEntry(c.entry))) pinned.add(i);
-      }
-      const flexSum = cw.reduce((sum, v, i) => (pinned.has(i) ? sum : sum + v), 0) || 1;
-      const flexW = Math.max(0, W - pinned.size * RAIL_STRIP_W);
-      const px = cw.map((v, i) => (pinned.has(i) ? RAIL_STRIP_W : (v / flexSum) * flexW));
+      const px = cw.map((v) => v * W);
       const preX = (i: number): number => px.slice(0, i).reduce((x, y) => x + y, 0);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
@@ -3652,8 +3565,7 @@ async function init(): Promise<void> {
         const right = band.left + preX(c.col + c.colSpan) - (c.col + c.colSpan >= cw.length ? 0 : gap / 2);
         const top = band.top + pre(rh, c.row) * H + (c.row === 0 ? 0 : gap / 2);
         const bottom = band.top + pre(rh, c.row + c.rowSpan) * H - (c.row + c.rowSpan >= rh.length ? 0 : gap / 2);
-        const minW = isStripEntry(c.entry) ? 40 : 120;
-        out.set(c.entry, { left, top, width: Math.max(minW, right - left), height: Math.max(90, bottom - top) });
+        out.set(c.entry, { left, top, width: Math.max(120, right - left), height: Math.max(90, bottom - top) });
       }
       return out;
     };
@@ -3794,10 +3706,6 @@ async function init(): Promise<void> {
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
-      // The rail overlay parks (and stops its loop) while a fullscreen card
-      // hides its placeholder — every reflow re-arms it so the rail returns
-      // the moment the placeholder is visible again.
-      scheduleRailSync();
       // Cards just moved: re-mark the head under the strip (an Echo card head, the usual case).
       markHeadsUnderStrip();
     }
@@ -3816,21 +3724,8 @@ async function init(): Promise<void> {
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
       const cw = norm(echoGrid.colWidths);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
-      // Column X positions MUST mirror gridRects EXACTLY: a column of collapsed
-      // Rail panels pins to the icon-strip width and the flex columns split the
-      // rest, so the boundary a seam sits on is NOT `pre(cw,i)*W`. Using the raw
-      // fractions here left the dragger stranded off the panel gap the instant a
-      // Rail was collapsed (his report, 2026-08-30). Compute the same pinned px.
-      const isStripEntry = (e: TileEntry): boolean =>
-        e.toolSlot?.view === "rail" && !!(e.toolSlot as RailPanelSlot).collapsed;
-      const pinned = new Set<number>();
-      for (let i = 0; i < cw.length; i++) {
-        const inCol = echoGrid.cells.filter((c) => c.col <= i && i < c.col + c.colSpan);
-        if (inCol.length && inCol.every((c) => c.colSpan === 1 && isStripEntry(c.entry))) pinned.add(i);
-      }
-      const flexSum = cw.reduce((sum, v, i) => (pinned.has(i) ? sum : sum + v), 0) || 1;
-      const flexW = Math.max(0, W - pinned.size * RAIL_STRIP_W);
-      const px = cw.map((v, i) => (pinned.has(i) ? RAIL_STRIP_W : (v / flexSum) * flexW));
+      // Column X positions mirror gridRects exactly.
+      const px = cw.map((v) => v * W);
       const preX = (i: number): number => px.slice(0, i).reduce((x, y) => x + y, 0);
       const wire = (el: HTMLElement, horiz: boolean, idx: number, colIdx: number): void => {
         el.addEventListener("mousedown", (ev) => {
@@ -4743,7 +4638,6 @@ async function init(): Promise<void> {
               seatedAgent = true;
               entry = openAgentChatCard(GLYPHH_LOOP_ID) ?? openAgentPanel();
             }
-            else if (v === "rail") { continue; }   // the rail is the fixed sidebar (2026-09-16): a Rail cell opens nothing
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
               // THE PAGE THAT WAS HERE comes back alive (his report, 2026-10-08) — the
               // parked card of this very cell, else a fresh one.
@@ -4773,10 +4667,6 @@ async function init(): Promise<void> {
               // applies it as the slot is minted: ONE render, straight into
               // the document.
               if (st?.slot && holdsDocState(v)) entry.pendingSlotState = st.slot;
-              // The Rail cell's section toggles come from the DEFINITION and
-              // must shape the placeholder's first paint (the overlay reads
-              // the DOM, so a post-mount graft would flash the full rail).
-              if (v === "rail") entry.pendingSlotState = { ...(entry.pendingSlotState || {}), ...railFlagsOf(cell.config) };
               // A Browser cell's URL is the DEFINITION's (his report,
               // 2026-09-23: "the url is not loaded when the browser is shown").
               // It used to be grafted onto slot.url AFTER the first paint — by
@@ -5168,7 +5058,6 @@ async function init(): Promise<void> {
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
         else if (slot.view === "agents") mountBotsPanel(body);
         else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
-        else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
     };
 
     let openingLayout = false;
@@ -5590,29 +5479,6 @@ async function init(): Promise<void> {
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
      *  (standard confirm). */
-    const wireRailCollapse = (card: HTMLElement, slot: RailPanelSlot, body: HTMLElement): void => {
-      const head = card.querySelector<HTMLElement>(".echo-card-head");
-      if (!head) return;
-      head.querySelectorAll(".echo-rail-hide").forEach((b) => b.remove());
-      card.classList.toggle("rail-strip", !!slot.collapsed);
-      const anchor = head.querySelector(".echo-card-expand");
-      for (const dir of ["left", "right"] as const) {
-        if (!(dir === "left" ? slot.hideLeft : slot.hideRight)) continue;
-        const on = slot.collapsed === dir;
-        const btn = document.createElement("button");
-        btn.className = `ws-icon-btn echo-rail-hide${on ? " active" : ""}`;
-        btn.title = on ? "Expand the rail" : `Collapse to icons (${dir})`;
-        btn.innerHTML = dir === "left" ? (on ? RAIL_SHOW_LEFT_SVG : RAIL_HIDE_LEFT_SVG) : (on ? RAIL_SHOW_RIGHT_SVG : RAIL_HIDE_RIGHT_SVG);
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          slot.collapsed = slot.collapsed === dir ? undefined : dir;
-          renderRailIntoSlot(body, slot);       // placeholder carries the state
-          wireRailCollapse(card, slot, body);   // buttons repaint (arrow flips)
-          layoutCards();                        // the column re-pins
-        });
-        head.insertBefore(btn, anchor);
-      }
-    };
     /** THE DOCK'S ACTIONS — one table for a dock slot wherever it is clicked:
      *  the dock row, a slot traded onto the pages, or the dock's tiles leading
      *  the wall while the dock is off (his order, 2026-10-04: same actions as
@@ -5759,7 +5625,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "agents" | "artifacts"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"): TileEntry => {
       // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
       // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
       // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
@@ -6213,108 +6079,6 @@ async function init(): Promise<void> {
     body.classList.add("ws-coding-body");
     body.innerHTML = `<div class="ws-agent-placeholder" data-agent-host="coding"></div>`;
     scheduleAgentSync();
-  }
-
-  // ── Rail view — the app's left rail AS A PANEL ──
-  // The slot body is a placeholder rect; the live `#app-rail` sits in a
-  // stable fixed layer and follows it each frame (the agent seat's mechanism).
-  // Re-parenting the rail into the rails DOM instead would put a singleton
-  // node inside a subtree `renderRails` rebuilds — one re-render and the menu,
-  // Recents and the trays would be gone with no way back.
-  function renderRailIntoSlot(body: HTMLElement, _slot: RailPanelSlot): void {
-    // The rail is the fixed sidebar now (his order, 2026-09-16); a saved Rail
-    // panel renders an honest note instead of hosting it.
-    body.innerHTML = `<div class="ws-rail-placeholder-note">The sidebar is fixed at the left of the window now. Close this panel.</div>`;
-  }
-
-  // ── The rail overlay — the ONE #app-rail, hosted by whichever Rail panel
-  //    is showing. Same three moving parts as the agent overlay: a fixed
-  //    layer, one holder, and an rAF reconciler that stops itself when no
-  //    placeholder is on screen (the panel closed, or the rail went off with
-  //    a layout). The rail's HOME is the shell's #help-layout, where it is
-  //    display:none — so parking it is also what hides it again. ──
-  let railLayer: HTMLDivElement | null = null;
-  let railHolder: HTMLDivElement | null = null;
-  let railSyncRaf = 0;
-
-  function ensureRailLayer(): HTMLDivElement {
-    if (railLayer && railLayer.isConnected) return railLayer;
-    railLayer = document.createElement("div");
-    railLayer.id = "code-rail-layer";
-    railHolder = document.createElement("div");
-    railHolder.className = "ws-rail-holder";
-    railHolder.style.display = "none";
-    railLayer.appendChild(railHolder);
-    document.body.appendChild(railLayer);
-    return railLayer;
-  }
-
-  /** `#app-rail`'s in-flow HOME: back in `#help-layout`, immediately before the
-   *  (equally hidden) rail splitter. MOVE, never clone — every binding
-   *  help/code.ts and navigation.ts made at init is on these nodes. */
-  function parkRailHome(): void {
-    // The rail is the fixed sidebar (2026-09-16): it never moves.
-  }
-
-  /** The one visible Rail placeholder. Two Rail panels can exist (a workspace
-   *  cell plus an ad-hoc one); the first one actually laid out wins and the
-   *  other shows an empty rect — the rail is a singleton, not a clone.
-   *  COMPUTED visibility matters, not just the rect: a fullscreen panel hides
-   *  its siblings with `visibility: hidden`, which keeps their rects AND
-   *  offsetParent — the rect test alone left the rail painting over every
-   *  fullscreen card (his report, 2026-08-30). A hidden placeholder parks the
-   *  rail, so it always renders UNDER whatever went fullscreen. */
-  function activeRailPlaceholder(): HTMLElement | null {
-    for (const cand of document.querySelectorAll<HTMLElement>(".ws-rail-placeholder")) {
-      const rect = cand.getBoundingClientRect();
-      if (rect.width <= 24 || rect.height <= 24 || cand.offsetParent === null) continue;
-      if (getComputedStyle(cand).visibility === "hidden") continue;
-      return cand;
-    }
-    return null;
-  }
-
-  /** Apply the hosting cell's configs. classList.toggle is idempotent, so
-   *  running it per frame costs nothing and needs no change tracking. */
-  function applyRailConfig(rail: HTMLElement, ph: HTMLElement): void {
-    rail.classList.toggle("rail-hide-menu", ph.dataset.railMenu === "0");
-    rail.classList.toggle("rail-hide-recents", ph.dataset.railRecents === "0");
-    rail.classList.toggle("rail-hide-layouts", ph.dataset.railLayouts === "0");
-    rail.classList.toggle("rail-icons", ph.dataset.railCollapsed === "1");
-  }
-
-  function syncRailView(): void {
-    ensureRailLayer();
-    const rail = document.getElementById("app-rail");
-    const ph = activeRailPlaceholder();
-    if (rail && ph && railHolder && false) {
-      if (rail.parentElement !== railHolder) railHolder.appendChild(rail);
-      applyRailConfig(rail, ph);
-      const rect = ph.getBoundingClientRect();
-      railHolder.style.display = "";
-      railHolder.style.left = `${Math.round(rect.left)}px`;
-      railHolder.style.top = `${Math.round(rect.top)}px`;
-      railHolder.style.width = `${Math.round(rect.width)}px`;
-      railHolder.style.height = `${Math.round(rect.height)}px`;
-      railSyncRaf = requestAnimationFrame(syncRailView);
-    } else {
-      if (railHolder) railHolder.style.display = "none";
-      // Home again = hidden again, and the config classes go with it so the
-      // next host starts from its own flags.
-      rail?.classList.remove("rail-hide-menu", "rail-hide-recents", "rail-hide-layouts", "rail-icons");
-      parkRailHome();
-      // A placeholder that EXISTS but is hidden (the wb-booting veil, a
-      // fullscreen card over it) will come back — keep watching so the rail
-      // mounts the moment it shows (his report, 2026-08-30: the boot veil
-      // parked the loop for good and the Rail panel came up empty). Only a
-      // placeholder-free DOM stops the loop.
-      railSyncRaf = document.querySelector(".ws-rail-placeholder")
-        ? requestAnimationFrame(syncRailView)
-        : 0;
-    }
-  }
-  function scheduleRailSync(): void {
-    if (!railSyncRaf) railSyncRaf = requestAnimationFrame(syncRailView);
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
@@ -9194,7 +8958,6 @@ async function init(): Promise<void> {
     const viewKey = (v: SavedView): string =>
       typeof v === "string" ? v
         : v.view === "section" ? `section:${v.section}`
-        : v.view === "rail" ? "rail"
         : `app:${(v.slug || "").toLowerCase()}`;
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
@@ -9243,14 +9006,13 @@ async function init(): Promise<void> {
       const claimed = new Set<Slot>();
       for (const c of cells) {
         if (!c.tool || !c.config) continue;
-        const view = c.tool === "preview" ? "preview" : c.tool === "terminal" ? "terminal" : c.tool === "rail" ? "rail" : null;
+        const view = c.tool === "preview" ? "preview" : c.tool === "terminal" ? "terminal" : null;
         if (!view) continue;
         const slot = rails.flatMap((r) => r.slots).find((sl) => sl.view === view && !claimed.has(sl));
         if (!slot) continue;
         claimed.add(slot);
         if (slot.view === "preview" && c.config.url) slot.url = c.config.url;
         if (slot.view === "terminal" && c.config.cmd) slot.terminals[0]!.initCmd = c.config.cmd;
-        if (slot.view === "rail") Object.assign(slot, railFlagsOf(c.config));
       }
     };
     if (saved && savedKeys && savedKeys === defKeys) {
@@ -9311,7 +9073,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9320,7 +9082,6 @@ async function init(): Promise<void> {
         // the Terminal runs the layout's first command once its shell is up.
         if (slot.view === "preview" && c.config?.url) slot.url = c.config.url;
         if (slot.view === "terminal" && c.config?.cmd) slot.terminals[0]!.initCmd = c.config.cmd;
-        if (slot.view === "rail") Object.assign(slot, railFlagsOf(c.config));
         return slot;
       }
       return { id: nextSlotId++, view: "app" as const, slug: c.slug, name: c.name, url: c.url, glyphh: c.glyphh, sticky: c.sticky, urlBarHidden: urlBarHiddenDefault() };
@@ -9596,7 +9357,7 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "artifacts"].includes(v)) return;
+    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "artifacts"].includes(v)) return;
     // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
     // not reachable on the web from any door (help/surface.ts).
     if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[surface] the Browser needs a streamed panel — not reachable here:", v); return; }
@@ -9613,7 +9374,7 @@ async function init(): Promise<void> {
         ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
       return;
     }
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "agents" | "artifacts"); return; }
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "agents" | "artifacts"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

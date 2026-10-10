@@ -11447,7 +11447,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    background alone was enough to blank out a dialog. */
 body.wb-modal-open webview,
 body.wb-modal-open #code-wb-applayer,
-body.wb-modal-open #code-rail-layer,
 body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
@@ -11922,88 +11921,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 }
 .ws-agent-holder > .code-agent { flex: 1 1 auto; min-height: 0; min-width: 0; max-width: none; width: auto; height: auto; }
 
-/* ── The Rail panel — the ONE #app-rail, hosted by a workbench slot ─────
-   Same pattern as the agent overlay: a Rail slot renders only a
-   .ws-rail-placeholder; the live #app-rail (menu, Recents, Apps, Workspaces,
-   account footer — all still wired by help/code.ts + navigation.ts) sits in
-   the fixed #code-rail-layer and follows whichever placeholder is showing.
-   The shell's own left rail stays retired (display:none above); only a holder
-   un-hides it, so the two can never both claim the node. */
-.ws-rail-placeholder { flex: 1 1 auto; align-self: stretch; width: 100%; height: 100%; min-width: 0; min-height: 0; background: var(--surface-2); }
-/* Below the agent layer (z-118) — a Rail panel never covers the agent. */
-#code-rail-layer { position: fixed; inset: 0; pointer-events: none; z-index: 117; }
-.ws-rail-holder {
-  position: fixed;
-  pointer-events: auto;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-2);
-}
-/* Hosted: the rail fills the holder and drops the shell chrome it only had as
-   a left column (fixed width, right border, the web top inset). */
-.ws-rail-holder > #app-rail {
-  display: flex !important;
-  width: auto !important;
-  min-width: 0 !important;
-  flex: 1 1 auto;
-  border-right: none;
-  padding-top: 0 !important;
-  transition: none;
-  /* Menu + Recents + both trays + the footer can outgrow a short panel — the
-     rail scrolls rather than crushing the tray minimums. */
-  overflow-y: auto;
-}
-/* A COLLAPSED Rail panel (.rail-strip) is the icon strip: its header keeps
-   only the rail-hide toggle (which now expands) — title, drag affordance and
-   the other controls don't fit 64px and go. Rails surface + Echo card. */
-.ws-rail-slot.rail-strip .ws-rail-slot-header > :not(.slot-rail-hide),
-.echo-card.rail-strip .echo-card-head > :not(.echo-rail-hide) { display: none !important; }
-.ws-rail-slot.rail-strip .ws-rail-slot-header,
-.echo-card.rail-strip .echo-card-head { justify-content: center; padding: 4px 0; }
-.slot-rail-hide.active, .echo-rail-hide.active { color: var(--accent); }
-
-/* Per-cell configs (Workspaces → the panel's setup pane): each toggle hides
-   one section of the hosted rail. Apps has no toggle — it is the tray the
-   panel exists for. */
-#app-rail.rail-hide-menu [data-rail-section="menu"],
-#app-rail.rail-hide-recents [data-rail-section="recents"],
-#app-rail.rail-hide-layouts [data-rail-section="layouts"] { display: none !important; }
-
-/* ── ICONS MODE — the collapsed Rail (the panel's rail-hide affordance) ──
-   The hosting column narrows to the icon strip (RAIL_STRIP_W); the rail keeps
-   only what reads at that width: the + button, the nav icons, the tray tile
-   icons, and the account icon. Text, searches, Recents and the section
-   headers go — a 64px recents list is noise, not navigation. */
-#app-rail.rail-icons .code-new-session-rail span,
-#app-rail.rail-icons .app-rail-nav-item span,
-#app-rail.rail-icons .app-rail-user-btn span,
-#app-rail.rail-icons .app-rail-tile .tile-name { display: none; }
-/* WORKSPACES keep a very small name under their mini-icon stack — a layout's
-   icon collage isn't identifiable alone the way an app icon is. Apps stay
-   icon-only (his spec, 2026-08-30). */
-#app-rail.rail-icons #recent-layouts-list .app-rail-tile .tile-name {
-  display: block;
-  font-size: 8.5px;
-  line-height: 1.15;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-#app-rail.rail-icons .code-new-session-rail { padding: 7px 0; margin: 8px 6px 4px; }
-#app-rail.rail-icons .app-rail-nav-item { justify-content: center; padding: 7px 0; }
-#app-rail.rail-icons .app-rail-user-btn { justify-content: center; }
-#app-rail.rail-icons #recents-toggle,
-#app-rail.rail-icons .app-rail-search,
-#app-rail.rail-icons #code-history,
-#app-rail.rail-icons .app-rail-section-head,
-#app-rail.rail-icons .rail-grid-pager { display: none !important; }
-/* The trays stay: one icon per row. Collapsed tray state still applies —
-   a .hidden body stays hidden. */
-#app-rail.rail-icons .app-rail-grid { grid-template-columns: 1fr; padding: 2px 6px 8px; gap: 4px; }
-#app-rail.rail-icons .app-rail-section-body { min-height: 0; }
-#app-rail.rail-icons .app-rail-relaunch span { display: none; }
 /* Per-panel browser chrome — back/fwd/reload + address bar + hide toggle. */
 .ws-app-chrome {
   flex-shrink: 0;
@@ -16448,7 +16365,6 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
   border-top: 1px solid var(--sidebar-border, var(--border));
 }
 .app-rail-user .app-rail-user-btn { width: 100%; min-width: 0; }
-#app-rail.rail-icons .app-rail-user { flex-direction: column; }
 
 /* New-release card — sits just above the account button once the feed offers
    a newer version (home.ts paints available / downloading / ready). */
@@ -16480,11 +16396,9 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 }
 .app-rail-update-close:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .app-rail-update-close > svg { width: 12px; height: 12px; }
-#app-rail.rail-icons .app-rail-update-close { display: none; }
+
 /* Icon-strip rail: only the glyph survives; the card stays clickable via its
    title, and the download/restart link is the whole card. */
-#app-rail.rail-icons .app-rail-update { justify-content: center; padding: 7px 0; cursor: pointer; }
-#app-rail.rail-icons .app-rail-update-body { display: none; }
 
 .app-rail-user-btn {
   display: flex;
@@ -17500,7 +17414,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    <body> — so the veil covers BOTH containers until home.ts lifts it. */
 .wb-booting .code-workbench,
 .wb-booting #code-wb-applayer,
-.wb-booting #code-rail-layer,
 .wb-booting #code-agent-layer { visibility: hidden !important; }
 
 /* ── Composer sizing by SURFACE ──────────────────────────────────────────
@@ -20062,7 +19975,6 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #shell-drag-strip { display: none !important; }
 #shell-drag-strip .shell-drag-area { -webkit-app-region: no-drag; }
 #help-overlay { top: 0; left: var(--rail-w); }
-.ws-rail-placeholder-note { padding: 18px; font-size: 13px; color: var(--text-3); }
 
 /* The sidebar scrolls as ONE column (his order, 2026-09-16): Recents has no
    scroll of its own and runs to the bottom; the account row stays pinned. */
@@ -22023,5 +21935,4 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .echo-card > .echo-card-grip:hover::before { background: var(--text-3); }
 .echo-card.echo-card-dragging > .echo-card-grip { cursor: grabbing; }
 .echo-card.echo-card-dragging > .echo-card-grip::before { background: var(--accent); opacity: 1; }
-.echo-card.expanded > .echo-card-grip,
-.echo-card.rail-strip > .echo-card-grip { display: none; }
+.echo-card.expanded > .echo-card-grip { display: none; }

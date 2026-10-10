@@ -25,7 +25,6 @@ export const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   // Rail — the app's left rail as a panel: menu, Recents, Apps, Workspaces,
   // account footer. Its sections are per-cell toggles in the setup pane.
   // (The rail is the fixed sidebar now, 2026-09-16; no Rail panel to place.)
-  // { id: "tool:rail", label: "Rail", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   // Echo — the command center as a 3D wall (moved here from the agent's
   // ⋮ menu: it opens like an app, via layouts or the picker).
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
