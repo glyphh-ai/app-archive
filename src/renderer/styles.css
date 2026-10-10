@@ -642,7 +642,6 @@ body {
   margin-bottom: 8px;
 }
 
-
 /* The triad's gradient beat ("One workspace.") — used by the first-run
    tour's tagline; EXACTLY the web hero's rhero-accent gradient. */
 .intro-accent {
@@ -1875,7 +1874,6 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
 
 /* ── User menu ────────────────────────────────────────── */
 
-
 /* ── Cmd+. overlay ─────────────────────────────────────── */
 
 /* ── URL bar ──────────────────────────────────────────── */
@@ -2275,7 +2273,6 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
 }
 .mcp-indicator.running .mcp-indicator-dot { background: var(--accent); }
 .mcp-indicator.stopped .mcp-indicator-dot { background: var(--danger, #ef4444); }
-
 
 /* ── Download button & dropdown ─────────────────────────── */
 
@@ -3597,7 +3594,6 @@ html.glyphh-web body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .
 .dash-subtitle { margin: 4px 0 0; font-size: 15px; color: var(--text-2); }
 .dash-subtitle span { display: none; }
 
-
 body[data-rail-space="code"] .dash-sub-code { display: inline; }
 
 /* The landing's chip row above the composer's top-left. It shows in EVERY
@@ -3883,7 +3879,6 @@ body.chat-only .dash-two-col { display: none; }
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 .dash-refresh:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
-
 
 /* The library page wrapper (added for the My apps | Marketplace tabs) must
    pass the section's flex layout through — otherwise #app-detail's flex:1
@@ -5250,7 +5245,6 @@ body.chat-only .dash-two-col { display: none; }
   color: var(--text-3);
 }
 
-
 .editor-area textarea {
   min-height: 180px;
   background: var(--surface-3);
@@ -5527,7 +5521,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   flex: 1;
   min-height: 0;
 }
-
 
 /* ── Pagination ─────────────────────────────────────────── */
 
@@ -6636,7 +6629,6 @@ img[data-mark-src*="github.com"] { filter: invert(var(--mark-invert, 0)); }
   display: none;
 }
 
-
 .settings-panel.active {
   display: block;
 }
@@ -7564,10 +7556,6 @@ select.settings-input {
 /* The per-connection tool list. Long, so it scrolls on its own rather than
    pushing the tab's chrome off screen. */
 
-
-@media (max-width: 720px) {
-    }
-
 /* ── Members ──────────────────────────────────────────────── */
 /* A row, not a table cell: name is an input that saves itself, role is a live
    select, and Remove sits at the end. A <table> would have meant a second
@@ -7648,7 +7636,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .support-msg-admin { align-self: flex-start; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
 
 /* ── Account / Organization forms ───────────────────────── */
-
 
 /* Read-only field values (email, role, seat ceiling) — the display twin of
    .settings-input so a locked field lines up with the editable ones instead of
@@ -7796,7 +7783,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   transition: width 0.2s;
 }
 .billing-seats-fill.full { background: var(--danger); }
-
 
 /* The invoice table is five even-ish columns, not the library's name/desc
    shape — override .lib-table's fixed widths rather than fork the component. */
@@ -9692,7 +9678,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .tk-inserted { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); display: inline-block; min-width: 100%; }
 .tk-deleted  { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); display: inline-block; min-width: 100%; }
 
-
 /* ── Working-directory bar (sits directly above the composer) ── */
 
 .yo-workdir-bar {
@@ -11059,7 +11044,6 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* ── Wassup admin modal ─────────────────────────────────── */
 
-
 /* ════════════════════════════════════════════════════════════════════
    Skills explorer (ported from v4, themed to .yo tokens)
    ════════════════════════════════════════════════════════════════════ */
@@ -12185,7 +12169,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
 
 /* Ada fallback — semantic memory hits when nothing matches by name. */
-
 
 /* ── Terminal view (stub session) ── */
 .ws-terminal {
@@ -13704,7 +13687,6 @@ select:focus {
    child of .code-root and only shows when the coding slot adopts it. */
 .code-root > .code-agent { display: none; }
 
-
 /* Center — agent */
 .code-agent { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); container-type: inline-size; container-name: agent; }
 .code-agent-head {
@@ -14263,7 +14245,6 @@ select:focus {
 .code-input-wrap[data-slot="ptt"] .code-input::placeholder,
 .code-input-wrap[data-slot="free"] .code-input::placeholder { font-style: italic; color: var(--text-3); }
 
-
 /* Workdir controls (old workbench header, adapted) */
 .code-wd-btn,
 .code-wd-branch {
@@ -14305,7 +14286,6 @@ select:focus {
 .code-view-btn.active { color: var(--white); }
 .code-view-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-
 /* Maximize floods the section: the docked/home agent column collapses, rails
    take the width. Scope to the `.code-root` position ONLY — the OVERLAY agent
    (following a maximized coding seat) must stay visible; it hides on its own
@@ -14330,7 +14310,6 @@ body.wb-max .ws-right-rails { width: 100%; }
 }
 .code-wb-edge:hover,
 .code-wb-edge.dragging { background: var(--border-2); }
-
 
 /* Full-bleed chrome — the home panel covers the titlebar strip. */
 #panel-wc {
@@ -14377,7 +14356,6 @@ body.wb-max .ws-right-rails { width: 100%; }
   padding: 2px; box-sizing: border-box;
 }
 .tile-layout .tile-mini-initial { font-size: 8px; font-weight: 600; color: var(--text-3); }
-
 
 /* While the full-bleed home panel is active, the base titlebar's OS drag
    claim (which bleeds through BrowserViews across the WHOLE top band) shrinks
@@ -14470,11 +14448,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 /* The landing's input shows TWO rows before anything is typed (his order, 2026-10-05:
    "add one more row to the new on the work page"); autoGrow still takes over past that. */
 
-
 /* The agent card on the web is a GRID (head / thread / composer): a fourth,
    equal row below the composer takes half the free space and the greeting
    sits at the thread's foot, so greeting + composer meet in the middle. */
-
 
 .code-ghost-mark.code-ghost-mark-accent {
   width: 58px;
@@ -14492,11 +14468,9 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   .code-ghost-mark.code-ghost-mark-accent { width: 26px; height: 31px; }
 }
 
-
 /* Slim the leading drop strip inside the rails (between-rail strips keep
    their drop-target width). */
 #code-wb-rails > .ws-rail-dropstrip:first-child { width: 2px; flex-basis: 2px; }
-
 
 /* ── Glyphh spinner — tumbling wireframe cube + typed working phrase ────── */
 /* App-level loading overlay — the standard spinner over the entire app,
@@ -15163,7 +15137,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   word-break: break-word;
 }
 
-
 /* Collapsed tool-run groups — quiet summary, click to inspect */
 .code-tool-group {
   align-self: flex-start;
@@ -15428,7 +15401,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 /* The divider line still spans the row's full height. */
 .lib-split > .lib-split-divider { align-self: stretch; }
-
 
 /* "Create with AI" — a quiet link beside the breadcrumb, NEW pages only:
    an existing object is edited by hand, a blank one is worth delegating. */
@@ -16207,10 +16179,8 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 @container agent (max-width: 460px) { #code-model-chip { max-width: 64px; } }
 @container agent (max-width: 380px) { #code-model-chip { max-width: 40px; } }
 
-
 /* ═══ App rail — RESTORED (was removed in the 2.5.0 shell cut; brought back
    beside the full-width workbench: nav drives the section PANELS now). ═══ */
-
 
 /* ── Pending-update badge (bottom-right, all home pages) ─────────────── */
 /* The update prompt moved from a floating bottom-right badge to a rail button
@@ -16226,7 +16196,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   flex: 1;
   min-height: 0;
 }
-
 
 /* App rail — the persistent left rail (Home|Code, sessions, nav, user) */
 #app-rail {
@@ -16262,7 +16231,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    Recents list shows. Reads at the icon-strip width too — the labels go, the
    glyphs stay. */
 
-
 /* The recents dropdown's copy of the pair sits UNDER its search and reads a
    size down from the rail's (his order, 2026-09-29: "move the tabs under the
    search and make the buttons smaller, still centered") — the tabs size to
@@ -16272,7 +16240,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   justify-content: center;
   align-self: center;
 }
-
 
 /* + New is a rail ROW now (his order + screenshot, 2026-09-29), so it takes
    the nav item's own geometry — no filled-button scale, no stretch. */
@@ -16421,7 +16388,6 @@ body[data-rail-section="code"] .code-history-item.active .code-chat-menu-btn { o
 /* Rail collapsed → the fixed chrome cluster floats over the page; shove the
    header content right so they don't overlap. */
 
-
 /* Drag splitters between the rails and the agent column. */
 .code-splitter {
   flex: 0 0 4px;
@@ -16443,7 +16409,6 @@ body.code-dragging .code-splitter {
 body.code-dragging { cursor: col-resize; user-select: none; }
 
 body.code-dragging #app-rail { transition: none; }
-
 
 /* App rail — user area (bottom) */
 /* Org switcher (multi-org members): a compact select at the rail's top-left
@@ -16545,7 +16510,6 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 
 .app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-
 /* User dropdown (opens upward; reuses .code-menu) */
 /* Wider (his order, 2026-09-18): it sat narrower than the rail row it opens
    from, so it read as a stray popover rather than that row's menu. */
@@ -16562,11 +16526,9 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 
 .app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
 
-
 body.code-vdragging { cursor: row-resize; user-select: none; }
 
 .app-rail-search { padding: 0 10px 6px; }
-
 
 .app-rail-search input {
   width: 100%;
@@ -16581,7 +16543,6 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 
 .app-rail-search input:focus { border-color: var(--accent); }
-
 
 /* Empty rail grid: one action, spanning the whole grid so it can't be
    squeezed into a 58px column and wrap mid-word. */
@@ -16662,7 +16623,6 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   white-space: nowrap;
 }
 
-
 /* Layout tiles — mini 2x2 stack of the layout's app icons. */
 .app-rail-tile .tile-icon.tile-layout {
   display: grid;
@@ -16679,14 +16639,12 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   padding: 10px 2px 2px;
 }
 
-
 /* Apps label row — open icon on the far right */
 .app-rail-label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-
 
 /* Below ~620px of rail there isn't room for two lists AND recents — let the
    rail itself scroll rather than crushing the lists to nothing. */
@@ -16718,7 +16676,6 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 
 .app-rail-tile--os:hover { opacity: 1; }
 
-
 /* Recents disclosure */
 .code-rail-disclosure {
   display: flex;
@@ -16747,10 +16704,8 @@ body.code-dragging iframe { pointer-events: none !important; }
    splitter drag dies the moment the cursor crosses an echo card */
 body.code-dragging webview { pointer-events: none !important; }
 
-
 /* .code-menu family — the shared dropdown chrome the rail menus ride
    (session-row ⋯, More fly-out, user menu). Missed by the rail restore. */
-
 
 /* Session row menu (⋯ → Delete) */
 .code-menu {
@@ -16770,11 +16725,9 @@ body.code-dragging webview { pointer-events: none !important; }
 
 .code-menu-item.danger:hover { background: rgba(229, 72, 77, 0.1); }
 
-
 /* ═══ v2.4.5 selectors missed by the rail restore — complete sweep:
    session-row ⋯ button + run dot, the authentic session-row menu,
    slot maximize, rail apps-list sizing, layout minis. ═══ */
-
 
 .ws-rail-slot-header .slot-maximize {
   background: transparent; border: none; padding: 0;
@@ -16784,9 +16737,7 @@ body.code-dragging webview { pointer-events: none !important; }
   transition: background 0.10s, color 0.10s;
 }
 
-
 #recent-apps-list { flex: 1; min-height: 96px; }
-
 
 /* Agent-loop status — faint dot per session, strobing green while working. */
 .code-chat-dot {
@@ -16798,7 +16749,6 @@ body.code-dragging webview { pointer-events: none !important; }
   background: var(--text-faint);
   opacity: 0.35;
 }
-
 
 /* THE STROBE ITSELF (his report, 2026-09-29: "the left rail should show the
    flashing green dot"). Every dot named this animation and NOTHING defined it —
@@ -16825,7 +16775,6 @@ body.code-dragging webview { pointer-events: none !important; }
   opacity: 1;
 }
 
-
 .code-chat-menu-btn {
   display: inline-flex;
   align-items: center;
@@ -16842,9 +16791,7 @@ body.code-dragging webview { pointer-events: none !important; }
   opacity: 0;
 }
 
-
 .code-chat-menu-btn:hover { color: var(--text); background: var(--hover); }
-
 
 /* Session row menu (⋯ → Delete) */
 .code-menu {
@@ -16858,7 +16805,6 @@ body.code-dragging webview { pointer-events: none !important; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-
 .code-menu-item {
   display: block;
   width: 100%;
@@ -16871,7 +16817,6 @@ body.code-dragging webview { pointer-events: none !important; }
   text-align: left;
   cursor: pointer;
 }
-
 
 .tile-layout .mini {
   display: flex;
@@ -16931,7 +16876,6 @@ body.code-dragging webview { pointer-events: none !important; }
 
 /* The VEIL — with cards open the wall fades back behind a slightly darker
    wash (the old layout-manager feel); ⌘⇧ / the eye lifts it. */
-
 
 /* Open panels: LIVE webview cards that zoom up out of their tile and back.
    The layer never blocks the wall — only the cards themselves take input. */
@@ -16998,11 +16942,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    to reshape the whole layout. */
 /* ── The FLAT LAUNCHER — iPhone-style pages of icons (no WebGL) ── */
 
-
 /* THE SEARCH PILL (his ask, 2026-10-03): round, centred, in the theme's own
    surface and border, between the dock and the tiles. Restored from the
    2026-08 top bar; a miss dims, a hit stays. */
-
 
 /* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
    which sits on the agent's top row, right of the caret) */
@@ -17029,7 +16971,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 
 /* ── EDIT MODE (press-and-hold): iPhone wiggle + delete badges ── */
 
-
 .echo-app-del {
   position: absolute; top: -7px; left: -7px; z-index: 2;
   width: 21px; height: 21px; border-radius: 50%;
@@ -17041,11 +16982,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
-
 /* ── DOCK AUTO-HIDE: hidden until the top edge is hovered ── */
 /* MAGNIFICATION — a super smooth follow on every slot (JS sets the scale). */
 /* The command-center (wall) button + the RESET above it — equal peers. */
-
 
 /* SAME square as the dock slots — one icon language everywhere. */
 
@@ -17054,10 +16993,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    label) scales — sturdier target than the inner span, and reads more
    iPhone. Edit-mode wiggle (an animation) takes precedence while active. */
 
-
 /* The dev workbench tool tiles (Files/Terminal/Editor/Diff/Plan/Releases):
    plain outline glyphs read oversized at 62% — seat them smaller. */
-
 
    /* the mascot is tall, not a square favicon */   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
 /* The SKILLS fallback mark (an app with no icon of its own): same weight as
@@ -17074,12 +17011,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 
 /* Multi-select: picked icons ring in accent; the square + line lassos. */
 
-
 /* Page dots — just UNDER the icon grid (code-workbench positions top). */
 
-
 /* Page arrows — either side of the icon lists. */
-
 
 /* Traded-in app icons render as images inside dock slots. */
 /* SAME inner proportions as the page tiles (.echo-app-ic) — one icon
@@ -17092,9 +17026,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    (scale + the arc's dip) — scaling the gap with the dock-zoom pref keeps it
    off the tiles below at every strength. */
 
-
    /* = the page tiles' mini */
-
 
 /* Echo top bar — JUST the dock now, sitting high on the page. Sits over
    the pages, under the cards. (Search is gone; drips live on the composer
@@ -17110,10 +17042,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Slots SHRINK to fit the page: fluid between 46px and 76px squares (the
    glyphs ride along), so the dock always fits the window on one row. */
 
-
 /* Dock slots pick the hover zoom up too when the arch magnification is off
    (its inline transforms take precedence while active). */
-
 
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .echo-div { position: absolute; pointer-events: auto; border-radius: 4px; transition: background 0.12s ease; }
@@ -17290,7 +17220,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-card-body { flex: 1; min-height: 0; display: flex; }
 .echo-card-body webview { flex: 1; min-width: 0; min-height: 0; }
 
-
 /* ═══════════════════════════════════════════════════════════════════════════
    WEB — PHONE MODE (splash + auth)
    Scoped to `.glyphh-web.glyphh-phone` so it can NEVER affect desktop or iPad
@@ -17421,7 +17350,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* "Check your email" state — same full-bleed treatment (inherits the above). */
 .glyphh-web.glyphh-phone #onboarding-overlay .auth-shell-meta { margin-top: 1.5rem; font-size: 0.9375rem; }
 
-
 /* The auto-updater is an OS-installer concept — a browser tab has none. Hide
    the About "Check for Updates" control + its progress on the web target. */
 .glyphh-web #about-check-update,
@@ -17450,7 +17378,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Two-col landing: bare columns — header + cards only, no wrapper chrome. */
 .dash-col { min-width: 0; }
 .dash-session-row .dash-session-when { flex: none; font-size: 11px; color: var(--text-3); }
-
 
 /* Landing chips row: source chip first, then folder/git/+ — one row, left. */
 .dash-source-slot { display: contents; }
@@ -17721,7 +17648,6 @@ body:not(.composer-on-home) .code-input,
 /* CHAT has no workspace: no folder, no tools — the MODEL and its effort stay,
    and the source chip stays as the inert "Cloud" label. */
 
-
 .app-rail-tile .tile-name { color: var(--text-2); }
 .app-rail-tile:hover .tile-name { color: var(--text); }
 
@@ -17732,7 +17658,6 @@ body:not(.composer-on-home) .code-input,
 /* ONE ECHO ON BOTH SURFACES (his order, 2026-10-06; help/surface.ts
    surfaceHostsTile): the same dock, search and grid; only the empty line is
    the web's own. */
-
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
@@ -17998,7 +17923,6 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
   min-width: 0;
   color: var(--text-3);
 }
-
 
 /* The row ABOVE the input card: [drips][recents][+] on the left, then the
    status line — whose caret sits at the far right — filling the rest. */
@@ -18303,7 +18227,6 @@ body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-reset-o
 html.glyphh-web body.echo-cc-needed #code-cc-open,
 html.glyphh-web body.echo-cc-needed #code-reset-open { display: flex; }
 
-
 /* ── Peek ───────────────────────────────────────────────────────────────────
    Repositions the LIVE thread rather than copying it: renderThread() wipes
    #code-thread on every repaint and the streamer writes into that same
@@ -18371,94 +18294,8 @@ body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidd
    1920×1080 stage to whatever box the iframe gives it. */
 .ws-gpoint-body { display: flex; flex-direction: column; overflow: hidden; }
 
-.gpoint-lib {
-  display: flex; flex-direction: column; gap: 12px;
-  padding: 14px; height: 100%; box-sizing: border-box; overflow-y: auto;
-}
-.gpoint-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px; align-content: start;
-}
-.gpoint-card {
-  display: flex; flex-direction: column; gap: 6px; padding: 8px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  border-radius: 10px; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.gpoint-card:hover { background: var(--surface-2); border-color: var(--border-3); }
-.gpoint-thumb {
-  position: relative; aspect-ratio: 16 / 9; border-radius: 6px;
-  overflow: hidden; background: #0d0d0f; border: 1px solid var(--border);
-}
-.gpoint-thumb iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
-.gpoint-thumb-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
-.gpoint-thumb-ph svg { width: 22px; height: 22px; }
-.gpoint-card-row { display: flex; align-items: center; gap: 6px; }
-.gpoint-card-meta { flex: 1; min-width: 0; text-align: left; }
-.gpoint-card-title {
-  font-size: 11px; font-weight: 500; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.gpoint-card-sub { font-size: 9px; color: var(--text-muted); }
-.gpoint-empty { padding: 28px 10px; text-align: center; color: var(--text-2); font-size: 12px; line-height: 1.6; }
-.gpoint-menu { min-width: 150px; padding: 5px; }
-
-.gpoint-reader { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.gpoint-reader-bar {
-  display: flex; align-items: center; gap: 8px; flex: none;
-  padding: 5px 8px; border-bottom: 1px solid var(--border);
-}
-.gpoint-reader-title {
-  flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text);
-  background: none; border: 1px solid transparent; border-radius: 5px;
-  padding: 2px 6px; font-family: inherit; outline: none;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.gpoint-reader-title:hover { border-color: var(--border); }
-.gpoint-reader-title:focus { border-color: var(--accent); }
-.gpoint-back {
-  display: inline-flex; align-items: center; gap: 3px; flex: none;
-  background: none; border: none; cursor: pointer; color: var(--text-2);
-  font: inherit; font-size: 12px; font-weight: 500;
-  padding: 3px 8px 3px 3px; border-radius: 5px;
-}
-.gpoint-back:hover { background: var(--hover); color: var(--text); }
-.gpoint-back svg { width: 13px; height: 13px; }
-.gpoint-reader-count { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
-.gpoint-reader-main { flex: 1; display: flex; min-height: 0; }
-.gpoint-side {
-  flex: 0 0 148px; width: 148px; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 16px;
-  padding: 12px 10px; border-right: 1px solid var(--border); box-sizing: border-box;
-}
-.gpoint-side-item {
-  position: relative; flex: none; aspect-ratio: 16 / 9;
-  border: 1px solid var(--border); border-radius: 6px;
-  overflow: hidden; cursor: pointer; background: #0d0d0f;
-}
-.gpoint-side-item:hover { border-color: var(--border-3); }
-.gpoint-side-item.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.gpoint-side-item iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
-.gpoint-side-num {
-  position: absolute; left: 4px; bottom: 3px; z-index: 1;
-  font-size: 9px; font-family: var(--font-mono); color: rgba(255, 255, 255, 0.8);
-  background: rgba(0, 0, 0, 0.55); padding: 1px 5px; border-radius: 999px;
-}
-.gpoint-stage { flex: 1; min-width: 0; position: relative; background: #000; }
-.gpoint-stage iframe.gpoint-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-
 /* Presenter: the deck IS the app until Esc. Sits above every DOM layer;
    BrowserView panels are frozen/hidden by the opener (yo-modal helpers). */
-.gpoint-presenter { position: fixed; inset: 0; z-index: 12000; background: #000; }
-.gpoint-presenter iframe.gpoint-presenter-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.gpoint-presenter-hint {
-  position: absolute; top: 14px; right: 18px; pointer-events: none;
-  font-size: 11px; color: rgba(255, 255, 255, 0.6);
-  background: rgba(0, 0, 0, 0.45); padding: 4px 10px; border-radius: 999px;
-  transition: opacity 0.6s;
-}
-.gpoint-presenter-hint.faded { opacity: 0; }
 
 /* ── Workbench dropdown: More ▸ flyout (Releases, gPoint) ──────────────── */
 .code-view-menu-sub-wrap { position: relative; }
@@ -18474,34 +18311,6 @@ body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidd
 }
 .code-view-menu-sub-wrap:hover .code-view-submenu,
 .code-view-menu-sub-wrap:focus-within .code-view-submenu { display: block; }
-
-.gpoint-err { display: inline-block; margin-top: 8px; font-family: var(--font-mono); font-size: 10px; color: var(--ws-diff-del); word-break: break-all; }
-
-/* Slides reader: draggable rail — the grip sits between rail and stage (a
-   sibling, not a child, so it never scrolls with the thumbs). Thumbs are
-   width-driven aspect boxes, so the drag scales them live. */
-.gpoint-side-resize {
-  flex: 0 0 5px; cursor: col-resize; z-index: 2;
-  background: transparent; transition: background 0.15s;
-}
-.gpoint-side-resize:hover, body.gpoint-col-drag .gpoint-side-resize { background: var(--accent); opacity: 0.5; }
-body.gpoint-col-drag { cursor: col-resize; user-select: none; }
-body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
-
-/* Slides reader: the Present control is the app-standard primary button —
-   themes own its colors; only its SIZE is scoped to the compact reader bar. */
-.gpoint-reader-bar .action-btn.primary { height: 24px; padding: 3px 12px; font-size: 11.5px; flex: none; }
-.gpoint-reader-bar .action-btn.primary svg { width: 11px; height: 11px; }
-
-/* Slides reader: hidden slides stay in the rail (dimmed, dashed, badged) so
-   they can be unhidden — the presenter simply never sees them. */
-.gpoint-side-item.gpoint-hidden { border-style: dashed; }
-.gpoint-side-item.gpoint-hidden iframe { opacity: 0.3; }
-.gpoint-hidden-badge {
-  position: absolute; right: 4px; top: 3px; z-index: 1;
-  font-size: 9px; font-family: var(--font-mono); color: rgba(255, 255, 255, 0.75);
-  background: rgba(0, 0, 0, 0.55); padding: 1px 6px; border-radius: 999px;
-}
 
 /* ── Glyphh Docs — the paper panel ───────────────────────────────────────── */
 .ws-gdoc-body { display: flex; flex-direction: column; overflow: hidden; }
@@ -18629,27 +18438,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 /* ── Glyphh Drive ────────────────────────────────────────────────────────── */
 .ws-gdrive-body { display: flex; flex-direction: column; overflow: hidden; }
 .gdrive { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.gdrive-newfolder-input {
-  margin: 2px 6px 6px; background: var(--surface-2); color: var(--text);
-  border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px;
-  font: inherit; font-size: 12px; outline: none;
-}
-/* Drive drag-and-drop: the dragged card dims; a hovered folder target rings. */
-.gdrive-dragging { opacity: 0.45; }
-.gdrive-droptarget { box-shadow: 0 0 0 2px var(--accent) !important; border-radius: 10px; }
-
-.gdrive-card {
-  display: flex; flex-direction: column; gap: 6px; padding: 12px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  border-radius: 10px; cursor: pointer; position: relative;
-  transition: background 0.15s, border-color 0.15s;
-}
-.gdrive-card:hover { background: var(--surface-2); border-color: var(--border-3); }
-.gdrive-card-ic svg { width: 20px; height: 20px; display: block; color: var(--text-2); }
-.gdrive-card-title { font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdrive-card-meta { font-size: 10px; color: var(--text-muted); }
-.gdrive-card-kebab { position: absolute; top: 8px; right: 6px; }
-.gdrive-menu { min-width: 170px; padding: 5px; max-height: 50vh; overflow-y: auto; }
 
 /* ── Glyphh Office — the shared Apps-root toolbar + card grid ────────────── */
 .office-toolbar { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -18666,112 +18454,20 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   gap: 10px; align-content: start;
 }
 
-/* Drive — Google-Drive shape: crumbs, Recents strip, folder cards, files. */
-.gdrive-crumbs { display: flex; align-items: center; gap: 4px; flex: none; padding: 8px 12px 0; }
-.gdrive-crumb {
-  background: none; border: none; cursor: pointer; font: inherit;
-  font-size: 12px; color: var(--text-2); padding: 2px 6px; border-radius: 6px;
-}
-.gdrive-crumb:hover { background: var(--hover); color: var(--text); }
-.gdrive-crumb.current { color: var(--text); font-weight: 600; cursor: default; }
-.gdrive-crumb.current:hover { background: none; }
-.gdrive-crumb-sep { color: var(--text-muted); font-size: 12px; }
-.gdrive-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 18px; }
-.gdrive-section { display: flex; flex-direction: column; gap: 8px; }
-.gdrive-section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
-.gdrive-recents {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 10px; align-content: start;
-}
-.gdrive-folder-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 10px; align-content: start;
-}
-.gdrive-foldercard {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  border-radius: 10px; cursor: pointer; position: relative;
-  transition: background 0.15s, border-color 0.15s;
-}
-.gdrive-foldercard:hover { background: var(--surface-2); border-color: var(--border-3); }
-.gdrive-foldercard-ic svg { width: 18px; height: 18px; display: block; color: var(--text-2); }
-.gdrive-foldercard-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdrive-foldercard .gdrive-card-kebab { position: static; }
-.gdrive-files {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 10px; align-content: start;
-}
-
 /* New header/bar icons missed the per-class svg sizing the slot header uses
    (.slot-close/.slot-maximize) — unsized SVGs clip to slivers ("purple bars"). */
-.slot-popout svg, .slot-present svg, .echo-card-popout svg, .gpoint-pdf svg,
-.office-refresh svg, .gpoint-back svg, .gdoc-back svg, .gdrive-card-kebab svg,
-.office-card-kebab svg, .gpoint-kebab svg, .gdoc-row-kebab svg, .gpoint-refresh svg {
+.slot-popout svg,
+.slot-present svg,
+.echo-card-popout svg,
+.office-refresh svg,
+.gdoc-back svg,
+.office-card-kebab svg,
+.gdoc-row-kebab svg {
   width: 13px; height: 13px; display: block;
 }
 
-/* Drive file cards carry the same previews the libraries do. */
-.gdrive-card-row { display: flex; align-items: center; gap: 6px; }
-.gdrive-card-row .gdrive-card-title { flex: 1; min-width: 0; }
-.gdrive-card .gdrive-card-kebab { position: static; }
-.gdrive-docthumb {
-  position: absolute; inset: 0; background: #ffffff; overflow: hidden;
-}
-.gdrive-docthumb-inner {
-  width: 300%; transform: scale(0.3333); transform-origin: top left;
-  padding: 26px 30px; box-sizing: border-box;
-  font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 1.6; color: #1a1a1e;
-  pointer-events: none;
-}
-.gdrive-docthumb-inner h1, .gdrive-docthumb-inner h2, .gdrive-docthumb-inner h3 {
-  font-family: Inter, -apple-system, system-ui, sans-serif; color: #111;
-}
-
 /* Drive: collapsible folder rail + list view + shared pager. */
-.gdrive-body { flex: 1; display: flex; min-height: 0; }
-.gdrive-rail {
-  flex: 0 0 190px; overflow-y: auto; padding: 10px 6px;
-  display: flex; flex-direction: column; gap: 1px; border-right: 1px solid var(--border);
-}
-.gdrive-rail.hidden { display: none; }
-.gdrive-railrow {
-  display: flex; align-items: center; gap: 8px;
-  background: none; border: none; cursor: pointer; text-align: left;
-  font: inherit; font-size: 12px; color: var(--text-2);
-  padding: 5px 10px; border-radius: 7px;
-}
-.gdrive-railrow:hover { background: var(--hover); color: var(--text); }
-.gdrive-railrow.active { background: var(--surface-2); color: var(--text); }
-.gdrive-railrow-ic svg { width: 14px; height: 14px; display: block; }
-.gdrive-railrow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdrive-rail-toggle.active { color: var(--accent); }
-.gdrive-rail-toggle svg { width: 14px; height: 14px; }
-.gdrive-lib-head {
-  margin-top: 12px; padding: 4px 10px 2px;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--text-3);
-}
-.gdrive-libcard .gdrive-thumb-img { background-size: cover; background-position: center; }
-.gdrive-libcard .gdrive-thumb-img .gpoint-thumb-ph { display: none; }
-.gdrive-libcard .gpoint-thumb-ph svg { width: 26px; height: 26px; color: var(--text-3); }
-.gdrive-section-head { display: flex; align-items: baseline; gap: 10px; }
-.gdrive-section-head .gdrive-section-title { flex: 1; }
-.gdrive-viewall {
-  background: none; border: none; cursor: pointer; font: inherit;
-  font-size: 11px; font-weight: 600; color: var(--accent); padding: 0 2px;
-}
-.gdrive-viewall:hover { text-decoration: underline; }
-.gdrive-list { display: flex; flex-direction: column; gap: 2px; }
-.gdrive-listrow {
-  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
-  border-radius: 8px; cursor: pointer; border: 1px solid transparent;
-}
-.gdrive-listrow:hover { background: var(--surface-2); border-color: var(--border); }
-.gdrive-listrow-ic svg { width: 15px; height: 15px; display: block; color: var(--text-2); }
-.gdrive-listrow-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdrive-listrow-kind { font-size: 10.5px; color: var(--text-3); width: 44px; }
-.gdrive-listrow-size { font-size: 10.5px; color: var(--text-muted); width: 52px; text-align: right; }
-.gdrive-listrow-date { font-size: 10.5px; color: var(--text-3); width: 52px; text-align: right; }
+
 .office-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 0 2px; }
 .office-pager-btn { height: 24px; padding: 3px 12px; font-size: 12px; }
 .office-pager-label { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); }
@@ -18878,175 +18574,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 
 /* ════ GLYPHH DESIGN panel — library + the shots.so-shaped studio.
    Chrome = workbench theme vars ONLY; the design paints inside the shot. ════ */
-
-
-/* — library thumbnails — */
-.gdz-thumb {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  border-radius: inherit;
-}
-.gdz-thumb-ag { font-size: 34px; line-height: 1; text-shadow: 0 2px 12px rgba(0,0,0,0.35); }
-.gdz-thumb-row { display: flex; gap: 5px; }
-.gdz-thumb-row span {
-  width: 14px; height: 14px; border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.55);
-}
-
-/* — studio frame — */
-.gdz-studio { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.gdz-topbar {
-  display: flex; align-items: center; gap: 10px; flex: none;
-  padding: 8px 10px; border-bottom: 1px solid var(--border);
-}
-.gdz-name {
-  flex: 1; min-width: 0;
-  background: none; border: 1px solid transparent; border-radius: 8px;
-  color: var(--text); font: inherit; font-weight: 650; padding: 4px 8px;
-}
-.gdz-name:hover { border-color: var(--border); }
-.gdz-name:focus { border-color: var(--accent); outline: none; background: var(--surface); }
-.gdz-savestate { flex: none; font-size: 11px; color: var(--text-3); min-width: 52px; text-align: right; }
-
-.gdz-split { display: flex; flex: 1; min-height: 0; }
-
-/* — the stage: soft dotted backdrop, the shot floats center — */
-.gdz-stage {
-  flex: 1; min-width: 0; overflow: auto;
-  display: flex; align-items: center; justify-content: center;
-  padding: 26px;
-  background:
-    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 1.5px) 0 0 / 22px 22px,
-    var(--bg);
-}
-.gdz-shot {
-  position: relative;
-  width: min(560px, 100%);
-  aspect-ratio: 4 / 3;
-  border-radius: 22px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
-  transition: background 200ms ease;
-}
-.gdz-card {
-  width: 68%;
-  padding: 26px 28px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.gdz-card-top { display: flex; gap: 6px; margin-bottom: 2px; }
-.gdz-dot { width: 9px; height: 9px; border-radius: 50%; }
-.gdz-kicker { font-size: 10px; letter-spacing: 0.18em; }
-.gdz-h { margin: 0; font-size: 24px; line-height: 1.15; }
-.gdz-p { margin: 0; font-size: 12.5px; line-height: 1.55; }
-.gdz-btns { display: flex; gap: 8px; margin-top: 4px; }
-.gdz-btn-primary, .gdz-btn-ghost {
-  font-size: 12px; font-weight: 600; padding: 7px 14px;
-  border: none; background: none; cursor: default;
-}
-.gdz-swatches { display: flex; gap: 6px; margin-top: 8px; }
-.gdz-swatch { width: 18px; height: 18px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35); }
-.gdz-specimen {
-  position: absolute; right: 5%; bottom: 6%;
-  padding: 10px 14px;
-  display: flex; align-items: baseline; gap: 10px;
-  backdrop-filter: blur(6px);
-}
-.gdz-spec-display { font-size: 30px; line-height: 1; }
-.gdz-spec-meta { font-size: 10.5px; }
-
-/* — control rail — */
-.gdz-rail {
-  flex: none; width: 288px; overflow-y: auto;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-}
-.gdz-sec { border-bottom: 1px solid var(--border); }
-.gdz-sec > summary {
-  list-style: none; cursor: pointer; user-select: none;
-  padding: 10px 14px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--text-2);
-}
-.gdz-sec > summary::-webkit-details-marker { display: none; }
-.gdz-sec > summary::before { content: "▸ "; color: var(--text-3); }
-.gdz-sec[open] > summary::before { content: "▾ "; }
-.gdz-sec-body { padding: 2px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-
-.gdz-row { display: flex; align-items: center; gap: 8px; }
-.gdz-row-label { flex: none; width: 84px; font-size: 12px; color: var(--text-2); }
-.gdz-row.unset .gdz-color { opacity: 0.25; }
-.gdz-color {
-  flex: none; width: 26px; height: 26px; padding: 0;
-  border: 1px solid var(--border-2); border-radius: 7px; background: none; cursor: pointer;
-}
-.gdz-color::-webkit-color-swatch-wrapper { padding: 2px; }
-.gdz-color::-webkit-color-swatch { border: none; border-radius: 5px; }
-.gdz-hex, .gdz-font, .gdz-tagline, .gdz-pal-name, .gdz-pal-role, .gdz-chip-input {
-  flex: 1; min-width: 0;
-  background: var(--bg); border: 1px solid var(--border-2); border-radius: 7px;
-  color: var(--text); font-size: 12px; padding: 5px 8px;
-}
-.gdz-hex:focus, .gdz-font:focus, .gdz-tagline:focus, .gdz-pal-name:focus, .gdz-pal-role:focus, .gdz-chip-input:focus {
-  border-color: var(--accent); outline: none;
-}
-.gdz-hex { max-width: 78px; font-family: var(--mono, monospace); }
-.gdz-range { flex: 1; accent-color: var(--accent); }
-.gdz-range-val { flex: none; width: 34px; text-align: right; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.gdz-select {
-  flex: 1; background: var(--bg); border: 1px solid var(--border-2); border-radius: 7px;
-  color: var(--text); font-size: 12px; padding: 5px 6px;
-}
-.gdz-row-wide .gdz-row-label { width: 84px; }
-
-.gdz-pal-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-3); margin-top: 6px;
-}
-.gdz-pal-row { display: flex; align-items: center; gap: 6px; }
-.gdz-pal-name { max-width: 84px; }
-.gdz-grad-box { display: flex; flex-direction: column; gap: 8px; padding-left: 8px; border-left: 2px solid var(--border); }
-.gdz-grad-box.hidden { display: none; }
-
-.gdz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.gdz-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11.5px; color: var(--text);
-  background: var(--bg); border: 1px solid var(--border-2); border-radius: 100px;
-  padding: 3px 6px 3px 10px;
-}
-.gdz-chip button { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 10px; padding: 0 2px; }
-.gdz-chip button:hover { color: var(--text); }
-.gdz-chip-input { flex: 1 1 100%; }
-
-.gdz-assets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.gdz-asset {
-  position: relative; border: 1px solid var(--border-2); border-radius: 9px; overflow: hidden;
-  background: var(--bg);
-}
-.gdz-asset-img { aspect-ratio: 4/3; background: center / contain no-repeat; }
-.gdz-asset-name {
-  display: block; font-size: 10.5px; color: var(--text-2);
-  padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.gdz-asset-x { position: absolute; top: 4px; right: 4px; opacity: 0; }
-.gdz-asset:hover .gdz-asset-x { opacity: 1; }
-.gdz-asset-up { align-self: flex-start; }
-
-.gdz-source { display: flex; gap: 8px; font-size: 11.5px; align-items: baseline; }
-.gdz-source-type {
-  flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--accent); border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 6px;
-}
-.gdz-source-ref { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
-
-/* Narrow slots: the rail slides under the stage. */
-@container (max-width: 700px) {
-  .gdz-split { flex-direction: column; overflow-y: auto; }
-  .gdz-rail { width: auto; border-left: none; border-top: 1px solid var(--border); }
-  .gdz-stage { flex: none; min-height: 320px; }
-}
 
 /* ════ GLYPHH MEMORY panel — list tabs + the adaL graph + the 3D space ════ */
 
@@ -19192,354 +18719,27 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmem-3d-info-meta { font-size: 10.5px; color: var(--text-3); margin: 5px 0 8px; }
 .gmem-3d-info-lines { white-space: pre-line; }
 
-/* ── Design studio: the CANVAS (pan/zoom world + draggable artifact cards) ── */
-.gdz-canvas { position: relative; overflow: hidden; display: block; padding: 0; }
-.gdz-world {
-  position: absolute; left: 0; top: 0;
-  transform-origin: 0 0;
-  width: 1200px; height: 900px;
-}
-.gdz-art {
-  position: absolute;
-  border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
-}
-.gdz-art-grip {
-  position: absolute; top: -24px; left: 4px;
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-3); cursor: grab; user-select: none;
-  padding: 2px 8px;
-}
-.gdz-art-grip:hover { color: var(--text); }
-.gdz-art-grip:active { cursor: grabbing; }
-.gdz-canvas-hint {
-  position: absolute; left: 12px; bottom: 10px;
-  font-size: 10.5px; color: var(--text-3); pointer-events: none;
-}
-.gdz-art .gdz-shot { width: 100%; }
-.gdz-spec-sheet {
-  border-radius: 14px; padding: 18px 20px;
-  display: flex; flex-direction: column; gap: 10px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.gdz-spec-row { display: flex; align-items: baseline; gap: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; }
-.gdz-spec-tag { flex: none; font-size: 10px; font-family: var(--mono, monospace); opacity: 0.7; width: 38px; }
-.gdz-pal-sheet {
-  border-radius: 14px; padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 6px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.gdz-pal-swatch { display: flex; align-items: center; gap: 10px; font-size: 12px; }
-.gdz-pal-swatch i { width: 22px; height: 22px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.25); flex: none; }
-.gdz-pal-swatch b { flex: 1; font-weight: 600; }
-.gdz-pal-swatch em { font-style: normal; font-family: var(--mono, monospace); font-size: 11px; }
-.gdz-pal-swatch u { text-decoration: none; font-size: 10.5px; }
-.gdz-ui-sheet {
-  border-radius: 14px; padding: 18px 20px;
-  display: flex; flex-direction: column; gap: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.gdz-ui-row { display: flex; align-items: center; gap: 10px; }
-
 /* — editable sources — */
-.gdz-sources { display: flex; flex-direction: column; gap: 8px; }
-.gdz-source-row { display: flex; align-items: center; gap: 6px; }
-.gdz-source-row .gdz-source-kind { flex: none; width: 76px; }
-.gdz-source-ref-in { flex: 1.4; }
-.gdz-source-note-in { flex: 1; }
-.gdz-source-ref-in, .gdz-source-note-in {
-  min-width: 0; background: var(--bg); border: 1px solid var(--border-2); border-radius: 7px;
-  color: var(--text); font-size: 12px; padding: 5px 8px;
-}
-.gdz-source-ref-in:focus, .gdz-source-note-in:focus { border-color: var(--accent); outline: none; }
-.gdz-source-add { align-self: flex-start; }
-
-
-/* Drive rail: the right-justified ＋ on every folder row (My Drive included). */
-.gdrive-railrow { display: flex; align-items: center; gap: 7px; }
-.gdrive-railrow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
-.gdrive-railrow-plus {
-  flex: none; margin-left: auto; width: 20px; height: 20px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 6px; color: var(--text-3); font-size: 14px; line-height: 1;
-  opacity: 0;
-}
-.gdrive-railrow:hover .gdrive-railrow-plus { opacity: 1; }
-.gdrive-railrow-plus:hover { background: var(--hover, rgba(255,255,255,0.08)); color: var(--accent); }
-
-/* ════ GLYPHH MEDIA panels (Image / Video / Sounds) ════ */
-.ws-gmedia-body { display: flex; flex-direction: column; overflow: hidden; }
-.gmedia-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px;
-  padding: 10px 12px; overflow-y: auto;
-}
-.gmedia-card {
-  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
-  background: var(--surface); cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
-}
-.gmedia-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-.gmedia-thumb {
-  position: relative; aspect-ratio: 16/10;
-  background: var(--bg) center / cover no-repeat;
-  display: flex; align-items: center; justify-content: center;
-}
-.gmedia-thumb-ph svg, .gmedia-thumb-ph .icon { width: 34px; height: 34px; opacity: 0.7; }
-.gmedia-thumb-audio { background: linear-gradient(135deg, #0c4a6e, #075985); }
-.gmedia-thumb-dur {
-  position: absolute; right: 7px; bottom: 6px;
-  font-size: 10.5px; font-variant-numeric: tabular-nums; color: #fff;
-  background: rgba(0, 0, 0, 0.6); border-radius: 5px; padding: 1px 6px;
-}
-.gmedia-card .gdrive-card-row { padding: 7px 9px 0; }
-.gmedia-card .gdrive-card-meta { display: block; padding: 0 9px 8px; }
-
-.gmedia-viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.gmedia-viewer-title { flex: 1; min-width: 0; font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gmedia-viewer-del { opacity: 1; }
-.gmedia-stage {
-  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
-  background: var(--bg); padding: 14px; overflow: hidden;
-}
-.gmedia-full { max-width: 100%; max-height: 100%; border-radius: 10px; }
-.gmedia-audio-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; width: min(460px, 90%); }
-.gmedia-audio-art {
-  width: 120px; height: 120px; border-radius: 24px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 46px; color: #fff;
-  background: linear-gradient(135deg, #0ea5e9, #6366f1);
-}
-.gmedia-audio-wrap audio { width: 100%; }
-.gmedia-meta { flex: none; padding: 10px 14px; border-top: 1px solid var(--border); }
-.gmedia-meta-prompt { font-size: 12.5px; color: var(--text-2); font-style: italic; margin-bottom: 5px; }
-.gmedia-meta-row { font-size: 11px; color: var(--text-3); font-family: var(--mono, monospace); }
-
-/* Design canvas: adopted imagery cards. */
-.gdz-art-imagery .gdz-art-grip { display: flex; align-items: center; gap: 8px; left: 0; right: 0; }
-.gdz-art { cursor: grab; }
-.gdz-art:active { cursor: grabbing; }
-.gdz-art-resize {
-  position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
-  cursor: nwse-resize; border-radius: 4px; opacity: 0;
-  background:
-    linear-gradient(135deg, transparent 0 50%, var(--text-3) 50% 58%, transparent 58% 70%, var(--text-3) 70% 78%, transparent 78%);
-  transition: opacity 0.15s;
-}
-.gdz-art:hover .gdz-art-resize { opacity: 0.9; }
-.gdz-img-role { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdz-img-x { opacity: 0; }
-.gdz-art-imagery:hover .gdz-img-x { opacity: 1; }
-.gdz-img-frame {
-  border-radius: 14px; overflow: hidden; background: var(--bg);
-  border: 1px solid var(--border-2); min-height: 120px;
-  display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 12px;
-}
-.gdz-img-frame img, .gdz-img-frame video { display: block; width: 100%; height: auto; }
-.gdz-img-picker { max-height: 320px; overflow-y: auto; }
-.gdz-imagery-rows { display: flex; flex-direction: column; gap: 8px; }
-.gdz-img-name { cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ════ MUSIC STUDIO (the Sounds app's Songs / Artists / Music Video) ════ */
-.gmus-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.gmus-tabs { flex: none; padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 2px; }
-.gmus-pane { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
-.gmus-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
-.gmus-count { font-size: 12px; color: var(--text-3); flex: 1; }
-.gmus-songs { display: flex; flex-direction: column; gap: 6px; }
-.gmus-song-card {
-  display: flex; align-items: center; gap: 12px; text-align: left;
-  padding: 10px 13px; border: 1px solid var(--border); border-radius: 11px;
-  background: var(--surface); cursor: pointer; font: inherit; color: var(--text);
-}
-.gmus-song-card:hover { border-color: var(--accent); }
-.gmus-song-title { flex: 1; min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gmus-song-meta { flex: none; font-size: 11.5px; color: var(--text-3); }
-.gmus-song-badges { flex: none; font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 /* — the song page: Apps→General split — */
-.gmus-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.gmus-savestate { flex: 1; text-align: right; font-size: 11px; color: var(--text-3); padding-right: 6px; }
-.gmus-split { display: flex; flex: 1; min-height: 0; }
-.gmus-left {
-  flex: 0 0 44%; min-width: 300px; max-width: 560px;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 14px 16px; overflow-y: auto; border-right: 1px solid var(--border);
-}
-.gmus-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-top: 8px; display: flex; gap: 8px; align-items: baseline; }
-.gmus-title {
-  font: inherit; font-size: 17px; font-weight: 700; color: var(--text);
-  background: none; border: none; border-bottom: 2px solid var(--accent);
-  padding: 6px 2px; outline: none;
-  box-shadow: 0 12px 22px -14px color-mix(in srgb, var(--accent) 80%, transparent);
-}
-.gmus-lyrics {
-  flex: 1; min-height: 260px; resize: vertical;
-  font: inherit; font-size: 14px; line-height: 1.7; color: var(--text);
-  background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px;
-  border-bottom: 2px solid var(--accent);
-  box-shadow: 0 18px 34px -18px color-mix(in srgb, var(--accent) 85%, transparent);
-  padding: 12px 14px; outline: none;
-}
-.gmus-lyrics:focus, .gmus-prompt:focus { border-color: var(--accent); }
-.gmus-prompt {
-  min-height: 84px; resize: vertical;
-  font-family: var(--mono, monospace); font-size: 12px; line-height: 1.6; color: var(--text-2);
-  background: var(--bg); border: 1px solid var(--border-2); border-radius: 10px;
-  padding: 10px 12px; outline: none;
-}
-.gmus-band-line { font-size: 11.5px; color: var(--text-3); margin-top: 10px; }
 
 /* — the sound editor — */
-.gmus-right { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; gap: 8px; }
-.gmus-wave-bar { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
-.gmus-tools { display: flex; gap: 5px; }
-.gmus-wave-bar .action-btn { height: 25px; padding: 2px 11px; font-size: 11.5px; }
-.gmus-time { font-family: var(--mono, monospace); font-size: 11.5px; color: var(--text-2); min-width: 84px; }
-.gmus-interval { width: 84px; flex: none; }
-.gmus-wave-wrap {
-  flex: 1; min-height: 160px; overflow-x: auto; overflow-y: hidden;
-  border: 1px solid var(--border); border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
-}
-.gmus-wave { display: block; height: 100%; cursor: crosshair; }
-.gmus-wave-hint { flex: none; font-size: 10.5px; color: var(--text-3); }
 
 /* — artists — */
-.gmus-artists { display: flex; flex-direction: column; gap: 8px; }
-.gmus-artist-card, .gmus-artist-editor {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface);
-}
-.gmus-artist-editor { flex-direction: column; align-items: stretch; gap: 8px; }
-.gmus-artist-face {
-  flex: none; width: 44px; height: 44px; border-radius: 12px;
-  background: var(--bg) center / cover no-repeat;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--accent); font-size: 18px;
-}
-.gmus-artist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.gmus-artist-name { font-weight: 650; color: var(--text); }
-.gmus-artist-style { font-size: 11.5px; color: var(--text-2); }
-.gmus-artist-badges { font-size: 10.5px; color: var(--text-3); }
-.gmus-a-name, .gmus-a-style, .gmus-a-voiceid {
-  font: inherit; font-size: 13px; color: var(--text);
-  background: var(--bg); border: 1px solid var(--border-2); border-radius: 8px; padding: 7px 10px; outline: none;
-}
-.gmus-a-name:focus, .gmus-a-style:focus, .gmus-a-voiceid:focus { border-color: var(--accent); }
-.gmus-a-row { display: flex; align-items: center; gap: 8px; }
-.gmus-a-voice-state, .gmus-a-avatar-state { font-size: 11.5px; color: var(--text-3); }
-.gmus-a-voiceid { flex: 1; }
 
 /* — music video assembler — */
-.gmus-mv-head { font-size: 12px; color: var(--text-2); }
-.gmus-mv-pool { display: flex; flex-wrap: wrap; gap: 6px; }
-.gmus-mv-chip {
-  font: inherit; font-size: 11.5px; color: var(--text-2);
-  background: var(--surface); border: 1px solid var(--border-2); border-radius: 100px;
-  padding: 4px 12px; cursor: pointer;
-}
-.gmus-mv-chip.on { color: var(--accent); border-color: var(--accent); }
-.gmus-mv-save { align-self: flex-start; }
 
 /* — band looks — */
-.gmus-looks { display: flex; gap: 8px; margin-top: 6px; }
-.gmus-look {
-  display: flex; gap: 2px; padding: 2px;
-  border: 1.5px solid var(--border-2); border-radius: 9px; background: var(--bg); cursor: pointer;
-}
-.gmus-look.on { border-color: var(--accent); }
-.gmus-look-f, .gmus-look-b {
-  width: 30px; height: 42px; border-radius: 5px;
-  background: var(--surface) center / cover no-repeat;
-}
-.gmus-i-look {
-  flex: none; width: 34px; height: 34px; border-radius: 8px;
-  background: var(--bg) center / cover no-repeat;
-  border: 1px solid var(--border-2);
-}
-.gmus-i-look.busy { animation: pulse-dot 1.2s ease infinite; }
-.gmus-song-card .gmus-song-del { opacity: 0; flex: none; }
-.gmus-song-card:hover .gmus-song-del { opacity: 1; }
 
 /* Regenerate busy state — spinner in the button, both actions disabled. */
-.gmus-regen.busy { opacity: 0.75; pointer-events: none; }
-.gmus-regen:disabled, .gmus-savenew:disabled { opacity: 0.55; cursor: default; }
-.gmus-spin {
-  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
-  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: currentColor;
-  border-radius: 50%; vertical-align: -2px;
-  animation: gmus-spin 0.8s linear infinite;
-}
+
 @keyframes gmus-spin { to { transform: rotate(360deg); } }
-.gmus-length { width: 104px; flex: none; }
 
 /* — the artist page: looks gallery + full-panel lightbox — */
-.gmus-artist-card { text-align: left; font: inherit; cursor: pointer; color: var(--text); width: 100%; }
-.gmus-artist-card:hover { border-color: var(--accent); }
-.gmus-artist-card .gmus-artist-del { opacity: 0; margin-left: auto; }
-.gmus-artist-card:hover .gmus-artist-del { opacity: 1; }
-.gmus-looks-head { display: flex; align-items: center; justify-content: space-between; }
-.gmus-looks-gallery {
-  flex: 1; min-height: 0; overflow-y: auto;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
-  align-content: start;
-}
-.gmus-lookcard {
-  border: 1.5px solid var(--border); border-radius: 13px; overflow: hidden;
-  background: var(--surface);
-}
-.gmus-lookcard.on { border-color: var(--accent); }
-.gmus-lookcard-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 10px;
-}
-.gmus-look-use {
-  background: none; border: none; cursor: pointer; font: inherit;
-  font-size: 11.5px; font-weight: 650; color: var(--text-3); padding: 2px 0;
-}
-.gmus-lookcard.on .gmus-look-use { color: var(--accent); cursor: default; }
-.gmus-look-use:hover { color: var(--text); }
+
 /* Busy look card: a veil + centered ring + label; the whole card breathes. */
-.gmus-lookcard { position: relative; }
-.gmus-look-busy {
-  position: absolute; inset: 0; z-index: 2;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(3px);
-  border-radius: inherit;
-  animation: gmus-busy-in 220ms ease;
-}
-.gmus-look-busy-label { font-size: 11px; font-weight: 650; color: var(--text-2); letter-spacing: 0.03em; }
-.gmus-spin-lg {
-  width: 26px; height: 26px; margin: 0;
-  border-width: 3px;
-  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
-  border-top-color: var(--accent);
-  vertical-align: 0;
-}
+
 @keyframes gmus-busy-in { from { opacity: 0; } to { opacity: 1; } }
-.gmus-lookcard-imgs { display: flex; gap: 2px; }
-.gmus-lookimg {
-  flex: 1; aspect-ratio: 2/3; cursor: zoom-in; position: relative;
-  background: var(--bg) center / cover no-repeat;
-}
-.gmus-lookimg span {
-  position: absolute; left: 6px; bottom: 5px;
-  font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.85); background: rgba(0, 0, 0, 0.45);
-  padding: 1px 6px; border-radius: 4px;
-}
-.gmus-look-hint { flex: none; font-size: 10.5px; color: var(--text-3); }
-.gmus-lightbox {
-  position: absolute; inset: 0; z-index: 30;
-  background: rgba(0, 0, 0, 0.86);
-  display: flex; align-items: center; justify-content: center;
-  cursor: zoom-out;
-}
-.gmus-lightbox.hidden { display: none; }
-.gmus-lightbox img { max-width: 94%; max-height: 94%; border-radius: 10px; }
-.gmus-page { position: relative; }
-.ws-gband-body { display: flex; flex-direction: column; overflow: hidden; }
 
 /* — the music video dual-column picker + player — */
 .gmv-dual { display: flex; gap: 8px; min-height: 180px; }
@@ -19564,22 +18764,9 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 
 /* — the Song team strip + picker chrome — */
-.gmus-team {
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-  padding: 8px 14px; border-bottom: 1px solid var(--border); flex: none;
-  min-height: 44px;
-}
+
 .gmv-team { border-bottom: none; padding: 6px 0; }
-.gmus-team-member { display: flex; align-items: center; gap: 7px; }
-.gmus-team-face {
-  width: 30px; height: 30px; border-radius: 9px; flex: none;
-  background: var(--surface) center / cover no-repeat;
-  border: 1px solid var(--border-2);
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--accent); font-size: 13px;
-}
-.gmus-team-inst .gmus-team-face { border-radius: 50%; font-size: 12px; }
-.gmus-team-name { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+
 .gmv-pickwrap { display: flex; flex-direction: column; gap: 6px; }
 .gmv-search { width: 100%; }
 .gmv-rows { display: flex; flex-direction: column; gap: 5px; grid-template-columns: none; }
@@ -19602,72 +18789,8 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmv-tweak { flex: 1; min-width: 0; font-size: 11.5px; }
 .gmv-col.gmv-avail { grid-template-columns: none; display: flex; flex-direction: column; gap: 5px; }
 .gmv-prompt-tall { min-height: 160px; }
-.gmus-lookimg-solo { aspect-ratio: 4/3; }
-.gmus-pager-top .office-pager { padding: 0; }
 
 /* — design rail resize grip + thumbnail imagery picker — */
-.gdz-rail-grip {
-  flex: none; width: 5px; cursor: col-resize;
-  background: transparent;
-}
-.gdz-rail-grip:hover { background: var(--accent); opacity: 0.5; }
-.gdz-img-picker-grid { width: 340px; padding: 8px; }
-.gdz-img-picker-search { width: 100%; margin-bottom: 8px; }
-.gdz-img-picker-thumbs {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px;
-  max-height: 300px; overflow-y: auto;
-}
-.gdz-img-picker-thumb {
-  position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
-  border: 1.5px solid var(--border-2); background: var(--bg) center / cover no-repeat;
-  cursor: pointer; padding: 0;
-}
-.gdz-img-picker-thumb:hover { border-color: var(--accent); }
-.gdz-img-picker-tag { position: absolute; right: 4px; top: 3px; font-size: 10px; color: #fff; text-shadow: 0 1px 3px #000; }
-.gdz-img-picker-name {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  font-size: 9px; color: #fff; background: rgba(0,0,0,0.55);
-  padding: 2px 5px; text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-/* Design modals — Uploads / Imagery / Sources browse centered, expandable, paginated */
-.gdz-modal-veil {
-  position: fixed; inset: 0; z-index: 1200;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex; align-items: center; justify-content: center;
-}
-.gdz-modal {
-  display: flex; flex-direction: column;
-  width: min(880px, 92vw); max-height: 82vh;
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  border-radius: 12px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-}
-.gdz-modal.expanded { width: 96vw; height: 94vh; max-height: 94vh; }
-.gdz-modal-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid var(--border-2);
-}
-.gdz-modal-title { font-size: 13px; font-weight: 600; }
-.gdz-modal-tools { display: flex; gap: 6px; }
-.gdz-modal-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; overflow-y: auto; flex: 1; }
-.gdz-modal-search { width: 100%; }
-.gdz-modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.gdz-modal-grid.gdz-modal-rows { display: flex; flex-direction: column; gap: 8px; }
-.gdz-modal-tile {
-  border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden;
-  background: var(--bg); padding: 0; text-align: left;
-}
-.gdz-modal-pick { cursor: pointer; }
-.gdz-modal-pick:hover { border-color: var(--accent); }
-.gdz-modal-img { position: relative; aspect-ratio: 4 / 3; background: var(--bg) center / contain no-repeat; }
-.gdz-modal-img .gdz-img-picker-tag { font-size: 13px; }
-.gdz-modal-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
-.gdz-modal-name { flex: 1; font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gdz-modal-role { width: 110px; }
-.gdz-modal-foot .office-pager { padding: 4px 0 0; }
-.gdz-modal-empty { grid-column: 1 / -1; padding: 30px 0; text-align: center; color: var(--text-3); font-size: 12px; }
 
 /* ── Listing builder (developer console) ─────────────────────────────── */
 .lb-head { display: flex; align-items: center; gap: 16px; margin: 18px 0 8px; }
@@ -19718,7 +18841,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 /* Tiles are column-flex (icon over label): the badge pins to the ICON square's
    top-right — the button's own top-right IS the icon's. */
 
-
 /* Video thumb in the gallery strip: real poster + play badge. */
 .mkt-thumb-video { position: relative; background: #17141f; }
 .mkt-thumb-video video, .mkt-thumb-video img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
@@ -19735,7 +18857,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 
 /* ── Echo FOLDERS (2026-08-20): wall groups for app + layout icons ───────── */
 
-
 /* ── Echo Agent: independent TEXT fade + lock + CC close (2026-08-20) ────── */
 /* Text fades on its own slider, multiplying the panel fade — glassy panel
    with solid words, or both faded, each its own knob. */
@@ -19743,7 +18864,6 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   opacity: var(--echo-agent-text-opacity, 1);
 }
 #code-agent-lock.active { color: var(--accent, #af5fff); }
-
 
 /* ── THE LOCK IS ABSOLUTE (his bug, 2026-08-20: "still auto-hiding with the
    lock on") — the agent has SEVERAL hide mechanisms (the covered tuck, the
@@ -19760,7 +18880,6 @@ body.echo-agent-locked #code-agent-layer {
   /* Over every card, fullscreen included (cards live well below 400). */
   z-index: 460;
 }
-
 
 /* ── Agent panel drag geometry (2026-08-20) ──────────────────────────────── */
 .code-root[data-anchor="center"] .code-agent-toprow { cursor: grab; }
@@ -19794,7 +18913,6 @@ body.echo-agent-locked #code-agent-layer {
   background: var(--surface); color: var(--text-3); cursor: pointer;
 }
 .code-root[data-anchor="center"].peeking > .code-agent > .code-thread .code-peek-close:hover { color: var(--text); border-color: var(--border-2); }
-
 
 /* THE LOCK FREEZES GEOMETRY (his rule, 2026-08-20): while locked, the panel
    holds its exact position and size — no move, no resize affordances. */
@@ -20040,13 +19158,11 @@ body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { dis
 .code-session-controls > #code-session-new { order: 3 !important; }
 .code-session-controls > #code-tools-wrap { order: 4 !important; }
 
-
 /* In the LAYOUT header the popovers hang DOWN (his rule, 2026-08-21): the
    row sits at the TOP of the panel, so the composer's open-upward default
    throws them off the top edge, clipped — "the menu doesn't work". */
 body.echo-agent-in-layout .code-agent-head .code-view-more-menu { bottom: auto; top: calc(100% + 6px); }
 body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: calc(100% + 8px); }
-
 
 /* The session name, now a sibling of the back button (rename needs a real
    span, not button innards). Reads like part of the head row. */
@@ -20311,17 +19427,13 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   box-shadow: 0 2px 8px var(--shadow);
 }
 
-
 /* ── Wall tour — the first-run guided overlay (wall-tour.ts) ─────────────── */
-
 
 /* Keep the marker readable over both the dimmed page and the live control in
    the hole. The paired light/dark halo prevents a theme accent from sinking
    into either a white light surface or a black dark surface. */
 
-
 /* The mock screenshots — CSS-drawn minis, themed, no bitmaps to go stale. */
-
 
 /* The Dashboard | Desktop surface toggle was removed (his call, 2026-08-29):
    app-web is the Platform only, so both surfaces and the toggle are gone. The
@@ -20342,19 +19454,6 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 /* The user menu's update dot — About carries it when a release is downloaded. */
 .user-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent, #8c3bf2); margin-left: auto; flex: none; }
 /* ── Media viewer navigation — chevrons flank the stage, arrows step ────── */
-.gmedia-stagewrap { display: flex; align-items: stretch; flex: 1 1 auto; min-height: 0; }
-.gmedia-stagewrap .gmedia-stage { flex: 1 1 auto; min-width: 0; }
-.gmedia-nav {
-  flex: 0 0 44px; display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent; color: var(--text-3); cursor: pointer;
-  opacity: 0.55; transition: opacity 0.12s ease, color 0.12s ease;
-}
-.gmedia-nav:hover { opacity: 1; color: var(--text); }
-.gmedia-nav svg { width: 26px; height: 26px; }
-/* The song's attached videos — a strip of playable thumbs under the band. */
-.gmus-videos { display: flex; flex-wrap: wrap; gap: 10px; }
-.gmus-videos:empty { display: none; }
-.gmus-video-cell { width: 220px; border-radius: 10px; background: #000; border: 1px solid var(--border); }
 
 /* The surface toggle was removed (his call, 2026-08-29): app-web shows the
    plain Dashboard row (.dash-plain), same as desktop — no per-surface override. */
@@ -20373,18 +19472,15 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
    context menu offers no delete for fixed nav slots, so they can be
    reordered but never removed. */
 
-
 /* The same two slots leading the WALL while the dock is off (his order,
    2026-10-04) go inert the same way — they run the dock's own action, which
    does nothing with no panels up. */
-
 
 /* ATTACHED MODE: the CC slot is live from the first summon — over a foreign
    app it is the way to the wall, panels open or not. */
 
 /* Dim = inert: no hover ring, no hover zoom (the arc still carries them so
    the row never breaks its rhythm). */
-
 
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
 /* The PARKED bar (dock-portal.ts moved it into the body-level layer while
@@ -20401,9 +19497,7 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
    gone within the dock's band — so the bar reads as descending from the
    chrome instead of floating over the panels. */
 
-
 /* The wall's "tad more drop" margin is wall-only — zero on the parked bar. */
-
 
 /* The hint sliver at the top center is OFF (his order, 2026-09-15: "when the
    dock is hidden remove this line"). The hover strip below still reveals the
@@ -20412,7 +19506,6 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 /* The invisible top strip that catches the peek hover — webviews swallow
    host mouse events, so the strip sits ABOVE the panel layers. Present only
    while the dock is tucked, so it never steals clicks otherwise. */
-
 
 /* (Close-all's always-present + dim-when-idle rules live with CC's above.) */
 /* The layout bar RETIRES (his order, 2026-08-28): its pill + tooltip sat in
@@ -20431,14 +19524,12 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    dock-band.ts) reads zero. Everything the dock opened stays reachable from
    the rail and the keyboard (New session, Settings, ⌘⇧Space, Close all). */
 
-
 /* (The standalone Loops PAGE is gone — loops are settings; its card,
    editor and key-row styles went with it. See .loop-acc above.) */
 
 /* Agent terminal header (his spec, 2026-09-11): the tab row becomes the
    session-name row with the shared control cluster — identical to the chat
    head. Plain terminals keep their tabs; this styles only the agent face. */
-
 
 /* The agent terminal head's recents IS the chat head's dropdown —
    .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
@@ -20618,7 +19709,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .settings-panel[data-sub="connections-cfg"].editing > .crud-toolbar,
 /* Inside an OPEN ROW the detail is the row's form — visible there, hidden in
    the parts-bin host it came from. */
-
 
 /* ── Settings → Build → Skills (2026-09-16) — the list/detail pages ───────── */
 .settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
@@ -20991,12 +20081,10 @@ body.rail-collapsed #app-rail-resize { display: none; }
 .wb-session-search .repo-drop-search { flex: 1; min-width: 0; width: auto; }
 .wb-session-search input { flex: 1; min-width: 0; }
 
-
 /* In a CARD the session controls sit at the TOP, so their menus open DOWNWARD:
    upward would land above the card, where the holder clips it (the "dots and
    drips do nothing" of 2026-09-16). */
 .ws-agent-holder .code-view-more-menu, .ws-agent-holder .echo-drip-pop { top: calc(100% + 6px); bottom: auto; }
-
 
 /* Sidebar collapsed + a panel fullscreen: its head starts under the traffic
    lights and the strip's icons, so the title moves right past them; the
@@ -21086,9 +20174,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 
 /* THE CLI INSTALLER (2026-09-20): full screen over everything; no close. */
 
-
 /* The recents loop filter: wide enough for a name, a mark and a check on one line. */
-
 
 /* THE MEMORY BROWSER (2026-09-20): a knowledge base's rows. */
 .mem-browser { margin-top: 12px; }
@@ -21192,7 +20278,6 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 
 .agp-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.6px solid var(--border-2); border-top-color: var(--accent); animation: agp-spin 0.8s linear infinite; }
 @keyframes agp-spin { to { transform: rotate(360deg); } }
-
 
 /* The row under an agent reply (copy). Hidden until the reply is hovered or the
    row takes keyboard focus; the copied state is the theme's own success. */
@@ -21431,10 +20516,8 @@ h4):not(.gdoc-paper *),
 .yo-modal-title,
 .dash-modal-title,
 .conn-modal-title,
-.gdz-modal-title,
 .yo-panel-title,
 .dash-section-title,
-.gdrive-section-title,
 .gmem-sec-title,
 .mem-page-title,
 .settings-subheading,
@@ -21454,7 +20537,6 @@ h4):not(.gdoc-paper *),
 #layout-new-tab-host { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 #layout-new-tab-host.hidden { display: none; }
 
-
 /* Settings → Devices (2026-10-04): the attached machines, modelled on mobile's Desktops strip. */
 .devices-row { align-items: flex-start; }
 .devices-icon { display: inline-flex; flex: none; width: 18px; height: 18px; margin: 2px 10px 0 0; color: var(--text-2); }
@@ -21470,7 +20552,6 @@ h4):not(.gdoc-paper *),
 
 /* The turn's timing line under an answer (ready · first token · tok/s · total). */
 .code-msg-timing { font-size: 10.5px; color: var(--text-faint); margin: 4px 0 0 2px; font-variant-numeric: tabular-nums; }
-
 
 /* THE FOLDER PICKER'S SEARCH + LIST (his order, 2026-10-04: "it needs a
    search… only show the last maybe 5 of local or remote"). The search stays
@@ -21790,7 +20871,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
    the standard modal, asked before a CLI tile from the Echo opens. */
 
-
 /* ══ THE DEVELOPER'S DESK + THE REVIEW DESK (his asks, 2026-10-07) ══════════
    Releases (an app instance's) and Publish (the hub) tabs on a library item;
    the Review tab org admins see on every library page. One row grammar. */
@@ -21864,7 +20944,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 
 /* THE CLI CARD'S FOLDER CHIP (his order, 2026-10-07): the folder the CLI runs
    in and its branch, beside the card title; the folder is a button. */
-
 
 /* RPA ON A TAB, the right side (restored 2026-10-08): the tab's live page
    beside the commands, which Pick and Test act on. */

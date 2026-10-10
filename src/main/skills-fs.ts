@@ -70,8 +70,6 @@ export interface SkillSummary {
   updatedAt: string;
   /** App and task bundles: the manifest's icon.svg markup. */
   icon?: string | null;
-  /** An app that IS a built-in work panel names its view here ("gimage"). */
-  tool?: string | null;
 }
 export interface SkillFile { path: string; size: number }
 export interface SkillDetail extends SkillSummary {
@@ -185,27 +183,24 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   let updatedAt = "";
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
   const type = bundleType(dir, frontmatter.type);
-  const { icon, tool } = bundleMarks(dir, type);
+  const icon = bundleIcon(dir, type);
   const id = idOf(source, name);
   return {
     id, source, type, name: frontmatter.name || name, description: frontmatter.description || "",
     author: frontmatter.author || frontmatter.from || installedAuthor(id), enabled, dir, fileCount: walk(dir).length, updatedAt,
-    icon, tool,
+    icon,
   };
 }
 
-/** What an app or task manifest says about how it LOOKS and what it opens: the
- *  icon.svg it ships, and the built-in panel it is (an app with a `tool` wears
- *  that panel's mark when it ships no icon of its own). */
-export function bundleMarks(dir: string, type: BundleType): { icon: string | null; tool: string | null } {
-  if (type !== "app" && type !== "task") return { icon: null, tool: null };
+/** The icon.svg an app or task manifest ships, if any. */
+export function bundleIcon(dir: string, type: BundleType): string | null {
+  if (type !== "app" && type !== "task") return null;
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown; tool?: unknown };
-    const tool = typeof m.tool === "string" && m.tool ? m.tool : null;
-    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return { icon: null, tool };
+    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown };
+    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return null;
     const svg = fs.readFileSync(safeJoin(dir, m.icon), "utf-8");
-    return { icon: svg.includes("<svg") && svg.length < 64_000 ? svg : null, tool };
-  } catch { return { icon: null, tool: null }; }
+    return svg.includes("<svg") && svg.length < 64_000 ? svg : null;
+  } catch { return null; }
 }
 
 const isApp = (dir: string): boolean => fs.existsSync(path.join(dir, "app.json"));

@@ -35,7 +35,6 @@ import {
   layoutRowOf, parseSkillMd, scheduleViewOf, tabRecordOf, tabRowOf, workspaceId, workspaceSurfaceOf,
 } from '../../src/shared/member-library';
 import { instanceCardId, mergeAppRows } from '../../src/shared/app-instances';
-import { HOUSE_VIEW_OF_APP } from '../../src/renderer/help/house-relay.ts';
 import { buildAppInstancesWeb } from './app-instances-web.js';
 
 /** The one line a machine-only action answers on web. */
@@ -215,26 +214,17 @@ export function buildMemberLibrary(client, deps = {}) {
   // folder in the library, installed on the machine by the desktop's sync.
   const BUNDLE_KINDS = { skill: 'skill', task: 'task', plugin: 'plugin' };
   // THE INSTALLED APPS THAT ARE TAB ROWS (his report, 2026-10-05: "build in
-  // the web doesn't carry apps yet"): the house apps — Drive, Slides, Design,
-  // Images… — and any Glyphh app the desktop registered are `tab` rows of
+  // the web doesn't carry apps yet"): any Glyphh app the desktop registered is a `tab` row of
   // kind "glyphh" in the member library, not instances, so the desktop's
   // Skills page lists them and the web's did not. They list here as app
   // cards (`app-tab:<slug>`); an instance of the same slug IS that card.
-  // A tab's panel: its launchConfig.tool, else the house panel its slug names
-  // (Images → gimage) — a row relayed from a desktop can arrive without the
-  // tool, and Open then took the desktop door (his report, 2026-10-05: "on
-  // web this open doesn't do anything").
-  /** A Discover card for a house app wears that app's own mark (his report,
-   *  2026-10-07: generic icons on Drive, Images, …): the panel its slug names. */
-  const houseToolOfSlug = (kind, slug) => (kind === 'app' ? (HOUSE_VIEW_OF_APP[String(slug || '').toLowerCase()] ?? null) : null);
-  const houseToolOf = (t) => (t.config && typeof t.config === 'object' && typeof t.config.tool === 'string') ? t.config.tool : (HOUSE_VIEW_OF_APP[String(t.slug || '').toLowerCase()] ?? null);
   const TAB_CARD = 'app-tab:';
   const isTabCardId = (id) => String(id || '').startsWith(TAB_CARD);
   const tabCardOf = (t) => ({
     id: `${TAB_CARD}${t.slug}`, source: 'app', type: 'app',
     name: String(t.name || t.slug), description: String(t.description || ''), author: 'you',
     enabled: true, dir: '', fileCount: 0, updatedAt: t.updatedAt,
-    icon: null, tool: houseToolOf(t),
+    icon: null,
   });
   const tabApps = async () => {
     const srv = await listRows('tab');
@@ -582,11 +572,11 @@ export function buildMemberLibrary(client, deps = {}) {
       for (const [k, org] of orgLists) {
         for (const it of org) {
           if (!it.headVersion) continue;
-          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, tool: houseToolOfSlug(k, it.slug), type: k });
+          rows.push({ ref: `org:${it.id}`, from: 'org', id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || '', version: it.headVersion, installed: has(k, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: k });
         }
       }
       for (const p of pub.filter((x) => kinds.includes(x.kind))) {
-        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, tool: houseToolOfSlug(p.kind, p.slug), type: p.kind });
+        rows.push({ ref: `glyphh:${p.id}`, from: 'glyphh', id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: has(p.kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind });
       }
       return ok(rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
     } catch (err) { return fail(err); }
@@ -896,14 +886,12 @@ export function buildMemberLibrary(client, deps = {}) {
   const skillTab = async (pageId) => {
     // OPEN ON THE WEB OPENS THE WEB PANEL (his report, 2026-10-05: Open
     // "opens the local desktop and then opens that app there instead of
-    // opening the web panel"): a house app's tab answers its TOOL so the
-    // page opens the built-in panel here; a cloud instance's tab is marked
-    // `cloud` so the page opens it as a web panel, never on the desktop.
+    // opening the web panel"): a cloud instance's tab is marked `cloud` so
+    // the page opens it as a web panel, never on the desktop.
     if (isTabCardId(pageId)) {
       try {
         const t = await tabCard(pageId);
-        const tool = houseToolOf(t);
-        return ok({ slug: t.slug, name: t.name, ...(tool ? { tool } : {}), cloud: !t.nativeRef });
+        return ok({ slug: t.slug, name: t.name, cloud: !t.nativeRef });
       } catch (err) { return fail(err); }
     }
     if (!appInstances.isInstanceCardId(String(pageId))) return { ok: false, error: NEEDS_DESKTOP };

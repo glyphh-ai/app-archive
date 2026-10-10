@@ -14,11 +14,10 @@ import { commentAuthor, decisionNeedsNote, mayRetire, notesRequired, queueForKin
 import { paintBuildBadge } from "./app-updates.js";
 import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
-import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
+import { openAppInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
-import { toolViewIcon } from "./tool-icons.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { cronToWords, openScheduleOnLoad } from "./schedules.js";
@@ -33,12 +32,12 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; instance?: InstanceOfRow }
 /** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
 interface InstanceOfRow { key: string; kind: "personal"; status: string; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -124,10 +123,7 @@ const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.t
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
 /* No kind chip: a power is a power (2026-10-09). */
 const typeChip = (_type: BundleType | undefined): string => "";
-/** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
- *  IS, else its type's. The middle step matters for the work-panel apps —
- *  Design, Slides, Drive and the media panels are those panels, and the ones
- *  installed before the catalog shipped icons carry no icon.svg at all. */
+/** The mark a bundle wears: the icon.svg it ships, else its type's. */
 /** THE GLYPHH BUNDLE WEARS THE MASCOT (his order, 2026-09-17), through the
  *  same resolver every app row uses — `appIconInner` answers the brand mark
  *  for slug "glyphh", so the skill and the app are one identity and nothing
@@ -143,9 +139,9 @@ const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null 
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
   return slug === "glyphh";
 };
-const markOf = (s: { icon?: string | null; tool?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
+const markOf = (s: { icon?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
   isGlyphhBundle(s) ? appIconInner({ slug: "glyphh" }, s?.name || "Glyphh", "skill-icon-initial")
-    : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
+    : (s?.icon && s.icon.includes("<svg") ? s.icon : "");
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
 /** The shelves a shared bundle sits on, and the door to change them. Nothing
  *  to show until it has been shared — an unshared folder is on no shelf. */
@@ -248,7 +244,7 @@ const setDetailName = (name: string, type?: BundleType): void => {
   host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}`;
   (host.querySelector(".skill-detail-title") as HTMLElement).textContent = name;
 };
-const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
+const setDetailIcon = (row: { icon?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
   const mark = markOf(row);
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
     n.innerHTML = iconOf(mark, row?.type);
@@ -493,7 +489,7 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare; id?: string }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; type?: BundleType; share?: ListShare; id?: string }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
@@ -624,7 +620,7 @@ function renderList(): void {
     for (const s of shown) {
       g.appendChild(row({
         name: s.name, by: s.author ? `by ${s.author}` : "by you",
-        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, tool: s.tool, type: s.type,
+        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, type: s.type,
         onOpen: () => void openDetail(s.id),
         action: instanceUpdateButton(s),
       }));
@@ -659,7 +655,7 @@ function renderList(): void {
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           // A cloud app's card reads its release where a folder reads its date.
           // No last-edited date on the row (his order, 2026-10-09); a cloud app's release label stays.
-          desc: s.description, right: s.instance ? releaseLabel(s.instance) : "", icon: s.icon, tool: s.tool, type: s.type,
+          desc: s.description, right: s.instance ? releaseLabel(s.instance) : "", icon: s.icon, type: s.type,
           share: shares[s.id],
           id: s.id,
           onOpen: () => void openDetail(s.id),
@@ -1043,7 +1039,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
   paintOverviewBody(current.body);
-  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type, slug: d.slug, name: d.name });
+  setDetailIcon({ icon: d.icon, type: d.type, slug: d.slug, name: d.name });
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
@@ -1132,17 +1128,12 @@ async function runNow(btn: HTMLButtonElement): Promise<void> {
 async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   if (!current) return;
   btn.disabled = true;
-  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string; cloud?: boolean }; error?: string };
+  type TabEnv = { ok: boolean; data?: { slug: string; name: string; cloud?: boolean }; error?: string };
   const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
   btn.disabled = false;
   const tab = r.data;
   if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
   closeSettingsModal();
-  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in
-  // panel. Both doors go through the cold-safe openers, which boot the
-  // workbench and wait for its bridge — calling the bridge directly was a
-  // silent no-op whenever the workbench had not mounted yet.
-  if (tab.tool) { openWorkPanelInWorkbench("__wbOpenTool", tab.tool); return; }
   // A cloud app opens as a web panel on the web (his report, 2026-10-05);
   // anything else keeps the desktop door.
   openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true, ...(tab.cloud ? { cloud: true } : {}) });

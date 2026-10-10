@@ -203,7 +203,7 @@ function initSettings() {
 
   // Default workspace — what a fresh boot opens when there's nothing to
   // restore (code-workbench restoreWallOnce reads the same pref). Options are
-  // the user's layouts; the three shipped defaults (Vibe/Dev/Design) are
+  // the user's layouts; the shipped default (Vibe, the agent alone) is
   // always offered — a missing one backfills from its template on first open.
   const defWs = document.getElementById("settings-default-workspace") as HTMLSelectElement | null;
   if (defWs) {
@@ -213,7 +213,7 @@ function initSettings() {
       try { names = ((await window.glyphh.layoutsList?.()) ?? []).map((l) => String((l as { name?: string }).name || "")).filter(Boolean); } catch { /* offline */ }
       const seen = new Set<string>();
       const opts: string[] = [];
-      for (const n of ["Design", ...names]) {
+      for (const n of ["Vibe", ...names]) {
         const k = n.toLowerCase();
         if (!seen.has(k)) { seen.add(k); opts.push(n); }
       }

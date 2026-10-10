@@ -4740,11 +4740,9 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
     return true;
   }
-  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
-    "gimage", "image", "gvideo", "video", "gsound", "sound"]);
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents",
-      image: "gimage", video: "gvideo", sound: "gsound" };
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
   }
@@ -7957,7 +7955,6 @@ export function initCode(): void {
     // The agent's door to Settings (2026-09-17): the same panel the dock opens.
     else if (cmd.action === "settings") openSettingsModal(String((cmd as { sub?: string }).sub || "") || undefined);
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
-    else if (cmd.action === "gmedia") (window as unknown as { __wbOpenMedia?: (view: string, assetId?: string, songId?: string) => void }).__wbOpenMedia?.((cmd as unknown as { view: string }).view, (cmd as unknown as { assetId?: string }).assetId, (cmd as unknown as { songId?: string }).songId);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's

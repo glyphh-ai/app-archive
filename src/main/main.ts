@@ -92,8 +92,6 @@ import { registerFilesIpc } from "./files-ipc";
 import { registerPopoutIpc } from "./popout";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
-import { registerMediaPanelIpc } from "./media-panel";
-import { registerMusicPanelIpc } from "./music-panel";
 import { registerSupportIpc } from "./support-ipc";
 import { registerArtifactsIpc } from "./artifacts-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
@@ -1122,8 +1120,6 @@ async function boot() {
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();
-  registerMediaPanelIpc();
-  registerMusicPanelIpc();
 
   // Support (threaded ticketing) — the settings panel's transport.
   registerSupportIpc();

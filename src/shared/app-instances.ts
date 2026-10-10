@@ -24,7 +24,6 @@
  */
 
 import { tabRowOf, type OrgAppRowLike, type TabRowLike } from "./member-library.js";
-import { houseViewOfApp } from "./house-store.js";
 
 /** Apps are personal (his order, 2026-10-09: "no more org apps"): each runs on its owner's machine. */
 export type InstanceKind = "personal";
@@ -137,14 +136,9 @@ export const callPathOf = (key: string): string => `/app-host/${encodeURICompone
 
 /** The launchConfig a tab row carries for an instance: the key, the kind, and
  *  the manifest's contract (the loop's tool list and the panel read the same
- *  keys) — and, for a HOUSE app (Images, Drive, …), the built-in panel its
- *  slug names (`tool`): the one key every open door on both surfaces already
- *  reads (the wall tile, the ⋮ menu, Settings → Apps → Open), so an instance
- *  of one of the six opens the native panel over the member's records, never
- *  its ui frame. */
+ *  keys). */
 export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "slug" | "manifest">, manifest?: BundleManifestLike | null): Record<string, unknown> {
   const m = manifest ?? inst.manifest;
-  const tool = houseViewOfApp(inst.slug);
   return {
     [INSTANCE_CONFIG_KEY]: inst.key,
     instanceKind: inst.kind,
@@ -154,18 +148,15 @@ export function tabConfigOf(inst: Pick<AppInstanceSummary, "key" | "kind" | "slu
     window: (manifest?.window ?? null) as Record<string, unknown> | null,
     // An installed app is a chromeless panel (his rule, 2026-08-20).
     workbench: true,
-    ...(tool ? { tool } : {}),
     ...(manifest?.release ? { release: manifest.release } : {}),
     ...(typeof manifest?.iconUrl === "string" ? { iconUrl: manifest.iconUrl } : {}),
   };
 }
 
 /** THE OPEN RULE for an instance's tab (the Settings → Apps card's Open, on
- *  both surfaces): a house app answers its panel; anything else is a panel
- *  of the instance's own UI. */
-export function instanceTabOpen(row: Pick<TabRowLike, "slug" | "name" | "config">): { slug: string; name: string; tool?: string } {
-  const tool = typeof row.config?.tool === "string" && row.config.tool ? row.config.tool : houseViewOfApp(row.slug);
-  return { slug: row.slug, name: row.name, ...(tool ? { tool } : {}) };
+ *  both surfaces): a panel of the instance's own UI. */
+export function instanceTabOpen(row: Pick<TabRowLike, "slug" | "name">): { slug: string; name: string } {
+  return { slug: row.slug, name: row.name };
 }
 
 /** The tab row an instance gets (kind glyphh, no entry on any machine, config
@@ -244,12 +235,9 @@ export function mergeAppRows(instances: AppInstanceSummary[], tabs: TabRowLike[]
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** An instance-backed row carries the instance's live status — and a house
- *  app's panel (`tool`), even on a tab the server wrote before this rule, so
- *  every door opens it the same way. */
+/** An instance-backed row carries the instance's live status. */
 function withInstance(row: OrgAppRowLike, inst: AppInstanceSummary): OrgAppRowLike {
-  const tool = typeof row.launchConfig?.tool === "string" && row.launchConfig.tool ? null : houseViewOfApp(inst.slug);
-  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), ...(tool ? { tool } : {}), instanceStatus: inst.status } };
+  return { ...row, launchConfig: { ...(row.launchConfig ?? {}), instanceStatus: inst.status } };
 }
 
 /** The Settings → Apps card of an instance — the shape the library page lists
@@ -266,8 +254,6 @@ export interface InstanceCard {
   fileCount: number;
   updatedAt: string;
   icon: null;
-  /** A house app's panel (gimage, gdrive, …): the card's mark. */
-  tool: string | null;
   /** Not a folder: the instance it stands for; `release` = the pinned n,
    *  `version` the developer's, `update` what the catalog would move it to. */
   instance: { key: string; kind: InstanceKind; status: InstanceStatus; tools: string[]; release: number | null; version: string | null; update: InstanceUpdate | null; output: boolean };
@@ -287,15 +273,12 @@ export function instanceCardOf(inst: AppInstanceSummary, nowIso = new Date(0).to
     type: "app",
     name: String(inst.manifest?.name || inst.slug),
     description: String(inst.manifest?.description ?? ""),
-    // A house app is Glyphh's (his report, 2026-10-07: "by you" on Design); every other one the member's.
-    author: houseViewOfApp(inst.slug) ? "Glyphh" : "you",
+    author: "you",
     enabled: inst.status !== "stopped" && inst.status !== "error",
     dir: "",
     fileCount: 0,
     updatedAt: nowIso,
     icon: null,
-    // A house app's card wears its panel's mark, as every other door does.
-    tool: houseViewOfApp(inst.slug),
     instance: { key: inst.key, kind: inst.kind, status: inst.status, tools, release: releaseOf(inst), version: inst.version ?? null, update: updateOf(inst), output: inst.output === true || (inst.manifest as { output?: unknown } | undefined)?.output === true },
   };
 }

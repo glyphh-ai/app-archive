@@ -134,25 +134,6 @@ describe("mergeAppRows — THE LIST", () => {
   // instance — nothing synthesizes a row for them. What is theirs: the slug
   // names the built-in panel, stamped on the tab as `tool`, the one key every
   // open door reads (the wall tile, the ⋮ menu, Settings → Apps → Open).
-  it("a HOUSE app's instance names its built-in panel (`tool`) — on its own tab, and on a tab the server wrote without it; no instance, no row", () => {
-    const images: AppInstanceSummary = { ...PERSONAL, key: "images~u1", slug: "images", manifest: { name: "Images", tools: [{ name: "save_image" }], capabilities: ["library.*"], connectors: [] }, url: "/app-host/images~u1/" };
-    const at = "2026-10-06T00:00:00.000Z";
-    expect(instanceTabRow(images, null, null, at).config).toMatchObject({ instance: "images~u1", instanceKind: "personal", tool: "gimage", workbench: true });
-    expect(instanceTabRow(PERSONAL, null, null, at).config).not.toHaveProperty("tool");
-    // Settings → Apps → Open: the panel for a house app, the instance's UI for any other.
-    expect(instanceTabOpen(instanceTabRow(images, null, null, at))).toEqual({ slug: "images", name: "Images", tool: "gimage" });
-    expect(instanceTabOpen(instanceTabRow(PERSONAL, null, null, at))).toEqual({ slug: "notes", name: "Notes" });
-    // The list: a bare tab the server wrote for the instance still carries the panel.
-    const bare = tab({ id: "images", kind: "glyphh", slug: "images", name: "Images", config: { instance: "images~u1" } });
-    const rows = mergeAppRows([images, PERSONAL], [bare], at);
-    expect(rows.map((r) => r.slug)).toEqual(["images", "notes"]);
-    expect(rows[0].launchConfig).toMatchObject({ instance: "images~u1", tool: "gimage", instanceStatus: "ready" });
-    expect(rows[1].launchConfig).not.toHaveProperty("tool");
-    // A tab's own tool wins; nothing is listed that is not installed.
-    const own = tab({ id: "drive", kind: "glyphh", slug: "drive", name: "Drive", config: { instance: "drive~u1", tool: "gdrive" } });
-    expect(mergeAppRows([{ ...images, key: "drive~u1", slug: "drive" }], [own], at)[0].launchConfig).toMatchObject({ tool: "gdrive" });
-    expect(mergeAppRows([], [], at)).toEqual([]);
-  });
 });
 
 describe("the panel URL", () => {
@@ -179,13 +160,10 @@ describe("releases on the summary", () => {
 describe("the Apps-page card and the tool rows", () => {
   it("a card stands for the instance, with no folder", () => {
     const card = instanceCardOf(APP, "2026-10-04T00:00:00.000Z");
-    expect(card).toMatchObject({ id: "app-instance:expense-desk~u1", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "you", tool: null });
+    expect(card).toMatchObject({ id: "app-instance:expense-desk~u1", type: "app", source: "app", dir: "", fileCount: 0, enabled: true, author: "you" });
     expect(card.instance).toMatchObject({ key: "expense-desk~u1", kind: "personal", status: "ready" });
     expect(card.instance).not.toHaveProperty("access");
     expect(card.instance).not.toHaveProperty("public");
-    // A house app's card is Glyphh's and wears its panel's mark; the manifest's description rides (his report, 2026-10-07).
-    const house = instanceCardOf({ ...APP, key: "images~u1", slug: "images", manifest: { ...APP.manifest, name: "Images", description: "The member's pictures" } });
-    expect(house).toMatchObject({ author: "Glyphh", tool: "gimage", description: "The member's pictures", name: "Images" });
     expect(card.instance.tools).toEqual(["list_expenses"]);
     expect(card.instance.release).toBeNull();
     expect(isInstanceCardId(card.id)).toBe(true);

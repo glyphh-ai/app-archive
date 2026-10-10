@@ -21,7 +21,6 @@ import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillM
 import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
 import { ensureInstanceTab, installFromHub, listInstances, findInstance } from "./app-instances.js";
 import { instanceCardId, isInstanceCardId, instanceKeyOfCardId } from "../shared/app-instances.js";
-import { houseViewOfApp } from "../shared/house-store.js";
 import { GLYPHH_GUIDE_SLUG } from "../shared/glyphh-guide.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
@@ -42,8 +41,6 @@ export interface DiscoverRow {
   categories: string[];
   /** App and task items: the manifest's icon.svg, from the catalog row. */
   icon?: string | null;
-  /** A house app's own panel (gimage, gdrive, …): the card wears that mark (his report, 2026-10-07). */
-  tool?: string | null;
   /** What kind of skill this is — the hub kind it was listed under. */
   type: Kind;
 }
@@ -102,12 +99,12 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   for (const [kind, org] of orgLists) {
     for (const it of Array.isArray(org) ? org : []) {
       if (!it.headVersion) continue;
-      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, tool: kind === "app" ? houseViewOfApp(it.slug) : null, type: kind });
+      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
     }
   }
   // The Glyphh power is built in: a catalog that still ships it is not offered.
   for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind) && x.slug !== GLYPHH_GUIDE_SLUG)) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, tool: p.kind === "app" ? houseViewOfApp(p.slug) : null, type: p.kind as Kind });
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

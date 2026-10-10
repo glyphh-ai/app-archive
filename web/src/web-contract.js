@@ -47,7 +47,6 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 import { iconForRow } from './web-icons.js';
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 // THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
-import { createHouseStoreWeb } from './house-store-web.js';
 import { askBrowserNotificationPermission, showBrowserNotification, watchNotifications } from './notify-web.js';
 
 /**
@@ -170,7 +169,6 @@ export function buildContract(client, deps) {
   // session on a desktop, it carries no data.
   const library = buildMemberLibrary(client, { apiUrl });
   const { layoutsList, panelAppsList } = library;
-  const house = createHouseStoreWeb({ client, apiUrl });
 
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
@@ -320,13 +318,6 @@ export function buildContract(client, deps) {
     // browser tab cannot do — so `glyphhWeb.has('setBackgroundMode')` is false
     // and Settings → General hides the row (help/settings.ts).
 
-    // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio ─────────────────────
-    // (his order, 2026-10-06: cloud is the one home): the web's own panels
-    // over the member library — the same store the desktop's panels read
-    // (shared/house-store.ts, house-store-web.js). Same wire shapes as the
-    // desktop preload; reads and writes alike.
-    ...house,
-
     // ── Glyphh Office · Docs (OfficeDocsClient) — same wire shapes as preload ──
     gdocList: async () => {
       try {
@@ -402,65 +393,6 @@ export function buildContract(client, deps) {
     },
     memoryAmend: async (input) => {
       try { const r = await client.stator.amend(input); return { ok: true, written: r.written }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicArtists: async () => {
-      try { return { ok: true, artists: await client.music.artists() }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), artists: [] }; }
-    },
-    musicArtistSave: async (id, input) => {
-      try { const artist = id ? await client.music.updateArtist(id, input) : await client.music.createArtist(input); return { ok: true, artist }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicArtistDelete: async (id) => {
-      try { await client.music.deleteArtist(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicInstruments: async () => {
-      try { return { ok: true, instruments: await client.music.instruments() }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), instruments: [] }; }
-    },
-    musicInstrumentSave: async (id, input) => {
-      try { const instrument = id ? await client.music.updateInstrument(id, input) : await client.music.createInstrument(input); return { ok: true, instrument }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicInstrumentDelete: async (id) => {
-      try { await client.music.deleteInstrument(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicInstrumentGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
-    musicSongs: async () => {
-      try { return { ok: true, songs: await client.music.songs() }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), songs: [] }; }
-    },
-    musicSongSave: async (id, input) => {
-      try { const song = id ? await client.music.updateSong(id, input) : await client.music.createSong(input); return { ok: true, song }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    musicSongDelete: async (id) => {
-      try { await client.music.deleteSong(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    // Look generation composes several metered jobs — desktop-main owns it.
-    musicArtistGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
-    musicSongRegenerate: async (id, input) => {
-      try { const r = await client.music.regenerateSong(id, input ?? {}); return { ok: true, song: r.song, job: r.job }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaProjects: async () => {
-      try { return { ok: true, projects: await client.media.projects() }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err), projects: [] }; }
-    },
-    mediaProjectSave: async (id, input) => {
-      try { const project = id ? await client.media.updateProject(id, input) : await client.media.createProject(input); return { ok: true, project }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaProjectDelete: async (id) => {
-      try { await client.media.deleteProject(id); return { ok: true }; }
-      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
-    },
-    mediaProjectGenerate: async (id, input) => {
-      try { const r = await client.media.generateProject(id, input ?? {}); return { ok: true, project: r.project, job: r.job }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
     gdocTemplates: async () => {

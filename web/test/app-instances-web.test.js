@@ -138,19 +138,6 @@ describe('the member library folds instances in', () => {
   // server installed lists like any instance — never a synthesized row — and
   // its row names the built-in panel (tool gimage), which is where the tile,
   // the ⋮ menu and Settings → Apps → Open all land on the web.
-  it('a house app is an instance like any other; its row and its Open name the built-in panel', async () => {
-    const images = { ...MINE, key: 'images~u1', slug: 'images', manifest: { name: 'Images', tools: [{ name: 'save_image' }], capabilities: ['library.*'], connectors: [] }, url: '/app-host/images~u1/' };
-    const client = fakeClient({ instances: [APP, images] });
-    const lib = buildMemberLibrary(client, { document: fakeDoc() });
-    const rows = await lib.panelAppsList();
-    expect(rows.map((r) => r.slug).sort()).toEqual(['crm', 'expense-desk', 'images']);
-    expect(rows.find((r) => r.slug === 'images')).toMatchObject({ appArchetype: 'glyphh-app', launchConfig: { instance: 'images~u1', tool: 'gimage', instanceStatus: 'ready' } });
-    expect(rows.find((r) => r.slug === 'expense-desk').launchConfig).not.toHaveProperty('tool');
-    expect((await lib.skillTab('app-instance:images~u1')).data).toEqual({ slug: 'images', name: 'Images', tool: 'gimage', cloud: true });
-    expect(client.memberLibrary.put).toHaveBeenCalledWith('tab', 'images', expect.objectContaining({ data: expect.objectContaining({ config: expect.objectContaining({ instance: 'images~u1', tool: 'gimage' }) }) }));
-    // With nothing installed there is nothing: no row is made up for a house app.
-    expect((await buildMemberLibrary(fakeClient({ instances: [], library: fakeLibrary({}) }), { document: fakeDoc() }).panelAppsList())).toEqual([]);
-  });
 });
 
 // ── AN APP IS A CLOUD INSTANCE (his order, 2026-10-06) ───────────────────────

@@ -504,8 +504,8 @@ export async function instanceDetail(id: string): Promise<ReturnType<typeof inst
 }
 
 /** Open = the tab (created on first open, so the wall and the rail know it);
- *  a house app's answer names its built-in panel (shared instanceTabOpen). */
-export async function instanceTab(id: string): Promise<{ slug: string; name: string; tool?: string }> {
+ *  (shared instanceTabOpen). */
+export async function instanceTab(id: string): Promise<{ slug: string; name: string }> {
   const key = instanceKeyOfCardId(id);
   const inst = (await listInstances()).find((i) => i.key === key);
   if (!inst) throw new Error(`no cloud app ${key}`);

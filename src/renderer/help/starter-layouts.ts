@@ -26,7 +26,7 @@ interface Template {
   build: (appId: (slug: string) => string | null) => Cell[] | null;
 }
 
-const TEMPLATES: Record<"vibe" | "dev" | "design" | "email" | "research", Template> = {
+const TEMPLATES: Record<"vibe" | "dev" | "email" | "research", Template> = {
   // The out-of-the-box workspace: the Rail beside the agent, nothing else.
   vibe: {
     name: "Vibe", cols: 1, rows: 1, colWidths: [1],
@@ -39,15 +39,6 @@ const TEMPLATES: Record<"vibe" | "dev" | "design" | "email" | "research", Templa
       cell("tool:files", 0, 0), cell("tool:diff", 0, 1),
       cell("tool:monaco", 1, 0), cell("tool:terminal", 1, 1),
       cell("tool:coding", 2, 0, 2),
-    ],
-  },
-  // Rail | the agent | Image | Video.
-  design: {
-    name: "Design", cols: 3, rows: 2, colWidths: [0.42, 0.29, 0.29],
-    build: () => [
-      cell("tool:coding", 0, 0, 2),
-      cell("tool:gimage", 1, 0, 2),
-      cell("tool:gvideo", 2, 0, 2),
     ],
   },
   // The mailbox beside the calendar.
@@ -117,8 +108,8 @@ export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<vo
 
 // ── The DEFAULT workspace (Settings → General) ──────────────────────────────
 // The dropdown's canonical choices; user-made layouts join them by name.
-export const DEFAULT_WORKSPACE_KEYS = ["design"] as const;
-export const DEFAULT_WORKSPACE_NAME = "Design";
+export const DEFAULT_WORKSPACE_KEYS = ["vibe"] as const;
+export const DEFAULT_WORKSPACE_NAME = "Vibe";
 
 /** The template behind a default-workspace NAME (case-insensitive), if any. */
 export function defaultWorkspaceTemplate(name: string): Template | null {
