@@ -11,6 +11,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { shellProfile } from "@glyphh/sdk/loop";
+import { fenceArgv, NO_FENCE } from "./shell-fence.js";
 
 const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** Seatbelt could not be applied (already inside another sandbox, or policy): the program must not run unconfined. */
@@ -33,8 +34,10 @@ export function fencedArgv(script: string, folder: string, platform: NodeJS.Plat
 
 export function spawnFenced(script: string, folder: string): TaskProc {
   const root = realpathSync(folder);
-  const argv = fencedArgv(script, root);
-  if (!argv) throw new Error("this desktop can't fence a program (the macOS sandbox is not available), so it does not run here");
+  // The shared fence (shell-fence.ts): Seatbelt or bubblewrap, the read deny-list,
+  // and NO network — a program reaches the world only through ctx, over this IPC channel.
+  const argv = fenceArgv([process.execPath, script], root, null, []);
+  if (!argv) throw new Error(NO_FENCE);
   const child: ChildProcess = spawn(argv.file, argv.args, {
     cwd: root,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },

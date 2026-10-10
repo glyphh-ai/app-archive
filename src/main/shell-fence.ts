@@ -8,11 +8,17 @@
  *   network  only through the session's proxy (net-proxy.ts), plus the local
  *            ports the member allowed. Every other connection, loopback
  *            included, is refused by the kernel, whatever the command does.
- * Off macOS the shell starts in the folder unsandboxed, as the SDK's default does.
+ * On Linux the same fence is bubblewrap (as Claude Code's): the system read-only,
+ * the folder (+ tmp and the caches) writable, the deny-list hidden, and a
+ * network namespace with nothing in it but relays to the proxy and the
+ * member's allowed local ports (socat inside, a unix socket out). Without
+ * bwrap and socat, nothing fenced can run: it fails closed.
  */
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
+import net from "node:net";
+import { tmpdir } from "node:os";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { shellProfile } from "@glyphh/sdk/loop";
@@ -57,8 +63,93 @@ let appDataDirs: string[] = [];
 /** The app's own data folders (Electron userData): never readable by a session's shell. */
 export function setAppDataDirs(dirs: string[]): void { appDataDirs = dirs.filter(Boolean); }
 
+// ── Linux: bubblewrap ────────────────────────────────────────────────────────
+
+const LINUX_TOOLS = ["/usr/bin/bwrap", "/usr/bin/socat"];
+const linuxReady = (): boolean => LINUX_TOOLS.every((t) => existsSync(t));
+
+/** Where a Linux shell may write besides its folder: tmp and the package caches. */
+export function linuxWritable(home: string = homedir()): string[] {
+  return ["/tmp", "/var/tmp", join(home, ".cache"), join(home, ".npm"), join(home, ".yarn"), join(home, ".cargo/registry"), join(home, ".local/share/pnpm")];
+}
+
+/** bubblewrap's argv for `inner`: fs fence, deny-list hidden, no network but
+ *  the relays (each listed port, socat'd inside to `<sockDir>/<port>.sock`). */
+export function bwrapArgs(folder: string, denied: readonly string[], writable: readonly string[], sockDir: string | null, ports: readonly number[], inner: readonly string[], exists: (p: string) => "dir" | "file" | null = kindOf): string[] {
+  // --unshare-pid: the command is the namespace's life; its relays die when it ends.
+  const a: string[] = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-net", "--unshare-pid", "--die-with-parent", "--new-session"];
+  for (const w of writable) if (exists(w) === "dir") a.push("--bind", w, w);
+  a.push("--bind", folder, folder);
+  for (const d of denied) {
+    const k = exists(d);
+    if (k === "dir") a.push("--tmpfs", d);
+    else if (k === "file") a.push("--ro-bind", "/dev/null", d);
+  }
+  if (sockDir) a.push("--bind", sockDir, sockDir);
+  a.push("--chdir", folder, "--");
+  if (sockDir && ports.length) {
+    const relays = ports.map((p) => `/usr/bin/socat TCP-LISTEN:${p},bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:${sockDir}/${p}.sock >/dev/null 2>&1 &`).join(" ");
+    a.push("/bin/sh", "-c", `${relays} sleep 0.2; exec "$@"`, "sh", ...inner);
+  } else {
+    a.push(...inner);
+  }
+  return a;
+}
+
+function kindOf(p: string): "dir" | "file" | null {
+  try { const st = statSync(p); return st.isDirectory() ? "dir" : "file"; } catch { return null; }
+}
+
+/** The unix sockets a Linux shell's relays dial out through: one per port, each forwarding to 127.0.0.1:<port>. */
+const SOCK_DIR = join(tmpdir(), `glyphh-net-${process.pid}`);
+const relayServers = new Map<number, net.Server>();
+function ensureRelay(port: number): void {
+  if (relayServers.has(port)) return;
+  mkdirSync(SOCK_DIR, { recursive: true, mode: 0o700 });
+  const path = join(SOCK_DIR, `${port}.sock`);
+  try { rmSync(path, { force: true }); } catch { /* fresh */ }
+  const server = net.createServer((sock) => {
+    const up = net.connect(port, "127.0.0.1");
+    sock.pipe(up); up.pipe(sock);
+    const close = (): void => { sock.destroy(); up.destroy(); };
+    sock.on("error", close); up.on("error", close);
+  });
+  server.listen(path);
+  relayServers.set(port, server);
+}
+
+/** THE FENCE FOR ANY ARGV (the shell, a program, a remote terminal): Seatbelt on
+ *  macOS, bubblewrap on Linux, null where no fence exists (the caller refuses). */
+export function fenceArgv(inner: readonly string[], folder: string, proxyPort: number | null, localPorts: readonly number[] = savedLocalPorts()): { file: string; args: string[] } | null {
+  let root = folder;
+  try { root = realpathSync(folder); } catch { /* the caller checked it */ }
+  const denied = readDenied(homedir(), appDataDirs);
+  if (process.platform === "darwin" && existsSync(SANDBOX_EXEC)) {
+    return { file: SANDBOX_EXEC, args: ["-p", fenceProfile(root, denied, proxyPort, localPorts), ...inner] };
+  }
+  if (process.platform === "linux" && linuxReady()) {
+    const ports = [...new Set([...(proxyPort === null ? [] : [proxyPort]), ...localPorts])];
+    for (const p of ports) ensureRelay(p);
+    return { file: "/usr/bin/bwrap", args: bwrapArgs(root, denied, linuxWritable(), ports.length ? SOCK_DIR : null, ports, inner) };
+  }
+  return null;
+}
+
+/** Why nothing fenced can run here, said plainly. */
+export const NO_FENCE = process.platform === "linux"
+  ? "this computer has no sandbox for the agent's shell: install bubblewrap and socat (e.g. sudo apt install bubblewrap socat), then try again"
+  : "this computer has no sandbox for the agent's shell yet, so commands don't run here";
+
 /** The loop's shell launcher (GlyphhLoop deps.shell). */
 export function fencedShell(shell: string, cmd: string, folder: string): { file: string; args: string[]; sandboxed: boolean } {
+  if (process.platform === "linux") {
+    const proxy = proxyUrlFor(currentTurnChat());
+    const port = proxy ? Number(new URL(proxy).port) : null;
+    const env = proxy ? [`HTTP_PROXY=${proxy}`, `HTTPS_PROXY=${proxy}`, `http_proxy=${proxy}`, `https_proxy=${proxy}`, `ALL_PROXY=${proxy}`, "NO_PROXY=", "no_proxy="] : [];
+    const fenced = fenceArgv(["/usr/bin/env", ...env, shell, "-lc", cmd], folder, port);
+    // No fence: nothing runs (the SDK reports a failed sandbox as "not run").
+    return fenced ? { ...fenced, sandboxed: true } : { file: "/bin/sh", args: ["-c", `echo 'sandbox_apply: ${NO_FENCE}' >&2; exit 126`], sandboxed: true };
+  }
   if (process.platform !== "darwin" || !existsSync(SANDBOX_EXEC)) return { file: shell, args: ["-lc", cmd], sandboxed: false };
   let root = folder;
   try { root = realpathSync(folder); } catch { /* the loop already checked it */ }

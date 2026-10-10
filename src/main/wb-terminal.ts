@@ -23,7 +23,8 @@ import os from "os";
 import fs from "fs";
 import { execFile } from "child_process";
 import { followWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
-import { shellProfile } from "@glyphh/sdk/loop";
+import { fenceArgv, NO_FENCE } from "./shell-fence.js";
+import { proxyUrlFor } from "./net-proxy.js";
 
 interface Running { proc: pty.IPty; wc: WebContents }
 
@@ -61,8 +62,12 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
 }
 
 function fencedShell(shell: string, args: string[], folder: string): { file: string; args: string[] } {
-  if (os.platform() !== "darwin" || !fs.existsSync("/usr/bin/sandbox-exec")) throw new Error("this desktop can't fence a remote terminal, so it does not open one");
-  return { file: "/usr/bin/sandbox-exec", args: ["-p", shellProfile(fs.realpathSync(folder)), shell, ...args] };
+  // The shared fence (shell-fence.ts), network through the proxy with nobody to ask: the allowlist only.
+  const proxy = proxyUrlFor(null);
+  const env = proxy ? [`HTTP_PROXY=${proxy}`, `HTTPS_PROXY=${proxy}`, `http_proxy=${proxy}`, `https_proxy=${proxy}`, "NO_PROXY=", "no_proxy="] : [];
+  const fenced = fenceArgv(["/usr/bin/env", ...env, shell, ...args], folder, proxy ? Number(new URL(proxy).port) : null);
+  if (!fenced) throw new Error(NO_FENCE);
+  return fenced;
 }
 
 function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number, light?: boolean): void {

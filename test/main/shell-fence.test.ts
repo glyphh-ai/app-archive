@@ -111,3 +111,25 @@ describe.runIf(mac)("the fence, for real", () => {
     svc.close();
   });
 });
+
+describe("the Linux fence (bubblewrap), as argv", () => {
+  it("binds the system read-only, the folder and the caches writable, hides the deny-list, and leaves no network but the relays", async () => {
+    const { bwrapArgs } = await import("../../src/main/shell-fence.js");
+    const kinds: Record<string, "dir" | "file"> = { "/tmp": "dir", "/h/.cache": "dir", "/h/.ssh": "dir", "/h/.netrc": "file" };
+    const a = bwrapArgs("/w/s", ["/h/.ssh", "/h/.netrc", "/h/.aws"], ["/tmp", "/h/.cache", "/h/.npm"], "/run/sock", [4100, 5432], ["/bin/sh", "-c", "make"], (p) => kinds[p] ?? null);
+    const pairs = (flag: string) => a.flatMap((x, i) => (x === flag ? [a[i + 1]] : []));
+    expect(a.slice(0, 3)).toEqual(["--ro-bind", "/", "/"]);
+    expect(a).toContain("--unshare-net");
+    expect(a).toContain("--unshare-pid");
+    expect(pairs("--bind")).toEqual(["/tmp", "/h/.cache", "/w/s", "/run/sock"]);
+    expect(pairs("--tmpfs"), "a denied folder is hidden").toEqual(["/h/.ssh"]);
+    expect(a.join(" ")).toContain("--ro-bind /dev/null /h/.netrc");
+    expect(a.join(" ")).not.toContain("/h/.aws");
+    const script = a[a.indexOf("-c", a.indexOf("--")) + 1]!;
+    expect(script).toContain("TCP-LISTEN:4100,bind=127.0.0.1");
+    expect(script).toContain("UNIX-CONNECT:/run/sock/5432.sock >/dev/null 2>&1 &");
+    expect(a.slice(-3)).toEqual(["/bin/sh", "-c", "make"]);
+    const bare = bwrapArgs("/w/s", [], [], null, [], ["make"], () => null);
+    expect(bare.slice(-2)).toEqual(["--", "make"]);
+  });
+});
