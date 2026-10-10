@@ -62,7 +62,7 @@ import { panelFsRoute } from "./panel-fs-route.js";
 // the composer, the phone's pair at desktop width; the rules are shared.
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
-import { deviceChecked, toggleDeviceIn, folderSteerLine, selfMachineId } from "./devices-pick.js";
+import { deviceChecked, folderSteerLine, selfMachineId } from "./devices-pick.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
 import { groupByDate } from "./recents-groups.js";
@@ -2096,7 +2096,6 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
-  if (pendingDevices) { c.devices = pendingDevices; pendingDevices = undefined; }
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
@@ -3374,8 +3373,6 @@ const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
  *  raw cloud constant, so the desktop's default stays the user's machine. */
 let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
-/** The Devices picks made before a session is born (newChat stamps them). */
-let pendingDevices: string[] | undefined;
 
 /** The folders this member's DESKTOP sessions ran in, newest first — the
  *  recents the folder picker lists on the web ("the last 5") and the second
@@ -4418,8 +4415,6 @@ function wireComposerAttachments(): void {
       // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea
       // (Work has no tool to walk one with; the row is Code-only).
       attachFolder: () => { void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); }); },
-      workingFolder: async () => { const d = await wb()?.getCwdExplicit?.(); return d ? String(d) : null; },
-      pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
       openTarget: toTarget,
       // EVERY POWER OPENS IN THE ONE MODAL (his order, 2026-10-09: "the + at the
       // bottom of the page by the agent input launches every power add etc.
@@ -4427,12 +4422,6 @@ function wireComposerAttachments(): void {
       openPowers: (tab) => (window as unknown as { __glyphhOpenPowers?: (t: string) => void }).__glyphhOpenPowers?.(tab),
       toast: toastOk,
       place: openChipDropUp,
-      deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
-      toggleDevice: (id, attached) => {
-        const c = current();
-        const next = toggleDeviceIn(c?.devices ?? pendingDevices, id, attached);
-        if (c) { c.devices = next; void saveStore(); } else pendingDevices = next;
-      },
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });

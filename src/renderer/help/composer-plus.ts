@@ -16,26 +16,23 @@
  *                              own switch); a Pipedream account opens its
  *                              page (it has no on/off, only Disconnect);
  *                              Add connector / Manage connectors → Connections
- *   Devices ›                  the attached machines (attachDevicesList, the
- *                              Devices page's read) + Manage devices → Devices
  *   Memory ✓                   the member's memory preference (the Settings →
  *                              Memory switches `memoryInject` + `memoryCapture`
  *                              — there is no per-session memory flag, so this
  *                              is the same preference the page toggles)
  *   ── desktop only ──
- *   Add folder…                read access to another directory (Code)
- *   Working folder / Choose…   the session's folder (the OS picker)
+ *   Add folder…                a folder rides the next message (Code); the
+ *                              session's own folder is the folder chip's
  *
  * The MODEL (rows per surface + the door calls) is pure, so the unit test
  * runs it bare; mountComposerPlus paints it into the composer's drop-up.
  */
 
 import { appIconInner } from "./app-icon.js";
-import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 
 export type PlusSurface = "desktop" | "web";
 export type PlusSpace = "code";
-export type PlusRowId = "attach" | "skills" | "connectors" | "models" | "browse" | "devices" | "memory" | "add-folder" | "working-folder" | "choose-folder";
+export type PlusRowId = "attach" | "skills" | "connectors" | "models" | "browse" | "memory" | "add-folder";
 export type PlusRowKind = "action" | "submenu" | "check";
 
 export interface PlusRow {
@@ -58,12 +55,10 @@ export interface PlusRow {
 /** What the host can serve, as the menu reads it. */
 export interface PlusCaps {
   attach: boolean;
-  folder: boolean;
   skills: boolean;
   connectors: boolean;
   /** The member's enabled models (loopModels) — the Models section. */
   models: boolean;
-  devices: boolean;
   memory: boolean;
 }
 
@@ -72,11 +67,9 @@ export interface PlusCaps {
 export function plusCapsOf(has: (name: string) => boolean): PlusCaps {
   return {
     attach: has("glyphhPickAttachments"),
-    folder: has("pickWorkingDir"),
     skills: has("skillsList") && has("skillSetEnabled"),
     connectors: has("connectionsList") || has("mcpConnectionsList"),
     models: has("loopModels"),
-    devices: has("attachDevicesList"),
     memory: has("getPreference") && has("setPreference"),
   };
 }
@@ -87,13 +80,10 @@ export const PLUS_ICONS = {
   attach: `<svg viewBox="0 0 24 24" ${S}><path d="M21.4 11.1l-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>`,
   skills: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`,
   connectors: `<svg viewBox="0 0 24 24" ${S}><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`,
-  devices: `<svg viewBox="0 0 24 24" ${S}><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   memory: `<svg viewBox="0 0 24 24" ${S}><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg>`,
   folder: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
   folderPlus: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6M9 14h6"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" ${S}><path d="M12 5v14M5 12h14"/></svg>`,
-  gear: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
-  back: `<svg viewBox="0 0 24 24" ${S}><polyline points="15 18 9 12 15 6"/></svg>`,
   models: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>`,
   powers: `<svg viewBox="0 0 24 24" ${S}><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>`,
   chest: `<svg viewBox="0 0 24 24" ${S}><rect x="3" y="9" width="18" height="11" rx="2"/><path d="M3 9a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5"/><path d="M3 13h18M11 13v3h2v-3"/></svg>`,
@@ -108,14 +98,11 @@ export const ATTACH_LABEL = "Add files or photos";
 // whole catalog. Skills and tasks are just "powers you built".
 export const BROWSE_POWERS_LABEL = "Browse all powers…";
 export const POWERS_LABELS = { connectors: "Connections", models: "Models", skills: "Your powers" } as const;
-export const MANAGE_DEVICES_LABEL = "Manage devices";
 
 export interface PlusState {
   surface: PlusSurface;
   space: PlusSpace;
   memoryOn: boolean;
-  /** The session's working folder name (desktop; null = not set). */
-  workingFolder?: string | null;
 }
 
 /** THE ROWS, per surface: the web (hostHas) never sees a native row; Chat
@@ -132,17 +119,12 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.models) rows.push({ id: "models", label: POWERS_LABELS.models, icon: PLUS_ICONS.models, kind: "action", sepBefore: rows.length > 0 && rows.length === powersFrom, hint: "Your team's models, their rates and details" });
   if (caps.skills) rows.push({ id: "skills", label: POWERS_LABELS.skills, icon: PLUS_ICONS.powers, kind: "action", sepBefore: rows.length > 0 && rows.length === powersFrom, hint: "What you built with Glyphh, and a new one" });
   if (caps.skills || caps.connectors) rows.push({ id: "browse", label: BROWSE_POWERS_LABEL, icon: PLUS_ICONS.chest, kind: "action", hint: "Every power: connections, models, the ones you and your team built" });
-  if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu", sepBefore: rows.length > 0 });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
   // The folder family is the DESKTOP's (the OS pickers), where a session has
   // a folder to walk.
   if (st.surface === "desktop") {
+    // The session's own folder is the folder chip's (2026-10-09): only Add folder… stays here.
     if (caps.attach) rows.push({ id: "add-folder", label: "Add folder…", icon: PLUS_ICONS.folderPlus, kind: "action", desktopOnly: true, codeOnly: true, sepBefore: rows.length > 0, hint: "Give Glyphh read access to another directory" });
-    if (caps.folder) {
-      const name = st.workingFolder ?? null;
-      rows.push({ id: "working-folder", label: name ? `Working folder: ${name}` : "Working folder: not set", icon: PLUS_ICONS.folder, kind: "action", desktopOnly: true, codeOnly: true, sepBefore: !caps.attach && rows.length > 0, hint: "The folder this session works in" });
-      rows.push({ id: "choose-folder", label: "Choose working folder…", icon: PLUS_ICONS.folderPlus, kind: "action", desktopOnly: true, codeOnly: true, hint: "Pick (or create) the folder to work in" });
-    }
   }
   return rows;
 }
@@ -158,7 +140,6 @@ export interface PlusApi {
   connectionsList?: () => Promise<{ ok: boolean; connections: PlusConnection[] }>;
   mcpConnectionsList?: () => Promise<{ ok: boolean; connections: PlusMcp[] }>;
   mcpConnectionsUpdate?: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
-  attachDevicesList?: () => Promise<DevicesAnswer>;
   getPreference?: (key: string, defaultVal?: unknown) => Promise<unknown>;
   setPreference?: (key: string, value: unknown) => unknown;
 }
@@ -205,21 +186,6 @@ export function connectorIcon(app: { iconUrl: string | null; connection?: { acco
   return appIconInner(app, name, "drop-icon-initial");
 }
 
-export interface PlusDeviceRow { machineId: string; name: string; app: string; state: "attached" | "disconnected" }
-/** The member's machines — attached ones first, then the ones disconnected
- *  from the web (the Devices page's one row shape). */
-export async function readDeviceRows(api: PlusApi): Promise<PlusDeviceRow[]> {
-  try {
-    const a = await api.attachDevicesList?.();
-    if (!a) return [];
-    const { devices, blocked } = deviceRowsOf(a);
-    return [
-      ...devices.map((d): PlusDeviceRow => ({ machineId: d.machineId, name: d.name || d.app || "This machine", app: d.app, state: "attached" })),
-      ...blocked.map((b): PlusDeviceRow => ({ machineId: b.device, name: b.name || b.app || "A machine", app: b.app, state: "disconnected" })),
-    ];
-  } catch { return []; }
-}
-
 // ── Memory: the member's preference (there is no per-session flag) ───────
 export const MEMORY_PREFS = { accepted: "memoryPolicyAcceptedAt", inject: "memoryInject", capture: "memoryCapture" } as const;
 export interface MemoryState { accepted: boolean; on: boolean }
@@ -244,12 +210,12 @@ export function toggleMemory(api: PlusApi, st: MemoryState): "on" | "off" | "nee
 }
 
 // ── Where "Manage …" goes, per surface ───────────────────────────────────
-export type ManageKind = "devices" | "memory";
+export type ManageKind = "memory";
 export type ManageTarget = { kind: "settings"; sub: string };
-/** Devices and Memory are plain settings pages on both surfaces; every power
- *  opens in the powers modal instead (the Customize page is gone, 2026-10-09). */
-export function manageTargetOf(_surface: PlusSurface, kind: ManageKind): ManageTarget {
-  return { kind: "settings", sub: kind === "devices" ? "devices" : "memory" };
+/** Memory is a plain settings page on both surfaces; every power opens in
+ *  the powers modal instead (the Customize page is gone, 2026-10-09). */
+export function manageTargetOf(_surface: PlusSurface, _kind: ManageKind): ManageTarget {
+  return { kind: "settings", sub: "memory" };
 }
 
 // ── The DOM: the drop-up, its panes and rows ─────────────────────────────
@@ -260,8 +226,6 @@ export interface PlusDoors {
   space: () => PlusSpace;
   attachFiles: () => void;
   attachFolder: () => void;
-  workingFolder: () => Promise<string | null>;
-  pickWorkingFolder: () => void;
   /** Opens a Manage target (navigation.ts on the live renderer). */
   openTarget: (t: ManageTarget) => void;
   /** THE POWERS MODAL on a tab (help/powers-modal.ts). */
@@ -269,10 +233,6 @@ export interface PlusDoors {
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
-  /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): an attached
-   *  desktop is on by default; a click flips it for this session. */
-  deviceOn?: (machineId: string) => boolean;
-  toggleDevice?: (machineId: string, attached: string[]) => void;
 }
 
 export interface PlusController {
@@ -368,7 +328,7 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     const pane = document.createElement("div");
     pane.className = "drop-pane plus-root";
     menu.appendChild(pane);
-    const st: PlusState = { surface: doors.surface, space: doors.space(), memoryOn: memory.on, workingFolder: null };
+    const st: PlusState = { surface: doors.surface, space: doors.space(), memoryOn: memory.on };
     const rows = plusMenuRows(caps, st);
     for (const r of rows) {
       if (r.sepBefore) pane.appendChild(sepEl());
@@ -380,12 +340,10 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
         switch (r.id) {
           case "attach": close(); doors.attachFiles(); break;
           case "add-folder": close(); doors.attachFolder(); break;
-          case "working-folder": case "choose-folder": close(); doors.pickWorkingFolder(); break;
           case "skills": close(); doors.openPowers("skills"); break;
           case "connectors": close(); doors.openPowers("connections"); break;
           case "models": close(); doors.openPowers("models"); break;
           case "browse": close(); doors.openPowers("skills"); break;
-          case "devices": void openDevices(); break;
           case "memory": {
             const verdict = toggleMemory(doors.api, memory);
             if (verdict === "needs-policy") { close(); doors.openTarget(manageTargetOf(doors.surface, "memory")); doors.toast("Accept the memory policy first — Settings › Memory."); break; }
@@ -399,40 +357,9 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
       });
       pane.appendChild(b);
     }
-    // The working-folder row names the folder once the read lands (desktop).
-    const wf = pane.querySelector<HTMLButtonElement>('[data-plus-row="working-folder"]');
-    if (wf) void doors.workingFolder().then((dir) => {
-      const name = dir ? String(dir).split("/").filter(Boolean).pop() : null;
-      const main = wf.querySelector<HTMLElement>(".drop-main");
-      if (main) main.textContent = name ? `Working folder: ${name}` : "Working folder: not set";
-      wf.title = dir ? String(dir) : "No folder picked yet — click to choose";
-    });
     return pane;
   };
 
-  /** A sub-pane replaces the list behind a back row (the drop-up's own
-   *  detail pattern — nothing flies out past the panel's edge). */
-  const subPane = (title: string): HTMLElement => {
-    menu.querySelector(".plus-root")?.classList.add("hidden");
-    menu.querySelector(".plus-sub")?.remove();
-    const pane = document.createElement("div");
-    pane.className = "drop-pane plus-sub";
-    pane.dataset.plusSub = title.toLowerCase();
-    const back = document.createElement("button");
-    back.type = "button";
-    back.className = "code-drop-item code-plus-item plus-back";
-    const bi = document.createElement("span");
-    bi.className = "drop-icon";
-    bi.innerHTML = PLUS_ICONS.back;
-    const bl = document.createElement("span");
-    bl.className = "drop-main";
-    bl.textContent = title;
-    back.append(bi, bl);
-    back.addEventListener("click", (e) => { e.stopPropagation(); goBack(); });
-    pane.append(back, sepEl());
-    menu.appendChild(pane);
-    return pane;
-  };
   const goBack = (): boolean => {
     const sub = menu.querySelector<HTMLElement>(".plus-sub");
     if (!sub) return false;
@@ -442,54 +369,6 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     if (root) focusFirst(root);
     return true;
   };
-  const loadingRow = (pane: HTMLElement, text: string): HTMLElement => {
-    const d = document.createElement("div");
-    d.className = "code-drop-head plus-loading";
-    d.textContent = text;
-    pane.appendChild(d);
-    return d;
-  };
-  const emptyRow = (pane: HTMLElement, text: string): void => {
-    const d = document.createElement("div");
-    d.className = "code-drop-head plus-empty";
-    d.textContent = text;
-    pane.appendChild(d);
-  };
-
-  const openDevices = async (): Promise<void> => {
-    const pane = subPane("Devices");
-    const loading = loadingRow(pane, "Reading your devices…");
-    const rows = await readDeviceRows(doors.api);
-    loading.remove();
-    if (!pane.isConnected) return;
-    if (!rows.length) emptyRow(pane, "No machine is attached.");
-    const attachedIds = rows.filter((d) => d.state === "attached").map((d) => d.machineId);
-    for (const d of rows) {
-      const attached = d.state === "attached";
-      // Nothing is on by itself (his report, 2026-10-07): the session's own check decides.
-      const on = attached && (doors.deviceOn?.(d.machineId) ?? false);
-      const b = rowEl({ label: d.name, icon: PLUS_ICONS.devices, kind: "check", checked: on, sub: attached ? (on ? "Attached — this session can reach its granted folders" : "Attached — off for this session") : "Disconnected", muted: !attached, hint: attached ? "Click to turn this device on or off for this session" : "Manage devices to disconnect or allow" });
-      b.dataset.machineId = d.machineId;
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!attached || !doors.toggleDevice) { close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); return; }
-        doors.toggleDevice(d.machineId, attachedIds);
-        const now = doors.deviceOn?.(d.machineId) ?? false;
-        b.classList.toggle("selected", now);
-        b.setAttribute("aria-checked", now ? "true" : "false");
-        const sub = b.querySelector<HTMLElement>(".drop-sub");
-        if (sub) sub.textContent = now ? "Attached — this session can reach its granted folders" : "Attached — off for this session";
-      });
-      pane.appendChild(b);
-    }
-    pane.appendChild(sepEl());
-    const manage = rowEl({ label: MANAGE_DEVICES_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
-    manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); });
-    pane.appendChild(manage);
-    doors.place(menu);
-    focusFirst(pane);
-  };
-
   const open = (): void => {
     if (!menu.classList.contains("hidden")) return;
     paintRoot();

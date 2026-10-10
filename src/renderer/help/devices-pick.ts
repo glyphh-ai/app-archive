@@ -15,12 +15,6 @@ export function deviceChecked(chatDevices: readonly string[] | undefined, machin
   return !!chatDevices && chatDevices.includes(machineId);
 }
 
-/** The session's list after a toggle: the one id flipped (an empty list the
- *  first time). `attached` is not consulted: nothing joins by default. */
-export function toggleDeviceIn(chatDevices: readonly string[] | undefined, machineId: string, _attached: readonly string[]): string[] {
-  const base = chatDevices ? [...chatDevices] : [];
-  return base.includes(machineId) ? base.filter((d) => d !== machineId) : [...base, machineId];
-}
 
 /** What the run names: the session's list, none by default; a device no
  *  longer attached is dropped (the gateway would refuse it). */

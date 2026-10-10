@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceChecked, devicesForRun, toggleDeviceIn, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
+import { deviceChecked, devicesForRun, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
 
 describe("the desktop is its own device (his report, 2026-10-07)", () => {
   // `device` is the server's hash of app + hostname (attach.py device_key); the name is the hostname.
@@ -38,11 +38,6 @@ describe("which devices a session reaches (his order, 2026-10-07)", () => {
     expect(deviceChecked([], "m1")).toBe(false);
     expect(deviceChecked(["m2"], "m1")).toBe(false);
     expect(deviceChecked(["m1"], "m1")).toBe(true);
-  });
-  it("the first check starts the list with that one device; the next flips it", () => {
-    expect(toggleDeviceIn(undefined, "m1", ["m1", "m2"])).toEqual(["m1"]);
-    expect(toggleDeviceIn(["m2"], "m1", ["m1", "m2"])).toEqual(["m2", "m1"]);
-    expect(toggleDeviceIn(["m2", "m1"], "m1", ["m1", "m2"])).toEqual(["m2"]);
   });
   it("the run names the session's list, none by default; a device gone from the relay is dropped", () => {
     expect(devicesForRun(undefined, ["m1", "m2"])).toEqual([]);
