@@ -22928,3 +22928,22 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 .drop-pager { flex: 0 0 auto; display: flex; justify-content: center; padding: 6px 4px 2px; margin-top: 4px; border-top: 1px solid var(--line, rgba(255,255,255,0.08)); }
 .drop-pager .pagination-nav { display: flex; align-items: center; gap: 8px; }
 .drop-pager .pagination-info { font-size: 11px; color: var(--text-3, var(--muted)); min-width: 32px; text-align: center; }
+/* THE GRABBER (his report, 2026-10-09: "we lost the grabber at the top of all
+   work panel pages"): a short bar at every panel's top centre, over its own
+   top row; it lifts to the text colour on hover and wears the accent while
+   the panel is dragged. The title still drags too. */
+.echo-card > .echo-card-grip {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 5;
+  width: 72px; height: 12px; padding-top: 4px; box-sizing: border-box;
+  display: flex; justify-content: center; cursor: grab; touch-action: none;
+}
+.echo-card > .echo-card-grip::before {
+  content: ""; width: 40px; height: 3px; border-radius: 2px;
+  background: var(--border-2, var(--border)); opacity: .75; transition: opacity .15s, background .15s;
+}
+.echo-card:hover > .echo-card-grip::before { opacity: 1; }
+.echo-card > .echo-card-grip:hover::before { background: var(--text-3); }
+.echo-card.echo-card-dragging > .echo-card-grip { cursor: grabbing; }
+.echo-card.echo-card-dragging > .echo-card-grip::before { background: var(--accent); opacity: 1; }
+.echo-card.expanded > .echo-card-grip,
+.echo-card.rail-strip > .echo-card-grip { display: none; }

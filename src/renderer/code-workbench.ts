@@ -3436,157 +3436,197 @@ async function init(): Promise<void> {
       }
       return null;
     };
-    /** THE AGENT'S ROW DRIVES ITS CARD: a press there starts the card's own
-     *  drag (the head's mousedown handler, fed the same point). */
-    const startCardDragAt = (card: HTMLElement, clientX: number, clientY: number): void => {
-      const head = card.querySelector<HTMLElement>(".echo-card-head");
-      head?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
-    };
-    const inDocAgentCard = (): HTMLElement | null =>
-      openList.find((x) => !!x.card?.isConnected && x.tile.kind === "agent")?.card ?? null;
+    const inDocAgentEntry = (): TileEntry | null =>
+      openList.find((x) => !!x.card?.isConnected && x.tile.kind === "agent") ?? null;
+    /** THE IN-DOCUMENT AGENT'S ROW drags its card: the press is in this
+     *  document, so the drag follows this document's own pointer. */
     (window as unknown as { __wbAgentHeadDrag?: (x: number, y: number) => void }).__wbAgentHeadDrag = (x, y) => {
-      const card = inDocAgentCard();
-      if (card) startCardDragAt(card, x, y);
+      const ent = inDocAgentEntry();
+      const d = ent?.card ? beginCardDrag(ent, ent.card, x, y, true) : null;
+      if (!d) return;
+      const mv = (m: PointerEvent): void => d.move(m.clientX, m.clientY);
+      const up = (): void => { document.removeEventListener("pointermove", mv, true); document.removeEventListener("pointerup", up, true); document.removeEventListener("pointercancel", up, true); d.end(); };
+      document.addEventListener("pointermove", mv, true);
+      document.addEventListener("pointerup", up, true);
+      document.addEventListener("pointercancel", up, true);
     };
-    // An agent PANEL (its own webview) forwards its row's drag through main —
+    // AN AGENT PANEL (its own webview) relays its row's drag through main —
     // the press, then every move in screen points, mapped onto this document
-    // from where the press landed.
+    // from where the press landed — straight into the card's ONE drag. The
+    // webview keeps the pointer for the whole gesture (no frame shield: one
+    // turned on mid-press took the pointer from it, so the release never came
+    // back and every panel stayed dead — his report, 2026-10-09), and a relay
+    // that goes quiet ends itself.
     {
       const g = (window as unknown as { glyphh?: {
         onAgentPanelDrag?: (cb: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => void;
       } }).glyphh;
-      let fwd: { x0: number; y0: number; sx0: number; sy0: number } | null = null;
+      let fwd: { x0: number; y0: number; sx0: number; sy0: number; drag: CardDrag; quiet: number } | null = null;
+      const finish = (): void => { if (!fwd) return; clearTimeout(fwd.quiet); const d = fwd.drag; fwd = null; d.end(); };
+      const hush = (): void => { if (!fwd) return; clearTimeout(fwd.quiet); fwd.quiet = window.setTimeout(finish, 2000); };
       g?.onAgentPanelDrag?.((p) => {
         if (p.phase === "down") {
+          finish();
           const x = entryForWebContents(p.wcId);
           const wv = x?.card?.querySelector("webview");
           if (!x?.card || !wv) return;
           const r = wv.getBoundingClientRect();
-          fwd = { x0: r.left + p.cx, y0: r.top + p.cy, sx0: p.sx, sy0: p.sy };
-          document.body.classList.add("echo-drag");
-          startCardDragAt(x.card, fwd.x0, fwd.y0);
+          const x0 = r.left + p.cx, y0 = r.top + p.cy;
+          const drag = beginCardDrag(x, x.card, x0, y0, false);
+          if (!drag) return;
+          fwd = { x0, y0, sx0: p.sx, sy0: p.sy, drag, quiet: 0 };
+          hush();
           return;
         }
         if (!fwd) return;
-        const clientX = fwd.x0 + (p.sx - fwd.sx0), clientY = fwd.y0 + (p.sy - fwd.sy0);
-        document.dispatchEvent(new MouseEvent(p.phase === "up" ? "mouseup" : "mousemove", { bubbles: true, cancelable: true, button: 0, clientX, clientY }));
-        if (p.phase === "up") { fwd = null; document.body.classList.remove("echo-drag"); }
+        if (p.phase === "up") { finish(); return; }
+        fwd.drag.move(fwd.x0 + (p.sx - fwd.sx0), fwd.y0 + (p.sy - fwd.sy0));
+        hush();
       });
     }
-    const wireCardDrag = (e: TileEntry, card: HTMLElement, head: HTMLElement): void => {
-      head.addEventListener("pointerdown", (ev) => {
-        if (ev.button !== 0) return;
-        const t = ev.target as HTMLElement;
-        if (t.closest("button, input, .ws-app-chrome")) return;
-        if (card.classList.contains("expanded")) return;
-        if (gridRects()?.has(e)) return;
-        // The agent (chat or CLI) owns its column — never reflowed by a drag
-        // on the desktop. ON THE WEB it is a movable panel like the rest (his
-        // review, 2026-10-05; help/surface.ts agentCardMovable): it reorders
-        // and drives to a side, still solo in its column (flowColumns).
-        if (isAgentEntry(e) && !agentCardMovable(IS_WEB_TARGET)) return;
-        const startX = ev.clientX, startY = ev.clientY;
-        let dragging = false;
-        // Capture keeps the stream flowing over iframes/webviews; a pointer
-        // that can't be captured (synthetic, stale id) still drags fine via
-        // the head listeners + the body.echo-drag pointer-events guard.
-        try { head.setPointerCapture(ev.pointerId); } catch { /* uncapturable */ }
-        let lastSwapAt = 0;
-        let lastSwapX = 0, lastSwapY = 0;
-        let edgeIntent: "left" | "right" | null = null;
-        const setEdgeIntent = (next: "left" | "right" | null): void => {
-          if (edgeIntent === next) return;
-          edgeIntent = next;
-          stage.classList.toggle("echo-edge-left", next === "left");
-          stage.classList.toggle("echo-edge-right", next === "right");
-        };
-        const move = (mv: PointerEvent): void => {
-          if (!dragging) {
-            if (Math.hypot(mv.clientX - startX, mv.clientY - startY) < 6) return;
-            dragging = true;
-            card.classList.add("echo-card-dragging");
-            document.body.classList.add("echo-drag");
-          }
-          // DRIVE TO A SIDE: holding the drag inside the band's left/right
-          // edge parks the card as its own flanking column on release.
-          {
-            const band = buildBand();
-            const sr = stage.getBoundingClientRect();
-            const x = mv.clientX - sr.left;
-            const inBandY = mv.clientY - sr.top >= band.top && mv.clientY - sr.top <= band.top + band.height;
-            setEdgeIntent(!inBandY ? null : x <= band.left + 44 ? "left" : x >= band.left + band.width - 44 ? "right" : null);
-            if (edgeIntent) return;   // edge wins — no reorder while flanking
-          }
-          const over = document.elementsFromPoint(mv.clientX, mv.clientY)
-            .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
-          if (!over) return;
-          const target = openList.find((x) => x.card === over);
-          if (!target || (isAgentEntry(target) && !agentCardMovable(IS_WEB_TARGET)) || gridRects()?.has(target)) return;
-          const from = openList.indexOf(e);
-          const to = openList.indexOf(target);
-          if (from < 0 || to < 0 || from === to) return;
-          // HYSTERESIS — the flip-flop killer. Right at a boundary, a swap
-          // re-lays the cards so the OTHER one lands back under the cursor
-          // and the next move swaps straight back (the "jerky panel"). Two
-          // guards: (1) the pointer must be PAST the target's midpoint in
-          // the direction of travel (dragged card → target), on the dominant
-          // axis; (2) a short cooldown after each swap unless the pointer
-          // has genuinely moved on.
-          const now = performance.now();
-          if (now - lastSwapAt < 160 && Math.hypot(mv.clientX - lastSwapX, mv.clientY - lastSwapY) < 14) return;
-          const tr = over.getBoundingClientRect();
-          const cr = card.getBoundingClientRect();
-          const dx = (tr.left + tr.width / 2) - (cr.left + cr.width / 2);
-          const dy = (tr.top + tr.height / 2) - (cr.top + cr.height / 2);
-          if (Math.abs(dx) >= Math.abs(dy)) {
-            const midX = tr.left + tr.width / 2;
-            if (dx > 0 && mv.clientX <= midX) return;
-            if (dx < 0 && mv.clientX >= midX) return;
-          } else {
-            const midY = tr.top + tr.height / 2;
-            if (dy > 0 && mv.clientY <= midY) return;
-            if (dy < 0 && mv.clientY >= midY) return;
-          }
-          lastSwapAt = now;
-          lastSwapX = mv.clientX;
-          lastSwapY = mv.clientY;
-          // Re-stacking by hand releases an edge-driven column claim.
-          e.flowSolo = undefined;
-          openList.splice(from, 1);
-          openList.splice(to, 0, e);
-          layoutCards();
-        };
-        const up = (): void => {
-          head.removeEventListener("pointermove", move);
-          try { head.releasePointerCapture(ev.pointerId); } catch { /* already released */ }
-          if (dragging) {
-            // Edge release: the card becomes the FIRST (left) or LAST (right)
-            // flow position — with the breadth-first fill that is its own
-            // side-by-side column next to the rest.
-            if (edgeIntent) {
-              const from = openList.indexOf(e);
-              if (from >= 0) {
-                openList.splice(from, 1);
-                if (edgeIntent === "left") openList.unshift(e);
-                else openList.push(e);
-                // Driven to a side: the card owns its column now — it sits
-                // NEXT TO the others until deliberately re-stacked.
-                e.flowSolo = true;
-              }
+    /** ONE DRAG OF A CARD, whatever starts it: a press on its grip or its
+     *  title (wireCardDrag), the in-document agent's row, or an agent panel's
+     *  row relayed from its webview. `move` takes this document's client
+     *  point; `end` always lands the card and clears every drag state. */
+    interface CardDrag { move: (cx: number, cy: number) => void; end: () => void }
+    let liveDrag: CardDrag | null = null;
+    const beginCardDrag = (e: TileEntry, card: HTMLElement, startX: number, startY: number, shieldFrames: boolean): CardDrag | null => {
+      if (card.classList.contains("expanded")) return null;
+      if (gridRects()?.has(e)) return null;
+      if (isAgentEntry(e) && !agentCardMovable(IS_WEB_TARGET)) return null;
+      liveDrag?.end();
+      let dragging = false;
+      let ended = false;
+      let lastSwapAt = 0;
+      let lastSwapX = 0, lastSwapY = 0;
+      let edgeIntent: "left" | "right" | null = null;
+      const setEdgeIntent = (next: "left" | "right" | null): void => {
+        if (edgeIntent === next) return;
+        edgeIntent = next;
+        stage.classList.toggle("echo-edge-left", next === "left");
+        stage.classList.toggle("echo-edge-right", next === "right");
+      };
+      const move = (cx: number, cy: number): void => {
+        if (!dragging) {
+          if (Math.hypot(cx - startX, cy - startY) < 6) return;
+          dragging = true;
+          card.classList.add("echo-card-dragging");
+          // Embedded pages under the pointer must not swallow a drag this
+          // document's own pointer drives; a relayed drag keeps its webview's.
+          if (shieldFrames) document.body.classList.add("echo-drag");
+        }
+        // DRIVE TO A SIDE: holding the drag inside the band's left/right
+        // edge parks the card as its own flanking column on release.
+        {
+          const band = buildBand();
+          const sr = stage.getBoundingClientRect();
+          const x = cx - sr.left;
+          const inBandY = cy - sr.top >= band.top && cy - sr.top <= band.top + band.height;
+          setEdgeIntent(!inBandY ? null : x <= band.left + 44 ? "left" : x >= band.left + band.width - 44 ? "right" : null);
+          if (edgeIntent) return;   // edge wins — no reorder while flanking
+        }
+        const over = document.elementsFromPoint(cx, cy)
+          .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
+        if (!over) return;
+        const target = openList.find((x) => x.card === over);
+        if (!target || (isAgentEntry(target) && !agentCardMovable(IS_WEB_TARGET)) || gridRects()?.has(target)) return;
+        const from = openList.indexOf(e);
+        const to = openList.indexOf(target);
+        if (from < 0 || to < 0 || from === to) return;
+        // HYSTERESIS — the flip-flop killer. Right at a boundary, a swap
+        // re-lays the cards so the OTHER one lands back under the cursor
+        // and the next move swaps straight back (the "jerky panel"). Two
+        // guards: (1) the pointer must be PAST the target's midpoint in
+        // the direction of travel (dragged card → target), on the dominant
+        // axis; (2) a short cooldown after each swap unless the pointer
+        // has genuinely moved on.
+        const now = performance.now();
+        if (now - lastSwapAt < 160 && Math.hypot(cx - lastSwapX, cy - lastSwapY) < 14) return;
+        const tr = over.getBoundingClientRect();
+        const cr = card.getBoundingClientRect();
+        const dx = (tr.left + tr.width / 2) - (cr.left + cr.width / 2);
+        const dy = (tr.top + tr.height / 2) - (cr.top + cr.height / 2);
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          const midX = tr.left + tr.width / 2;
+          if (dx > 0 && cx <= midX) return;
+          if (dx < 0 && cx >= midX) return;
+        } else {
+          const midY = tr.top + tr.height / 2;
+          if (dy > 0 && cy <= midY) return;
+          if (dy < 0 && cy >= midY) return;
+        }
+        lastSwapAt = now;
+        lastSwapX = cx;
+        lastSwapY = cy;
+        // Re-stacking by hand releases an edge-driven column claim.
+        e.flowSolo = undefined;
+        openList.splice(from, 1);
+        openList.splice(to, 0, e);
+        layoutCards();
+      };
+      const end = (): void => {
+        if (ended) return;
+        ended = true;
+        if (liveDrag === drag) liveDrag = null;
+        if (dragging) {
+          // Edge release: the card becomes the FIRST (left) or LAST (right)
+          // flow position — with the breadth-first fill that is its own
+          // side-by-side column next to the rest.
+          if (edgeIntent) {
+            const from = openList.indexOf(e);
+            if (from >= 0) {
+              openList.splice(from, 1);
+              if (edgeIntent === "left") openList.unshift(e);
+              else openList.push(e);
+              // Driven to a side: the card owns its column now — it sits
+              // NEXT TO the others until deliberately re-stacked.
+              e.flowSolo = true;
             }
-            setEdgeIntent(null);
-            card.classList.remove("echo-card-dragging");
-            document.body.classList.remove("echo-drag");
-            layoutCards();
-            // A MOVE IS STATE (his order, 2026-10-05): the new order persists
-            // like an open or a close — the same save on both surfaces.
-            scheduleWallSave();
           }
-        };
-        head.addEventListener("pointermove", move);
-        head.addEventListener("pointerup", up, { once: true });
-        head.addEventListener("pointercancel", up, { once: true });
-      });
+          setEdgeIntent(null);
+          card.classList.remove("echo-card-dragging");
+          layoutCards();
+          // A MOVE IS STATE (his order, 2026-10-05): the new order persists
+          // like an open or a close — the same save on both surfaces.
+          scheduleWallSave();
+        }
+        // Whatever happened, nothing stays in drag mode.
+        setEdgeIntent(null);
+        card.classList.remove("echo-card-dragging");
+        document.body.classList.remove("echo-drag");
+      };
+      const drag: CardDrag = { move, end };
+      liveDrag = drag;
+      return drag;
+    };
+    // A drag never outlives the gesture: the window losing focus ends it, and
+    // a release anywhere in this document with no drag live clears the shield.
+    window.addEventListener("blur", () => liveDrag?.end());
+    document.addEventListener("pointerup", () => { if (!liveDrag) document.body.classList.remove("echo-drag"); }, true);
+    /** A press on a card's grip or title starts its drag. */
+    const wireCardDrag = (e: TileEntry, card: HTMLElement, handles: Array<HTMLElement | null>): void => {
+      for (const h of handles) {
+        if (!h) continue;
+        h.addEventListener("pointerdown", (ev) => {
+          if (ev.button !== 0) return;
+          if ((ev.target as HTMLElement).closest("button, input, .ws-app-chrome")) return;
+          const d = beginCardDrag(e, card, ev.clientX, ev.clientY, true);
+          if (!d) return;
+          // Capture keeps the stream flowing over iframes/webviews.
+          try { h.setPointerCapture(ev.pointerId); } catch { /* uncapturable */ }
+          const mv = (m: PointerEvent): void => d.move(m.clientX, m.clientY);
+          const up = (): void => {
+            h.removeEventListener("pointermove", mv);
+            h.removeEventListener("pointerup", up);
+            h.removeEventListener("pointercancel", up);
+            try { h.releasePointerCapture(ev.pointerId); } catch { /* already released */ }
+            d.end();
+          };
+          h.addEventListener("pointermove", mv);
+          h.addEventListener("pointerup", up);
+          h.addEventListener("pointercancel", up);
+        });
+      }
     };
     const setRect = (el: HTMLElement, r: { left: number; top: number; width: number; height: number }): void => {
       el.style.left = `${Math.round(r.left)}px`;
@@ -4354,7 +4394,7 @@ async function init(): Promise<void> {
       card.innerHTML = `<div class="echo-card-head"><span></span>
           ${agentCard ? "" : `<button class="ws-icon-btn echo-card-expand" title="Expand">${EXPAND_SVG}</button>`}
           ${agentCard ? "" : `<button class="ws-icon-btn echo-card-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>`}
-        </div><div class="echo-card-body"></div>`;
+        </div><div class="echo-card-body"></div><div class="echo-card-grip" title="Drag to move"></div>`;
       card.querySelector("span")!.textContent = e.tile.name;
       // NO HEADER ROW (his order, 2026-10-09: "remove the headers off all work
       // panels, move the title down to the next row of each panel"). The head
@@ -4375,7 +4415,9 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")?.addEventListener("click", () => { closeCard(e); persistOpenWorkspace(); });
-      wireCardDrag(e, card, card.querySelector<HTMLElement>(".echo-card-head")!);
+      // THE GRABBER (his report, 2026-10-09: "we lost the grabber at the top of
+      // all work panel pages"): the grip at the top centre, and the title.
+      wireCardDrag(e, card, [card.querySelector<HTMLElement>(".echo-card-grip"), card.querySelector<HTMLElement>(".echo-card-head")]);
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();   // the slot menu would close the ECHO PANEL

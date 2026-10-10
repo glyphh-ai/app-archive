@@ -256,9 +256,9 @@ describe("his explicit orders about the web's page — not world splits", () => 
     expect(webRailWordmark(true)).toBe(true);
     expect(webRailWordmark(false)).toBe(false);
   });
-  it("the panels move on the web — the agent too (his review, 2026-10-05); the desktop keeps its rule", () => {
+  it("the panels move, the agent too, on both surfaces (his reviews, 2026-10-05 and 2026-10-09)", () => {
     expect(agentCardMovable(true)).toBe(true);
-    expect(agentCardMovable(false)).toBe(false);
+    expect(agentCardMovable(false)).toBe(true);
   });
   it("+ New with the web's one agent seated starts the new session IN it (his report, 2026-10-05)", () => {
     expect(webNewSessionInPlace(true, true)).toBe(true);

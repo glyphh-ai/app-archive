@@ -283,10 +283,11 @@ export function webToolReachable(view: string): boolean {
  *  the agent as a source and as a swap target. On the web the agent card is
  *  a movable flow panel like any other: its head is the drag handle, it
  *  reorders among the panels and drives to a side, and the seams resize it.
- *  It still owns its column — nothing stacks under it. The desktop keeps its
- *  own rule (the agent never reflowed by a drag), untouched. */
-export function agentCardMovable(web: boolean): boolean {
-  return web;
+ *  It still owns its column — nothing stacks under it. THE DESKTOP TOO (his
+ *  report, 2026-10-09: "the glyphh agent can only be dragged once"): its own
+ *  row is its drag handle there since the headers came off the panels. */
+export function agentCardMovable(_web: boolean): boolean {
+  return true;
 }
 
 /** + NEW ON THE WEB (his report, 2026-10-05: the rail's + New did nothing).
