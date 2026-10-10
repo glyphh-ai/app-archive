@@ -1,6 +1,6 @@
 import { escapeHtml } from "./shared.js";
 import { hostHas } from "./web-surface.js";
-import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, pickerRecent, type GlyphhMachine, type Locus, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
+import { LOCUS_SVG, canWalkUp, filterPickerRows, folderGranted, machineOfSource, machinePicker, onOtherDesktop, pickerRecent, type GlyphhMachine, type MachinePicker, type PickerMachine, type PickerMachineRow } from "./session-locus.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { selfMachineId } from "./devices-pick.js";
 import { placeMenu, type PlaceBox } from "./menu-place.js";
@@ -302,47 +302,56 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
   document.addEventListener("mousedown", away, true);
 }
 
-/**
- * THE FOLDER CHIP'S PICKER, explicit on both surfaces (his order, 2026-10-04:
- * "how does the user choose between local and cloud for a session?"). Two
- * sections, in this order:
- *
- *   ON THIS DESKTOP (the desktop) / ON <machine> (web: the attached desktop)
- *     · THE LAST FIVE folders used there (his order, 2026-10-04) — the
- *       desktop's own recent-folder list; on the web the folders this
- *       member's desktop sessions ran in, inside the grants — then
- *       "Browse…": the OS picker on the desktop, the folder browser
- *       (fs.list over the relay) inside each granted root on the web.
- *   IN THE CLOUD
- *     · THE LAST FIVE of the member's cloud folders — the thread workspaces
- *       from GET /api/harness/fs/spaces (a worker workspace mirrored to R2)
- *       — and "New cloud folder…", a fresh workspace named by the session id
- *       the first send mints. A born cloud session also offers "Folder in
- *       this workspace…" (the pod sub-folder browser).
- *
- * A SEARCH BOX under the head filters both sections by substring (the
- * recents search's rule, session-locus.ts filterPickerRows); the Browse and
- * New rows step aside while a query is typed. A cloud row that cannot be
- * picked says why in its hint and title: the born lock, or the probe's own
- * words (probeSources) — never a bare grey.
- *
- * A session's locus is FIXED AT BIRTH ("cloud stays cloud"): with a born
- * session open, the other section's rows are shown but not pickable, and
- * say why. The sections and the default come from session-locus.ts.
- */
-export function openFolderLocusPicker(anchor: HTMLElement, opts: {
-  getSource: () => Source;
-  onPick: (s: Source) => void;
-  /** The open session's locus once it has a turn; null = nothing is born. */
-  bornLocus: Locus | null;
-  /** The pod workspace a cloud folder pick can browse (a space, or a born
-   *  session's thread); null when there is none yet. */
-  cloudScope: string | null;
-  onPickCloudDir: (relDir: string) => void;
-  /** The member's recently used DESKTOP folders, newest first — the web's
-   *  come from its sessions (code.ts); the desktop asks main's own list. */
-  recentFolders?: () => readonly string[];
-}): void {
+// ── THE MACHINE CHIP AND THE FOLDER CHIP (his order, 2026-10-09: "on this
+//    drop down let the user pick the machine, then the folder picker is
+//    another picker") ───────────────────────────────────────────────────
+//
+// The MACHINE chip lists machines under Local: (this desktop) and Remote:
+// (the member's other attached desktops, then the Glyphh machine). The
+// FOLDER chip lists the folders of the machine the session is on: anything on
+// this desktop; another desktop's folders inside what it granted; the Glyphh
+// machine's own folders. Both are fixed once the session has a turn (code.ts
+// locks the chips; a session is bound to its machine and its folder).
+
+/** The machines this surface can see: Local, the other attached desktops
+ *  (their grants) and the Glyphh machine. Signed out or offline: fewer. */
+export async function loadMachines(born: Source | null = null): Promise<MachinePicker> {
+  const surface = isWeb() ? "web" : "desktop";
+  const g = window as unknown as { glyphh?: { attachDevicesList?: () => Promise<DevicesAnswer>; remoteControlGet?: () => Promise<{ device?: string }>; machinesList?: () => Promise<{ machines?: Array<Record<string, unknown>> }> } };
+  let desktops: PickerMachine[] = [];
+  let selfId: string | null = null;
+  let glyphh: GlyphhMachine[] = [];
+  if (surface === "web") {
+    desktops = (await listMachines()).map((m) => ({ ...(m.id ? { id: m.id } : {}), name: m.name || m.app || "Glyphh desktop", folders: m.folders ?? [] }));
+    const r = await sdk()?.http?.get?.<{ machines?: Array<Record<string, unknown>> }>("/api/machines").catch(() => null);
+    glyphh = glyphhMachinesOf(r?.machines);
+  } else {
+    const [list, status, mine] = await Promise.all([
+      hostHas("attachDevicesList") ? g.glyphh!.attachDevicesList!().catch(() => null) : null,
+      hostHas("remoteControlGet") ? g.glyphh!.remoteControlGet!().catch(() => null) : null,
+      hostHas("machinesList") ? g.glyphh!.machinesList!().catch(() => null) : null,
+    ]);
+    const rows = list ? deviceRowsOf(list).devices : [];
+    selfId = status?.device ? selfMachineId(rows, status.device) : null;
+    desktops = rows.map((d) => ({ id: d.machineId, name: d.name, folders: d.folders }));
+    glyphh = glyphhMachinesOf(mine?.machines);
+  }
+  const picker = machinePicker({ surface, desktops, selfId, glyphh, born });
+  lastGlyphhName = picker.remote.find((r) => r.kind === "glyphh")?.name ?? lastGlyphhName;
+  return picker;
+}
+
+/** The Glyphh machine's name as last read: the machine chip labels a cloud source with it. */
+let lastGlyphhName = "";
+/** The machine chip's words for a source: "Local", another desktop's name, the Glyphh machine's. */
+export function machineChipLabel(src: Source): string {
+  if (src.kind !== "local") return lastGlyphhName || "Glyphh machine";
+  if (!onOtherDesktop(src)) return isWeb() ? machineLabel(src.machine || "Your desktop") : "Local";
+  return machineLabel(src.machine || "Another desktop");
+}
+
+/** One drop under a chip: opened, clamped, closed on a click away. */
+function chipDrop(anchor: HTMLElement): { menu: HTMLElement; close: () => void } {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
   closeAllDrops();
@@ -352,22 +361,109 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   wrap.appendChild(menu);
   clampDropUp(menu, anchor);
   clampDropX(menu, anchor);
-  const close = (): void => menu.remove();
+  const close = (): void => { menu.remove(); document.removeEventListener("mousedown", away, true); };
   const away = (e: MouseEvent): void => {
-    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
+    if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close();
   };
   document.addEventListener("mousedown", away, true);
+  return { menu, close };
+}
+const dropHead = (menu: HTMLElement, title: string): void => {
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  const span = document.createElement("span");
+  span.textContent = title;
+  head.appendChild(span);
+  menu.appendChild(head);
+};
+const secLabel = (list: HTMLElement, text: string, svg: string): void => {
+  const el = document.createElement("div");
+  el.className = "ws-sec-label";
+  el.innerHTML = `${svg}<span></span>`;
+  (el.querySelector("span") as HTMLElement).textContent = text;
+  list.appendChild(el);
+};
+const lockRow = (row: HTMLElement, why: string | undefined): boolean => {
+  if (!why) return false;
+  markUnreachable(row, why);
+  return true;
+};
+/** The folder a pick of `m` starts in: the current one when it is there, else the newest inside the grants, else the first grant. */
+function startFolderOn(m: PickerMachineRow, src: Source, recents: readonly string[]): string {
+  const cur = src.kind === "local" && machineOfSource({ local: null, remote: [m] }, src) === m ? src.path || "" : "";
+  return pickerRecent({ surface: "web", current: cur, recents, granted: m.folders, spaces: [] }).desktop[0] ?? m.folders[0] ?? "";
+}
+
+/** THE MACHINE CHIP'S PICKER: machines only, Local: then Remote:. */
+export function openMachinePicker(anchor: HTMLElement, opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+  /** The member's recently used desktop folders, newest first (the web's, from its sessions). */
+  recentFolders?: () => readonly string[];
+}): void {
+  const { menu, close } = chipDrop(anchor);
   const pick = (next: Source): void => { opts.onPick(next); close(); };
-  const surface = isWeb() ? "web" : "desktop";
+  const src = opts.getSource();
+  dropHead(menu, "Where this session runs");
+  const list = document.createElement("div");
+  list.className = "ws-locus-list";
+  menu.appendChild(list);
+  list.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your machines…</div>`);
+  void (async () => {
+    const [model, reach] = await Promise.all([loadMachines(), probeSources()]);
+    const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
+    const localRecents = model.local ? (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [] : [];
+    if (!menu.isConnected) return;
+    list.textContent = "";
+    const here = machineOfSource(model, src);
+    const row = (m: PickerMachineRow, onClick: () => void, why?: string): void => {
+      const sel = here === m;
+      const r = drillItem(machineLabel(m.name), m.hint, sel ? CHECK : "");
+      if (sel) r.classList.add("selected");
+      if (!lockRow(r, why)) r.addEventListener("click", () => { if (sel) close(); else onClick(); });
+      list.appendChild(r);
+    };
+    if (model.local) {
+      secLabel(list, "Local:", LOCUS_SVG.local);
+      row({ ...model.local, name: "This desktop" }, () => pick({ kind: "local", path: localRecents[0] ?? "" }));
+    }
+    secLabel(list, "Remote:", LOCUS_SVG.cloud);
+    for (const m of model.remote) {
+      if (m.kind === "glyphh") {
+        row(m, () => pick({ kind: "cloud-new" }), reach.cloud === false ? (reach.cloudWhy || "Can't reach the Glyphh machine right now") : undefined);
+      } else {
+        row(m, () => pick({ kind: "local", path: startFolderOn(m, src, opts.recentFolders?.() ?? []), ...(m.id ? { machineId: m.id } : {}), machine: m.name }), m.empty);
+      }
+    }
+    clampDropUp(menu, anchor);
+    clampDropX(menu, anchor);
+  })();
+}
+
+/** THE FOLDER CHIP'S PICKER: the folders of the machine the session is on. */
+export function openFolderPicker(anchor: HTMLElement, opts: {
+  getSource: () => Source;
+  onPick: (s: Source) => void;
+  /** The pod workspace a Glyphh machine folder can browse (a space, or a born
+   *  session's thread); null when there is none yet. */
+  cloudScope: string | null;
+  onPickCloudDir: (relDir: string) => void;
+  recentFolders?: () => readonly string[];
+}): void {
+  const { menu, close } = chipDrop(anchor);
+  const pick = (next: Source): void => { opts.onPick(next); close(); };
   const src = opts.getSource();
   const currentFolder = src.kind === "local" ? src.path || "" : "";
   const currentSpace = src.kind === "cloud-space" ? src.space : "";
+  menu.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking its folders…</div>`);
 
-  /** The frame: the head, the search, and the list the search filters —
-   *  the drill-downs (renderLocal) replace it and come back through paintRoot. */
-  const frame = (): { search: HTMLInputElement; list: HTMLElement } => {
+  /** This desktop: the last five folders, searchable, then Browse…. */
+  const paintLocal = async (): Promise<void> => {
+    const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
+    const recents = (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [];
+    if (!menu.isConnected) return;
     menu.textContent = "";
-    menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Where this session works</span></div>`);
+    dropHead(menu, "Folder on this desktop");
     const search = document.createElement("input");
     search.type = "text";
     search.className = "loop-drop-search repo-drop-search ws-locus-search";
@@ -379,98 +475,27 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
     const list = document.createElement("div");
     list.className = "ws-locus-list";
     menu.appendChild(list);
-    return { search, list };
-  };
-
-  /** The machines this surface can see: Local, the other attached desktops
-   *  (their grants) and the Glyphh machine. Signed out or offline: fewer. */
-  const loadMachines = async (): Promise<MachinePicker> => {
-    const g = window as unknown as { glyphh?: { attachDevicesList?: () => Promise<DevicesAnswer>; remoteControlGet?: () => Promise<{ device?: string }>; machinesList?: () => Promise<{ machines?: Array<Record<string, unknown>> }> } };
-    let desktops: PickerMachine[] = [];
-    let selfId: string | null = null;
-    let glyphh: GlyphhMachine[] = [];
-    if (surface === "web") {
-      desktops = (await listMachines()).map((m) => ({ ...(m.id ? { id: m.id } : {}), name: m.name || m.app || "Glyphh desktop", folders: m.folders ?? [] }));
-      const r = await sdk()?.http?.get?.<{ machines?: Array<Record<string, unknown>> }>("/api/machines").catch(() => null);
-      glyphh = glyphhMachinesOf(r?.machines);
-    } else {
-      const [list, status, mine] = await Promise.all([
-        hostHas("attachDevicesList") ? g.glyphh!.attachDevicesList!().catch(() => null) : null,
-        hostHas("remoteControlGet") ? g.glyphh!.remoteControlGet!().catch(() => null) : null,
-        hostHas("machinesList") ? g.glyphh!.machinesList!().catch(() => null) : null,
-      ]);
-      const rows = list ? deviceRowsOf(list).devices : [];
-      selfId = status?.device ? selfMachineId(rows, status.device) : null;
-      desktops = rows.map((d) => ({ id: d.machineId, name: d.name, folders: d.folders }));
-      glyphh = glyphhMachinesOf(mine?.machines);
-    }
-    return machinePicker({ surface, desktops, selfId, glyphh, born: opts.bornLocus ? src : null });
-  };
-
-  const paintRoot = async (): Promise<void> => {
-    const { search, list } = frame();
-    list.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your machines…</div>`);
-    const [model, reach] = await Promise.all([loadMachines(), probeSources()]);
-    if (!menu.isConnected) return;
-    const w = wbh() as (WbHandle & { getCwdRecents?: () => Promise<string[]> }) | undefined;
-    // THE LAST FIVE on this desktop (his order, 2026-10-04).
-    const localRecents = model.local ? (await w?.getCwdRecents?.().catch(() => [] as string[])) ?? [] : [];
-    if (!menu.isConnected) return;
-    const here = machineOfSource(model, src);
-    const rows = pickerRecent({ surface: "desktop", current: here?.kind === "local" ? currentFolder : "", recents: localRecents, granted: [], spaces: [] });
-    const lockRow = (row: HTMLElement, why: string | undefined): boolean => {
-      if (!why) return false;
-      markUnreachable(row, why);
-      return true;
-    };
-    const label = (text: string, svg: string): void => {
-      const el = document.createElement("div");
-      el.className = "ws-sec-label";
-      el.innerHTML = `${svg}<span></span>`;
-      (el.querySelector("span") as HTMLElement).textContent = text;
-      list.appendChild(el);
-    };
-
+    const rows = pickerRecent({ surface: "desktop", current: currentFolder, recents, granted: [], spaces: [] });
     const draw = (): void => {
       list.textContent = "";
-      const q = search.value.trim().toLowerCase();
-
-      // ── Local: this desktop, any folder on it ──────────────────────────
-      if (model.local) {
-        label("Local:", LOCUS_SVG.local);
-        const shown = filterPickerRows(rows, q).desktop;
-        for (const dir of shown) {
-          const sel = here?.kind === "local" && dir === currentFolder;
-          const row = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
-          row.classList.add("ws-fs-row");
-          if (sel) row.classList.add("selected");
-          if (!lockRow(row, model.local.locked)) row.addEventListener("click", () => pick({ kind: "local", path: dir }));
-          list.appendChild(row);
-        }
-        if (q && !shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No local folder matches.</div>`);
-        if (!q) {
-          const choose = drillItem("Browse…", model.local.hint, "");
-          if (!lockRow(choose, model.local.locked)) {
-            choose.addEventListener("click", () => {
-              void w?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) pick({ kind: "local", path: dir }); });
-            });
-          }
-          list.appendChild(choose);
-        }
+      const q = search.value.trim();
+      const shown = filterPickerRows(rows, q).desktop;
+      for (const dir of shown) {
+        const sel = dir === currentFolder;
+        const r = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
+        r.classList.add("ws-fs-row");
+        if (sel) r.classList.add("selected");
+        r.addEventListener("click", () => pick({ kind: "local", path: dir }));
+        list.appendChild(r);
       }
-
-      // ── Remote: every other machine, then its folders ──────────────────
-      label("Remote:", LOCUS_SVG.cloud);
-      const remote = model.remote.filter((m) => !q || `${m.name} ${m.hint}`.toLowerCase().includes(q));
-      for (const m of remote) {
-        const sel = here === m;
-        const row = drillItem(machineLabel(m.name), m.hint, sel ? CHECK : CHEV);
-        if (sel) row.classList.add("selected");
-        const why = m.locked ?? (m.kind === "glyphh" && reach.cloud === false ? (reach.cloudWhy || "Can't reach the cloud runtime right now") : undefined);
-        if (!lockRow(row, why)) row.addEventListener("click", () => { void (m.kind === "glyphh" ? paintGlyphh(m) : paintDesktop(m)); });
-        list.appendChild(row);
+      if (q && !shown.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No folder matches.</div>`);
+      if (!q) {
+        const choose = drillItem("Browse…", "Any folder on this computer", "");
+        choose.addEventListener("click", () => {
+          void w?.pickCwd?.({ nullOnCancel: true }).then((dir) => { if (dir) pick({ kind: "local", path: dir }); });
+        });
+        list.appendChild(choose);
       }
-      if (q && !remote.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No machine matches.</div>`);
     };
     search.addEventListener("input", draw);
     draw();
@@ -482,7 +507,7 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   /** ANOTHER DESKTOP: its folders, inside the folders it granted. */
   const paintDesktop = (m: PickerMachineRow): void => {
     menu.textContent = "";
-    backHead(menu, machineLabel(m.name), () => { void paintRoot(); });
+    dropHead(menu, `Folder on ${machineLabel(m.name)}`);
     const body = document.createElement("div");
     body.className = "ws-locus-list";
     menu.appendChild(body);
@@ -494,21 +519,20 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
       body.appendChild(note);
       return;
     }
-    const mine = machineOfSource({ local: null, remote: [m] }, src) === m;
-    const recents = pickerRecent({ surface: "web", current: mine ? currentFolder : "", recents: opts.recentFolders?.() ?? [], granted: m.folders, spaces: [] }).desktop;
+    const recents = pickerRecent({ surface: "web", current: currentFolder, recents: opts.recentFolders?.() ?? [], granted: m.folders, spaces: [] }).desktop;
     const at = (dir: string): Source => ({ kind: "local", path: dir, ...(m.id ? { machineId: m.id } : {}), machine: m.name });
     for (const dir of recents) {
-      const sel = mine && dir === currentFolder;
-      const row = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
-      row.classList.add("ws-fs-row");
-      if (sel) row.classList.add("selected");
-      row.addEventListener("click", () => pick(at(dir)));
-      body.appendChild(row);
+      const sel = dir === currentFolder;
+      const r = drillItem(lastSeg(dir), dir, sel ? CHECK : "");
+      r.classList.add("ws-fs-row");
+      if (sel) r.classList.add("selected");
+      r.addEventListener("click", () => pick(at(dir)));
+      body.appendChild(r);
     }
     // One Browse per granted root (the relay walks nothing outside them).
     const one = m.folders.length === 1;
     for (const root of m.folders) {
-      const inside = mine && !!currentFolder && folderGranted(currentFolder, [root]);
+      const inside = !!currentFolder && folderGranted(currentFolder, [root]);
       const browse = drillItem(one ? "Browse…" : `Browse ${lastSeg(root)}…`, root, "");
       browse.addEventListener("click", () => {
         menu.textContent = "";
@@ -517,19 +541,18 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
       body.appendChild(browse);
     }
     clampDropUp(menu, anchor);
+    clampDropX(menu, anchor);
   };
 
-  /** THE GLYPHH MACHINE: the member's cloud folders, and a new one. */
+  /** THE GLYPHH MACHINE: its folders, and a new one. */
   const paintGlyphh = async (m: PickerMachineRow): Promise<void> => {
+    const spaces = await listSpaces();
+    if (!menu.isConnected) return;
     menu.textContent = "";
-    backHead(menu, m.name, () => { void paintRoot(); });
+    dropHead(menu, `Folder on ${m.name}`);
     const body = document.createElement("div");
     body.className = "ws-locus-list";
     menu.appendChild(body);
-    body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking its folders…</div>`);
-    const spaces = await listSpaces();
-    if (!menu.isConnected) return;
-    body.textContent = "";
     const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
     const labelOf = (sp: { id: string; top: readonly string[] }): string =>
       (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `folder ${shortId(sp.id)}`);
@@ -541,10 +564,10 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
     for (const c of rows) {
       const when = c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "";
       const sel = c.id === currentSpace;
-      const row = drillItem(c.label, when ? `Folder · ${when}` : "Folder", sel ? CHECK : "");
-      if (sel) row.classList.add("selected");
-      row.addEventListener("click", () => pick({ kind: "cloud-space", space: c.id, label: c.label }));
-      body.appendChild(row);
+      const r = drillItem(c.label, when ? `Folder · ${when}` : "Folder", sel ? CHECK : "");
+      if (sel) r.classList.add("selected");
+      r.addEventListener("click", () => pick({ kind: "cloud-space", space: c.id, label: c.label }));
+      body.appendChild(r);
     }
     if (src.kind !== "local" && opts.cloudScope) {
       const sub = drillItem("Folder in this workspace…", "Pick a sub-folder of the session's folder", "");
@@ -559,8 +582,23 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
     fresh.addEventListener("click", () => pick({ kind: "cloud-new" }));
     body.appendChild(fresh);
     clampDropUp(menu, anchor);
+    clampDropX(menu, anchor);
   };
-  void paintRoot();
+
+  void (async () => {
+    const model = await loadMachines();
+    if (!menu.isConnected) return;
+    const here = machineOfSource(model, src);
+    if (here?.kind === "local") { await paintLocal(); return; }
+    if (here?.kind === "glyphh") { await paintGlyphh(here); return; }
+    if (here) { paintDesktop(here); return; }
+    // The session's desktop is not attached now: say so, never another machine's folders.
+    menu.textContent = "";
+    const name = src.kind === "local" ? machineLabel(src.machine || "That desktop") : "That machine";
+    const note = drillItem(`${name} is not attached`, "Open Glyphh there with remote control on, then pick its folder.", "");
+    markUnreachable(note, `${name} is not attached right now`);
+    menu.appendChild(note);
+  })();
 }
 
 /** A machine as people read it: a desktop's hostname without ".local". */

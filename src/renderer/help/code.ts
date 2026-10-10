@@ -56,7 +56,7 @@ import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
-import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
@@ -1992,6 +1992,17 @@ function rootShellTo(dir: string): void {
 function setThreadFolder(dir: string): void {
   if (!dir) return;
   const c = current();
+  // A SESSION IS BOUND TO ITS FOLDER (his order, 2026-10-09: "lock that
+  // down"): once it has a turn and a folder, nothing moves it — a pick, a
+  // workspace stamp, a cwd change. A born session with no folder yet may take
+  // one, once. Work somewhere else = a new session.
+  const had = c ? threadFolder(c) : "";
+  if (c && c.messages.length > 0 && had && had !== dir) {
+    console.warn("[folder] refused: a started session keeps its folder", JSON.stringify({ chatId: c.id, folder: had, asked: dir }));
+    rootShellTo(had);
+    paintSourceDependents();
+    return;
+  }
   if (c) {
     c.workdir = dir;
     if (c.source?.kind === "local") c.source = { ...c.source, path: dir };
@@ -3685,7 +3696,7 @@ function homeChips(): void {
   if (cloudChips) {
     const [envEl, repoEl] = cloudChips.els;
     const row = onHome ? document.getElementById("dash-wd-chips") : host;
-    const before = onHome ? document.getElementById("dash-wd-btn") : (host?.firstElementChild ?? null);
+    const before = onHome ? document.getElementById("dash-machine-btn") : (host?.firstElementChild ?? null);
     if (row && (envEl.parentElement !== row || envEl.nextElementSibling !== repoEl)) {
       row.insertBefore(envEl, before && before !== envEl && before !== repoEl ? before : row.firstChild);
       envEl.insertAdjacentElement("afterend", repoEl);
@@ -3936,9 +3947,31 @@ function paintSourceDependents(): void {
   // both surfaces from the SOURCE, so a machine's cwd can't overwrite the pick.
   {
     const src = activeSource();
-    // THE CHIP SHOWS THE LOCUS (his order, 2026-10-04): a monitor or a cloud
-    // before the folder's name, on both rows and both surfaces.
-    for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+    // THE MACHINE CHIP SHOWS THE MACHINE (2026-10-09): a monitor or a cloud,
+    // then its name; the folder chip beside it names the folder.
+    for (const id of ["dash-machine-name", "code-machine-name"]) {
+      const nameEl = document.getElementById(id);
+      if (nameEl) nameEl.textContent = machineChipLabel(src);
+    }
+    // BOTH CHIPS LOCK once the session has a turn, and say why.
+    {
+      const born = bornLocus() !== null;
+      const folderNow = src.kind === "local" ? threadFolder() : "";
+      for (const id of ["dash-machine-btn", "code-machine-btn"]) {
+        const b = document.getElementById(id);
+        b?.classList.toggle("chip-locked", born);
+        b?.setAttribute("title", born ? `This session runs on ${machineChipLabel(src)}. Start a new session to work somewhere else.` : "Where this session runs");
+      }
+      for (const id of ["dash-wd-btn", "code-workdir-btn"]) document.getElementById(id)?.classList.toggle("chip-locked", born);
+      if (born) {
+        for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+          document.getElementById(id)?.setAttribute("title", `This session works in ${folderNow || "its folder"}, and only there. Start a new session to work in another folder.`);
+        }
+      }
+      // The + makes a folder and moves the shell there: never on a started session.
+      for (const id of ["dash-wd-add", "code-workdir-add"]) { if (born) document.getElementById(id)?.classList.add("hidden"); }
+    }
+    for (const id of ["dash-machine-btn", "code-machine-btn"]) {
       const svg = document.getElementById(id)?.querySelector(":scope > svg");
       const want = LOCUS_SVG[sourceLocus(src)];
       if (svg && svg.getAttribute("data-locus") !== sourceLocus(src)) {
@@ -3956,7 +3989,7 @@ function paintSourceDependents(): void {
         if (nameEl) nameEl.textContent = leaf;
       }
       for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-        document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
+        if (bornLocus() === null) document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
       }
     }
     // THE CHIP IS THE RUN'S FOLDER (his report, 2026-09-29): what it names is
@@ -3969,7 +4002,7 @@ function paintSourceDependents(): void {
         if (nameEl) nameEl.textContent = leaf;
       }
       for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-        document.getElementById(id)?.setAttribute("title", `This session works in ${folder} — and only there`);
+        if (bornLocus() === null) document.getElementById(id)?.setAttribute("title", `This session works in ${folder} — and only there`);
       }
     }
   }
@@ -4011,30 +4044,34 @@ function setCloudDir(rel: string): void {
   repaintSourceUi();
 }
 
-/** THE FOLDER CHIP OPENS THE LOCUS PICKER on BOTH surfaces (his order,
- *  2026-10-04): "On this desktop" / "On <machine>" and "In the cloud", in one
- *  drop (code-source-chip.ts openFolderLocusPicker). Registered in CAPTURE so
- *  the workbench's own handler on the same button (the desktop's recents
- *  menu + OS picker) never runs — the picker offers both inside. The + chip
- *  keeps its one job: a new folder (the OS picker on the desktop, fs.mkdir
- *  over the relay on web). */
+/** THE MACHINE CHIP AND THE FOLDER CHIP (his order, 2026-10-09: "let the
+ *  user pick the machine, then the folder picker is another picker"). The
+ *  machine chip lists Local: and Remote: machines; the folder chip lists the
+ *  folders of the session's machine. Both are LOCKED once the session has a
+ *  turn: a session is bound to its machine and its folder ("let's lock that
+ *  down"). Registered in CAPTURE so the workbench's own handler on the folder
+ *  button (the desktop's recents menu + OS picker) never runs. */
 function initFolderLocusChips(): void {
+  for (const id of ["dash-machine-btn", "code-machine-btn"]) {
+    const chip = document.getElementById(id);
+    chip?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (bornLocus()) return;   // the title says why
+      openMachinePicker(chip, { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders });
+    }, true);
+  }
   for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
     const chip = document.getElementById(id);
     chip?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
-      const c = current();
-      const onHome = document.body.classList.contains("composer-on-home");
-      // A BORN session's locus is fixed (cloud stays cloud): the picker shows
-      // the other place but will not pick it.
-      const bornLocus = c && c.messages.length > 0 && !onHome ? sourceLocus(c.source ?? pendingSource) : null;
-      openFolderLocusPicker(chip, {
+      if (bornLocus()) return;   // the title says why
+      openFolderPicker(chip, {
         getSource: activeSource,
         onPick: pickSource,
-        bornLocus,
         cloudScope: cloudBrowseScope(),
-        onPickCloudDir: (rel) => setCloudDir(rel),
+        onPickCloudDir: (rel: string) => setCloudDir(rel),
         recentFolders: recentDesktopFolders,
       });
     }, true);

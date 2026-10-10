@@ -22902,3 +22902,6 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 /* Glyphh's picked face on the rail (2026-10-09): the cat in the mascot's box. */
 .rail-glyphh-row span.rail-glyphh-mark { display: inline-flex; align-items: center; justify-content: center; }
 .rail-glyphh-row span.rail-glyphh-mark .bot-cat { width: 52px; height: 52px; }
+/* A started session's machine and folder chips (2026-10-09): fixed, the title says why. */
+.code-wd-btn.chip-locked { cursor: default; }
+.code-wd-btn.chip-locked:hover { background: transparent; color: inherit; }
