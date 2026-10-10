@@ -12401,6 +12401,17 @@ body.wb-mouse-drag .ws-rail-dropstrip { width: 8px; }
 .ws-monaco-mode-btn:hover { background: var(--hover); color: var(--ws-text); }
 .ws-monaco-mode-btn.active { color: var(--ws-text, var(--text)); }
 .ws-monaco-mode-btn svg { width: 13px; height: 13px; }
+/* The editor's theme dropdown (2026-10-09): the pick by name, in the app's
+   own chrome, so it reads as part of the panel in every theme. */
+.ws-monaco-theme {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; margin-left: 4px;
+  background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--ws-text-faint, var(--text-3)); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.ws-monaco-theme:hover { background: var(--hover); color: var(--ws-text, var(--text)); border-color: var(--border-2, var(--border)); }
+.ws-monaco-theme svg { width: 12px; height: 12px; flex: none; }
+.ws-monaco-theme .ws-monaco-theme-caret { width: 10px; height: 10px; opacity: .7; }
 
 /* Markdown rendered host — same scrollable region as the code editor. */
 .ws-monaco-md-host {

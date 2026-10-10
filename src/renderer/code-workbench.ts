@@ -625,6 +625,12 @@ function monacoTheme(): string {
 function applyMonacoTheme(): void {
   const w = window as unknown as { monaco?: { editor?: { setTheme?: (t: string) => void } } };
   try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
+  paintMonacoThemeNames();
+}
+/** Every editor's dropdown names the pick ("Match the app", "Dark", …). */
+function paintMonacoThemeNames(): void {
+  const label = MONACO_THEMES.find((t) => t.id === monacoThemePick)?.label ?? "Match the app";
+  document.querySelectorAll<HTMLElement>(".ws-monaco-theme-name").forEach((n) => { n.textContent = label; });
 }
 function setMonacoTheme(id: string): void {
   if (!MONACO_THEMES.some((t) => t.id === id)) return;
@@ -7378,8 +7384,10 @@ async function init(): Promise<void> {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         </button>
         <button class="ws-monaco-save hidden" title="Save (⌘S)">Save</button>
-        <button class="ws-monaco-mode-btn ws-monaco-theme" title="Editor theme" aria-haspopup="menu">
+        <button class="ws-monaco-theme" type="button" title="Editor theme" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg>
+          <span class="ws-monaco-theme-name"></span>
+          <svg class="ws-monaco-theme-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       </div>
       <div class="ws-monaco-host"></div>
@@ -7394,6 +7402,7 @@ async function init(): Promise<void> {
     const saveBtn = body.querySelector(".ws-monaco-save") as HTMLButtonElement;
     const themeBtn = body.querySelector(".ws-monaco-theme") as HTMLButtonElement;
     themeBtn.addEventListener("click", (e) => { e.stopPropagation(); openMonacoThemeMenu(themeBtn); });
+    paintMonacoThemeNames();
 
     const paintSave = () => {
       const tab = slot.tabs[slot.activeIdx];
