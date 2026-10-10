@@ -26,7 +26,7 @@ import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openPowersModal } from "./powers-modal.js";
-import { openNewSuperPowerModal } from "./super-power-new.js";
+import { openNewSuperPowerModal, setNewSuperPowerDoors } from "./super-power-new.js";
 import { addTasks, boardCounts, boardText, emptyBoard, findTask, updateTask, type Board, type NewTask, type TaskStatus } from "./team-board.js";
 import { openBoardPanel, refreshBoard } from "./board-panel.js";
 import { visibleAppRows } from "./app-list.js";
@@ -6980,16 +6980,19 @@ async function runTeamTurn(req: { id: string; team: string; member: string; name
 /** THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
  *  to it opens its conversation the way its rail row does. */
 function openNewSuperPower(): void {
-  openNewSuperPowerModal({
-    onTalk: (slug, name) => {
-      railPickedKey = slug;
-      renderRailSessions();
-      leaveWorkspace();
-      sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
-    },
-    onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
-  });
+  openNewSuperPowerModal();
 }
+// Every New super power screen (the rail's dialog, the powers modal's tab)
+// talks to it and opens its page the way its rail row does.
+setNewSuperPowerDoors({
+  onTalk: (slug, name) => {
+    railPickedKey = slug;
+    renderRailSessions();
+    leaveWorkspace();
+    sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
+  },
+  onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
+});
 
 /** FIRST TIME, IT OPENS ITSELF (his order, 2026-10-09: "this modal should load
  *  on startup for first time users"): on the desktop's shell, once the rail

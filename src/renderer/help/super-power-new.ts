@@ -93,16 +93,33 @@ export interface NewSuperPowerOptions {
   onOpenPage?: (agent: string) => void;
 }
 
+/** The doors the rail wires once (help/code.ts), so a screen opened from
+ *  anywhere — the rail, the powers modal — talks to it and opens its page. */
+let defaultDoors: NewSuperPowerOptions = {};
+export function setNewSuperPowerDoors(d: NewSuperPowerOptions): void { defaultDoors = d; }
+
+/** Where the screen renders: its own dialog, or the powers modal's body. */
+export interface NewSuperPowerFrame {
+  body: HTMLElement;
+  foot: HTMLElement;
+  showErr: (msg: string) => void;
+  /** Cancel: the dialog closes; in the powers modal, back to Super powers. */
+  cancel: () => void;
+  /** Go elsewhere (its page, its conversation, a connector): everything closes. */
+  leave: () => void;
+}
+export interface NewSuperPowerScreen {
+  /** Stop a build in flight and every timer; the frame removes the DOM. */
+  destroy: () => void;
+  building: () => boolean;
+}
+
 let openModal: { close: () => void } | null = null;
 
+/** THE STANDALONE DIALOG (the rail's New super power). */
 export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
   openModal?.close();
   let closed = false;
-  let building = false;
-  let ask = "";
-  let timers: number[] = [];
-  const clearTimers = (): void => { for (const t of timers) clearInterval(t); timers = []; };
-
   const overlay = el("div", "confirm-overlay powm spn");
   overlay.innerHTML = `
     <div class="confirm-box powm-box spn-box" role="dialog" aria-modal="true" aria-label="New super power">
@@ -113,12 +130,43 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
       <div class="confirm-foot powm-foot spn-foot"></div>
     </div>`;
   const q = <T extends HTMLElement>(s: string): T => overlay.querySelector<T>(s)!;
-  const body = q<HTMLElement>(".spn-body");
-  const foot = q<HTMLElement>(".spn-foot");
   const errEl = q<HTMLElement>(".powm-error");
-  const showErr = (msg: string): void => { errEl.textContent = msg; errEl.classList.toggle("hidden", !msg); };
-
   function close(): void {
+    if (closed) return;
+    closed = true;
+    screen.destroy();
+    document.removeEventListener("keydown", onKey, true);
+    guardWebviewsForModal(false);
+    overlay.remove();
+    if (openModal?.close === close) openModal = null;
+  }
+  function onKey(e: KeyboardEvent): void {
+    if (e.key === "Escape" && !screen.building()) { e.preventDefault(); close(); }
+  }
+  const screen = mountNewSuperPower({
+    body: q<HTMLElement>(".spn-body"), foot: q<HTMLElement>(".spn-foot"),
+    showErr: (msg) => { errEl.textContent = msg; errEl.classList.toggle("hidden", !msg); },
+    cancel: close, leave: close,
+  }, opts);
+  q<HTMLButtonElement>(".powm-x").addEventListener("click", close);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay && !screen.building()) close(); });
+  document.addEventListener("keydown", onKey, true);
+  guardWebviewsForModal(true);
+  document.body.appendChild(overlay);
+  openModal = { close };
+}
+
+/** THE SCREEN ITSELF: ask, build, done — rendered into `frame`. */
+export function mountNewSuperPower(frame: NewSuperPowerFrame, given: NewSuperPowerOptions = {}): NewSuperPowerScreen {
+  const opts: NewSuperPowerOptions = { ...defaultDoors, ...given };
+  const { body, foot, showErr } = frame;
+  let closed = false;
+  let building = false;
+  let ask = "";
+  let timers: number[] = [];
+  const clearTimers = (): void => { for (const t of timers) clearInterval(t); timers = []; };
+  /** Stop a build in flight and every timer (the frame removes the DOM). */
+  function destroy(): void {
     if (closed) return;
     if (building) void api().superPowerBuildStop?.();
     closed = true;
@@ -126,16 +174,11 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     clearTimeout(cometTimer);
     clearTimeout(hopTimer);
     offBeat?.();
-    document.removeEventListener("keydown", onKey, true);
-    guardWebviewsForModal(false);
-    overlay.remove();
-    if (openModal?.close === close) openModal = null;
   }
-  function onKey(e: KeyboardEvent): void {
-    if (e.key === "Escape" && !building) { e.preventDefault(); close(); }
-  }
-  q<HTMLButtonElement>(".powm-x").addEventListener("click", close);
-  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay && !building) close(); });
+  /** Cancel: stop what runs, then the frame's own cancel. */
+  const close = (): void => { destroy(); frame.cancel(); };
+  /** Go elsewhere: stop what runs, then the frame closes. */
+  const leave = (): void => { destroy(); frame.leave(); };
 
   // ── THE HERO: a cat in a glowing ring. On the ask screen the cast cycles
   //    through every face; building, the ring spins up; done, its own face
@@ -415,7 +458,7 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
 
     /** The powers modal, open on that connector's own page (its + connects it). */
     function openConnector(slug: string): void {
-      close();
+      leave();
       openPowersModal({ tab: "connections", focus: { tab: "connections", name: slug } });
     }
 
@@ -424,17 +467,14 @@ export function openNewSuperPowerModal(opts: NewSuperPowerOptions = {}): void {
     again.addEventListener("click", () => paintAsk());
     const page = el("button", "action-btn secondary", "Open its page");
     page.type = "button";
-    page.addEventListener("click", () => { close(); opts.onOpenPage?.(b.agent); });
+    page.addEventListener("click", () => { leave(); opts.onOpenPage?.(b.agent); });
     const talk = el("button", "action-btn primary spn-go");
     talk.type = "button";
     talk.innerHTML = `${BOLT_SVG}<span>Talk to it</span>`;
-    talk.addEventListener("click", () => { close(); opts.onTalk?.(b.agent, b.name); });
+    talk.addEventListener("click", () => { leave(); opts.onTalk?.(b.agent, b.name); });
     foot.append(again, page, talk);
   }
 
-  document.addEventListener("keydown", onKey, true);
-  guardWebviewsForModal(true);
-  document.body.appendChild(overlay);
-  openModal = { close };
   paintAsk();
+  return { destroy, building: () => building };
 }

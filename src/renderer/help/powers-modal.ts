@@ -23,6 +23,7 @@
  * and the footer saves the picks; Cancel, ✕ or Escape drop them.
  */
 
+import { mountNewSuperPower, type NewSuperPowerScreen } from "./super-power-new.js";
 import { escapeHtml, guardWebviewsForModal } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { PLUS_ICONS, readConnectorRows, type PlusApi, type PlusConnectorRow } from "./composer-plus.js";
@@ -218,7 +219,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   for (const t of POWER_TABS) {
     const b = el("button", "skills-tab", t.label);
     b.type = "button"; b.dataset.tab = t.tab; b.setAttribute("role", "tab");
-    b.addEventListener("click", () => { tab = t.tab; if (t.tab === "connections") connView = { kind: "list" }; if (t.tab === "models") modelView = { kind: "list" }; if (t.tab === "skills") skillView = { kind: "panel" }; showErr(""); paint(); });
+    b.addEventListener("click", () => { tab = t.tab; spView = "list"; if (t.tab === "connections") connView = { kind: "list" }; if (t.tab === "models") modelView = { kind: "list" }; if (t.tab === "skills") skillView = { kind: "panel" }; showErr(""); paint(); });
     tabsEl.appendChild(b);
   }
 
@@ -226,6 +227,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    spScreen?.destroy();
     if (busyStop) void api().powerBuildStop?.();
     returnSkillsPanel();
     hideBusy();
@@ -235,7 +237,12 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     document.removeEventListener("keydown", onKey, true);
     if (openModal?.close === close) openModal = null;
   };
-  function onKey(e: KeyboardEvent): void { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
+  function onKey(e: KeyboardEvent): void {
+    if (e.key !== "Escape") return;
+    e.preventDefault(); e.stopPropagation();
+    if (spScreen?.building()) return;   // a build in flight: Stop or Cancel, not a stray Escape
+    close();
+  }
   if (sel && opts.onSave) {
     const cancel = el("button", "action-btn secondary", "Cancel");
     cancel.type = "button";
@@ -262,7 +269,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     const img = e.target as HTMLElement | null;
     if (img instanceof HTMLImageElement && img.classList.contains("powm-model-img")) img.outerHTML = MODEL_SVG;
   }, true);
-  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay && !spScreen?.building()) close(); });
 
   // ── the bar: search left, + Add right (or ‹ Connections on a sub-screen) ──
   /** The search inputs live as long as the modal, one per screen, so typing never loses its caret. */
@@ -330,6 +337,7 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (closed) return;
     // The borrowed Skills panel goes home before the body is cleared (it is re-borrowed below for its tab).
     returnSkillsPanel();
+    if (spScreen) leaveNewSuperPower();
     bar.style.display = tab === "skills" && skillView.kind === "panel" ? "none" : "";
     tabsEl.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     bar.textContent = "";
@@ -337,12 +345,13 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     if (tab === "folders") paintFolders();
     else if (tab === "connections") paintConnections();
     else if (tab === "models") paintModels();
-    else if (tab === "superPowers") paintSuperPowers();
+    else if (tab === "superPowers") { if (spView === "new") paintNewSuperPower(); else paintSuperPowers(); }
     else paintSkills();
   }
   function repaintBody(): void {
     // Your powers is the borrowed Skills panel: it repaints itself, and clearing would drop it.
     if (tab === "skills") return;   // every Your powers screen paints itself
+    if (tab === "superPowers" && spView === "new") return;   // the New screen paints itself
     body.textContent = "";
     if (tab === "folders") paintFolders(true);
     else if (tab === "connections") paintConnections(true);
@@ -372,11 +381,39 @@ export function openPowersModal(opts: PowersModalOptions = {}): void {
     seen.add(from);
     return (roster.find((r) => r.slug === from)?.superPowers ?? []).some((n) => reaches(n, target, seen));
   }
+  // ── NEW SUPER POWER, IN THE MODAL (his order, 2026-10-09: "it should render
+  //    in the modal with the <- Super Powers so the user can go back after the
+  //    super power is created"): the New screen takes the body and the footer;
+  //    ‹ Super powers (or its Cancel) comes back to the list, read fresh. ──
+  let spView: "list" | "new" = "list";
+  let spScreen: NewSuperPowerScreen | null = null;
+  let footSaved: Node[] | null = null;
+  function leaveNewSuperPower(): void {
+    spScreen?.destroy();
+    spScreen = null;
+    body.classList.remove("spn-body");
+    foot.classList.remove("spn-foot");
+    if (footSaved) { foot.textContent = ""; foot.append(...footSaved); footSaved = null; }
+  }
+  function backToSuperPowers(): void {
+    spView = "list";
+    roster = null;   // the one just built is listed
+    showErr("");
+    paint();
+  }
+  function paintNewSuperPower(): void {
+    bar.append(backButton("Super powers", backToSuperPowers));
+    footSaved = Array.from(foot.childNodes);
+    foot.textContent = "";
+    body.classList.add("spn-body");
+    foot.classList.add("spn-foot");
+    spScreen = mountNewSuperPower({ body, foot, showErr, cancel: backToSuperPowers, leave: close });
+  }
   function paintSuperPowers(bodyOnly = false): void {
     if (!bodyOnly) {
       bar.append(
         searchBox("superPowers", "Search super powers", () => repaintBody()),
-        addButton("+ New", () => { close(); document.getElementById("rail-sp-new")?.click(); }),
+        addButton("+ New", () => { spView = "new"; showErr(""); paint(); }),
       );
     }
     if (!roster) { empty("Reading your super powers…"); void loadRoster(); return; }
