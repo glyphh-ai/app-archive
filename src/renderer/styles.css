@@ -13370,7 +13370,7 @@ body.wb-max .ws-right-rails { width: 100%; }
    control in the panel's top strip (chrome cluster, workdir, view toggles)
    gets its clicks back. */
 body.fullbleed-active #titlebar > * { display: none; }
-body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
+body.fullbleed-active #titlebar { height: 6px; min-height: 6px; padding: 0; border-bottom: 0; }
 
 /* Ghost empty state — Glyphh mark + rotating Lovelace-spirited quotes. */
 .code-ghost {
@@ -20750,10 +20750,14 @@ button.spn-chip.off:hover { border-color: var(--accent); color: var(--text); bor
 /* THE GRABBER (his report, 2026-10-09: "we lost the grabber at the top of all
    work panel pages"): a short bar at every panel's top centre, over its own
    top row; it lifts to the text colour on hover and wears the accent while
-   the panel is dragged. The title still drags too. */
+   the panel is dragged. The title still drags too. The bar sits BELOW the
+   window's 6px OS drag strip (#titlebar under fullbleed-active), which bleeds
+   through the home view and swallowed every press on a bar drawn at 4px
+   (his report, 2026-10-10: "the grabber doesn't work, the header does"). */
 .echo-card > .echo-card-grip {
   position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 5;
-  width: 72px; height: 12px; padding-top: 4px; box-sizing: border-box;
+  width: 72px; height: 14px; padding-top: 9px; box-sizing: border-box;
+  -webkit-app-region: no-drag;
   display: flex; justify-content: center; cursor: grab; touch-action: none;
 }
 .echo-card > .echo-card-grip::before {
