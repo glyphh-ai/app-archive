@@ -28,6 +28,21 @@ export const DEFAULT_ALLOWED: readonly string[] = [
 ];
 
 const PREF = "netAllow";
+const LOCAL_PREF = "netLocalPorts";
+
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+/** A loopback target is judged by host AND port: "localhost:3000". */
+export function targetKey(host: string, port: number | string): string {
+  const h = host.trim().toLowerCase();
+  return LOOPBACK.has(h) ? `localhost:${Number(port) || 80}` : h;
+}
+
+/** Local ports a session's shell may reach DIRECTLY (a database client, any
+ *  non-HTTP tool): the member allowed them with Always. */
+export function savedLocalPorts(): number[] {
+  const v = getPreference<unknown>(LOCAL_PREF);
+  return Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 65536) : [];
+}
 const ASK_TIMEOUT_MS = 2 * 60_000;
 
 /** `host` is `entry` or, for a `*.x` entry, any subdomain of x. */
@@ -71,7 +86,12 @@ export async function decide(chatId: string | null, host: string, ask: Asker = s
   if (!chatId) return false;
   if (st.once.get(chatId)?.has(host)) return true;
   const choice = await Promise.race([ask(chatId, host), new Promise<NetChoice>((r) => setTimeout(() => r("deny"), ASK_TIMEOUT_MS))]);
-  if (choice === "always") { save([...new Set([...saved(), host])]); return true; }
+  if (choice === "always") {
+    save([...new Set([...saved(), host])]);
+    const local = /^localhost:(\d+)$/.exec(host);
+    if (local) setPreference(LOCAL_PREF, [...new Set([...savedLocalPorts(), Number(local[1])])]);
+    return true;
+  }
   if (choice === "once") { const s = st.once.get(chatId) ?? new Set(); s.add(host); st.once.set(chatId, s); return true; }
   return false;
 }
@@ -101,7 +121,7 @@ export async function ensureNetProxy(): Promise<number> {
     let target: URL;
     try { target = new URL(req.url ?? ""); } catch { res.writeHead(400).end("absolute URL required"); return; }
     if (!knows(req)) { res.writeHead(407).end("this proxy serves Glyphh sessions only"); return; }
-    void decide(chatOf(req) || null, target.hostname).then((ok) => {
+    void decide(chatOf(req) || null, targetKey(target.hostname, target.port || 80)).then((ok) => {
       if (!ok) { res.writeHead(403, { "content-type": "text/plain" }).end(`Glyphh's sandbox did not allow this session to reach ${target.hostname}.`); return; }
       const headers = { ...req.headers };
       delete headers["proxy-authorization"]; delete headers["proxy-connection"];
@@ -116,7 +136,7 @@ export async function ensureNetProxy(): Promise<number> {
   server.on("connect", (req, sock: net.Socket, head) => {
     const [host, portRaw] = String(req.url ?? "").split(":");
     if (!host || !knows(req)) { sock.end("HTTP/1.1 407 Proxy Authentication Required\r\n\r\n"); return; }
-    void decide(chatOf(req) || null, host).then((ok) => {
+    void decide(chatOf(req) || null, targetKey(host, portRaw || 443)).then((ok) => {
       if (!ok) { refuse(sock, host); return; }
       const up = net.connect(Number(portRaw) || 443, host, () => {
         sock.write("HTTP/1.1 200 Connection Established\r\n\r\n");

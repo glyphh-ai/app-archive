@@ -799,6 +799,43 @@ function showNetAsk(req: { id: string; chatId: string; host: string }): void {
   document.body.appendChild(overlay);
 }
 
+/** RUN OUTSIDE THE SANDBOX? (main/shell-fence.ts, the escape hatch): asked every
+ *  time, the exact command and the agent's reason shown. Closing the box is No. */
+function showOutsideAsk(req: { id: string; chatId: string; command: string; reason: string }): void {
+  const session = chats.find((c) => c.id === req.chatId);
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-box" role="dialog" aria-modal="true">
+      <div class="confirm-head"><h3>Run outside the sandbox?</h3></div>
+      <div class="confirm-body">
+        <p style="margin:0 0 8px;"><b></b> wants to run this command without the session's sandbox, in its folder:</p>
+        <pre class="outside-cmd" style="white-space:pre-wrap;word-break:break-all;margin:0 0 8px;"></pre>
+        <p style="margin:0;" class="outside-why"></p>
+      </div>
+      <div class="confirm-foot">
+        <button class="action-btn secondary" type="button" data-run="0">Don't run</button>
+        <button class="action-btn primary" type="button" data-run="1">Run it once</button>
+      </div>
+    </div>`;
+  overlay.querySelector("b")!.textContent = session?.title || "This session";
+  overlay.querySelector(".outside-cmd")!.textContent = req.command;
+  overlay.querySelector(".outside-why")!.textContent = req.reason ? `Why: ${req.reason}` : "";
+  let done = false;
+  const close = (run: boolean): void => {
+    if (done) return;
+    done = true;
+    void (window.glyphh as unknown as { outsideAnswer?: (id: string, run: boolean) => Promise<boolean> }).outsideAnswer?.(req.id, run);
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(false); } };
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(false); });
+  overlay.querySelectorAll<HTMLButtonElement>("button[data-run]").forEach((b) => b.addEventListener("click", () => close(b.dataset.run === "1")));
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+}
+
 /** The permission-modes explainer — the standard dialog skeleton, a bit
  *  wider than the 420px confirm box (five modes with real paragraphs). */
 function showModeInfoModal(): void {
@@ -7516,6 +7553,7 @@ function initRailApps(): void {
     g.onTeamHandoffStop?.((req) => { const id = teamRuns.get(req.id); if (id) void window.glyphh.glyphhStop?.(id); });
     // THE SHELL'S NETWORK ASK (main/net-proxy.ts): a command in a session wants a host the sandbox doesn't know yet.
     (window.glyphh as unknown as { onNetAsk?: (cb: (req: { id: string; chatId: string; host: string }) => void) => unknown }).onNetAsk?.((req) => { showNetAsk(req); });
+    (window.glyphh as unknown as { onOutsideAsk?: (cb: (req: { id: string; chatId: string; command: string; reason: string }) => void) => unknown }).onOutsideAsk?.((req) => { showOutsideAsk(req); });
     // DRAG A SUPER POWER INTO THE CHAT (his order, 2026-10-09): drop on the agent.
     const zone = document.querySelector<HTMLElement>(".code-agent");
     if (zone) {

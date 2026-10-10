@@ -5,18 +5,19 @@
  *            the SDK's own profile (@glyphh/sdk/loop shellProfile);
  *   reads    everywhere EXCEPT the deny-list: keys, cloud and git credentials,
  *            Keychains, browser profiles, and Glyphh's own data;
- *   network  only through the session's proxy (net-proxy.ts), plus loopback
- *            for the member's own local services. Every other connection is
- *            refused by the kernel, whatever the command does.
+ *   network  only through the session's proxy (net-proxy.ts), plus the local
+ *            ports the member allowed. Every other connection, loopback
+ *            included, is refused by the kernel, whatever the command does.
  * Off macOS the shell starts in the folder unsandboxed, as the SDK's default does.
  */
 
 import { existsSync, realpathSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { shellProfile } from "@glyphh/sdk/loop";
 import { currentTurnChat } from "./turn-folder.js";
-import { proxyUrlFor } from "./net-proxy.js";
+import { proxyUrlFor, savedLocalPorts } from "./net-proxy.js";
 
 const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 
@@ -37,15 +38,19 @@ export function readDenied(home: string = homedir(), appData: readonly string[] 
 
 const sb = (p: string): string => JSON.stringify(p);
 
-/** The profile: the SDK's write fence, the read deny-list, the network gate. */
-export function fenceProfile(folder: string, denied: readonly string[], proxyPort: number | null): string {
+/** The profile: the SDK's write fence, the read deny-list, the network gate.
+ *  Outbound goes ONLY to the session's proxy and the local ports the member
+ *  allowed; loopback is not open (a local tunnel would carry data past the allowlist). */
+export function fenceProfile(folder: string, denied: readonly string[], proxyPort: number | null, localPorts: readonly number[] = []): string {
   const reads = denied.length ? `(deny file-read* ${denied.map((p) => `(subpath ${sb(p)})`).join(" ")})` : "";
-  const net = [
+  const ports = [...new Set([...(proxyPort === null ? [] : [proxyPort]), ...localPorts])];
+  return [
+    shellProfile(folder),
+    reads,
     "(deny network-outbound)",
-    '(allow network-outbound (remote ip "localhost:*"))',
+    ...ports.map((p) => `(allow network-outbound (remote ip "localhost:${p}"))`),
     '(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))',
-  ];
-  return [shellProfile(folder), reads, ...(proxyPort === null ? net.filter((l) => !l.includes("localhost")) : net)].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 let appDataDirs: string[] = [];
@@ -59,12 +64,29 @@ export function fencedShell(shell: string, cmd: string, folder: string): { file:
   try { root = realpathSync(folder); } catch { /* the loop already checked it */ }
   const proxy = proxyUrlFor(currentTurnChat());
   const port = proxy ? Number(new URL(proxy).port) : null;
+  // Localhost rides the proxy too (NO_PROXY empty): a new local port is asked like a new host.
   const env = proxy
-    ? [`HTTP_PROXY=${proxy}`, `HTTPS_PROXY=${proxy}`, `http_proxy=${proxy}`, `https_proxy=${proxy}`, `ALL_PROXY=${proxy}`, "NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1"]
+    ? [`HTTP_PROXY=${proxy}`, `HTTPS_PROXY=${proxy}`, `http_proxy=${proxy}`, `https_proxy=${proxy}`, `ALL_PROXY=${proxy}`, "NO_PROXY=", "no_proxy="]
     : [];
   return {
     file: SANDBOX_EXEC,
-    args: ["-p", fenceProfile(root, readDenied(homedir(), appDataDirs), port), "/usr/bin/env", ...env, shell, "-lc", cmd],
+    args: ["-p", fenceProfile(root, readDenied(homedir(), appDataDirs), port, savedLocalPorts()), "/usr/bin/env", ...env, shell, "-lc", cmd],
     sandboxed: true,
   };
+}
+
+const OUT_CAP = 60_000;
+
+/** run_outside_sandbox, after the member said yes: the command, unfenced, in the folder. */
+export function runUnfenced(cmd: string, folder: string, timeoutMs = 10 * 60_000): Promise<string> {
+  const shell = process.env.SHELL || "/bin/zsh";
+  return new Promise((resolve) => {
+    const proc = spawn(shell, ["-lc", cmd], { cwd: folder, env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = ""; let err = "";
+    proc.stdout.on("data", (b: Buffer) => { if (out.length < OUT_CAP) out += b.toString(); });
+    proc.stderr.on("data", (b: Buffer) => { if (err.length < OUT_CAP) err += b.toString(); });
+    const timer = setTimeout(() => { try { proc.kill("SIGKILL"); } catch { /* gone */ } }, timeoutMs);
+    proc.on("close", (code) => { clearTimeout(timer); resolve(["(ran outside the sandbox, with the member's approval)", out, err && `stderr:\n${err}`, `exit ${code ?? "?"}`].filter(Boolean).join("\n")); });
+    proc.on("error", (e) => { clearTimeout(timer); resolve(`could not start: ${e.message}`); });
+  });
 }

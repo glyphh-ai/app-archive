@@ -25,6 +25,9 @@ import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeig
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 import { GLYPHH_GUIDE, GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
+import { askOutsideSandbox } from "./net-ask.js";
+import { currentTurnChat, currentTurnFolder } from "./turn-folder.js";
+import { runUnfenced } from "./shell-fence.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -654,6 +657,26 @@ function registerTools(mcp: ToolRegistrar): void {
       mode: z.enum(["window", "screen"]).optional().describe("'window' = tiled inside one window (default); 'screen' = OS-level tiling, one window per app"),
     },
     async ({ name, mode }) => via("layouts.open", { name, mode }),
+  );
+
+  // THE ESCAPE HATCH (his call, 2026-10-09: match Claude Code). bash runs fenced
+  // (shell-fence.ts); a command the fence refuses — docker, ssh, a credential it
+  // needs — may run OUTSIDE it, once, only when the member says so in the
+  // session's panel, every time, whatever the permission mode. Nobody to ask: no.
+  mcp.tool(
+    "run_outside_sandbox",
+    "Run ONE shell command OUTSIDE the session's sandbox, in the session's folder. Use it only after bash failed BECAUSE of the sandbox (a refused write outside the folder, a denied credential file, a network host or local port that can't be reached, docker, ssh). The member is asked every time and sees the exact command and your reason; if they decline, do not try another way around the sandbox. 10-minute cap.",
+    {
+      command: z.string().describe("The exact shell command"),
+      reason: z.string().describe("One sentence for the member: why it needs to run outside the sandbox"),
+    },
+    async ({ command, reason }) => {
+      const chat = currentTurnChat();
+      const folder = currentTurnFolder();
+      if (!chat || !folder) return text("Error: this runs only inside a session, with someone there to approve it");
+      if (!(await askOutsideSandbox(chat, command, reason))) return text("The member declined: the command was not run. Don't try another way around the sandbox; tell them what you needed it for.");
+      return text(await runUnfenced(command, folder));
+    },
   );
 
   // NO APP TOOLS (his order, 2026-10-09: "There should not be any tool left for

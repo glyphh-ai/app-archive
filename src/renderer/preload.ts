@@ -1078,6 +1078,13 @@ contextBridge.exposeInMainWorld("glyphh", {
     return () => { ipcRenderer.removeListener("glyphh-agent:net-ask", l); };
   },
   netAnswer: (id: string, choice: "once" | "always" | "deny") => ipcRenderer.invoke("glyphh-net-answer", id, choice) as Promise<boolean>,
+  /** THE ESCAPE HATCH (shell-fence.ts): the agent asks to run one command outside the sandbox; the member answers every time. */
+  onOutsideAsk: (cb: (req: { id: string; chatId: string; command: string; reason: string }) => void) => {
+    const l = (_e: Electron.IpcRendererEvent, req: { id: string; chatId: string; command: string; reason: string }) => cb(req);
+    ipcRenderer.on("glyphh-agent:outside-ask", l);
+    return () => { ipcRenderer.removeListener("glyphh-agent:outside-ask", l); };
+  },
+  outsideAnswer: (id: string, run: boolean) => ipcRenderer.invoke("glyphh-outside-answer", id, run) as Promise<boolean>,
   /** THE WORK BOARD (swarm.ts phase 2): main asks this panel to change or read a team's board. */
   onTeamBoard: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => {
     const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => cb(req);

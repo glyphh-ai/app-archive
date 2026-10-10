@@ -12,7 +12,8 @@ import { join } from "node:path";
 
 vi.mock("../../src/main/stores/preferences-db.js", () => ({ getPreference: () => [], setPreference: () => undefined }));
 const { fenceProfile, readDenied } = await import("../../src/main/shell-fence.js");
-const { allowedBy, decide, DEFAULT_ALLOWED, ensureNetProxy, hostMatches, proxyUrlFor, setNetAsker } = await import("../../src/main/net-proxy.js");
+const { allowedBy, decide, DEFAULT_ALLOWED, ensureNetProxy, hostMatches, proxyUrlFor, setNetAsker, targetKey } = await import("../../src/main/net-proxy.js");
+const http = await import("node:http");
 
 const mac = process.platform === "darwin";
 const argv = (profile: string, cmd: string, env: Record<string, string>) => ["-p", profile, "/usr/bin/env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), "/bin/sh", "-c", cmd];
@@ -36,6 +37,13 @@ describe("the allowlist", () => {
     expect(hostMatches("*.github.com", "api.github.com.evil.io")).toBe(false);
     expect(allowedBy(DEFAULT_ALLOWED, "registry.npmjs.org")).toBe(true);
     expect(allowedBy(DEFAULT_ALLOWED, "example.com")).toBe(false);
+  });
+
+  it("judges loopback by port, so each local service is its own ask", () => {
+    expect(targetKey("127.0.0.1", 3000)).toBe("localhost:3000");
+    expect(targetKey("LOCALHOST", "5432")).toBe("localhost:5432");
+    expect(targetKey("::1", 80)).toBe("localhost:80");
+    expect(targetKey("api.github.com", 443)).toBe("api.github.com");
   });
 
   it("asks about a new host: once is this session's, always is saved, deny or no one to ask refuses", async () => {
@@ -82,5 +90,24 @@ describe.runIf(mac)("the fence, for real", () => {
     expect(direct.out).toMatch(/exit=[1-9]/);
     const denied = await runAsync(p, "/usr/bin/curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://example.com/", { HTTPS_PROXY: proxy, https_proxy: proxy });
     expect(denied.out).toMatch(/403|CONNECT tunnel failed/);
+  });
+
+  it("loopback is closed except the ports the member allowed; localhost over the proxy is asked", async () => {
+    const svc = http.createServer((_q, r) => r.end("local-ok"));
+    await new Promise<void>((r) => svc.listen(0, "127.0.0.1", () => r()));
+    const svcPort = (svc.address() as { port: number }).port;
+    const asked: string[] = [];
+    setNetAsker(async (_c, host) => { asked.push(host); return "deny"; });
+    const proxyPort = await ensureNetProxy();
+    const proxy = proxyUrlFor("chat-loopback");
+    const closed = fenceProfile(folder, readDenied(home), proxyPort);
+    const direct = await runAsync(closed, `/usr/bin/curl -sS --max-time 5 --noproxy '*' http://127.0.0.1:${svcPort}/; echo " exit=$?"`);
+    expect(direct.out, "a local port nobody allowed").not.toContain("local-ok");
+    const opened = fenceProfile(folder, readDenied(home), proxyPort, [svcPort]);
+    expect((await runAsync(opened, `/usr/bin/curl -sS --max-time 5 --noproxy '*' http://127.0.0.1:${svcPort}/`)).out).toContain("local-ok");
+    const viaProxy = await runAsync(closed, `/usr/bin/curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://localhost:${svcPort}/`, { http_proxy: proxy, HTTP_PROXY: proxy });
+    expect(viaProxy.out).toContain("403");
+    expect(asked).toContain(`localhost:${svcPort}`);
+    svc.close();
   });
 });

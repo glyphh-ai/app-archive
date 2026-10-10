@@ -13,6 +13,8 @@
  */
 
 export const UNATTENDED_HIDDEN: ReadonlySet<string> = new Set([
+  // Nobody is there to approve it (shell-fence.ts escape hatch).
+  "run_outside_sandbox",
   "panels_open", "panels_switch", "panels_close", "layouts_open", "settings_open",
   "rpa_click", "rpa_type", "rpa_read", "rpa_screenshot", "rpa_goto",
   "rpa_commands", "rpa_pick", "rpa_map", "rpa_unmap", "rpa_run", "rpa_sequence_save", "rpa_sequence_remove", "rpa_sequence_run",
