@@ -35,13 +35,15 @@ export function devicesForRun(chatDevices: readonly string[] | undefined, attach
 // device tools reach only the folders a machine granted. The turn now
 // carries its own folder for the machine it was born on. ─────────────────
 
-/** This machine's row among the attached devices: the one whose stable
- *  device key is this host's name. Null when the desktop is not attached
- *  (remote control off) — then no folder can ride, and the steer says so. */
-export function selfMachineId(rows: readonly { machineId: string; device: string }[], hostname: string): string | null {
+/** This machine's row among the attached devices: the one whose NAME (its
+ *  hello's hostname) is this host's. The server's `device` key is a HASH of
+ *  app and hostname (attach.py device_key), so it never equals the hostname:
+ *  matching on it lost this desktop and listed it as a remote machine (his
+ *  report, 2026-10-09). Null when the desktop is not attached. */
+export function selfMachineId(rows: readonly { machineId: string; device: string; name?: string }[], hostname: string): string | null {
   const host = hostname.trim().toLowerCase();
   if (!host) return null;
-  const hit = rows.find((r) => r.device.trim().toLowerCase() === host && r.machineId);
+  const hit = rows.find((r) => r.machineId && (r.name ?? "").trim().toLowerCase() === host);
   return hit ? hit.machineId : null;
 }
 

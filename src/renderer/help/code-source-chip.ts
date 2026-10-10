@@ -464,7 +464,7 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
       const remote = model.remote.filter((m) => !q || `${m.name} ${m.hint}`.toLowerCase().includes(q));
       for (const m of remote) {
         const sel = here === m;
-        const row = drillItem(m.name, m.hint, sel ? CHECK : CHEV);
+        const row = drillItem(machineLabel(m.name), m.hint, sel ? CHECK : CHEV);
         if (sel) row.classList.add("selected");
         const why = m.locked ?? (m.kind === "glyphh" && reach.cloud === false ? (reach.cloudWhy || "Can't reach the cloud runtime right now") : undefined);
         if (!lockRow(row, why)) row.addEventListener("click", () => { void (m.kind === "glyphh" ? paintGlyphh(m) : paintDesktop(m)); });
@@ -482,7 +482,7 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   /** ANOTHER DESKTOP: its folders, inside the folders it granted. */
   const paintDesktop = (m: PickerMachineRow): void => {
     menu.textContent = "";
-    backHead(menu, m.name, () => { void paintRoot(); });
+    backHead(menu, machineLabel(m.name), () => { void paintRoot(); });
     const body = document.createElement("div");
     body.className = "ws-locus-list";
     menu.appendChild(body);
@@ -562,6 +562,9 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   };
   void paintRoot();
 }
+
+/** A machine as people read it: a desktop's hostname without ".local". */
+const machineLabel = (name: string): string => name.replace(/\.local$/i, "") || name;
 
 /** The member's Glyphh machines as GET /api/machines answers them. */
 function glyphhMachinesOf(raw: Array<Record<string, unknown>> | undefined): GlyphhMachine[] {

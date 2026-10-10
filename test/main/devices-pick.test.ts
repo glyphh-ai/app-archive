@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deviceChecked, devicesForRun, toggleDeviceIn, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
 
 describe("the desktop is its own device (his report, 2026-10-07)", () => {
-  const rows = [{ machineId: "m-1", device: "Christophers-Mac-Studio.local" }, { machineId: "m-2", device: "laptop.local" }];
+  // `device` is the server's hash of app + hostname (attach.py device_key); the name is the hostname.
+  const rows = [{ machineId: "m-1", device: "3f9a0c1d2e4b5a69", name: "Christophers-Mac-Studio.local" }, { machineId: "m-2", device: "77aa0c1d2e4b5a00", name: "laptop.local" }];
   it("finds this machine's row by its host name, case-blind; none when not attached", () => {
     expect(selfMachineId(rows, "christophers-mac-studio.local")).toBe("m-1");
     expect(selfMachineId(rows, "other.local")).toBeNull();
