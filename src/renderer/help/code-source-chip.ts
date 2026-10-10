@@ -337,12 +337,19 @@ export async function loadMachines(born: Source | null = null): Promise<MachineP
     glyphh = glyphhMachinesOf(mine?.machines);
   }
   const picker = machinePicker({ surface, desktops, selfId, glyphh, born });
+  lastGlyphhMachines = glyphh;
   lastGlyphhName = picker.remote.find((r) => !!r.glyphhId || r.kind === "cloud")?.name ?? lastGlyphhName;
   return picker;
 }
 
 /** The Glyphh machine's name as last read: the machine chip labels a cloud source with it. */
 let lastGlyphhName = "";
+/** The member's Glyphh machines as last read, with their server states. */
+let lastGlyphhMachines: GlyphhMachine[] = [];
+/** A Glyphh machine's server state as last read (creating, stopped, starting, running, …), or "". */
+export function glyphhMachineState(id: string): string {
+  return lastGlyphhMachines.find((m) => m.id === id)?.state ?? "";
+}
 /** The machine chip's words for a source: "Local", another desktop's name, the Glyphh machine's. */
 export function machineChipLabel(src: Source, known = ""): string {
   if (src.kind !== "local") return lastGlyphhName || "Glyphh machine";
@@ -353,7 +360,7 @@ export function machineChipLabel(src: Source, known = ""): string {
 /** One drop under a chip: opened, clamped, closed on a click away. */
 /** The paged drops' ceiling: a page of rows, the search, the head and the pager. */
 const PAGED_DROP_MAX_PX = 440;
-function chipDrop(anchor: HTMLElement): { menu: HTMLElement; close: () => void } {
+export function chipDrop(anchor: HTMLElement): { menu: HTMLElement; close: () => void } {
   const wrap = anchor.parentElement || anchor;
   wrap.querySelector(".ws-source-drop")?.remove();
   closeAllDrops();
@@ -370,7 +377,7 @@ function chipDrop(anchor: HTMLElement): { menu: HTMLElement; close: () => void }
   document.addEventListener("mousedown", away, true);
   return { menu, close };
 }
-const dropHead = (menu: HTMLElement, title: string): void => {
+export const dropHead = (menu: HTMLElement, title: string): void => {
   const head = document.createElement("div");
   head.className = "code-drop-head";
   const span = document.createElement("span");

@@ -58,6 +58,7 @@ import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type 
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { dropPager, pageSlice, DROP_PAGE } from "./drop-page.js";
 import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
+import { gitLaneFor, machineStateFor, onWhereChange, openWhereCard, projectLabel, wakeAndWatch, wakeError } from "./where-card.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
@@ -3672,7 +3673,6 @@ function initWorkdirGate(): void {
  */
 const CHIP_TITLES: Record<string, string> = {
   "dash-wd-btn": "Pick the working folder",
-  "code-workdir-btn": "Pick the working folder",
   "code-plus-chip": "Attach files",
 };
 
@@ -3732,13 +3732,14 @@ function paintGitState(): void {
   const seq = ++gitStateSeq;
   const paint = (git: { isRepo: boolean; branch?: string } | null): void => {
     if (seq !== gitStateSeq) return;   // a newer pick landed while we asked
-    if (!git) { hide(); return; }
+    // THE ONE CHIP (2026-10-10) names a branch only when there is one: a
+    // folder with no git says nothing here (the card offers Track changes),
+    // and a machine that is down shows no branch at all.
+    const down = !!document.getElementById("code-machine-btn")?.matches(".where-asleep, .where-waking");
+    if (!git || !git.isRepo || down) { hide(); return; }
     (wrap as HTMLElement).style.display = "";
-    wrap.classList.toggle("no-git", !git.isRepo);
-    label.textContent = git.isRepo ? (git.branch || "git") : "No git";
-    wrap.setAttribute("title", git.isRepo
-      ? `Git repository${git.branch ? ` on ${git.branch}` : ""}`
-      : "No git repository in this folder yet");
+    label.textContent = git.branch || "git";
+    wrap.setAttribute("title", `On the branch ${git.branch || "(none)"}`);
   };
   // A CLOUD session's git state is its WORKER workspace's (his report,
   // 2026-10-04) — asked over the cloud lane, scoped to the session; this
@@ -3755,6 +3756,14 @@ function paintGitState(): void {
     return;
   }
   if (src.kind !== "local") { hide(); return; }
+  // ANOTHER MACHINE'S FOLDER is read ON that machine (2026-10-10): this
+  // desktop's own files:git-info answered "no git" for the Glyphh machine.
+  if (!onWebTarget() && src.machine) {
+    const { lane } = gitLaneFor(src, threadFolder() || src.path || "");
+    if (!lane) { hide(); return; }
+    void lane.info().then(paint, () => paint(null));
+    return;
+  }
   // The DESKTOP's local source carries no path — the machine's own working
   // directory is the folder in play there, so fall back to it.
   const dirOf = async (): Promise<string> => src.path
@@ -3958,17 +3967,11 @@ function paintSourceDependents(): void {
     {
       const born = bornLocus() !== null;
       const folderNow = src.kind === "local" ? threadFolder() : "";
-      for (const id of ["dash-machine-btn", "code-machine-btn"]) {
-        const b = document.getElementById(id);
-        b?.classList.toggle("chip-locked", born);
-        b?.setAttribute("title", born ? `This session runs on ${machineChipLabel(src, webMachineName(src))}. Start a new session to work somewhere else.` : "Where this session runs");
-      }
-      for (const id of ["dash-wd-btn", "code-workdir-btn"]) document.getElementById(id)?.classList.toggle("chip-locked", born);
-      if (born) {
-        for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-          document.getElementById(id)?.setAttribute("title", `This session works in ${folderNow || "its folder"}, and only there. Start a new session to work in another folder.`);
-        }
-      }
+      // THE ONE CHIP still opens once born (2026-10-10): its card keeps the
+      // machine and project fixed and the branch changeable.
+      document.getElementById("code-machine-btn")?.setAttribute("title", born
+        ? `This session works in ${folderNow || "its folder"} on ${machineChipLabel(src, webMachineName(src))}. Start a new session to work somewhere else.`
+        : "Where Glyphh works");
     }
     for (const id of ["dash-machine-btn", "code-machine-btn"]) {
       const svg = document.getElementById(id)?.querySelector(":scope > svg");
@@ -3980,33 +3983,51 @@ function paintSourceDependents(): void {
         if (next) { next.setAttribute("data-locus", sourceLocus(src)); svg.replaceWith(next); }
       }
     }
-    if (src.kind !== "local") {
-      const dir = (src as { dir?: string }).dir || "";
-      // A Glyphh machine folder by its name; a fresh one until the first send names it.
-      const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir)
-        : src.kind === "cloud-space" ? (src.label || "folder") : "New folder";
-      for (const id of ["dash-wd-name", "code-workdir-name"]) {
-        const nameEl = document.getElementById(id);
-        if (nameEl) nameEl.textContent = leaf;
-      }
-      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-        if (bornLocus() === null) document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
-      }
-    }
     // THE CHIP IS THE RUN'S FOLDER (his report, 2026-09-29): what it names is
-    // exactly what the next turn works in — threadFolder(), never a second field.
-    const folder = src.kind === "local" ? threadFolder() : "";
-    if (src.kind === "local" && folder) {
-      const leaf = folder.replace(/\/+$/, "").split("/").filter(Boolean).pop() || folder;
-      for (const id of ["dash-wd-name", "code-workdir-name"]) {
-        const nameEl = document.getElementById(id);
-        if (nameEl) nameEl.textContent = leaf;
-      }
-      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-        if (bornLocus() === null) document.getElementById(id)?.setAttribute("title", `This session works in ${folder} — and only there`);
-      }
-    }
+    // exactly what the next turn works in — threadFolder(), never a second
+    // field. Not made yet (the Glyphh machine's bare workspace, a cloud folder
+    // before its first send) it is a New project (his pick, 2026-10-10).
+    const nameEl = document.getElementById("code-workdir-name");
+    if (nameEl) nameEl.textContent = projectLabel(src, src.kind === "local" ? threadFolder() : "");
   }
+  paintWhereState();
+}
+
+/** THE ONE CHIP'S MACHINE (his decision, 2026-10-10): asleep it reads
+ *  "<name> · asleep · Wake", waking it spins with "Waking <name>… ~2 min"
+ *  until the machine is up, then shows the project again. */
+let whereStateSeq = 0;
+function paintWhereState(): void {
+  const chip = document.getElementById("code-machine-btn");
+  if (!chip) return;
+  const src = activeSource();
+  const seq = ++whereStateSeq;
+  void machineStateFor(src).then((state) => {
+    if (seq !== whereStateSeq) return;
+    const name = machineChipLabel(src, webMachineName(src));
+    const asleep = state === "asleep";
+    const busy = state === "waking" || state === "starting";
+    chip.classList.toggle("where-asleep", asleep);
+    chip.classList.toggle("where-waking", busy);
+    document.getElementById("code-where-spin")?.classList.toggle("hidden", !busy);
+    document.getElementById("code-where-wake")?.classList.toggle("hidden", !asleep);
+    document.getElementById("code-workdir-btn")?.classList.toggle("hidden", asleep || busy);
+    if (asleep || busy) {
+      const wrap = document.getElementById("code-workdir-branch-wrap");
+      if (wrap) wrap.style.display = "none";
+    }
+    const nameEl = document.getElementById("code-machine-name");
+    if (nameEl) nameEl.textContent = busy ? `Waking ${name}… ~2 min` : asleep ? `${name} · asleep` : name;
+    const failed = src.kind === "local" ? wakeError(src.machine || "") : "";
+    chip.classList.toggle("where-failed", !!failed && asleep);
+    if (bornLocus() === null) {
+      chip.setAttribute("title", failed && asleep ? failed
+        : asleep ? `${name} is asleep. Wake starts it; the first start takes a few minutes.`
+        : busy ? `${name} is starting. It's ready in a minute or two.`
+        : "Where Glyphh works");
+    }
+    if (!asleep && !busy) paintGitState();
+  });
 }
 
 /** On the web, the attached desktop a local source runs on, by its id, else the only one attached. */
@@ -4060,24 +4081,29 @@ function setCloudDir(rel: string): void {
  *  down"). Registered in CAPTURE so the workbench's own handler on the folder
  *  button (the desktop's recents menu + OS picker) never runs. */
 function initFolderLocusChips(): void {
-  for (const id of ["dash-machine-btn", "code-machine-btn"]) {
-    const chip = document.getElementById(id);
-    chip?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (bornLocus()) return;   // the title says why
-      openMachinePicker(chip, { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders });
-    }, true);
-  }
-  for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
-    const chip = document.getElementById(id);
-    chip?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (bornLocus()) return;   // the title says why
-      openFolderPicker(chip, { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders });
-    }, true);
-  }
+  const chip = document.getElementById("code-machine-btn");
+  if (!chip) return;
+  // The workbench asks for a repaint when the folder or its git changes.
+  (window as unknown as { __glyphhRepaintWhere?: () => void }).__glyphhRepaintWhere = () => paintSourceDependents();
+  const pickers = { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders };
+  // The machine waking repaints the chip (where-card.ts watches it come up).
+  onWhereChange(() => paintSourceDependents());
+  chip.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    // "Wake" on an asleep chip wakes it straight away; the rest opens the card.
+    if ((e.target as HTMLElement).closest("#code-where-wake")) { void wakeAndWatch(activeSource()); return; }
+    const born = bornLocus() !== null;
+    openWhereCard(chip, {
+      getSource: activeSource,
+      folder: () => (activeSource().kind === "local" ? threadFolder() : ""),
+      machineName: () => machineChipLabel(activeSource(), webMachineName(activeSource())),
+      locked: () => (born ? "Fixed for this session. Start a new session to work somewhere else." : null),
+      openMachine: () => openMachinePicker(chip, pickers),
+      openProject: () => openFolderPicker(chip, pickers),
+      onGitChanged: () => paintGitState(),
+    });
+  }, true);
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────

@@ -24,16 +24,14 @@ import { scanRenderer, unshimmedNames, contractNames, preloadNames } from './hel
 /** file → { name → why it is safe on web } */
 const ALLOWED = {
   'src/renderer/code-workbench.ts': {
-    gitInfo: 'window.wb.gitInfo — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
     listDir: 'window.wb.listDir — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
   },
   // apps.ts: glyphhAppPreviewOpen is SERVED on web since 2026-10-04 (apps
   // live in the cloud — member-library-web.js answers the instance's panel
   // path through this origin's /app-host proxy).
-  // schedules.ts, drips.ts and settings-skills.ts: every name they read is
-  // SERVED on web since 2026-10-04 (member-library-web.js — the library from
-  // the server, the machine actions answering NEEDS_DESKTOP, the runs honest
-  // empties); drips.ts keeps its Stop/Play behind hostHas.
+  // settings-skills.ts: every name it reads is SERVED on web since 2026-10-04
+  // (member-library-web.js — the library from the server, the machine actions
+  // answering NEEDS_DESKTOP, the runs honest empties).
   'src/renderer/help/code.ts': {
     appInstallFolder: 'buildAndRunApp sends the agent a turn instead unless hostHas("appInstallFolder") — the folder is on the worker on the web (the app card, 2026-10-07)',
     appBuildStatus: 'followAppJob returns before the read unless hostHas("appBuildStatus") (the app card, 2026-10-07)',

@@ -241,11 +241,7 @@ function basename(p: string): string {
   // Either separator: a Windows folder is `C:\\Users\\me\\repo`, not one long name.
   return p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 }
-function homeShorten(p: string): string {
-  return p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
-}
 
-const FOLDER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>`;
 const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 // 4 outward arrows — expand to fullscreen. 4 inward arrows — restore.
 const MAXIMIZE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
@@ -772,113 +768,11 @@ async function init(): Promise<void> {
   const urlBarHiddenDefault = (): boolean => !appUrlBarShow;
   document.addEventListener("glyphh:app-urlbar-default", (e) => { appUrlBarShow = !!(e as CustomEvent).detail; });
 
-  // ── Workdir bar — mirrors agent.ts ──
-  const workdirBtn = document.getElementById("code-workdir-btn") as HTMLButtonElement | null;
-  const workdirName = document.getElementById("code-workdir-name");
-  const branchWrap = document.getElementById("code-workdir-branch-wrap");
-  const branchEl = document.getElementById("code-workdir-branch");
-  // The Work landing's copy of the same chips (dashboard.html, no git chip) —
-  // painted and wired alongside the header originals.
-  const dashWdBtn = document.getElementById("dash-wd-btn") as HTMLButtonElement | null;
-  const dashWdName = document.getElementById("dash-wd-name");
-  const dashBranchWrap = document.getElementById("dash-wd-branch-wrap");
-  const dashBranchEl = document.getElementById("dash-wd-branch");
-
-  const dropdown = document.createElement("div");
-  dropdown.className = "yo-workdir-menu";
-  dropdown.setAttribute("role", "menu");
-  document.body.appendChild(dropdown);
-  const closeDropdown = () => dropdown.classList.remove("open");
-  const isDropdownOpen = () => dropdown.classList.contains("open");
-
-  async function paintWorkdirBar(dir: string): Promise<void> {
-    // No explicit pick = the session's default root (the user's home dir) —
-    // never a "Pick a folder" nag; picking is optional, not a gate.
-    if (workdirName) workdirName.textContent = dir ? basename(dir) : "Home";
-    if (workdirBtn) workdirBtn.title = dir ? `working directory: ${dir}` : "working directory: your home folder";
-    if (dashWdName) dashWdName.textContent = dir ? basename(dir) : "Home";
-    if (dashWdBtn) dashWdBtn.title = dir ? `working directory: ${dir}` : "working directory: your home folder";
-    const setBranch = (branch: string | null): void => {
-      for (const [wrap, el2] of [[branchWrap, branchEl], [dashBranchWrap, dashBranchEl]] as const) {
-        if (!wrap || !el2) continue;
-        if (branch) { el2.textContent = branch; (wrap as HTMLElement).style.display = ""; }
-        else (wrap as HTMLElement).style.display = "none";
-      }
-    };
-    if (!dir) { setBranch(null); return; }
-    try {
-      const info = await wb.gitInfo(dir);
-      setBranch(info.isRepo && info.branch ? info.branch : null);
-    } catch {
-      setBranch(null);
-    }
-  }
-
-  async function openDropdown(anchor: HTMLElement | null = workdirBtn): Promise<void> {
-    const recents = await window.wb.getCwdRecents().catch(() => [] as string[]);
-    dropdown.innerHTML = "";
-    const list = recents.length ? recents : (cwd ? [cwd] : []);
-    for (const dir of list) {
-      const item = document.createElement("button");
-      item.className = "yo-workdir-menu-item";
-      item.innerHTML =
-        `<span class="check">${dir === cwd ? CHECK_SVG : ""}</span>` +
-        `<span class="ic">${FOLDER_SVG}</span>` +
-        `<span class="nm"></span>`;
-      (item.querySelector(".nm") as HTMLElement).textContent = homeShorten(dir);
-      item.title = dir;
-      item.addEventListener("click", async () => {
-        closeDropdown();
-        if (dir !== cwd) await window.wb.setCwd(dir);
-      });
-      dropdown.appendChild(item);
-    }
-    const sep = document.createElement("div");
-    sep.className = "yo-workdir-menu-sep";
-    dropdown.appendChild(sep);
-    const choose = document.createElement("button");
-    choose.className = "yo-workdir-menu-item";
-    choose.textContent = "Choose folder…";
-    choose.addEventListener("click", async () => {
-      closeDropdown();
-      await window.wb.pickCwd();
-    });
-    dropdown.appendChild(choose);
-
-    if (anchor) {
-      const r = anchor.getBoundingClientRect();
-      dropdown.style.left = `${r.left}px`;
-      // Open UP from a low anchor (the landing / composer chip rows) — the
-      // source popup's direction — and down only from a header-top anchor.
-      if (r.top > window.innerHeight / 2) {
-        dropdown.style.top = "auto";
-        dropdown.style.bottom = `${window.innerHeight - r.top + 4}px`;
-      } else {
-        dropdown.style.bottom = "auto";
-        dropdown.style.top = `${r.bottom + 4}px`;
-      }
-    }
-    dropdown.classList.add("open");
-  }
-
-  workdirBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    isDropdownOpen() ? closeDropdown() : void openDropdown();
-  });
-  dashWdBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    isDropdownOpen() ? closeDropdown() : void openDropdown(dashWdBtn);
-  });
-  document.addEventListener("click", (e) => {
-    if (!isDropdownOpen()) return;
-    if (dropdown.contains(e.target as Node)) return;
-    if (workdirBtn?.contains(e.target as Node)) return;
-    if (dashWdBtn?.contains(e.target as Node)) return;
-    closeDropdown();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && isDropdownOpen()) closeDropdown();
-  });
+  // ── The one chip above the composer is code.ts's (help/where-card.ts,
+  // 2026-10-10): a cwd or git change here asks it to repaint. ──
+  const paintWorkdirBar = async (_dir: string): Promise<void> => {
+    (window as unknown as { __glyphhRepaintWhere?: () => void }).__glyphhRepaintWhere?.();
+  };
 
   // ── Focus guard ──────────────────────────────────────────────────────────
   // An Electron <webview> guest steals HOST focus whenever its page loads or
