@@ -19603,9 +19603,20 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 /* THE CODE LAYOUT (his order, 2026-10-07): the environment / directory / git /
    new-folder chips ride their own row ABOVE the box, always — the Glyphh
    mascot at that row's far right. */
-.code-source-mascot { display: none; flex: 0 0 auto; margin-left: 8px; width: 24px; height: 24px; opacity: 0.9; }
-.code-source-mascot img { width: 24px; height: 24px; display: block; }
+.code-source-mascot { display: none; flex: 0 0 auto; margin-left: 8px; width: 28px; height: 28px; opacity: 0.9; }
+.code-source-mascot img, .code-source-mascot svg { width: 28px; height: 28px; display: block; }
 .code-source-slot .code-source-mascot { display: inline-flex; }
+/* Idle, he bounces a tad every so often (his order, 2026-10-10): one small
+   double hop at the start of each 7s cycle, still the rest of it. */
+.code-source-mascot .bot-cat.idle { transform-origin: 50% 100%; animation: source-mascot-hop 7s cubic-bezier(.3, .7, .4, 1) 2s infinite; }
+@keyframes source-mascot-hop {
+  0%, 12%, 100% { transform: translateY(0) scale(1, 1); }
+  2% { transform: translateY(0) scale(1.05, .95); }
+  5% { transform: translateY(-4px) scale(.98, 1.02); }
+  8% { transform: translateY(0) scale(1.03, .97); }
+  10% { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion: reduce) { .code-source-mascot .bot-cat.idle { animation: none; } }
 
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
    the standard modal, asked before a CLI tile from the Echo opens. */

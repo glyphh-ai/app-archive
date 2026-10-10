@@ -24,7 +24,7 @@ import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
-import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
+import { AVATAR_INK, avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openPowersModal } from "./powers-modal.js";
 import { openNewSuperPowerModal, setNewSuperPowerDoors } from "./super-power-new.js";
 import { addTasks, boardCounts, boardText, emptyBoard, findTask, updateTask, type Board, type NewTask, type TaskStatus } from "./team-board.js";
@@ -7842,6 +7842,10 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   initAnchorEvents();
+  // The mark above the composer is the vector cat, so it blinks like the
+  // rail's (his order, 2026-10-10: "make him bigger just a tad, let him blink").
+  const sourceMascot = document.getElementById("code-source-mascot");
+  if (sourceMascot) sourceMascot.innerHTML = botAvatarSvg({ variant: 1, color: AVATAR_INK }, "idle", { size: 28 });
   // THE POWERS MODAL, for every caller in this document and the ones that
   // cannot import it (the workbench bundle). An AGENT PANEL is its own
   // document, so its overlay would stop at the panel's edges (his report,
