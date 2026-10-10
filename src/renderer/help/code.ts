@@ -4387,8 +4387,9 @@ function flushPendingNotes(tries = 0): void {
 }
 
 function queueAttachments(refs: AttachRef[]): void {
-  // Same path twice = once (re-dropping a folder shouldn't stack chips).
-  for (const r of refs) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
+  // Same path twice = once (re-dropping a folder shouldn't stack chips); a door
+  // that answered nothing (the web's) is never a chip.
+  for (const r of refs) if (r && typeof r.path === "string" && r.path && !pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
   paintAttachChips();
 }
 
@@ -4404,13 +4405,16 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
   }
   if (!files.length) return;
   e.preventDefault();
+  // THE WEB HAS NO FILE DOOR (his report, 2026-10-10: a paste threw on
+  // app.glyphh.ai): a pasted file or image is said, not crashed on.
+  if (onWebTarget()) { toastOk("Pasting files and images works in the Glyphh desktop app."); return; }
   const paths: string[] = [];
   const refs: AttachRef[] = [];
   for (const f of files) {
     const p = window.glyphh.getPathForFile(f);
     if (p) { paths.push(p); continue; }
     if (!f.type.startsWith("image/")) continue;
-    try { refs.push(await window.glyphh.glyphhSaveClipboardImage(await f.arrayBuffer())); }
+    try { const saved = await window.glyphh.glyphhSaveClipboardImage(await f.arrayBuffer()); if (saved) refs.push(saved); }
     catch { /* oversized/empty clipboard image — skip */ }
   }
   if (paths.length) refs.push(...await window.glyphh.glyphhClassifyPaths(paths));
@@ -6385,7 +6389,11 @@ async function loadRailSessions(): Promise<void> {
   railSessions = rows
     // A thread adopted from the server (a cloud thread, or one made on another
     // surface) carries only a messageCount until opened — it lists all the same.
-    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0)
+    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0
+      // A CLOUD thread's transcript is its worker's, so the server's row says 0
+      // messages: listed by its title on every surface (his report, 2026-10-10:
+      // the desktop listed the cloud sessions, app.glyphh.ai did not).
+      || (threadLocus(c) === "cloud" && !!(c.title || "").trim() && c.title !== "New session"))
     .map((c) => {
       const locus = threadLocus(c);
       // THE FOLDER IS THE THREAD'S (his rule): a thread adopted from the
@@ -7282,7 +7290,9 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   // re-placed against a gone button). Closing the dropdown closes it too.
   const dismiss = (e: MouseEvent): void => {
     const t = e.target as HTMLElement | null;
-    if (menu.contains(t) || t?.closest?.(".sp-filter-menu")) return;
+    // The delete's confirmation is the dropdown's own step (his report,
+    // 2026-10-10: "when deleting a session the chip should not close afterwards").
+    if (menu.contains(t) || t?.closest?.(".sp-filter-menu") || t?.closest?.(".confirm-overlay")) return;
     menu.remove();
     document.querySelector(".sp-filter-menu")?.remove();
     document.removeEventListener("mousedown", dismiss, true);
