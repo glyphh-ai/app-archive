@@ -4741,9 +4741,9 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     return true;
   }
   const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
-    "gpoint", "slides", "gdrive", "drive", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
+    "gpoint", "slides", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", drive: "gdrive", design: "gdesign",
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", design: "gdesign",
       image: "gimage", video: "gvideo", sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;

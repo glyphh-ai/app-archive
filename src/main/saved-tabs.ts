@@ -12,7 +12,7 @@ import { refreshForceWebSlugs } from "./force-web";
 import { broadcast } from "./broadcast";
 
 /** The work panels are built in — a tab may neither shadow nor remove them. */
-export const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive"]);
+export const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet"]);
 export const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
 /** The slug a name yields — the same rule the Tabs page applies. */

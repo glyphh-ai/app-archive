@@ -1574,11 +1574,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   mediaProjectDelete: (id: string) => ipcRenderer.invoke("media-project-delete", id) as Promise<{ ok: boolean; error?: string }>,
   mediaProjectGenerate: (id: string, input?: unknown) => ipcRenderer.invoke("media-project-generate", id, input) as Promise<{ ok: boolean; project?: unknown; job?: unknown; error?: string }>,
   mediaUploadBytes: (input: unknown) => ipcRenderer.invoke("media-upload-bytes", input) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
-  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: string; ref: string; file?: string; title: string; sizeBytes: number; folderId: string | null; subkind?: string; mime?: string; updatedAt: string }>; error?: string }>,
-  gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
-  gdriveMove: (kind: string, ref: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, ref, folderId) as Promise<{ ok: boolean; error?: string }>,
-  gdriveFolderRename: (id: string, name: string) => ipcRenderer.invoke("gdrive-folder-rename", id, name) as Promise<{ ok: boolean; error?: string }>,
-  gdriveFolderDelete: (id: string) => ipcRenderer.invoke("gdrive-folder-delete", id) as Promise<{ ok: boolean; error?: string }>,
   gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
   panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,

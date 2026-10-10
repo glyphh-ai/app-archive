@@ -3,9 +3,9 @@
  * over the SDK client (his order, 2026-10-06: "cloud is first and every
  * surface pulls from it").
  *
- * The web renderer hosts Design / Slides / Images / Video / Audio / Drive
+ * The web renderer hosts Design / Slides / Images / Video / Audio
  * itself (code-workbench.ts) and reads them through window.glyphh's design*,
- * gpoint*, media* and gdrive* shims. Every shim here IS the store's door —
+ * gpoint* and media* shims. Every shim here IS the store's door —
  * the same module the desktop's main process runs (main/house-store.ts) over
  * `client.memberLibrary` and the server's byte lane — so a deck saved on the
  * desktop is in the Slides panel here, and one made here is on the desktop.
@@ -55,7 +55,6 @@ export function createHouseStoreWeb({ client, apiUrl, fetchImpl = (u, i) => fetc
     designList, designRead, designWrite, designDelete, designAssetUpload, designAssetUrl, designAssetDelete,
     gpointList, gpointRead, gpointWrite, gpointNew, gpointDelete,
     mediaList, mediaUrl, mediaThumbBytes, mediaDelete,
-    gdriveList, gdriveMkdir, gdriveMove, gdriveFolderRename, gdriveFolderDelete,
   } = store;
   const accept = Object.keys(MEDIA_MIME).join(',');
 
@@ -92,7 +91,5 @@ export function createHouseStoreWeb({ client, apiUrl, fetchImpl = (u, i) => fetc
         return { ok: true, path: r.name };
       } catch (err) { return { ok: false, error: msg(err) }; }
     },
-    // ── Drive (wb-drive.ts) ───────────────────────────────────────────────
-    gdriveList, gdriveMkdir, gdriveMove, gdriveFolderRename, gdriveFolderDelete,
   };
 }

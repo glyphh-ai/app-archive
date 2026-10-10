@@ -100,17 +100,4 @@ describe('createHouseStoreWeb — the member library is the store, reads and wri
     expect((await house.mediaGenerate({})).ok).toBe(false);
     expect((await house.mediaJob('j')).ok).toBe(false);
   });
-
-  it('Drive is the view across every kind, with folders made here', async () => {
-    const { house } = rig({ seed: { image: [{ id: 'a.png', updatedAt: 1_000, data: { title: 'a', mime: 'image/png', sizeBytes: 3, width: null, height: null, durationMs: null, meta: {}, folderId: null } }] } });
-    const f = await house.gdriveMkdir('Shots');
-    expect(f.ok).toBe(true);
-    expect(await house.gdriveMove('media', 'image/a.png', f.folder.id)).toEqual({ ok: true });
-    const d = await house.gdriveList();
-    expect(d.folders).toEqual([{ id: f.folder.id, name: 'Shots', parentId: null }]);
-    expect(d.files).toEqual([{ kind: 'media', subkind: 'image', mime: 'image/png', ref: 'image/a.png', file: 'image/a.png', title: 'a', sizeBytes: 3, updatedAt: expect.any(String), folderId: f.folder.id }]);
-    expect(await house.gdriveFolderRename(f.folder.id, 'Pictures')).toMatchObject({ ok: true, folder: { name: 'Pictures' } });
-    expect(await house.gdriveFolderDelete(f.folder.id)).toEqual({ ok: true });
-    expect((await house.gdriveList()).files[0].folderId).toBeNull();
-  });
 });

@@ -320,7 +320,7 @@ export function buildContract(client, deps) {
     // browser tab cannot do — so `glyphhWeb.has('setBackgroundMode')` is false
     // and Settings → General hides the row (help/settings.ts).
 
-    // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio, Drive ──────────────
+    // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio ─────────────────────
     // (his order, 2026-10-06: cloud is the one home): the web's own panels
     // over the member library — the same store the desktop's panels read
     // (shared/house-store.ts, house-store-web.js). Same wire shapes as the
