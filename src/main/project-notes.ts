@@ -9,9 +9,9 @@
  * files other agents keep: AGENTS.md, then CLAUDE.md.
  */
 
+import { deviceName } from "./machine-mode.js";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import { getClient } from "./glyphh-client.js";
 import { currentTurnChat } from "./turn-folder.js";
@@ -51,7 +51,7 @@ export function reportProject(folder: string, notes: { name: string; text: strin
   const had = reported.get(folder);
   if (had && had.hash === hash && now - had.at < REPORT_EVERY_MS) return false;
   reported.set(folder, { hash, at: now });
-  void post({ machine: hostname(), folder, name: basename(folder.replace(/\/+$/, "")) || folder, notes: text, sessionId: currentTurnChat() ?? "" })
+  void post({ machine: deviceName(), folder, name: basename(folder.replace(/\/+$/, "")) || folder, notes: text, sessionId: currentTurnChat() ?? "" })
     .catch((err: unknown) => { reported.delete(folder); console.warn("[project] not reported:", err instanceof Error ? err.message : String(err)); });
   return true;
 }

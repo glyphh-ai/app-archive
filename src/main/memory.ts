@@ -22,7 +22,7 @@
  * then the local copy is removed.
  */
 
-import { hostname } from "node:os";
+import { deviceName } from "./machine-mode.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { vectorDelete, vectorItems } from "./glyphh-app-ai.js";
 import { getClient } from "./glyphh-client.js";
@@ -199,7 +199,7 @@ export async function memoryFacts(userText: string, _scope: MemoryScope = {}): P
  */
 export function memoryCapture(userText: string, answer: string, scope: MemoryScope = {}): void {
   // A long turn is remembered by its head, not by every token of a pasted file.
-  void captureTurn(userText.slice(0, CAPTURE_CAP), answer.slice(0, CAPTURE_CAP), { ...scope, machine: hostname(), sessionId: currentTurnChat() ?? "" });
+  void captureTurn(userText.slice(0, CAPTURE_CAP), answer.slice(0, CAPTURE_CAP), { ...scope, machine: deviceName(), sessionId: currentTurnChat() ?? "" });
 }
 
 async function factBlock(userText: string): Promise<string> {
@@ -249,7 +249,7 @@ export async function migrateLocalMemory(): Promise<void> {
   try {
     const items = vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION).map((it) => ({
       id: it.id, text: String(it.text ?? ""),
-      metadata: { ...((it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>), machine: hostname() },
+      metadata: { ...((it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>), machine: deviceName() },
     })).filter((it) => it.text.trim());
     let moved = 0;
     for (let i = 0; i < items.length; i += IMPORT_BATCH) {

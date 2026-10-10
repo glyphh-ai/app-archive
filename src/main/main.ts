@@ -70,6 +70,8 @@ import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installRpaMapHandlers } from "./rpa-map";
 import { installAttachHandlers } from "./attach-handlers";
+import { machineBoot } from "./machine-boot";
+import { onMachine } from "./machine-mode";
 import { registerRemoteControlIpc } from "./remote-control";
 import { registerNotifyIpc } from "./notify";
 import { installAttachRunHandlers } from "./attach-run";
@@ -258,6 +260,9 @@ async function boot() {
   // Rotate ~/.glyphh to the current vocabulary (loops→tasks, agents→loops)
   // BEFORE anything opens a directory under it. Idempotent.
   migrateGlyphhHome();
+
+  // A GLYPHH MACHINE (machine-mode.ts): its owner's session and its workspace before anything reads either.
+  await machineBoot();
 
   // The app data seam's desktop credential: glyphh-app webviews get the
   // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
@@ -671,7 +676,8 @@ async function boot() {
   // account button and on Settings → About, each with a "Download" link. Once
   // the user downloads it, the update installs on the next quit (or right away
   // through "Restart now"). No mid-session auto-restart.
-  const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
+  // A machine runs the release its supervisor fetched: it never updates itself.
+  const autoUpdateEnabled = !onMachine() && getPreference<boolean>("autoUpdate", true);
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   // The releases repo is private and every surface reads it through the

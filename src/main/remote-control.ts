@@ -19,8 +19,8 @@
  * so and nothing attaches.
  */
 
+import { deviceName } from "./machine-mode.js";
 import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
-import { hostname } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { dispatchRelayMethod } from "./relay-client.js";
@@ -66,7 +66,7 @@ const PASS_THROUGH = [
   "panel.open", "panel.input", "panel.nav", "panel.clipboard", "panel.close", "panel.stats", "panel.webrtc",
 ] as const;
 
-const key = (): string => `remoteControl:${hostname()}`;
+const key = (): string => `remoteControl:${deviceName()}`;
 let refused: string | undefined;
 let running = false;
 
@@ -231,6 +231,11 @@ async function stop(): Promise<void> {
   changed();
 }
 
+/** A GLYPHH MACHINE'S REMOTE CONTROL (machine-mode.ts): on, with its workspace the only grant. */
+export function armMachineRemoteControl(workspace: string): void {
+  writeSetting({ enabled: true, folders: [workspace] });
+}
+
 /** Signed in: attach if this device has remote control on (auth.ts). */
 export async function remoteControlBoot(): Promise<void> {
   await loadPreferences().catch(() => undefined);
@@ -247,7 +252,7 @@ export async function remoteControlView(): Promise<RemoteControlView> {
   const s = readSetting();
   const allowed = await orgAllows();
   const { attachStatus } = await import("./attach-host.js");
-  return { ...s, device: hostname(), allowed, attached: attachStatus().attached, ...(refused ? { refused } : {}) };
+  return { ...s, device: deviceName(), allowed, attached: attachStatus().attached, ...(refused ? { refused } : {}) };
 }
 
 async function apply(next: RemoteControlSetting): Promise<RemoteControlView> {

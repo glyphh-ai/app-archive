@@ -15,6 +15,7 @@
  * bwrap and socat, nothing fenced can run: it fails closed.
  */
 
+import { machineDenied } from "./machine-mode.js";
 import { existsSync, mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import net from "node:net";
@@ -123,7 +124,7 @@ function ensureRelay(port: number): void {
 export function fenceArgv(inner: readonly string[], folder: string, proxyPort: number | null, localPorts: readonly number[] = savedLocalPorts()): { file: string; args: string[] } | null {
   let root = folder;
   try { root = realpathSync(folder); } catch { /* the caller checked it */ }
-  const denied = readDenied(homedir(), appDataDirs);
+  const denied = readDenied(homedir(), [...appDataDirs, ...machineDenied()]);
   if (process.platform === "darwin" && existsSync(SANDBOX_EXEC)) {
     return { file: SANDBOX_EXEC, args: ["-p", fenceProfile(root, denied, proxyPort, localPorts), ...inner] };
   }
@@ -161,7 +162,7 @@ export function fencedShell(shell: string, cmd: string, folder: string): { file:
     : [];
   return {
     file: SANDBOX_EXEC,
-    args: ["-p", fenceProfile(root, readDenied(homedir(), appDataDirs), port, savedLocalPorts()), "/usr/bin/env", ...env, shell, "-lc", cmd],
+    args: ["-p", fenceProfile(root, readDenied(homedir(), [...appDataDirs, ...machineDenied()]), port, savedLocalPorts()), "/usr/bin/env", ...env, shell, "-lc", cmd],
     sandboxed: true,
   };
 }
