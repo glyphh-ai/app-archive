@@ -51,7 +51,8 @@ export interface ReleaseRow { n: number; sha256: string; sizeBytes: number; note
  *  list · create · ready · releases · pin · builds · runBuild · invoke · … */
 const appInstances = () => getClient().appInstances;
 
-/** The member's own apps (apps are personal, each on its owner's machine). Short-TTL cached (the wall, the loop's catalog
+/** The instances this member may open — org (everyone / on the list) and
+ *  their own personal ones. Short-TTL cached (the wall, the loop's catalog
  *  and the Apps page all read it); empty when signed out or offline. */
 export function listInstances(): Promise<AppInstanceSummary[]> {
   return appCache.cached(CACHE_KEY, async () => {
@@ -75,14 +76,29 @@ export async function findInstance(ref: string): Promise<AppInstanceSummary | un
 
 interface CreateAnswer { instance: AppInstanceSummary; upload: { url: string; key: string } }
 
-/** INSTALL = the member's own instance, on their machine. The bundle's bytes go
- *  to the server's R2 through the presigned PUT the create answers, then
- *  `ready` pins the release. Re-installing a slug updates the instance in place (the server's rule). */
-export async function installBundleAsInstance(bytes: Buffer, manifest: BundleManifestLike, opts: { fetchImpl?: typeof fetch; note?: string } = {}): Promise<AppInstanceSummary> {
+const isForbidden = (err: unknown): boolean => {
+  const e = err as { code?: unknown; status?: unknown } | null;
+  return e?.code === "E_FORBIDDEN" || e?.status === 403;
+};
+
+/** INSTALL = an org instance. The bundle's bytes go to the server's R2
+ *  through the presigned PUT the create answers, then `ready` starts (or
+ *  rolls) the instance's machine. An org admin installs an org instance;
+ *  anyone else a personal one — with no `kind` given, org is tried first
+ *  and a refusal falls back to personal, so one call works for every role.
+ *  Re-installing a slug updates the instance in place (the server's rule). */
+export async function installBundleAsInstance(bytes: Buffer, manifest: BundleManifestLike, opts: { kind?: InstanceKind; fetchImpl?: typeof fetch; note?: string } = {}): Promise<AppInstanceSummary> {
   const { createHash } = await import("node:crypto");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const client = getClient();
-  const made = await client.http.post<CreateAnswer>("/api/app-instances", instanceRequestOf(manifest, { sha256, sizeBytes: bytes.length }));
+  const create = async (kind: InstanceKind): Promise<CreateAnswer> =>
+    client.http.post<CreateAnswer>("/api/app-instances", instanceRequestOf(manifest, { sha256, sizeBytes: bytes.length }, kind));
+  let made: CreateAnswer;
+  if (opts.kind) made = await create(opts.kind);
+  else {
+    try { made = await create("org"); }
+    catch (err) { if (!isForbidden(err)) throw err; made = await create("personal"); }
+  }
   const put = await (opts.fetchImpl ?? fetch)(made.upload.url, { method: "PUT", body: new Uint8Array(bytes), headers: { "content-type": "application/zip" } });
   if (!put.ok) throw new Error(`the bundle upload was refused (HTTP ${put.status})`);
   const live = await client.http.post<AppInstanceSummary>(`/api/app-instances/${encodeURIComponent(made.instance.key)}/ready`, opts.note ? { note: opts.note } : {});
@@ -263,24 +279,34 @@ export function logTail(log: string): string {
   return log.length > DEPLOY_LOG_TAIL_CHARS ? log.slice(-DEPLOY_LOG_TAIL_CHARS) : log;
 }
 
-/** DEPLOY = the folder's source → a release. The instance is the member's own
- *  of that slug; with none yet, one is CREATED first — the create
+/** DEPLOY = the folder's source → a release. The instance is the one of that
+ *  slug this member may reach (its org instance, or their personal one;
+ *  `kind` names which); with none yet, one is CREATED first — the create
  *  route wants a bundle's identity up front, so the SOURCE tgz's sha + size
  *  stand in until `/builds/{n}/run` records the built release (the gap:
  *  app-platform.md §4 has no create-without-bundle). Then `builds` → PUT the
  *  tgz → `runBuild`, which waits for the platform's build and pins it. */
-export async function deployFolderAsInstance(folder: string | null | undefined, opts: { slug: string; note?: string; fetchImpl?: typeof fetch; pack?: (folder: string) => Promise<Buffer>; wait?: boolean; waitMs?: number; onLog?: (log: string) => void; sleep?: (ms: number) => Promise<void> }): Promise<DeployAnswer> {
+export async function deployFolderAsInstance(folder: string | null | undefined, opts: { slug: string; kind?: InstanceKind; note?: string; fetchImpl?: typeof fetch; pack?: (folder: string) => Promise<Buffer>; wait?: boolean; waitMs?: number; onLog?: (log: string) => void; sleep?: (ms: number) => Promise<void> }): Promise<DeployAnswer> {
   const project = checkDeployFolder(folder, opts.slug);
   const slug = String(project.manifest.slug);
+  if (opts.kind !== undefined && opts.kind !== "org" && opts.kind !== "personal") throw new Error('kind is "org" or "personal"');
   const tgz = await (opts.pack ?? packProjectFolder)(project.folder);
   const { createHash } = await import("node:crypto");
   const sha256 = createHash("sha256").update(tgz).digest("hex");
 
   const userId = getActiveUserId() || "";
   const mine = await listInstances();
-  let inst = mine.find((i) => i.key === `${slug}~${userId}`);
+  const ofKind = (kind: InstanceKind) => mine.find((i) => i.slug === slug && i.kind === kind && (kind === "org" || i.key === `${slug}~${userId}`));
+  let inst = opts.kind ? ofKind(opts.kind) : (ofKind("org") ?? ofKind("personal"));
   if (!inst) {
-    const made = await appInstances().create(instanceRequestOf(project.manifest, { sha256, sizeBytes: tgz.length })) as unknown as { instance: AppInstanceSummary };
+    const api = appInstances();
+    const create = async (kind: InstanceKind) => api.create(instanceRequestOf(project.manifest, { sha256, sizeBytes: tgz.length }, kind));
+    let made: { instance: AppInstanceSummary };
+    if (opts.kind) made = await create(opts.kind) as unknown as { instance: AppInstanceSummary };
+    else {
+      try { made = await create("org") as unknown as { instance: AppInstanceSummary }; }
+      catch (err) { if (!isForbidden(err)) throw err; made = await create("personal") as unknown as { instance: AppInstanceSummary }; }
+    }
     inst = made.instance;
     invalidateInstances();
   }
@@ -306,7 +332,7 @@ export async function deployFolderAsInstance(folder: string | null | undefined, 
  *  the platform builds it as a job; a bundle folder (manifest.json + its
  *  entry) is zipped and released as it is. `slug` must match the manifest when
  *  given; with none the manifest's own is used. */
-export async function installFolderAsInstance(folder: string | null | undefined, opts: { slug?: string; note?: string; fetchImpl?: typeof fetch; wait?: boolean; waitMs?: number; onLog?: (log: string) => void; sleep?: (ms: number) => Promise<void>; fsImpl?: Pick<typeof fs, "existsSync" | "readFileSync" | "statSync">; zip?: (dir: string) => Buffer; pack?: (folder: string) => Promise<Buffer> } = {}): Promise<DeployAnswer> {
+export async function installFolderAsInstance(folder: string | null | undefined, opts: { slug?: string; kind?: InstanceKind; note?: string; fetchImpl?: typeof fetch; wait?: boolean; waitMs?: number; onLog?: (log: string) => void; sleep?: (ms: number) => Promise<void>; fsImpl?: Pick<typeof fs, "existsSync" | "readFileSync" | "statSync">; zip?: (dir: string) => Buffer; pack?: (folder: string) => Promise<Buffer> } = {}): Promise<DeployAnswer> {
   const fsImpl = opts.fsImpl ?? fs;
   const dir = String(folder || "").trim();
   if (!dir) throw new Error("no folder — pass `dir` (the app's folder on this machine), or pick a folder for this session first");
@@ -318,12 +344,12 @@ export async function installFolderAsInstance(folder: string | null | undefined,
   if (want && want !== manifest.slug) throw new Error(`manifest.json is the app "${manifest.slug}" but the call named "${want}" — install from that app's folder, or drop the slug`);
   const shape = folderShapeOf(dir, fsImpl);
   if (shape === "source") {
-    return deployFolderAsInstance(dir, { slug: manifest.slug, ...(opts.note ? { note: opts.note } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.pack ? { pack: opts.pack } : {}), wait: opts.wait, waitMs: opts.waitMs, onLog: opts.onLog, sleep: opts.sleep });
+    return deployFolderAsInstance(dir, { slug: manifest.slug, ...(opts.kind ? { kind: opts.kind } : {}), ...(opts.note ? { note: opts.note } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.pack ? { pack: opts.pack } : {}), wait: opts.wait, waitMs: opts.waitMs, onLog: opts.onLog, sleep: opts.sleep });
   }
   const entry = String(manifest.entry || "");
   if (!entry || !fsImpl.existsSync(path.join(dir, entry))) throw new Error(`${dir} is a bundle folder (no build script) but its manifest's entry "${entry || "(none)"}" is not in it — a bundle holds manifest.json, its entry page and the worker; a project holds package.json with a build script`);
   const bytes = (opts.zip ?? zipBundleFolder)(dir);
-  const live = await installBundleAsInstance(bytes, manifest, { ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.note ? { note: opts.note } : {}) });
+  const live = await installBundleAsInstance(bytes, manifest, { ...(opts.kind ? { kind: opts.kind } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.note ? { note: opts.note } : {}) });
   try { await ensureInstanceTab(live, manifest); } catch { /* the tab can wait for the next open */ }
   const [{ invalidateOrgApps }, { broadcast }] = await Promise.all([import("./org-apps.js"), import("./broadcast.js")]);
   invalidateOrgApps();
@@ -504,8 +530,8 @@ export async function instanceDetail(id: string): Promise<ReturnType<typeof inst
 }
 
 /** Open = the tab (created on first open, so the wall and the rail know it);
- *  (shared instanceTabOpen). */
-export async function instanceTab(id: string): Promise<{ slug: string; name: string }> {
+ *  a house app's answer names its built-in panel (shared instanceTabOpen). */
+export async function instanceTab(id: string): Promise<{ slug: string; name: string; tool?: string }> {
   const key = instanceKeyOfCardId(id);
   const inst = (await listInstances()).find((i) => i.key === key);
   if (!inst) throw new Error(`no cloud app ${key}`);

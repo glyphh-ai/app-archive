@@ -192,33 +192,41 @@ describe("settings — the one Customize page is the same on both surfaces; only
   });
   it("what the modal keeps is never also hidden", () => {
     for (const sub of WEB_KEPT_SUBS) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(false);
-    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "usage", "billing", "support", "connections-cfg"]) {
+    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "artifacts", "usage", "billing", "support", "connections-cfg"]) {
       expect(WEB_KEPT_SUBS).toContain(sub);
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
   });
-  it("the rail has no menu rows (his order, 2026-10-09): + New, Glyphh, then Super powers", () => {
-    expect([...WEB_RAIL_LINKS]).toEqual([]);
+  it("the rail's menu is Artifacts, Customize, Schedules (his orders, 2026-10-05, 2026-10-07, 2026-10-09)", () => {
+    expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize", "Schedules"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize", "schedules"]);
+    expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain("build");
+    for (const sub of ["connections-cfg", "devices"]) {
+      expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
+      expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
+    }
   });
   it("the hidden settings rows are ONLY a capability the browser lacks (streamed panels); the dock's rows show; the rail hides only More", () => {
     expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row", "#rail-layouts-row"]);
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
-    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body"]);
+    expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);
   });
 });
 
 describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Customize open full, replacing everything; X restores)", () => {
-  it("Artifacts and a super power's Edit open full screen — Customize and Schedules are gone", () => {
-    expect([...webFullScreenPanels]).toEqual(["artifacts", "bot"]);
+  it("exactly the rail's two open full screen on the web", () => {
+    expect([...webFullScreenPanels]).toEqual(["artifacts", "customize", "schedules"]);
+    expect(webFullScreenPanels.map((k) => k)).toEqual(WEB_RAIL_LINKS.map((l) => l.sub));
     for (const k of webFullScreenPanels) expect(webPanelOpensFullScreen(k)).toBe(true);
   });
   it("no other panel takes that path — Files, Agents, Settings, an app", () => {
     for (const k of ["files", "agents", "terminal", "settings", "gmail", "", "preview"]) expect(webPanelOpensFullScreen(k)).toBe(false);
   });
-  it("Customize no longer opens anywhere: its name is routed to the powers modal (his order, 2026-10-09)", () => {
+  it("the desktop opens Customize full screen too; Artifacts stays a work panel there (his order, 2026-10-07)", () => {
     expect([...GROUP_PAGES]).toEqual(["customize"]);
-    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
+    // Full screen on BOTH surfaces, Customize and Artifacts alike (his order, 2026-10-09).
+    for (const k of GROUP_PAGES) { expect(panelOpensFullScreen(k, false)).toBe(true); expect(panelOpensFullScreen(k, true)).toBe(true); }
     expect(panelOpensFullScreen("artifacts", false)).toBe(true);
     expect(panelOpensFullScreen("artifacts", true)).toBe(true);
     for (const k of ["files", "agents", "settings", "gmail", ""]) { expect(panelOpensFullScreen(k, false)).toBe(false); expect(panelOpensFullScreen(k, true)).toBe(false); }
@@ -231,12 +239,13 @@ describe("THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: Artifacts / Custo
     expect(GROUP_PAGE_ALIASES).toEqual({ build: "customize" });
     expect(groupPageKey("build")).toBe("customize");
     for (const k of ["customize", "artifacts", "apps", "layouts", ""]) expect(groupPageKey(k)).toBe(k);
-    expect(panelOpensFullScreen(groupPageKey("build"), true)).toBe(false);   // gone with Customize
-    expect(panelOpensFullScreen("build", true)).toBe(false);
+    expect(panelOpensFullScreen(groupPageKey("build"), true)).toBe(true);   // the web's full screen, through the alias
+    expect(panelOpensFullScreen("build", true)).toBe(false);   // only through the alias
   });
-  it("the header reads '‹ Artifacts'; a key with no page of its own gets no title", () => {
+  it("the header reads '‹ Artifacts' / '‹ Customize'; a dead key gets no title of its own", () => {
     expect(webFullScreenTitle("artifacts")).toBe("Artifacts");
-    expect(webFullScreenTitle("customize")).toBe("customize");
+    expect(webFullScreenTitle("customize")).toBe("Customize");
+    expect(webFullScreenTitle(groupPageKey("build"))).toBe("Customize");
     expect(Object.keys(WEB_FULL_SCREEN_TITLES).sort()).toEqual([...webFullScreenPanels].sort());
     expect(webFullScreenTitle("wat")).toBe("wat");
   });
@@ -256,9 +265,9 @@ describe("his explicit orders about the web's page — not world splits", () => 
     expect(webRailWordmark(true)).toBe(true);
     expect(webRailWordmark(false)).toBe(false);
   });
-  it("the panels move, the agent too, on both surfaces (his reviews, 2026-10-05 and 2026-10-09)", () => {
+  it("the panels move on the web — the agent too (his review, 2026-10-05); the desktop keeps its rule", () => {
     expect(agentCardMovable(true)).toBe(true);
-    expect(agentCardMovable(false)).toBe(true);
+    expect(agentCardMovable(false)).toBe(false);
   });
   it("+ New with the web's one agent seated starts the new session IN it (his report, 2026-10-05)", () => {
     expect(webNewSessionInPlace(true, true)).toBe(true);

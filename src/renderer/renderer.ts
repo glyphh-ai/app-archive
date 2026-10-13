@@ -17,7 +17,7 @@ import type { LibEnvelope } from "./help/library-types.js";
 /** The library kinds a bundle can be: every one of them is a skill, the kind
  *  says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
-/** Settings → System → Remote control (mirrors main/remote-control.ts). */
+/** Settings → Remote control (mirrors main/remote-control.ts). */
 type RemoteControlView = { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null };
 
 // Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so
@@ -245,7 +245,7 @@ declare global {
       layoutsOpen: (name: string) => Promise<{ ok: boolean; error?: string }>;
       layoutsSave: (name: string, panelIds: string[]) => Promise<boolean>;
       layoutsPickFolder: () => Promise<string | null>;
-      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean | { error: string }>;
+      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean | { error: string }>;
       layoutsDelete: (name: string) => Promise<boolean | { error: string }>;
       pickDirectory: () => Promise<string | null>;
       pickExecutable: () => Promise<string | null>;
@@ -314,6 +314,7 @@ declare global {
       dripsRunning: () => Promise<string[]>;
       // Theme
       getTheme: () => Promise<string>;
+      exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       setTheme: (theme: string) => Promise<void>;
       // Account info
       getAuthStatus: () => Promise<{ authenticated: boolean; status: string; tier?: string }>;
@@ -377,7 +378,7 @@ declare global {
       appInstancePin: (id: string, n: number) => Promise<LibEnvelope>;
       appInstanceUpdate: (id: string) => Promise<LibEnvelope>;
       appInstancesUpdateAll: () => Promise<LibEnvelope>;
-      appInstallFolder: (dir: string, opts?: { slug?: string; note?: string }) => Promise<LibEnvelope>;
+      appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => Promise<LibEnvelope>;
       appBuildStatus: (job: string) => Promise<LibEnvelope>;
       skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
       skillReveal: (id: string) => Promise<LibEnvelope>;
@@ -503,6 +504,12 @@ declare global {
       // Remote relay
 
       // Local MCP server (127.0.0.1)
+      localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
+      localMcpStatus: () => Promise<{ running: boolean; port: number }>;
+      localMcpSetPort: (port: number) => Promise<{ ok: boolean; error?: string }>;
+      localMcpTokensList: () => Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>;
+      localMcpTokensCreate: (label: string) => Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>;
+      localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
 
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
 

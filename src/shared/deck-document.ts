@@ -6,8 +6,8 @@
  * with #s1…#sN ids, .frag/data-step build steps, built-in keyboard/click
  * nav). The shell, the structure lock, the import, the per-slide surgery and
  * the title/count readers live here, with no Electron and no file system, so
- * the agent's tools and the member library's store (house-store.ts) all save
- * the same bytes (his order, 2026-10-06:
+ * the desktop's transport (main/gpoints.ts), the agent's tools and the web's
+ * store (house-store.ts) all save the same bytes (his order, 2026-10-06:
  * cloud is the one home, every surface writes the one store).
  */
 
@@ -259,7 +259,8 @@ export function importDeckHtml(html: string, fallbackTitle: string): { doc: stri
 // ── Per-slide surgery (string level — a DOM round-trip could mangle a
 // hand-authored deck). A slide's span runs from its <section class="slide">
 // open tag to the first </section> after it (the format never nests
-// sections). Indexes are 0-based here — the TOOLS take 1-based and convert.
+// sections). Mirrors the renderer's wb-gpoint helpers; indexes are 0-based
+// here — the TOOLS take 1-based and convert.
 export interface SlideSpan { start: number; openEnd: number; end: number; hidden: boolean }
 export function slideSpans(html: string): SlideSpan[] {
   const re = /<section[^>]*class="[^"]*\bslide\b[^"]*"[^>]*>/gi;

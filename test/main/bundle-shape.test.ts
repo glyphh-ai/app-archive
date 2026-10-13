@@ -97,9 +97,9 @@ describe("what an agent may author as an app", () => {
     expect(() => checkNoForeignManifest("skill", ["SKILL.md", "scripts/report.js"])).not.toThrow();
   });
 
-  it("can say where every power is seen — Your powers, whatever it carries — so an answer never invents a page", () => {
+  it("can say where every kind is seen, so an answer never invents a page", () => {
     for (const kind of ["skill", "app", "task", "plugin"] as const) {
-      expect(WHERE_TO_SEE[kind]).toMatch(/Your powers/);
+      expect(WHERE_TO_SEE[kind]).toMatch(/Settings/);
     }
   });
 });

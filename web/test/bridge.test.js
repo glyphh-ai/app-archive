@@ -83,6 +83,7 @@ describe('window.glyphhWeb.has — feature detection the Proxy cannot give', () 
     expect(has('windowClose')).toBe(false);
     expect(has('glyphhPickAttachments')).toBe(false);
     expect(has('pickWorkingDir')).toBe(false);
+    expect(has('localMcpSetEnabled')).toBe(false);
     expect(has('remoteControlGet')).toBe(false);
     expect(has('desktopAppsList')).toBe(false);
     expect(has('desktopPanelOpen')).toBe(false);

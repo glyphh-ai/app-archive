@@ -18,11 +18,11 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-
+import { resolve, relative, isAbsolute } from "node:path";
 import { llmChunk, vectorUpsert, vectorSearch, graphCypher, listCollections } from "./glyphh-app-ai.js";
+import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
 import { callGatewayToolText } from "./gateway-mcp.js";
-import { turnPath } from "./turn-folder.js";
 
 interface SemanticToolDef {
   name: string;
@@ -47,9 +47,13 @@ const collectionName = (a: Record<string, unknown>): string => {
   return c;
 };
 
-/** Resolve a caller path INSIDE the turn's folder — the session's perimeter (turn-folder.ts). */
-function workspacePath(p: string): Promise<string> {
-  return turnPath(p);
+/** Resolve a caller path INSIDE the working folder — the agent's file jail. */
+function workspacePath(p: string): string {
+  const root = getExplicitWorkingDirectory();
+  if (!root) throw new Error("no working folder is set — open one first");
+  const abs = isAbsolute(p) ? p : resolve(root, p);
+  if (relative(root, abs).startsWith("..")) throw new Error(`path escapes the working folder: ${p}`);
+  return abs;
 }
 
 /** Chunk one text and upsert it into the app's collection with stable ids. */
@@ -105,7 +109,7 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
       let total = 0;
       for (const p of paths) {
         try {
-          const abs = await workspacePath(p);
+          const abs = workspacePath(p);
           if (!existsSync(abs)) { report.push(`${p}: not found`); continue; }
           if (statSync(abs).size > MAX_FILE_BYTES) { report.push(`${p}: too large (>1MB)`); continue; }
           const text = readFileSync(abs, "utf-8");

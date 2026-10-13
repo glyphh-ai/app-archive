@@ -47,6 +47,7 @@ import { noteSessionsSnapshot } from './wb-pod.js';
 import { iconForRow } from './web-icons.js';
 import { buildMemberLibrary, NEEDS_DESKTOP } from './member-library-web.js';
 // THE HOUSE APPS' files off the attached desktop (his order, 2026-10-05).
+import { createHouseStoreWeb } from './house-store-web.js';
 import { askBrowserNotificationPermission, showBrowserNotification, watchNotifications } from './notify-web.js';
 
 /**
@@ -169,6 +170,7 @@ export function buildContract(client, deps) {
   // session on a desktop, it carries no data.
   const library = buildMemberLibrary(client, { apiUrl });
   const { layoutsList, panelAppsList } = library;
+  const house = createHouseStoreWeb({ client, apiUrl });
 
   // Per-loop model picks — the web's counterpart of the desktop's main-process
   // selection store. { [loop]: { [role]: modelId } } in localStorage.
@@ -318,6 +320,13 @@ export function buildContract(client, deps) {
     // browser tab cannot do — so `glyphhWeb.has('setBackgroundMode')` is false
     // and Settings → General hides the row (help/settings.ts).
 
+    // ── THE HOUSE APPS — Design, Slides, Images, Video, Audio, Drive ──────────────
+    // (his order, 2026-10-06: cloud is the one home): the web's own panels
+    // over the member library — the same store the desktop's panels read
+    // (shared/house-store.ts, house-store-web.js). Same wire shapes as the
+    // desktop preload; reads and writes alike.
+    ...house,
+
     // ── Glyphh Office · Docs (OfficeDocsClient) — same wire shapes as preload ──
     gdocList: async () => {
       try {
@@ -393,6 +402,65 @@ export function buildContract(client, deps) {
     },
     memoryAmend: async (input) => {
       try { const r = await client.stator.amend(input); return { ok: true, written: r.written }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicArtists: async () => {
+      try { return { ok: true, artists: await client.music.artists() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), artists: [] }; }
+    },
+    musicArtistSave: async (id, input) => {
+      try { const artist = id ? await client.music.updateArtist(id, input) : await client.music.createArtist(input); return { ok: true, artist }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicArtistDelete: async (id) => {
+      try { await client.music.deleteArtist(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicInstruments: async () => {
+      try { return { ok: true, instruments: await client.music.instruments() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), instruments: [] }; }
+    },
+    musicInstrumentSave: async (id, input) => {
+      try { const instrument = id ? await client.music.updateInstrument(id, input) : await client.music.createInstrument(input); return { ok: true, instrument }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicInstrumentDelete: async (id) => {
+      try { await client.music.deleteInstrument(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicInstrumentGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
+    musicSongs: async () => {
+      try { return { ok: true, songs: await client.music.songs() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), songs: [] }; }
+    },
+    musicSongSave: async (id, input) => {
+      try { const song = id ? await client.music.updateSong(id, input) : await client.music.createSong(input); return { ok: true, song }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicSongDelete: async (id) => {
+      try { await client.music.deleteSong(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    // Look generation composes several metered jobs — desktop-main owns it.
+    musicArtistGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
+    musicSongRegenerate: async (id, input) => {
+      try { const r = await client.music.regenerateSong(id, input ?? {}); return { ok: true, song: r.song, job: r.job }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaProjects: async () => {
+      try { return { ok: true, projects: await client.media.projects() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), projects: [] }; }
+    },
+    mediaProjectSave: async (id, input) => {
+      try { const project = id ? await client.media.updateProject(id, input) : await client.media.createProject(input); return { ok: true, project }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaProjectDelete: async (id) => {
+      try { await client.media.deleteProject(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaProjectGenerate: async (id, input) => {
+      try { const r = await client.media.generateProject(id, input ?? {}); return { ok: true, project: r.project, job: r.job }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
     gdocTemplates: async () => {
@@ -799,6 +867,22 @@ export function buildContract(client, deps) {
     voiceConfig: lib(() => client.http.get('/api/voice/config').then((r) => (r && typeof r === 'object' && 'data' in r ? r.data : r))),
     voiceSettingsGet: lib(() => client.profile.voiceSettings()),
     voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
+    // Drive file artifacts — metadata (+ signed URL), delete, and text
+    // content for the editor (browser fetch; R2 CORS permitting, else the
+    // caller falls back to the Browser panel).
+    filesGet: (id) => client.files.get(id).catch(() => null),
+    filesDelete: (id) => client.files.delete(id).then(() => ({ ok: true })).catch((e) => ({ ok: false, error: String(e?.message ?? e) })),
+    filesContent: async (id) => {
+      try {
+        const f = await client.files.get(id);
+        if (!f?.downloadUrl) return { ok: false, error: 'no download url' };
+        const res = await fetch(f.downloadUrl);
+        if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+        const text = await res.text();
+        if (text.length > 2 * 1024 * 1024) return { ok: false, error: 'file exceeds the 2MB editor cap' };
+        return { ok: true, content: text };
+      } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+    },
     voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),
     voiceSynthesize: lib((text, model, voiceId) => client.voice.synthesize(text, model, voiceId)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
@@ -882,11 +966,6 @@ export function buildContract(client, deps) {
     /** What this org's plan allows (SDK plans.gates() — main's plan-gates IPC
      *  is the same pass-through). The renderer's plan-gate.ts falls back to
      *  its CLOSED gates on a throw, so this one may throw. */
-    /** The powers modal's models: the team's list, every type (main's models-catalog). */
-    modelsCatalog: async () => {
-      try { return { ok: true, data: await client.models.available() }; }
-      catch (err) { return { ok: false, data: [], error: err?.message ?? String(err) }; }
-    },
     planGates: () => client.plans.gates(),
     /** Main pushes this when the server moves the list; the web has no push
      *  seam yet (the composer re-reads on focus + open). An explicit no-op
@@ -1012,6 +1091,8 @@ export function buildContract(client, deps) {
     iconForRow, // an app row's tile src on the web (web-icons.js): its carried bytes, else its favicon via /webicon
     getWorkingDir: async () => null,
     getWorkingDirRecents: async () => EMPTY.list(),
+    localMcpStatus: async () => ({ running: false, port: null }),
+    localMcpTokensList: async () => EMPTY.list(),
 
     // ── The preload's STRING properties ────────────────────────────────────────────
     // preload.ts exposes these as plain strings; the Proxy would otherwise answer
@@ -1104,6 +1185,18 @@ export function buildContract(client, deps) {
     releasesAssetUrl: async (tag, name) => {
       try { return { ok: true, url: (await client.releases.assetUrl(String(tag || ''), String(name || ''))).url }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+
+    // ── Artifacts (files.ts): the server's file list; a peek is the opening text ──
+    filesList: async () => { try { return await client.files.list(); } catch { return []; } },
+    filesPeek: async (id) => {
+      try {
+        const f = await client.files.get(id);
+        if (!f?.downloadUrl) return '';
+        const res = await fetch(f.downloadUrl);
+        if (!res.ok) return '';
+        return (await res.text()).slice(0, 600);
+      } catch { return ''; }
     },
 
     // ── The workbench's UI state (help/ui-state.ts) ───────────────────────────────

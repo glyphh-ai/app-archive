@@ -319,7 +319,7 @@ describe('the sweep shims (2026-10-04)', () => {
     expect(await k.mcpConnectionsTools('nope')).toMatchObject({ ok: false, tools: [] });
   });
 
-  it('connector discovery answers main/connectors.ts rows; agents + releases in their IPC shapes', async () => {
+  it('connector discovery answers main/connectors.ts rows; agents + releases + files in their IPC shapes', async () => {
     const k = buildContract(sweepClient(), deps);
     expect(await k.connectorsGetPopular()).toEqual([{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [], installs: 9 }]);
     expect(await k.connectorsGetCategories()).toEqual([{ name: 'Chat', count: 1, apps: [{ id: 'slack', name: 'Slack', description: '', icon: undefined, categories: [] }] }]);
@@ -329,6 +329,8 @@ describe('the sweep shims (2026-10-04)', () => {
     expect(await k.libraryAgentDelete('ada')).toEqual({ ok: true, data: true });
     expect(await k.releasesList()).toEqual({ ok: true, releases: [{ tag: 'v1.4.8', publishedAt: null, assets: [] }] });
     expect(await k.releasesAssetUrl('v1.4.8', 'Glyphh.dmg')).toEqual({ ok: true, url: 'https://dl/v1.4.8/Glyphh.dmg' });
+    expect(await k.filesList()).toEqual([{ id: 'f1', name: 'a.md' }]);
+    expect(await k.filesPeek('f1')).toBe('');
   });
 
   it('logged out, every sweep shim still answers its empty shape', async () => {
@@ -339,6 +341,7 @@ describe('the sweep shims (2026-10-04)', () => {
     expect(await k.connectorsGetCategories()).toEqual([]);
     expect(await k.libraryAgentCreate({})).toMatchObject({ ok: false });
     expect(await k.releasesList()).toMatchObject({ ok: false });
+    expect(await k.filesList()).toEqual([]);
     expect(await k.wsStateLoad()).toEqual({});
   });
 

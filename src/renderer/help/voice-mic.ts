@@ -16,7 +16,6 @@ import { levelBarWidth, levelOf, meterDots, rmsOf, type VoiceState } from "./com
 import { dictationText, partialDue, transcribeErrorText, SPEECH_STEER } from "./voice-text.js";
 export { SPEECH_STEER };
 import { micChecked, micRows } from "./mic-devices.js";
-import { toast } from "./toast.js";
 
 interface VoicePref {
   mode?: "off" | "push-to-talk" | "continuous";
@@ -113,7 +112,6 @@ export function stopHandsFree(): void {
   awaitingReply = false;
   endAfterUtterance = false;
   voiceModeOn = false;
-  voiceOnFor = null;
   stopReply();                       // voice mode is over: hush a reply playing or still synthesizing
   paintVoiceMode();
   stopRecording();
@@ -155,39 +153,6 @@ async function voiceConfig(): Promise<VoiceConfig> {
   return cfg;
 }
 
-/** A SUPER POWER SPEAKS IN ITS OWN VOICE (his order, 2026-10-09: "Each super
- *  power will and can have its own voice"). The chat registers who is talking
- *  in the open thread; its speech model and voice replace the member's for
- *  what is read aloud there. */
-let speakerVoice: () => { model: string; voiceId: string } | null = () => null;
-export function setSpeakerVoice(fn: () => { model: string; voiceId: string } | null): void { speakerVoice = fn; }
-
-/** THE THREAD VOICE MODE WAS TURNED ON IN (his order, 2026-10-09: "Turning it
- *  off turns it off for the team. Turning it on for just one super power
- *  doesn't enable it for the entire team"): a team's lines speak only when
- *  voice mode was turned on in that team's thread. */
-let voiceChat: () => string = () => "";
-let voiceOnFor: string | null = null;
-export function setVoiceChatProvider(fn: () => string): void { voiceChat = fn; }
-
-/** ONE SPEAKER AT A TIME (his order, 2026-10-09: "They should wait their turn
- *  to speak"): every spoken line, the lead's and each member's, goes through
- *  this queue, so nobody talks over anyone. */
-let speech: Promise<void> = Promise.resolve();
-function inTurn(fn: () => Promise<void>): Promise<void> {
-  const next = speech.then(fn, fn);
-  speech = next.catch(() => undefined);
-  return next;
-}
-
-/** A TEAM MEMBER SAYS ITS LINE, in its own voice, after whoever is speaking. */
-export async function speakTeamLine(text: string, voice: { model: string; voiceId: string } | null, chatId: string): Promise<void> {
-  if (!text.trim() || !voiceModeOn || voiceOnFor !== chatId) return;
-  const p = await voicePref();
-  const pref = voice?.model && voice.voiceId ? { ...p, outputModel: voice.model, voiceId: voice.voiceId } : p;
-  await inTurn(() => playReplyTTS(text, { ...pref, autoplay: true }));
-}
-
 async function voicePref(): Promise<VoicePref> {
   let pref: VoicePref = {};
   try {
@@ -210,8 +175,6 @@ async function voicePref(): Promise<VoicePref> {
     voiceId: pref.voiceId || cfg.voice || null,
   };
   if (merged.mode === undefined && merged.inputModel) merged.mode = "push-to-talk";
-  const own = speakerVoice();
-  if (own?.model && own.voiceId) { merged.outputModel = own.model; merged.voiceId = own.voiceId; }
   return merged;
 }
 
@@ -237,7 +200,6 @@ export async function toggleVoiceMode(): Promise<void> {
   if (osDenied) { void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.(); return; }
   if (recorder) return;
   voiceModeOn = true;
-  voiceOnFor = voiceChat() || null;
   handsFree = true;
   paintVoiceMode();
   if (!(await startRecording())) { voiceModeOn = false; handsFree = false; paintVoiceMode(); }
@@ -412,14 +374,7 @@ async function startRecording(): Promise<boolean> {
   const p = await voicePref();
   if (!p.inputModel || recorder) return false;
   stopReply();                       // never capture the agent's own voice
-  if (!navigator.mediaDevices?.getUserMedia) { micError("This browser can't access the microphone.", true); handsFree = false; return false; }
-  // NO MICROPHONE AT ALL (his report, 2026-10-10: "I don't have a mic input
-  // device on this machine... it should fail or throw an error"): said at once.
-  if (!(await hasMicInput())) {
-    micError("No microphone found on this computer. Plug one in, or pick one under Settings › Voice.", true);
-    handsFree = false;
-    return false;
-  }
+  if (!navigator.mediaDevices?.getUserMedia) { micError("This browser can't access the microphone."); handsFree = false; return false; }
   // DESKTOP: settle the OS permission BEFORE asking Chromium for the stream
   // (his report, 2026-08-29: the button flashed and went cold). A macOS TCC
   // denial surfaces from getUserMedia as a bare NotAllowedError — the same
@@ -462,7 +417,7 @@ async function startRecording(): Promise<boolean> {
   }
   micError("");                       // clear any prior error
   try { recorder = new MediaRecorder(stream); }
-  catch (e) { micError("Recording isn't supported here.", true); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
+  catch (e) { micError("Recording isn't supported here."); console.error("[voice] MediaRecorder failed", e); stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; return false; }
   chunks = [];
   startedAt = Date.now();
   takeId += 1;
@@ -483,24 +438,10 @@ async function startRecording(): Promise<boolean> {
   return true;
 }
 
-/** Is any audio input there to record from? (Unknown = yes: getUserMedia decides.) */
-async function hasMicInput(): Promise<boolean> {
-  if (!navigator.mediaDevices?.enumerateDevices) return true;
-  try { return (await navigator.mediaDevices.enumerateDevices()).some((d) => d.kind === "audioinput"); }
-  catch { return true; }
-}
-
-/** The last failure said out loud, so a retry that fails the same way does not stack toasts. */
-let lastToasted = { msg: "", at: 0 };
-
-/** Surface a mic problem where the user can see it: a message on screen, the
- *  chip's tooltip and its error look. Empty string clears it. */
+/** Surface a mic problem where the user can see it: the chip tooltip + a brief
+ *  error flash. Empty string clears it. */
 function micError(msg: string, sticky = false): void {
   const chip = el("code-mic-chip");
-  if (msg && sticky && (msg !== lastToasted.msg || Date.now() - lastToasted.at > 10_000)) {
-    lastToasted = { msg, at: Date.now() };
-    toast(msg, { kind: "error" });
-  }
   if (!chip) return;
   if (msg) {
     chip.title = msg;
@@ -517,22 +458,6 @@ function micError(msg: string, sticky = false): void {
     chip.classList.remove("mic-error");
     osDenied = false;
   }
-}
-
-const STUCK_MS = 30_000;
-/** Drop a take that will never finish: the recorder, its stream, every busy look. */
-function resetTake(): void {
-  try { if (recorder && recorder.state === "recording") recorder.stop(); } catch { /* already stopped */ }
-  recorder = null;
-  chunks = [];
-  stream?.getTracks().forEach((t) => t.stop());
-  stream = null;
-  stopMeter();
-  stopPartials();
-  handsFree = false;
-  const chip = el("code-mic-chip");
-  chip?.classList.remove("recording", "transcribing");
-  setVoiceState("off");
 }
 
 function stopRecording(): void {
@@ -656,7 +581,7 @@ export async function onTurnComplete(text: string): Promise<void> {
   // Replies are spoken ONLY in voice mode, read live after the awaits above.
   // The stored `autoplay` pref (SDK default true, no longer in Settings) must
   // not make typed / dictated turns, or turns after voice mode ended, talk.
-  if (say && voiceModeOn) await inTurn(() => playReplyTTS(say, { ...p, autoplay: true }));
+  if (say && voiceModeOn) await playReplyTTS(say, { ...p, autoplay: true });
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
 }
 
@@ -674,12 +599,6 @@ async function chipClick(): Promise<void> {
     void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.();
     return;
   }
-  // AN ERROR TURNS OFF WITH A CLICK (his report, 2026-10-10: it "locks on and
-  // can't turn off"): the first click clears it; the next one tries again.
-  if (el("code-mic-chip")?.classList.contains("mic-error")) { micError(""); el("code-mic-chip")!.title = "Dictate"; return; }
-  // A take that stopped but never finished (the device went away mid-take)
-  // must never hold the button: after a while a click lets it go.
-  if (recorder && recorder.state !== "recording" && Date.now() - startedAt > STUCK_MS) { resetTake(); return; }
   // Already recording → the user is stopping. In a HANDS-FREE session the
   // click means "done talking": what was captured still submits, then the
   // session ends. Killing handsFree here instead routed the transcript down

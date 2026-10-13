@@ -223,6 +223,28 @@ export interface AccountProfile {
   avatarUrl: string;
 }
 
+// Files artifact store (Files gallery). Structural mirror of @glyphh/sdk's
+// FileArtifact / CreateFileInput — the MAIN-process SDK client executes these
+// (files-ipc.ts); the renderer's help/files.ts mirrors the same shapes and owns
+// the web target's SDK-handle transport. downloadUrl is present only on get().
+export interface FileArtifactRow {
+  id: string;
+  name: string;
+  mime: string;
+  kind: "code" | "text" | "markdown" | "image" | "pdf" | "other";
+  sessionId: string | null;
+  sizeBytes: number;
+  createdAt: string;
+  /** Absolute path on this machine - artifacts are local files (2026-09-18). */
+  path?: string;
+  downloadUrl?: string;
+}
+export interface FileCreateInputRow {
+  name: string;
+  /** The starting text. Artifacts are local files now, not base64 uploads. */
+  content?: string;
+}
+
 // A4 settings panels (API Keys, Support, Runtime, Guardrails). Structural
 // mirrors of the SDK's shapes — the MAIN-process client executes these
 // (apikeys-ipc.ts / support-ipc.ts / account-ipc.ts); help/settings-*.ts mirror
@@ -263,7 +285,7 @@ export interface PanelAppInput {
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
-/** Settings → System → Remote control (mirrors main/remote-control.ts RemoteControlView). */
+/** Settings → Remote control (mirrors main/remote-control.ts RemoteControlView). */
 interface RemoteControlView { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null }
 /** A notification as main/notify.ts hands it to the workbench (mirrors AppNotification). */
 interface AppNotification { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }
@@ -368,7 +390,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   layoutsOpen: (name: string) => ipcRenderer.invoke("layouts-open", name) as Promise<{ ok: boolean; error?: string }>,
   layoutsSave: (name: string, panelIds: string[]) => ipcRenderer.invoke("layouts-save", name, panelIds) as Promise<boolean>,
   layoutsPickFolder: () => ipcRenderer.invoke("layouts-pick-folder") as Promise<string | null>,
-  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; view?: "glyphh" | "cli"; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) =>
+  layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; view?: "glyphh" | "cli"; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) =>
     ipcRenderer.invoke("layouts-save-grid", grid) as Promise<boolean | { error: string }>,
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean | { error: string }>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
@@ -461,7 +483,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   getPreference: (key: string, defaultVal?: unknown) => ipcRenderer.invoke("get-preference", key, defaultVal),
   getBackgroundMode: () => ipcRenderer.invoke("get-background-mode") as Promise<boolean>,
   setBackgroundMode: (enabled: boolean) => ipcRenderer.invoke("set-background-mode", enabled) as Promise<boolean>,
-  // Settings → System → Remote control (main/remote-control.ts): this device's switch and granted folders.
+  // Settings → Remote control (main/remote-control.ts): this device's switch and granted folders.
   remoteControlGet: () => ipcRenderer.invoke("remote-control:get") as Promise<RemoteControlView>,
   remoteControlSetEnabled: (enabled: boolean) => ipcRenderer.invoke("remote-control:set-enabled", enabled) as Promise<RemoteControlView>,
   remoteControlAddFolder: () => ipcRenderer.invoke("remote-control:add-folder") as Promise<RemoteControlView>,
@@ -470,13 +492,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   attachDevicesList: () => ipcRenderer.invoke("attach-devices:list") as Promise<{ source: "devices" | "status"; allowed?: boolean; devices: Array<Record<string, unknown>>; blocked: Array<Record<string, unknown>> }>,
   attachDeviceDisconnect: (machineId: string) => ipcRenderer.invoke("attach-devices:disconnect", machineId) as Promise<{ disconnected: boolean; device?: string; hours?: number }>,
   attachDeviceAllow: (device: string) => ipcRenderer.invoke("attach-devices:allow", device) as Promise<{ allowed: boolean }>,
-  // The folder picker's machines (main/remote-control.ts): Glyphh machines, and another desktop's folders.
-  machinesList: () => ipcRenderer.invoke("machines:list") as Promise<{ machines: Array<Record<string, unknown>> }>,
-  machinesStart: (id: string) => ipcRenderer.invoke("machines:start", id) as Promise<unknown>,
-  attachFsMkdir: (parent: string, name: string, machineId: string) => ipcRenderer.invoke("attach-fs:mkdir", parent, name, machineId) as Promise<{ path?: string }>,
-  /** The Branch row on another machine (2026-10-10): fs.gitInfo / git.branches / git.switch / git.createBranch / git.init there. */
-  attachGitCall: (method: string, params: Record<string, unknown>, machineId: string) => ipcRenderer.invoke("attach-git:call", method, params, machineId) as Promise<unknown>,
-  attachFsList: (path: string | undefined, machineId: string) => ipcRenderer.invoke("attach-fs:list", path, machineId) as Promise<{ path: string; parent: string | null; root?: string; entries: Array<{ name: string; path: string; dir: boolean; git?: boolean }> }>,
   onRemoteControlChanged: (cb: (v: RemoteControlView) => void) => {
     const h = (_e: unknown, v: RemoteControlView) => cb(v);
     ipcRenderer.on("remote-control:changed", h);
@@ -917,6 +932,21 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-org-member-remove", id, userId) as Promise<{ ok: boolean; error?: string }>,
   adminImpersonate: (orgId: string | null) =>
     ipcRenderer.invoke("admin-impersonate", orgId) as Promise<{ ok: boolean; impersonating?: { orgId: string } | null; error?: string }>,
+  // ── Files artifact store (Files gallery) — the MAIN-process SDK client
+  // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
+  // an honest error; create answers with { ok, file, error }. help/files.ts
+  // mirrors these shapes and owns the web target's SDK-handle transport. ──
+  filesList: () => ipcRenderer.invoke("files-list") as Promise<FileArtifactRow[]>,
+  filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
+  filesDelete: (id: string) => ipcRenderer.invoke("files-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  filesContent: (id: string) => ipcRenderer.invoke("files-content", id) as Promise<{ ok: boolean; content?: string; error?: string }>,
+  filesCreate: (input: FileCreateInputRow) =>
+    ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
+  filesPeek: (id: string) => ipcRenderer.invoke("files-peek", id) as Promise<string>,
+  filesSave: (id: string, content: string) =>
+    ipcRenderer.invoke("files-save", id, content) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
+  filesRename: (id: string, name: string) =>
+    ipcRenderer.invoke("files-rename", id, name) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
   // MAIN-process SDK client executes these; reads REJECT, writes answer
   // { ok, …, error }. help/settings-*.ts mirror these + own the web SDK path. ──
@@ -1018,73 +1048,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean; modality?: string; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number }>; error?: string }>,
   planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; defaultModel?: string }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
-  /** The team's models, every type, with description and rates (main loop-models.ts). */
-  modelsCatalog: () => ipcRenderer.invoke("models-catalog") as Promise<{ ok: boolean; data: unknown[]; error?: string }>,
-  /** + Add on Your powers: Glyphh builds the power headless (main power-build-ipc.ts). */
-  powerBuildStop: () => ipcRenderer.invoke("power-build-stop") as Promise<{ ok: boolean; stopped: boolean }>,
-  /** What Glyphh is doing while it builds a power (one line at a time). */
-  onPowerBuildProgress: (cb: (line: string) => void) => {
-    const l = (_e: unknown, line: string) => cb(String(line ?? ""));
-    ipcRenderer.on("power-build-progress", l);
-    return () => { ipcRenderer.removeListener("power-build-progress", l); };
-  },
-  avatarGenerateStop: () => ipcRenderer.invoke("avatar-generate-stop") as Promise<{ ok: boolean; stopped: boolean }>,
-  /** THE TEAM (swarm.ts, 2026-10-09): main asks this panel to run a member's turn; the answer goes back. */
-  onTeamHandoff: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }) => cb(req);
-    ipcRenderer.on("team:handoff", l);
-    return () => { ipcRenderer.removeListener("team:handoff", l); };
-  },
-  onTeamHandoffStop: (cb: (req: { id: string }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, req: { id: string }) => cb(req);
-    ipcRenderer.on("team:handoff-stop", l);
-    return () => { ipcRenderer.removeListener("team:handoff-stop", l); };
-  },
-  teamHandoffDone: (id: string, result: { ok: boolean; text: string; error?: string }) => ipcRenderer.invoke("team-handoff-done", id, result) as Promise<boolean>,
-  /** THE SHELL'S NETWORK ASK (net-proxy.ts): a session's command wants a new host; the member answers here. */
-  onNetAsk: (cb: (req: { id: string; chatId: string; host: string }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, req: { id: string; chatId: string; host: string }) => cb(req);
-    ipcRenderer.on("glyphh-agent:net-ask", l);
-    return () => { ipcRenderer.removeListener("glyphh-agent:net-ask", l); };
-  },
-  netAnswer: (id: string, choice: "once" | "always" | "deny") => ipcRenderer.invoke("glyphh-net-answer", id, choice) as Promise<boolean>,
-  /** THE ESCAPE HATCH (shell-fence.ts): the agent asks to run one command outside the sandbox; the member answers every time. */
-  onOutsideAsk: (cb: (req: { id: string; chatId: string; command: string; reason: string }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, req: { id: string; chatId: string; command: string; reason: string }) => cb(req);
-    ipcRenderer.on("glyphh-agent:outside-ask", l);
-    return () => { ipcRenderer.removeListener("glyphh-agent:outside-ask", l); };
-  },
-  outsideAnswer: (id: string, run: boolean) => ipcRenderer.invoke("glyphh-outside-answer", id, run) as Promise<boolean>,
-  /** Settings → System → Sandbox (main/net-proxy.ts). */
-  sandboxGet: () => ipcRenderer.invoke("sandbox:get") as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
-  sandboxRemoveHost: (host: string) => ipcRenderer.invoke("sandbox:remove-host", host) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
-  sandboxRemovePort: (port: number) => ipcRenderer.invoke("sandbox:remove-port", port) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
-  sandboxSetStrict: (on: boolean) => ipcRenderer.invoke("sandbox:set-strict", on) as Promise<{ builtIn: string[]; hosts: string[]; ports: number[]; strict: boolean }>,
-  /** THE WORK BOARD (swarm.ts phase 2): main asks this panel to change or read a team's board. */
-  onTeamBoard: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => cb(req);
-    ipcRenderer.on("team:board", l);
-    return () => { ipcRenderer.removeListener("team:board", l); };
-  },
-  teamBoardDone: (id: string, result: { ok: boolean; text: string; error?: string }) => ipcRenderer.invoke("team-board-done", id, result) as Promise<boolean>,
-  /** THE RAIL'S + (2026-10-09): Glyphh builds a whole super power — its powers, its face (main/super-power-build-ipc.ts). */
-  superPowerBuild: (ask: string) => ipcRenderer.invoke("super-power-build", ask) as Promise<{ ok: true; data: { agent: string; name: string; description: string; powers: Array<{ id: string; name: string }>; connections: string[]; avatar: { variant: number; color: string; image?: string } | null; avatarError: string | null } } | { ok: false; error: string }>,
-  superPowerBuildStop: () => ipcRenderer.invoke("super-power-build-stop") as Promise<{ ok: boolean; stopped: boolean }>,
-  onSuperPowerBuildProgress: (cb: (beat: { stage: string; line: string }) => void) => {
-    const l = (_e: Electron.IpcRendererEvent, b: { stage: string; line: string }) => cb(b);
-    ipcRenderer.on("super-power-build-progress", l);
-    return () => { ipcRenderer.removeListener("super-power-build-progress", l); };
-  },
-  powerBuild: (ask: string) => ipcRenderer.invoke("power-build", ask) as Promise<{ ok: true; data: { id: string; slug: string; type: "skill" | "task"; name: string; description: string; connections: string[] } } | { ok: false; error: string }>,
-  /** A super power's avatar from the Images power (main/powers.ts generateAvatar). */
-  avatarGenerate: (input: { name?: string; description?: string; prompt?: string; model?: string }) =>
-    ipcRenderer.invoke("avatar-generate", input) as Promise<{ ok: true; data: { image: string; model: string; usd: number; prompt: string } } | { ok: false; error: string }>,
-  /** The agent roster moved (saved, deleted, pulled from the server). */
-  onAgentsChanged: (cb: () => void) => {
-    const l = () => cb();
-    ipcRenderer.on("agents-changed", l);
-    return () => { ipcRenderer.removeListener("agents-changed", l); };
-  },
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
   libraryAgentTaskRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-run-now", ref, taskId) as Promise<LibEnvelope>,
@@ -1138,7 +1101,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   appInstanceUpdate: (id: string) => ipcRenderer.invoke("app-instance-update", id) as Promise<LibEnvelope>,
   appInstancesUpdateAll: () => ipcRenderer.invoke("app-instances-update-all") as Promise<LibEnvelope>,
   /** THE APP CARD (2026-10-07): Build and run a folder on this machine (a source build answers its job); read a build job. */
-  appInstallFolder: (dir: string, opts?: { slug?: string; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
+  appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => ipcRenderer.invoke("app-install-folder", dir, opts ?? {}) as Promise<LibEnvelope>,
   appBuildStatus: (job: string) => ipcRenderer.invoke("app-build-status", job) as Promise<LibEnvelope>,
   appInstanceReleases: (id: string) => ipcRenderer.invoke("app-instance-releases", id) as Promise<LibEnvelope>,
   /** THE REVIEW THREAD, THE LIFECYCLE, THE PUBLIC LANE, THE DESK (2026-10-07). */
@@ -1227,11 +1190,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   onAgentPanelCreateWorkspace: (callback: () => void) => {
     ipcRenderer.on("agent-panel:create-workspace", () => callback());
   },
-  /** A panel's powers modal opens in the SHELL, over the whole window (the rail included). */
-  agentPanelOpenPowers: (tab: string) => ipcRenderer.invoke("agent-panel-open-powers", { tab }) as Promise<boolean>,
-  onAgentPanelOpenPowers: (callback: (p: { tab: string }) => void) => {
-    ipcRenderer.on("agent-panel:open-powers", (_e, p: { tab: string }) => callback(p));
-  },
   /** A workspace a panel opens lands in the shell's grid, never inside the panel. */
   agentPanelOpenLayout: (p: { name: string }) => ipcRenderer.invoke("agent-panel-open-layout", p) as Promise<boolean>,
   onAgentPanelOpenLayout: (callback: (p: { name: string }) => void) => {
@@ -1298,8 +1256,26 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** Write an agent's brief with AI, on the member's default model (agent-brief.ts). */
   agentBriefGenerate: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
     ipcRenderer.invoke("agent-brief-generate", input) as Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>,
-  /** THE POWERS this member's plan carries (main/powers.ts): Images, Video, Audio… */
-  powersList: () => ipcRenderer.invoke("powers-list") as Promise<{ ok: boolean; data: Array<{ id: string; name: string; blurb: string; tool: string; models: string[]; avatar: { variant: number; color: string } }>; error?: string }>,
+  // ── THE BOTS PANEL (his order, 2026-10-08; main/bots.ts): a bot's thread,
+  //    asking it (the Glyphh loop on `bots/<slug>`), stopping it, the frames.
+  botsThread: (agent: string) =>
+    ipcRenderer.invoke("bots-thread", { agent }) as Promise<{ ok: true; chatId: string; messages: Array<{ role: "user" | "assistant"; text: string; at: number }>; running: boolean; partial?: string; startedAt?: number }>,
+  botsAsk: (agent: string, text: string, opts?: { workdir?: string }) =>
+    ipcRenderer.invoke("bots-ask", { agent, text, ...(opts?.workdir ? { workdir: opts.workdir } : {}) }) as Promise<{ ok: true; runId: string; text: string } | { ok: false; error: string; text?: string }>,
+  botsStop: (agent: string) => ipcRenderer.invoke("bots-stop", { agent }) as Promise<{ ok: true; stopped: boolean }>,
+  botsOrchestratorBrief: () => ipcRenderer.invoke("bots-orchestrator-brief") as Promise<string>,
+  onBotsFrame: (callback: (d: { bot: string; type: string; runId: string; [k: string]: unknown }) => void) => {
+    const handler = (_e: unknown, d: { bot: string; type: string; runId: string }): void => callback(d);
+    ipcRenderer.on("bots:frame", handler);
+    return () => { ipcRenderer.removeListener("bots:frame", handler); };
+  },
+  /** THE AGENTS PANEL's source: main's ledger of the sub-agents working under a live turn. */
+  subAgentsList: () => ipcRenderer.invoke("subagents-list") as Promise<unknown[]>,
+  onSubAgentsUpdate: (callback: (runs: unknown[]) => void) => {
+    const handler = (_e: unknown, runs: unknown): void => callback(Array.isArray(runs) ? runs : []);
+    ipcRenderer.on("subagents:update", handler);
+    return () => { ipcRenderer.removeListener("subagents:update", handler); };
+  },
   glyphhApprovalRespond: (id: string, allow: boolean) =>
     ipcRenderer.invoke("glyphh-agent-approval-respond", { id, allow }) as Promise<boolean>,
   onGlyphhAgentApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
@@ -1340,6 +1316,7 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // Theme
   getTheme: () => ipcRenderer.invoke("get-theme") as Promise<string>,
+  exportGlyphhSkill: (provider: string) => ipcRenderer.invoke("export-glyphh-skill", provider) as Promise<{ ok: boolean; path?: string; error?: string }>,
   setTheme: (theme: string) => ipcRenderer.invoke("set-theme", theme),
 
   // Account info
@@ -1429,6 +1406,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   // for the user's external tools.
 
   // Local MCP server (127.0.0.1) — the no-cloud alternative to the relay.
+  localMcpSetEnabled: (enabled: boolean) => ipcRenderer.invoke("local-mcp-set-enabled", enabled) as Promise<{ ok: boolean; error?: string }>,
+  localMcpStatus: () => ipcRenderer.invoke("local-mcp-status") as Promise<{ running: boolean; port: number }>,
+  localMcpSetPort: (port: number) => ipcRenderer.invoke("local-mcp-set-port", port) as Promise<{ ok: boolean; error?: string }>,
+  localMcpTokensList: () => ipcRenderer.invoke("local-mcp-tokens-list") as Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>,
+  localMcpTokensCreate: (label: string) => ipcRenderer.invoke("local-mcp-tokens-create", label) as Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>,
+  localMcpTokensRevoke: (id: string) => ipcRenderer.invoke("local-mcp-tokens-revoke", id) as Promise<{ ok: boolean }>,
 
   // BYOK provider key — the only surviving path is the Claude Code bootstrap
   // gate (boot-gate-ui.ts) saving an Anthropic key. The Providers Settings
@@ -1456,6 +1439,17 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("wb:app-cmd", (_e, cmd) => cb(cmd));
   },
 
+  // Glyphh Office · Slides (the Slides panel's org deck library).
+  gpointList: () => ipcRenderer.invoke("gpoint-list") as Promise<{ ok: boolean; decks: Array<{ file: string; title: string; slides: number; mtime: number; size: number }>; error?: string }>,
+  gpointRead: (file: string) => ipcRenderer.invoke("gpoint-read", file) as Promise<{ ok: boolean; content?: string; error?: string }>,
+  gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  gpointNew: (name: string, title?: string) => ipcRenderer.invoke("gpoint-new", name, title) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
+  // Fired by main whenever a deck is written or deleted (agent tools, ＋ New,
+  // in-panel surgery) — the Slides panel drops its cached copy and repaints.
+  onGPointChanged: (callback: (file: string) => void) => { ipcRenderer.on("gpoint-changed", (_e, file: string) => callback(String(file))); },
+  // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
+  officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
   // Glyphh Office · Docs (the Docs panel's org library).
   gdocList: () => ipcRenderer.invoke("gdoc-list") as Promise<{ ok: boolean; docs: Array<{ file: string; title: string; size: number; folderId: string | null; mtime: number }>; error?: string }>,
   gdocRead: (file: string) => ipcRenderer.invoke("gdoc-read", file) as Promise<{ ok: boolean; markdown?: string; title?: string; error?: string }>,
@@ -1469,14 +1463,53 @@ contextBridge.exposeInMainWorld("glyphh", {
   gsheetRead: (file: string) => ipcRenderer.invoke("gsheet-read", file) as Promise<{ ok: boolean; title?: string; workbook?: unknown; error?: string }>,
   gsheetWrite: (file: string, title: string, workbook: unknown) => ipcRenderer.invoke("gsheet-write", file, title, workbook) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
   gsheetDelete: (file: string) => ipcRenderer.invoke("gsheet-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  designList: () => ipcRenderer.invoke("design-list") as Promise<{ ok: boolean; designs: Array<{ file: string; title: string; size: number; mtime: number }>; error?: string }>,
+  designRead: (file: string) => ipcRenderer.invoke("design-read", file) as Promise<{ ok: boolean; title?: string; document?: unknown; error?: string }>,
+  designWrite: (file: string, document: unknown) => ipcRenderer.invoke("design-write", file, document) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  designDelete: (file: string) => ipcRenderer.invoke("design-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  designAssetUpload: (file: string, input: unknown) => ipcRenderer.invoke("design-asset-upload", file, input) as Promise<{ ok: boolean; asset?: { id: string; kind: string; title: string; contentType: string; sizeBytes: number }; error?: string }>,
+  designAssetUrl: (file: string, assetId: string) => ipcRenderer.invoke("design-asset-url", file, assetId) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  designAssetDelete: (file: string, assetId: string) => ipcRenderer.invoke("design-asset-delete", file, assetId) as Promise<{ ok: boolean; error?: string }>,
   memoryBrowse: (limit?: number) => ipcRenderer.invoke("memory-browse", limit) as Promise<{ ok: boolean; facts: unknown[]; error?: string }>,
   memoryGraph: (opts?: unknown) => ipcRenderer.invoke("memory-graph", opts) as Promise<{ ok: boolean; nodes: unknown[]; coords: Array<[number, number, number]>; edges: Array<{ a: number; b: number; sim: number; kind: string }>; error?: string }>,
   memorySearch: (query: string, topK?: number) => ipcRenderer.invoke("memory-search", query, topK) as Promise<{ ok: boolean; facts: unknown[]; error?: string }>,
   memoryForget: (id: string) => ipcRenderer.invoke("memory-forget", id) as Promise<{ ok: boolean; forgotten?: boolean; error?: string }>,
   memoryAmend: (input: unknown) => ipcRenderer.invoke("memory-amend", input) as Promise<{ ok: boolean; id?: string; supersedes?: string; error?: string }>,
+  mediaList: (kind?: string, q?: string) => ipcRenderer.invoke("media-list", kind, q) as Promise<{ ok: boolean; assets: unknown[]; error?: string }>,
+  mediaUrl: (id: string) => ipcRenderer.invoke("media-url", id) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  mediaThumbBytes: (id: string) => ipcRenderer.invoke("media-thumb-bytes", id) as Promise<{ ok: boolean; bytes?: Uint8Array; mime?: string; error?: string }>,
+  mediaDelete: (id: string) => ipcRenderer.invoke("media-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  mediaGenerate: (input: unknown) => ipcRenderer.invoke("media-generate", input) as Promise<{ ok: boolean; job?: unknown; outputKind?: string; error?: string }>,
+  mediaJob: (id: string) => ipcRenderer.invoke("media-job", id) as Promise<{ ok: boolean; job?: unknown; error?: string }>,
+  mediaUploadPick: (kind?: string) => ipcRenderer.invoke("media-upload-pick", kind) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  /** A file already on this machine joins a library (an image artifact → Images). */
+  mediaUploadFile: (path: string, opts?: { title?: string; kind?: string }) => ipcRenderer.invoke("media-upload-file", path, opts) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  mediaSave: (id: string) => ipcRenderer.invoke("media-save", id) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  musicArtists: () => ipcRenderer.invoke("music-artists") as Promise<{ ok: boolean; artists: unknown[]; error?: string }>,
+  musicArtistSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-artist-save", id, input) as Promise<{ ok: boolean; artist?: unknown; error?: string }>,
+  musicArtistDelete: (id: string) => ipcRenderer.invoke("music-artist-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicInstruments: () => ipcRenderer.invoke("music-instruments") as Promise<{ ok: boolean; instruments: unknown[]; error?: string }>,
+  musicInstrumentSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-instrument-save", id, input) as Promise<{ ok: boolean; instrument?: unknown; error?: string }>,
+  musicInstrumentDelete: (id: string) => ipcRenderer.invoke("music-instrument-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicInstrumentGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-instrument-genlook", id, description, replaceLook) as Promise<{ ok: boolean; instrument?: unknown; usd?: number; error?: string }>,
+  musicSongs: () => ipcRenderer.invoke("music-songs") as Promise<{ ok: boolean; songs: unknown[]; error?: string }>,
+  musicSongSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-song-save", id, input) as Promise<{ ok: boolean; song?: unknown; error?: string }>,
+  musicSongDelete: (id: string) => ipcRenderer.invoke("music-song-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicSongRegenerate: (id: string, input?: unknown) => ipcRenderer.invoke("music-song-regenerate", id, input) as Promise<{ ok: boolean; song?: unknown; job?: unknown; error?: string }>,
+  musicArtistGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-artist-genlook", id, description, replaceLook) as Promise<{ ok: boolean; artist?: unknown; usd?: number; error?: string }>,
+  mediaProjects: () => ipcRenderer.invoke("media-projects") as Promise<{ ok: boolean; projects: unknown[]; error?: string }>,
+  mediaProjectSave: (id: string | null, input: unknown) => ipcRenderer.invoke("media-project-save", id, input) as Promise<{ ok: boolean; project?: unknown; error?: string }>,
+  mediaProjectDelete: (id: string) => ipcRenderer.invoke("media-project-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  mediaProjectGenerate: (id: string, input?: unknown) => ipcRenderer.invoke("media-project-generate", id, input) as Promise<{ ok: boolean; project?: unknown; job?: unknown; error?: string }>,
+  mediaUploadBytes: (input: unknown) => ipcRenderer.invoke("media-upload-bytes", input) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: string; ref: string; file?: string; title: string; sizeBytes: number; folderId: string | null; subkind?: string; mime?: string; updatedAt: string }>; error?: string }>,
+  gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
+  gdriveMove: (kind: string, ref: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, ref, folderId) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderRename: (id: string, name: string) => ipcRenderer.invoke("gdrive-folder-rename", id, name) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderDelete: (id: string) => ipcRenderer.invoke("gdrive-folder-delete", id) as Promise<{ ok: boolean; error?: string }>,
   gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
-  panelPopout: (req: { kind: "url"; url?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
+  panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
 
   // Workspace / context panel
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {
@@ -1496,11 +1529,6 @@ contextBridge.exposeInMainWorld("wb", {
   setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
   getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
   gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),
-  // The Branch row (2026-10-10): a refusal rejects with git's reason, said plainly.
-  gitBranches: (root: string) => ipcRenderer.invoke("files:git-branches", root) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
-  gitSwitch: (root: string, branch: string) => ipcRenderer.invoke("files:git-switch", root, branch) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
-  gitCreateBranch: (root: string, name: string) => ipcRenderer.invoke("files:git-create-branch", root, name) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
-  gitInit: (root: string) => ipcRenderer.invoke("files:git-init", root) as Promise<{ isRepo: boolean; current?: string; branches: string[]; error?: string }>,
   onCwdChanged: (cb: (dir: string | null) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, dir: string | null) => cb(dir);
     ipcRenderer.on("working-dir-changed", handler);

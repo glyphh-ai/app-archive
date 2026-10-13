@@ -1,7 +1,7 @@
 /**
  * remote-control.ts — REMOTE CONTROL on the desktop (his order, 2026-09-30):
  * this machine takes turns from mobile.glyphh.ai only when its member turned
- * it on in Settings → System → Remote control, and only inside the folders granted there.
+ * it on in Settings → Remote control, and only inside the folders granted there.
  *
  * THE SETTING is this device's, kept in the member's server prefs map under
  * `remoteControl:<hostname>` ({enabled, folders}) — it survives a restart and
@@ -19,15 +19,15 @@
  * so and nothing attaches.
  */
 
-import { deviceName } from "./machine-mode.js";
 import { existsSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { hostname } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { BrowserWindow, dialog, ipcMain } from "electron";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { killAllRelayPtys } from "./relay-pty.js";
 import { gitStateOf } from "./attach-handlers.js";
 import { relayFsTable } from "./relay-fs.js";
-import { getWorkingDirectory, gitBranchesForDir, gitCreateBranch, gitInitDir, gitSwitchBranch } from "./working-directory.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
 import { broadcast } from "./broadcast.js";
 import { getPreference, loadPreferences, setPreference } from "./stores/preferences-db.js";
@@ -66,7 +66,7 @@ const PASS_THROUGH = [
   "panel.open", "panel.input", "panel.nav", "panel.clipboard", "panel.close", "panel.stats", "panel.webrtc",
 ] as const;
 
-const key = (): string => `remoteControl:${deviceName()}`;
+const key = (): string => `remoteControl:${hostname()}`;
 let refused: string | undefined;
 let running = false;
 
@@ -145,12 +145,9 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
   });
   for (const [m, h] of Object.entries(fsDoor)) table[m] = async (p) => h(p);
 
-  // A REMOTE TURN RUNS IN A GRANTED FOLDER OR NOT AT ALL (his rule, 2026-10-09:
-  // remote control is the perimeter): no folder named is refused, never the working folder.
   table["agent.run"] = async (p) => {
     const workdir = str(p, "workdir");
-    if (!workdir) throw new Error("a remote turn needs a folder this machine granted for remote control");
-    return dispatch("agent.run", { ...(p as object), workdir: guard(workdir) });
+    return dispatch("agent.run", { ...(p as object), ...(workdir ? { workdir: guard(workdir) } : {}) });
   };
   table["fs.list"] = async (p) => {
     const path = str(p, "path");
@@ -168,12 +165,6 @@ export function remoteTable(folders: () => string[], dispatch: (m: string, p: un
     return { path: dir, parent: roots.includes(dir) || !inGranted(up, folders()) ? null : up, entries };
   };
   table["fs.gitInfo"] = async (p) => gitStateOf(guard(str(p, "path")));
-  // THE BRANCH ROW from another machine (2026-10-10): the same four git
-  // operations this desktop's own chip runs, inside a granted folder only.
-  table["git.branches"] = async (p) => gitBranchesForDir(guard(str(p, "path")));
-  table["git.switch"] = async (p) => gitSwitchBranch(guard(str(p, "path")), str(p, "branch"));
-  table["git.createBranch"] = async (p) => gitCreateBranch(guard(str(p, "path")), str(p, "name"));
-  table["git.init"] = async (p) => gitInitDir(guard(str(p, "path")));
   // A WEB TERMINAL on this machine (his order, 2026-10-04: a CLI tile on
   // app.glyphh.ai opens the desktop's shell for a desktop-bound session). The
   // shell starts inside a granted folder — the one asked for, else the first
@@ -237,11 +228,6 @@ async function stop(): Promise<void> {
   changed();
 }
 
-/** A GLYPHH MACHINE'S REMOTE CONTROL (machine-mode.ts): on, with its workspace the only grant. */
-export function armMachineRemoteControl(workspace: string): void {
-  writeSetting({ enabled: true, folders: [workspace] });
-}
-
 /** Signed in: attach if this device has remote control on (auth.ts). */
 export async function remoteControlBoot(): Promise<void> {
   await loadPreferences().catch(() => undefined);
@@ -258,7 +244,7 @@ export async function remoteControlView(): Promise<RemoteControlView> {
   const s = readSetting();
   const allowed = await orgAllows();
   const { attachStatus } = await import("./attach-host.js");
-  return { ...s, device: deviceName(), allowed, attached: attachStatus().attached, ...(refused ? { refused } : {}) };
+  return { ...s, device: hostname(), allowed, attached: attachStatus().attached, ...(refused ? { refused } : {}) };
 }
 
 async function apply(next: RemoteControlSetting): Promise<RemoteControlView> {
@@ -289,50 +275,6 @@ export function registerRemoteControlIpc(): void {
   ipcMain.handle("attach-devices:list", () => listAttachedDevices());
   ipcMain.handle("attach-devices:disconnect", (_e, machineId: string) => disconnectAttachedDevice(machineId));
   ipcMain.handle("attach-devices:allow", (_e, device: string) => allowAttachedDevice(device));
-  // THE PICKER'S MACHINES (his order, 2026-10-09): the member's Glyphh
-  // machines, and the folders inside another desktop's grants over the relay.
-  ipcMain.handle("machines:list", () => listGlyphhMachines());
-  ipcMain.handle("machines:start", (_e, id: string) => getClient().http.post(`/api/machines/${encodeURIComponent(String(id || ""))}/start`, {}));
-  ipcMain.handle("attach-fs:list", (_e, path: string | undefined, machineId: string) => listAttachedFolder(path, machineId));
-  ipcMain.handle("attach-fs:mkdir", (_e, parent: string, name: string, machineId: string) => makeAttachedFolder(parent, name, machineId));
-  ipcMain.handle("attach-git:call", (_e, method: string, params: Record<string, unknown>, machineId: string) => callAttachedGit(method, params, machineId));
-}
-
-/** The git methods the composer's Branch row may run on another machine. */
-const ATTACHED_GIT = new Set(["fs.gitInfo", "git.branches", "git.switch", "git.createBranch", "git.init"]);
-
-/** A git question or change on another attached machine (a desktop or the
- *  Glyphh machine): that machine runs it, inside its own grants. */
-export async function callAttachedGit(method: string, params: Record<string, unknown>, machineId: string): Promise<unknown> {
-  const id = String(machineId || "").trim();
-  if (!id) throw new Error("that machine isn't connected");
-  if (!ATTACHED_GIT.has(String(method))) throw new Error(`${String(method)} is not a git method`);
-  return getClient().attach.dispatch(String(method), params && typeof params === "object" ? params : {}, { machineId: id });
-}
-
-/** The member's Glyphh machines (GET /api/machines); none when the server has no such route. */
-export async function listGlyphhMachines(): Promise<{ machines: Array<Record<string, unknown>> }> {
-  try {
-    const r = await getClient().http.get<{ machines?: Array<Record<string, unknown>> }>("/api/machines");
-    return { machines: Array.isArray(r?.machines) ? r.machines : [] };
-  } catch (err) {
-    if (notFound(err)) return { machines: [] };
-    throw err;
-  }
-}
-
-/** A new folder on another attached desktop: that machine makes it, inside its own grants (fs.mkdir refuses outside them). */
-export async function makeAttachedFolder(parent: string, name: string, machineId: string): Promise<unknown> {
-  const id = String(machineId || "").trim();
-  if (!id) throw new Error("a machine id is required");
-  return getClient().attach.dispatch("fs.mkdir", { path: String(parent || ""), name: String(name || "") }, { machineId: id });
-}
-
-/** One folder on another attached desktop: that machine answers, inside its own grants. */
-export async function listAttachedFolder(path: string | undefined, machineId: string): Promise<unknown> {
-  const id = String(machineId || "").trim();
-  if (!id) throw new Error("a machine id is required");
-  return getClient().attach.fsList(path ? String(path) : undefined, { machineId: id });
 }
 
 // ── Settings → Devices (the server's /api/attach/devices) ───────────────────

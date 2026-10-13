@@ -384,80 +384,6 @@ export async function gitInfoForDir(root: string): Promise<{ isRepo: boolean; br
   return result;
 }
 
-// ── Branches (the composer's one chip, 2026-10-10) ─────────────────────────
-// The Branch row of "Where Glyphh works": what branch the folder is on, the
-// others it has, switch, start a new one, or turn git on. Plain git, no shell;
-// a refusal comes back as one sentence a person who does not know git can act on.
-
-export interface GitBranches { isRepo: boolean; current?: string; branches: string[]; error?: string }
-
-/** git's own refusal, said plainly. */
-export function gitWords(err: unknown, branch = ""): string {
-  const raw = err instanceof Error ? ((err as Error & { stderr?: string }).stderr || err.message) : String(err);
-  if (/would be overwritten|commit your changes or stash/i.test(raw)) {
-    return `This folder has changes that ${branch ? `"${branch}"` : "the other branch"} would overwrite. Save or undo them first, then switch.`;
-  }
-  if (/already exists/i.test(raw)) return `A branch called "${branch}" already exists. Pick it from the list instead.`;
-  if (/not a valid branch name|is not a valid/i.test(raw)) return `"${branch}" can't be a branch name. Use letters, numbers, - or /.`;
-  if (/not a git repository/i.test(raw)) return "This folder doesn't track changes yet.";
-  if (/ENOENT|spawn git/i.test(raw)) return "Git isn't installed on this machine.";
-  return raw.split("\n").map((l) => l.replace(/^(error|fatal):\s*/i, "").trim()).find(Boolean) || "git refused";
-}
-
-/** The folder's branches, the current one first known. An empty repo (no
- *  commit yet) is on its unborn branch, which is listed so it can be named. */
-export async function gitBranchesForDir(root: string): Promise<GitBranches> {
-  const info = await gitInfoForDir(root);
-  if (!info.isRepo) return { isRepo: false, branches: [] };
-  let current = info.branch;
-  if (!current) {
-    try { current = (await execFileP("git", ["symbolic-ref", "--short", "HEAD"], { cwd: root })).stdout.trim() || undefined; } catch { /* detached */ }
-  }
-  try {
-    const { stdout } = await execFileP("git", ["for-each-ref", "--format=%(refname:short)", "--sort=-committerdate", "refs/heads"], { cwd: root });
-    const branches = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (current && !branches.includes(current)) branches.unshift(current);
-    return { isRepo: true, ...(current ? { current } : {}), branches };
-  } catch (err) {
-    return { isRepo: true, ...(current ? { current } : {}), branches: current ? [current] : [], error: gitWords(err) };
-  }
-}
-
-/** A name git accepts for a new branch, else why not. */
-async function checkBranchName(root: string, name: string): Promise<string> {
-  const n = String(name || "").trim();
-  if (!n || n.startsWith("-")) throw new Error(`"${n}" can't be a branch name. Use letters, numbers, - or /.`);
-  try { await execFileP("git", ["check-ref-format", "--branch", n], { cwd: root }); } catch (err) { throw new Error(gitWords(err, n)); }
-  return n;
-}
-
-/** Switch the folder to an existing branch. git refuses when the folder's
- *  changes would be lost; the refusal is the answer. */
-export async function gitSwitchBranch(root: string, branch: string): Promise<GitBranches> {
-  const b = String(branch || "").trim();
-  if (!b || b.startsWith("-")) throw new Error("pick a branch");
-  try { await execFileP("git", ["checkout", b, "--"], { cwd: root }); } catch (err) { throw new Error(gitWords(err, b)); }
-  return gitBranchesForDir(root);
-}
-
-/** Start a new branch from where the folder is, and switch to it. */
-export async function gitCreateBranch(root: string, name: string): Promise<GitBranches> {
-  const n = await checkBranchName(root, name);
-  try { await execFileP("git", ["checkout", "-b", n], { cwd: root }); } catch (err) { throw new Error(gitWords(err, n)); }
-  return gitBranchesForDir(root);
-}
-
-/** Turn git on for a folder ("Track changes"): a repo on main. */
-export async function gitInitDir(root: string): Promise<GitBranches> {
-  if (typeof root !== "string" || !root) throw new Error("pick a folder first");
-  if ((await gitInfoForDir(root)).isRepo) return gitBranchesForDir(root);
-  try { await execFileP("git", ["init", "-b", "main"], { cwd: root }); }
-  catch {
-    try { await execFileP("git", ["init"], { cwd: root }); } catch (err) { throw new Error(gitWords(err)); }
-  }
-  return gitBranchesForDir(root);
-}
-
 /** Immediate children of a directory for the file tree. (files:list-dir) */
 export async function listWorkdirDir(dir: string): Promise<{ entries: Array<{ name: string; path: string; kind: "dir" | "file" }>; error?: string }> {
   if (typeof dir !== "string" || !dir) return { entries: [], error: "missing dir" };
@@ -692,12 +618,10 @@ export function registerWorkingDirectoryIpc(deps: {
   ipcMain.handle("files:git-info", (_e, root: string) =>
     gitInfoForDir(root));
 
-  // THE BRANCH ROW (2026-10-10): list, switch, start one, turn git on. A
-  // refusal throws its plain sentence; the renderer shows it as is.
-  ipcMain.handle("files:git-branches", (_e, root: string) => gitBranchesForDir(String(root || "")));
-  ipcMain.handle("files:git-switch", (_e, root: string, branch: string) => gitSwitchBranch(String(root || ""), String(branch || "")));
-  ipcMain.handle("files:git-create-branch", (_e, root: string, name: string) => gitCreateBranch(String(root || ""), String(name || "")));
-  ipcMain.handle("files:git-init", (_e, root: string) => gitInitDir(String(root || "")));
+  // List local branches in a repo, with the current one. Used by the
+  // Agent app's branch picker dropdown.
+  // Switch branches. Fails if the working tree is dirty — git surfaces a
+  // clear error, which the renderer can display.
   // Explicit-only read: null until the user has ever picked a folder —
   // the Code composer gates on this (never on the ~/ fallback).
   ipcMain.handle("working-dir:get-explicit", () =>

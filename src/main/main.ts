@@ -63,6 +63,7 @@ function isNewerVersion(latest: string, current: string): boolean {
 }
 import { setMainWindowRef } from "./main-window-ref";
 import { initRailCollapse } from "./screen-layout";
+import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
@@ -70,8 +71,6 @@ import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installRpaMapHandlers } from "./rpa-map";
 import { installAttachHandlers } from "./attach-handlers";
-import { machineBoot } from "./machine-boot";
-import { onMachine } from "./machine-mode";
 import { registerRemoteControlIpc } from "./remote-control";
 import { registerNotifyIpc } from "./notify";
 import { installAttachRunHandlers } from "./attach-run";
@@ -88,9 +87,16 @@ import { registerCloudRunIpc } from "./cloud-run";
 import { registerCloudFsIpc } from "./cloud-fs";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
+import { registerFilesIpc } from "./files-ipc";
+import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
+import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
+import { registerDesignIpc } from "./design";
+import { registerDriveIpc } from "./drive";
+import { registerMediaPanelIpc } from "./media-panel";
+import { registerMusicPanelIpc } from "./music-panel";
 import { registerSupportIpc } from "./support-ipc";
 import { registerArtifactsIpc } from "./artifacts-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
@@ -100,17 +106,14 @@ import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerLoopModelsIpc } from "./loop-models";
 import { registerSpendStateIpc } from "./spend-state";
+import { registerSubAgentIpc } from "./subagent-ledger";
 import { registerAgentBriefIpc } from "./agent-brief";
 import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
-import { registerPowersIpc } from "./powers";
-import { registerPowerBuildIpc } from "./power-build-ipc.js";
-import { registerSuperPowerBuildIpc } from "./super-power-build-ipc.js";
-import { registerSwarmIpc } from "./swarm.js";
-import { registerNetAskIpc } from "./net-ask.js";
+import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -252,9 +255,6 @@ async function boot() {
   // BEFORE anything opens a directory under it. Idempotent.
   migrateGlyphhHome();
 
-  // A GLYPHH MACHINE (machine-mode.ts): its owner's session and its workspace before anything reads either.
-  await machineBoot();
-
   // The app data seam's desktop credential: glyphh-app webviews get the
   // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
   installAppSeamAuth();
@@ -338,6 +338,7 @@ async function boot() {
   // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
   // LLMs. The cloud relay that let external callers reach in was removed; this
   // is the only remaining MCP surface, and it shares the handler registry.
+  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
@@ -471,11 +472,7 @@ async function boot() {
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
     registerNotifyIpc();
     registerAgentLiveIpc();
-    registerPowersIpc();
-    registerPowerBuildIpc();
-    registerSuperPowerBuildIpc();
-    registerSwarmIpc();
-    registerNetAskIpc();
+    installBotsIpc();
     registerCloudRunIpc();
     // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
     registerCloudFsIpc();
@@ -666,8 +663,7 @@ async function boot() {
   // account button and on Settings → About, each with a "Download" link. Once
   // the user downloads it, the update installs on the next quit (or right away
   // through "Restart now"). No mid-session auto-restart.
-  // A machine runs the release its supervisor fetched: it never updates itself.
-  const autoUpdateEnabled = !onMachine() && getPreference<boolean>("autoUpdate", true);
+  const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   // The releases repo is private and every surface reads it through the
@@ -1039,6 +1035,10 @@ async function boot() {
   });
 
   // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
+  // The Schedules run-history "View run" hand-off (previously window.glyphh.openYoChat
+  // -> "yo-open-chat-from-renderer") was also removed from the renderer side
+  // (src/renderer/help/schedules.ts) since there's no surface left to open a
+  // run's transcript INTO. No handler is registered for that channel anymore.
 
   // Approval system, ask_user_question, and preview_url (wb-preview:*)
   // callback wiring removed — they only served the interactive chat agent's
@@ -1073,14 +1073,24 @@ async function boot() {
   // Settings › Platform (super_admin console) — catalog, plans, usage, orgs.
   registerAdminIpc();
 
-  // Panel pop-out — any web panel as a standalone OS window.
+  // Files — the artifacts gallery's transport, same main-process SDK client.
+  registerFilesIpc();
+
+  // Glyphh Office · Slides — the Slides panel's org deck library.
+  registerGPointIpc();
+
+  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
   registerPopoutIpc();
+
+  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
+  registerOfficeExportIpc();
 
   // Glyphh Office · Docs — the Docs panel's org library transport.
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
   registerLoopModelsIpc();
   registerSpendStateIpc();
+  registerSubAgentIpc();
   registerAgentBriefIpc();
   registerSkillsIpc();
   registerEmbeddingsIpc();
@@ -1108,6 +1118,11 @@ async function boot() {
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();
+  registerDesignIpc();
+  registerMediaPanelIpc();
+  // Glyphh Drive — the folders and the view across everything the house apps made.
+  registerDriveIpc();
+  registerMusicPanelIpc();
 
   // Support (threaded ticketing) — the settings panel's transport.
   registerSupportIpc();
@@ -1414,6 +1429,7 @@ function cleanupAll(backstopMs = 4000) {
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["authTimers", () => cleanupAuthTimers()],
+    ["localMcpServer", () => stopLocalMcpServer()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],
     ["taskRunner", () => stopTaskRunner()],

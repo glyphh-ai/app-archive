@@ -10,7 +10,7 @@
  *
  * Designs, decks and Drive itself moved to the member library on 2026-10-06
  * (shared/house-store.ts: cloud is the one home); the docs and sheets
- * transports (office-docs / office-sheets) still read and
+ * transports (office-docs / office-sheets / office-export) still read and
  * write through here, and the wire shapes match what the old server returned
  * so the renderers didn't have to move.
  */

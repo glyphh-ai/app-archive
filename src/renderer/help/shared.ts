@@ -156,11 +156,8 @@ export function confirmChoice(opts: ConfirmOptions & { altLabel?: string }): Pro
     // stacking context caps it BELOW the body-mounted settings modal — no
     // z-index can win from in there (the revoke-key confirm opened invisibly
     // behind settings). Re-parent to <body> once; fixed positioning is
-    // unaffected and every getElementById keeps resolving. EVERY open moves it
-    // to the END of <body>, so it stacks over any modal opened since (his
-    // report, 2026-10-09: the delete confirm sat behind the powers modal, which
-    // shares its z-index and was mounted after the first re-parent).
-    document.body.appendChild(overlay);
+    // unaffected and every getElementById keeps resolving.
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
     const titleEl = document.getElementById("confirm-title")!;
     const bodyWrap = overlay.querySelector<HTMLElement>(".confirm-body")!;
     const msgEl = document.getElementById("confirm-message")!;

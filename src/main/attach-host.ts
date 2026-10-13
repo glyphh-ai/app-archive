@@ -13,7 +13,7 @@
  * (refreshHello), so the first hello never lists a partial method table.
  */
 
-import { deviceName } from "./machine-mode.js";
+import { hostname } from "node:os";
 import { app } from "electron";
 import { startAttachHost, type AttachHost } from "@glyphh/sdk/runtime";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
@@ -37,7 +37,7 @@ export function startAttach(opts: AttachStartOptions): void {
     server: SERVER_URL,
     app: "glyphh-desktop",
     version: app.getVersion(),
-    name: deviceName(),
+    name: hostname(),
     // The remote table, and beside it what the server may always call on an
     // attached desktop: a cloud app's notification for this member (notify.ts).
     handlers: () => ({ ...opts.handlers(), ...notifyAttachTable() }),

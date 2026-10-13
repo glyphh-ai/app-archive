@@ -32,6 +32,11 @@ const settingsBrowserHome = document.getElementById("settings-browser-home") as 
 const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
 const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
 
+// MCP is now its own top-level dashboard tab (data-section="mcp"). The relay
+// refreshers live inside initSettings' scope, so initSettings assigns this hook
+// and loadMcp() (called by navigation on section open) invokes it.
+let mcpSectionRefresh: () => void = () => {};
+
 /** Settings → Desktop: live attach status (ported from the platform's Settings →
  *  Desktop page). Polls attach.status() through the SDK handle on web; on the
  *  desktop build the machine IS this app, so it reports attached locally. */
@@ -203,7 +208,7 @@ function initSettings() {
 
   // Default workspace — what a fresh boot opens when there's nothing to
   // restore (code-workbench restoreWallOnce reads the same pref). Options are
-  // the user's layouts; the shipped default (Vibe, the agent alone) is
+  // the user's layouts; the three shipped defaults (Vibe/Dev/Design) are
   // always offered — a missing one backfills from its template on first open.
   const defWs = document.getElementById("settings-default-workspace") as HTMLSelectElement | null;
   if (defWs) {
@@ -213,7 +218,7 @@ function initSettings() {
       try { names = ((await window.glyphh.layoutsList?.()) ?? []).map((l) => String((l as { name?: string }).name || "")).filter(Boolean); } catch { /* offline */ }
       const seen = new Set<string>();
       const opts: string[] = [];
-      for (const n of ["Vibe", ...names]) {
+      for (const n of ["Design", ...names]) {
         const k = n.toLowerCase();
         if (!seen.has(k)) { seen.add(k); opts.push(n); }
       }
@@ -235,6 +240,158 @@ function initSettings() {
     })();
   }
 
+  // The cloud relay (external LLMs driving this machine) was removed. Its
+  // in-page helper survives — escapeHtmlLocal is reused by the token list below.
+  function escapeHtmlLocal(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to
+  // any user (it's purely local; no org/tier involved). ──
+  const localMcpSection = document.getElementById("local-mcp-section");
+  const localMcpToggle = document.getElementById("local-mcp-toggle") as HTMLInputElement | null;
+  const localMcpStatusEl = document.getElementById("local-mcp-status");
+  const localMcpBody = document.getElementById("local-mcp-body");
+  const localMcpPortInput = document.getElementById("local-mcp-port") as HTMLInputElement | null;
+  const localMcpConfigEl = document.getElementById("local-mcp-config");
+  const localMcpTokensListEl = document.getElementById("local-mcp-tokens-list");
+  const localMcpNewTokenBox = document.getElementById("local-mcp-new-token");
+  const localMcpNewTokenValue = document.getElementById("local-mcp-new-token-value");
+  const localMcpLabelInput = document.getElementById("local-mcp-token-label") as HTMLInputElement | null;
+
+  function renderLocalMcpConfig(port: number): void {
+    if (!localMcpConfigEl) return;
+    localMcpConfigEl.textContent = `{
+  "mcpServers": {
+    "glyphh-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:${port}/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}`;
+  }
+
+  async function refreshLocalMcp(): Promise<void> {
+    const s = await window.glyphh.localMcpStatus();
+    if (localMcpStatusEl) {
+      localMcpStatusEl.textContent = s.running ? `Running on http://127.0.0.1:${s.port}` : "Stopped.";
+      localMcpStatusEl.style.color = s.running ? "var(--accent)" : "var(--text-3)";
+    }
+    if (localMcpPortInput && document.activeElement !== localMcpPortInput) localMcpPortInput.value = String(s.port);
+    renderLocalMcpConfig(s.port);
+  }
+
+  async function renderLocalMcpTokens(): Promise<void> {
+    if (!localMcpTokensListEl) return;
+    localMcpTokensListEl.innerHTML = "";
+    const tokens = await window.glyphh.localMcpTokensList();
+    if (!tokens.length) {
+      localMcpTokensListEl.innerHTML = `<div style="font-size:12px;color:var(--text-3);">No tokens yet — generate one below.</div>`;
+      return;
+    }
+    for (const t of tokens) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:6px;margin-bottom:4px;font-size:12px;";
+      const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
+      const expires = t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : "";
+      row.innerHTML = `<span style="flex:1;color:var(--text);">${escapeHtmlLocal(t.label || "(unnamed)")}</span><span style="color:var(--text-3);font-size:11px;">${created} → ${expires}</span><button class="action-btn danger" data-revoke="${escapeHtmlLocal(t.id)}" style="font-size:11px;padding:3px 10px;">Revoke</button>`;
+      row.querySelector("[data-revoke]")!.addEventListener("click", async () => {
+        if (!(await confirmAction({
+          title: `Revoke “${t.label || "this token"}”?`,
+          body: "Local tools using it stop working immediately.",
+          confirmLabel: "Revoke token",
+          danger: true,
+        }))) return;
+        await window.glyphh.localMcpTokensRevoke(t.id);
+        void renderLocalMcpTokens();
+      });
+      localMcpTokensListEl.appendChild(row);
+    }
+  }
+
+  function setLocalMcpBodyVisible(on: boolean): void {
+    if (localMcpBody) localMcpBody.style.display = on ? "" : "none";
+  }
+
+  // The local MCP server runs ON THIS MACHINE (127.0.0.1) — a browser tab has
+  // no machine to run it on, and the web bridge serves no localMcpSetEnabled
+  // (the toggle threw). Keep the whole section hidden wherever the host can't
+  // run it (hostHas — the Proxy on web answers every name, typeof can't tell).
+  if (localMcpSection && localMcpToggle && hostHas("localMcpSetEnabled")) {
+    localMcpSection.classList.remove("hidden");
+    void (async () => {
+      const enabled = (await window.glyphh.getPreference("localMcpEnabled", true)) !== false;
+      localMcpToggle.checked = enabled;
+      setLocalMcpBodyVisible(enabled);
+      await refreshLocalMcp();
+      await renderLocalMcpTokens();
+    })();
+
+    localMcpToggle.addEventListener("change", async () => {
+      const on = localMcpToggle.checked;
+      setLocalMcpBodyVisible(on);
+      const res = await window.glyphh.localMcpSetEnabled(on);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "var(--danger)";
+        }
+        localMcpToggle.checked = false;
+        setLocalMcpBodyVisible(false);
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-port-save")?.addEventListener("click", async () => {
+      const port = parseInt(localMcpPortInput?.value || "", 10);
+      const res = await window.glyphh.localMcpSetPort(port);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "var(--danger)";
+        }
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-gen-token")?.addEventListener("click", async () => {
+      const label = localMcpLabelInput?.value.trim() || "default";
+      const res = await window.glyphh.localMcpTokensCreate(label);
+      if (localMcpLabelInput) localMcpLabelInput.value = "";
+      if (localMcpNewTokenBox && localMcpNewTokenValue) {
+        localMcpNewTokenValue.textContent = res.token;
+        localMcpNewTokenBox.classList.remove("hidden");
+      }
+      void renderLocalMcpTokens();
+    });
+
+    document.getElementById("local-mcp-copy-token")?.addEventListener("click", () => {
+      const val = localMcpNewTokenValue?.textContent || "";
+      void copyText(val);
+      const btn = document.getElementById("local-mcp-copy-token") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+
+    document.getElementById("local-mcp-copy-config")?.addEventListener("click", () => {
+      const val = localMcpConfigEl?.textContent || "";
+      void copyText(val);
+      const btn = document.getElementById("local-mcp-copy-config") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+  }
+
+  // Expose the MCP refreshers so the MCP tab can refresh on open.
+  mcpSectionRefresh = () => {
+    void refreshLocalMcp();
+    void renderLocalMcpTokens();
+  };
 
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
@@ -322,6 +479,22 @@ function initSettings() {
     });
   }
 
+  // Icon hover zoom — every icon in the app scales by this on hover.
+  // Applied LIVE via the CSS var; persisted like every other preference.
+  {
+    const z = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
+    const zv = document.getElementById("settings-icon-zoom-val");
+    const paint = (): void => {
+      if (!z) return;
+      document.documentElement.style.setProperty("--icon-zoom", z.value);
+      if (zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`;
+    };
+    z?.addEventListener("input", paint);
+    z?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("iconHoverZoom", Number(z.value));
+    });
+  }
 
   // Interface sound volume (his ask, 2026-08-19) — pref uiSoundVolume 0..1,
   // server-backed like every pref (/api/me/prefs → db). Live: dragging updates
@@ -378,16 +551,6 @@ function initSettings() {
   if (!hostHas("remoteControlGet")) {
     document.querySelectorAll<HTMLElement>('.settings-nav-item[data-sub="remote"], .settings-panel[data-sub="remote"]')
       .forEach((n) => n.classList.add("hidden"));
-  } else {
-    // THE DESKTOP'S SYSTEM PAGE holds its devices (his order, 2026-10-09): the
-    // Devices list moves in under System, and the Devices entry steps aside.
-    const host = document.getElementById("system-devices");
-    const page = document.querySelector<HTMLElement>('.settings-panel[data-sub="devices"]');
-    if (host && page) {
-      for (const n of Array.from(page.children)) if (!n.classList.contains("set-title-row")) host.appendChild(n);
-      host.classList.remove("hidden");
-      document.querySelectorAll<HTMLElement>('.settings-nav-item[data-sub="devices"]').forEach((n) => n.classList.add("hidden"));
-    }
   }
 
   // (Glyphh Skill export moved to its own Skills page — see help/skills.ts.)
@@ -454,6 +617,8 @@ async function loadSettings() {
   // Load toggle states
   toggleAutoUpdate.checked = await window.glyphh.getPreference("autoUpdate", true) as boolean;
 
+  const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
+  mcpSectionWrap.classList.remove("hidden");
 
   // Browser homepage
   const homePref = await window.glyphh.getPreference("browserHomepage", "claude") as string;
@@ -490,6 +655,13 @@ async function loadSettings() {
     const t = document.getElementById(id) as HTMLInputElement | null;
     if (t) t.checked = railTrayShown(await window.glyphh.getPreference(pref, RAIL_SHOW_DEFAULT));
   }
+  const iconZoom = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
+  if (iconZoom) {
+    const raw = Number(await window.glyphh.getPreference("iconHoverZoom", 1.08));
+    iconZoom.value = String(Number.isFinite(raw) ? Math.max(1, Math.min(1.5, raw)) : 1.08);
+    const zv = document.getElementById("settings-icon-zoom-val");
+    if (zv) zv.textContent = Number(iconZoom.value) <= 1 ? "Off" : `${Math.round((Number(iconZoom.value) - 1) * 100)}%`;
+  }
   const snd = document.getElementById("general-ui-sound") as HTMLInputElement | null;
   if (snd) {
     const raw = Number(await window.glyphh.getPreference("uiSoundVolume", 0.3));
@@ -500,6 +672,9 @@ async function loadSettings() {
   }
 }
 
+/** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts
+ *  calls this on section open to refresh relay + expose state. */
+export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };
 

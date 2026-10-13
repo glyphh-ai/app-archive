@@ -51,7 +51,7 @@ describe("the desktop's remote door", () => {
     expect(Object.keys(table()).sort()).toEqual([
       "agent.answer", "agent.frames", "agent.permission", "agent.run", "agent.stop",
       "fs.cwd", "fs.delete", "fs.gitDiff", "fs.gitInfo", "fs.list", "fs.listDir", "fs.mkdir", "fs.r2Diff", "fs.read", "fs.rename", "fs.search", "fs.unwatch", "fs.watch", "fs.write",
-      "git.branches", "git.createBranch", "git.init", "git.status", "git.switch",
+      "git.status",
       "layouts.open",
       "panel.clipboard", "panel.close", "panel.input", "panel.nav", "panel.open", "panel.stats", "panel.webrtc",
       "panels.close", "panels.list", "panels.open", "panels.switch",
@@ -108,9 +108,8 @@ describe("the desktop's remote door", () => {
     await expect(t["agent.run"]!({ prompt: "x", workdir: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
     expect(calls).toEqual([]);
     await t["agent.run"]!({ prompt: "x", mode: "code", workdir: join(granted, "repo") });
-    // No folder named is refused (2026-10-09): never the machine's working folder or home.
-    await expect(t["agent.run"]!({ prompt: "y", mode: "work" })).rejects.toThrow(/needs a folder this machine granted/);
-    expect(calls.map((c) => c.m)).toEqual(["agent.run"]);
+    await t["agent.run"]!({ prompt: "y", mode: "work" });
+    expect(calls.map((c) => c.m)).toEqual(["agent.run", "agent.run"]);
   });
 });
 
@@ -189,48 +188,5 @@ describe("the file and git doors — the folder is the sandbox, reads too", () =
     expect(await t["fs.cwd"]!({})).toEqual({ cwd: join(granted, "repo"), explicit: join(granted, "repo") });
     expect(await t["fs.watch"]!({ channel: "fsw-1" })).toEqual({ watching: true, cwd: join(granted, "repo") });
     expect(await t["fs.unwatch"]!({ channel: "fsw-1" })).toEqual({ watching: false, had: true });
-  });
-});
-
-describe("the Branch row over the remote door (2026-10-10)", () => {
-  const commit = (dir: string): void => {
-    writeFileSync(join(dir, "a.txt"), "one\n");
-    execFileSync("git", ["add", "."], { cwd: dir });
-    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "one"], { cwd: dir });
-  };
-
-  it("turns git on, lists, starts and switches branches inside a granted folder", async () => {
-    const t = table();
-    const dir = join(granted, "repo");
-    const on = await t["git.init"]!({ path: dir }) as { isRepo: boolean; current?: string; branches: string[] };
-    expect(on).toMatchObject({ isRepo: true, current: "main" });
-    commit(dir);
-    const made = await t["git.createBranch"]!({ path: dir, name: "try-it" }) as { current?: string; branches: string[] };
-    expect(made.current).toBe("try-it");
-    expect(made.branches.sort()).toEqual(["main", "try-it"]);
-    const back = await t["git.switch"]!({ path: dir, branch: "main" }) as { current?: string };
-    expect(back.current).toBe("main");
-    const listed = await t["git.branches"]!({ path: dir }) as { current?: string; branches: string[] };
-    expect(listed).toMatchObject({ isRepo: true, current: "main" });
-  });
-
-  it("says plainly why a branch can't be made", async () => {
-    const t = table();
-    const dir = join(granted, "repo");
-    await t["git.init"]!({ path: dir });
-    commit(dir);
-    await expect(t["git.createBranch"]!({ path: dir, name: "main" })).rejects.toThrow(/already exists/);
-    await expect(t["git.createBranch"]!({ path: dir, name: "no spaces" })).rejects.toThrow(/can't be a branch name/);
-    await expect(t["git.switch"]!({ path: dir, branch: "-x" })).rejects.toThrow(/pick a branch/);
-  });
-
-  it("refuses a folder outside the grants", async () => {
-    const t = table();
-    await expect(t["git.init"]!({ path: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
-    await expect(t["git.branches"]!({ path: join(root, "secret") })).rejects.toThrow(/not one this machine granted/);
-  });
-
-  it("a folder with no git answers so, with no branches", async () => {
-    expect(await table()["git.branches"]!({ path: join(granted, "repo") })).toEqual({ isRepo: false, branches: [] });
   });
 });

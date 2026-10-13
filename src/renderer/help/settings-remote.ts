@@ -1,5 +1,5 @@
 /**
- * settings-remote.ts — Settings → System → Remote control (his order, 2026-09-30): this
+ * settings-remote.ts — Settings → Remote control (his order, 2026-09-30): this
  * computer takes turns from mobile.glyphh.ai only while the switch is on, and
  * only inside the folders granted here. The setting is this device's and lives
  * in the member's server prefs (main/remote-control.ts); an org admin's switch

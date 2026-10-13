@@ -14,17 +14,17 @@ import { commentAuthor, decisionNeedsNote, mayRetire, notesRequired, queueForKin
 import { paintBuildBadge } from "./app-updates.js";
 import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
-import { openAppInWorkbench } from "./code.js";
+import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
+import { toolViewIcon } from "./tool-icons.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
-import { cronToWords } from "./cron-words.js";
+import { cronToWords, openScheduleOnLoad } from "./schedules.js";
 import { renderRunList } from "./lib-runs.js";
 import { renderConnectionTable, connDeps, openConnectionOnLoad, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
-import { openPowersModal } from "./powers-modal.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -32,12 +32,12 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; instance?: InstanceOfRow }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
 /** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
-interface InstanceOfRow { key: string; kind: "personal"; status: string; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
+interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; type?: BundleType }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -121,27 +121,30 @@ const KINDS: BundleType[] = cfg.kinds ?? [cfg.kind];
 const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.type ?? cfg.kind;
 /** The type reads as a chip only when it is NOT what this page is already
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
-/* No kind chip: a power is a power (2026-10-09). */
-const typeChip = (_type: BundleType | undefined): string => "";
-/** The mark a bundle wears: the icon.svg it ships, else its type's. */
+const typeChip = (type: BundleType | undefined): string =>
+  type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
+/** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
+ *  IS, else its type's. The middle step matters for the work-panel apps —
+ *  Design, Slides, Drive and the media panels are those panels, and the ones
+ *  installed before the catalog shipped icons carry no icon.svg at all. */
 /** THE GLYPHH BUNDLE WEARS THE MASCOT (his order, 2026-09-17), through the
  *  same resolver every app row uses — `appIconInner` answers the brand mark
  *  for slug "glyphh", so the skill and the app are one identity and nothing
  *  here hand-rolls a second path to that image. */
 /** Where the user finds each kind — the line a toast reads back after a write. */
 const WHERE_TO_SEE: Record<BundleType, string> = {
-  skill: "Your powers (Customize › Powers, or the + box › Your powers)",
-  app: "Your powers, and its panel opens like any app",
-  task: "Your powers; it runs on its own — put it on a clock with Schedules",
-  plugin: "Your powers",
+  skill: "Settings → Build → Skills (type Skill)",
+  app: "Settings → Build → Skills (type App) and the Apps work panel",
+  task: "Settings → Build → Skills (type Task); put it on a clock under Customize → Schedules",
+  plugin: "Settings → Build → Plugins",
 };
 const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
   return slug === "glyphh";
 };
-const markOf = (s: { icon?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
+const markOf = (s: { icon?: string | null; tool?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
   isGlyphhBundle(s) ? appIconInner({ slug: "glyphh" }, s?.name || "Glyphh", "skill-icon-initial")
-    : (s?.icon && s.icon.includes("<svg") ? s.icon : "");
+    : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
 /** The shelves a shared bundle sits on, and the door to change them. Nothing
  *  to show until it has been shared — an unshared folder is on no shelf. */
@@ -244,7 +247,7 @@ const setDetailName = (name: string, type?: BundleType): void => {
   host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}`;
   (host.querySelector(".skill-detail-title") as HTMLElement).textContent = name;
 };
-const setDetailIcon = (row: { icon?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
+const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
   const mark = markOf(row);
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
     n.innerHTML = iconOf(mark, row?.type);
@@ -316,16 +319,7 @@ async function refreshStandings(): Promise<void> {
   const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
     .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
   standings = r.ok ? r.data ?? {} : {};
-  if (current) { paintSource(current.id); if (!hubItem) { paintDetailTabs(typeOf(current)); paintDetailChrome(); } }
-  renderList();
-}
-
-/** GLYPHH'S OWN POWERS ARE PUBLISHED ALREADY (his order, 2026-10-09: "you
- *  can't publish a glyphh built power. That is already published by us"):
- *  one installed from the Glyphh catalog, or the Glyphh bundle itself, has no
- *  Share and no Publish. */
-function fromGlyphh(s: { id: string; slug?: string; name?: string } | null | undefined): boolean {
-  return !!s && (standings[s.id]?.from === "glyphh" || isGlyphhBundle(s));
+  if (current) paintSource(current.id);
 }
 
 /** The Overview's source line: a folder from a hub says so and names its version. */
@@ -489,12 +483,10 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; type?: BundleType; share?: ListShare; id?: string }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
-  // The installed folder's id: the powers modal hangs a super power's + / ✓ on it (help/powers-modal.ts).
-  if (opts.id) r.dataset.skillId = opts.id;
   r.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${iconOf(mark, opts.type)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"><span class="skill-row-title"></span>${typeChip(opts.type)}</div>
@@ -509,12 +501,10 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
   (r.querySelector(".skill-row-by") as HTMLElement).textContent = opts.by;
   (r.querySelector(".skill-row-desc") as HTMLElement).textContent = opts.desc || "No description";
   const right = r.querySelector(".skill-row-right") as HTMLElement;
-  if (opts.right) {
-    const date = document.createElement("span");
-    date.className = "skill-row-date";
-    date.textContent = opts.right;
-    right.appendChild(date);
-  }
+  const date = document.createElement("span");
+  date.className = "skill-row-date";
+  date.textContent = opts.right;
+  right.appendChild(date);
   if (opts.action) right.appendChild(opts.action);
   if (opts.menu?.length) {
     const kb = document.createElement("button");
@@ -620,7 +610,7 @@ function renderList(): void {
     for (const s of shown) {
       g.appendChild(row({
         name: s.name, by: s.author ? `by ${s.author}` : "by you",
-        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, type: s.type,
+        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, tool: s.tool, type: s.type,
         onOpen: () => void openDetail(s.id),
         action: instanceUpdateButton(s),
       }));
@@ -654,10 +644,8 @@ function renderList(): void {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           // A cloud app's card reads its release where a folder reads its date.
-          // No last-edited date on the row (his order, 2026-10-09); a cloud app's release label stays.
-          desc: s.description, right: s.instance ? releaseLabel(s.instance) : "", icon: s.icon, type: s.type,
+          desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           share: shares[s.id],
-          id: s.id,
           onOpen: () => void openDetail(s.id),
           action: up ? updateButton(s.id, up.latest) : s.instance?.update?.available ? instanceUpdateButton(s) : undefined,
           menu: [
@@ -665,7 +653,7 @@ function renderList(): void {
             ...(back !== null ? [{ label: `Rollback to release ${back}`, onClick: () => void rollback(s) }] : []),
             ...(shares[s.id]?.pending
               ? [{ label: "Withdraw from review", onClick: () => void withdrawShare(s.id, s.name) }]
-              : fromGlyphh(s) ? [] : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
+              : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
             ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
             { sep: true as const },
             { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
@@ -1023,7 +1011,6 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   const files = r.data;
   const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
   hubItem = d;
-  el("skill-detail-view")?.removeAttribute("data-skill-id");
   current = {
     id: `hub:${d.ref}`, source: "glyphh", type: d.type ?? cfg.kind, name: d.name, description: d.description || frontmatter.description || "", author: d.author,
     enabled: true, dir: "", fileCount: Object.keys(files).length, updatedAt: d.updatedAt, frontmatter, body,
@@ -1039,7 +1026,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
   paintOverviewBody(current.body);
-  setDetailIcon({ icon: d.icon, type: d.type, slug: d.slug, name: d.name });
+  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type, slug: d.slug, name: d.name });
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
@@ -1058,10 +1045,8 @@ function paintDetailChrome(): void {
   const hub = !!hubItem;
   // Share goes away once there IS a share (his order, 2026-09-17). Waiting on
   // the desk or live on the hub, the door out is Withdraw in the ⋮.
-  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head || fromGlyphh(current));
-  // No on/off switch on the details page (his order, 2026-10-09: "remove enabled, that is duplicative");
-  // a power turns off and on from its row's ⋮ in the list.
-  el("skill-enabled")?.closest(".skills-switch")?.classList.add("hidden");
+  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head);
+  el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
   el("skill-kebab")?.classList.toggle("hidden", hub);
   el("skill-edit")?.classList.add("hidden");
   let add = el<HTMLButtonElement>("skill-hub-add");
@@ -1128,12 +1113,17 @@ async function runNow(btn: HTMLButtonElement): Promise<void> {
 async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   if (!current) return;
   btn.disabled = true;
-  type TabEnv = { ok: boolean; data?: { slug: string; name: string; cloud?: boolean }; error?: string };
+  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string; cloud?: boolean }; error?: string };
   const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
   btn.disabled = false;
   const tab = r.data;
   if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
   closeSettingsModal();
+  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in
+  // panel. Both doors go through the cold-safe openers, which boot the
+  // workbench and wait for its bridge — calling the bridge directly was a
+  // silent no-op whenever the workbench had not mounted yet.
+  if (tab.tool) { openWorkPanelInWorkbench("__wbOpenTool", tab.tool); return; }
   // A cloud app opens as a web panel on the web (his report, 2026-10-05);
   // anything else keeps the desktop door.
   openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true, ...(tab.cloud ? { cloud: true } : {}) });
@@ -1188,12 +1178,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   if (flowHost) { unmountFlow(flowHost); flowHost.textContent = ""; }
   flowGraph = null;
   const type = typeOf(s);
-  // A skill's connections ride its SKILL.md header (host-tools.ts saveBundle).
-  if (type === "skill") {
-    const list = String(s.frontmatter?.connections ?? "").split(",").map((c) => c.trim()).filter(Boolean);
-    await paintBundleConnections(list);
-    return;
-  }
+  if (type === "skill") return;
   const read = async (rel: string): Promise<string> => {
     if (hubFiles) return hubFiles[rel] ?? "";
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
@@ -1269,7 +1254,8 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   const actions = block.querySelector(".skill-sched-actions") as HTMLElement;
 
   // THE SAME CONTROL AS THE AGENTS TAB (his order, 2026-09-17): one button
-  // that reads the schedule and opens the same modal.
+  // that reads the schedule and opens the same modal. Clicking the schedule
+  // itself goes to its own page, where the history is.
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "action-btn";
@@ -1281,6 +1267,16 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   const stub: BundleAgentRow = { ref: "", name: s.name, description: "", loop: "", model: "", source: "slot" };
   btn.addEventListener("click", () => openScheduleModal(s, stub, row));
   actions.appendChild(btn);
+
+  if (row) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "skill-sched-open";
+    open.textContent = "Open schedule";
+    open.title = "Its page, with every run";
+    open.addEventListener("click", () => { openScheduleOnLoad(row.id); openSettingsModal("schedules"); });
+    actions.appendChild(open);
+  }
   host.appendChild(block);
 }
 
@@ -1386,7 +1382,7 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
     const r = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> }).scheduleSave(input)
       .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
     if (!r.ok) { fail(r.error || "Couldn't save the schedule."); return; }
-    notice(`${s.name} runs ${cronToWords(cron)}`, { detail: "Change or remove it here." });
+    notice(`${s.name} runs ${cronToWords(cron)}`, { detail: "Change or remove it here, or under Customize → Schedules." });
     close();
     void paintBundleAgents(s);
   });
@@ -1620,7 +1616,6 @@ async function openDetail(id: string): Promise<void> {
   editing = false;
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
-  el("skill-detail-view")?.setAttribute("data-skill-id", r.data.id);
   const s = current;
   setDetailName(s.name, s.type);
   (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
@@ -1721,11 +1716,10 @@ interface RosterAgentRow { id: string; slug?: string; name: string }
 interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
-/* No Agents tab (his order, 2026-10-09: "remove the agents tab"). */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents", "connections", "publish"],
-  app: ["overview", "contents", "skills", "tools", "connections", "releases", "publish"],
-  task: ["overview", "flow", "contents", "runs", "connections", "publish"],
+  skill: ["overview", "contents", "agents", "publish"],
+  app: ["overview", "contents", "skills", "tools", "agents", "connections", "releases", "publish"],
+  task: ["overview", "flow", "contents", "agents", "runs", "connections", "publish"],
   plugin: ["overview", "contents", "skills", "publish"],
 };
 /** THE DEVELOPER'S DESK (his ask, 2026-10-07): Releases (an app instance's,
@@ -1764,7 +1758,7 @@ function paintOverviewBody(body: string): void {
 
 /** Show only the tabs this item earns. */
 function paintDetailTabs(type: BundleType): void {
-  const allowed = TABS_FOR[type].filter((t) => t !== "publish" || !fromGlyphh(current));
+  const allowed = TABS_FOR[type];
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`)
     .forEach((b) => b.classList.toggle("hidden", !allowed.includes(b.dataset.dtab as DetailTab)));
 }
@@ -1784,7 +1778,7 @@ function tabHasContent(tab: DetailTab, n: number): void {
   if (hide && b.classList.contains("active")) selectDetailTab("overview");
 }
 function selectDetailTab(t: DetailTab): void {
-  if (!TABS_FOR[typeOf(current)].includes(t) || (t === "publish" && fromGlyphh(current))) t = "overview";
+  if (!TABS_FOR[typeOf(current)].includes(t)) t = "overview";
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
@@ -1979,7 +1973,6 @@ async function onEdit(): Promise<void> {
 
 async function share(): Promise<void> {
   if (!current) return;
-  if (fromGlyphh(current)) { notice(`${current.name} is Glyphh's: it is published on the Glyphh catalog already.`); return; }
   // RELEASE NOTES ARE REQUIRED ON A RE-SHARE (his spec, 2026-10-07): the
   // Publish tab collects them; a re-share without them lands there.
   const notes = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
@@ -2381,10 +2374,17 @@ function paintControls(): void {
 function filterMenu(): MenuItem[] {
   const authors = [...new Set(skills.map(authorOf))].sort((a, b) => a.localeCompare(b));
   const sources = SOURCE_ORDER.filter((src) => skills.some((s) => s.source === src));
-  void sources;
-  // No Type or Source filter: one kind, one home (2026-10-09).
+  const types = (["skill", "app", "task", "plugin"] as BundleType[]).filter((t) => skills.some((s) => s.type === t));
   return [
     { heading: "Filter by" },
+    ...(types.length > 1 ? [{ label: "Type", children: [
+      { label: "All", checked: !filterType, onClick: () => { filterType = ""; renderList(); } },
+      ...types.map((t) => ({ label: `${TYPE_LABEL[t][0]!.toUpperCase()}${TYPE_LABEL[t].slice(1)}`, checked: filterType === t, onClick: () => { filterType = t; renderList(); } })),
+    ] }] : []),
+    { label: "Source", children: [
+      { label: "All", checked: !filterSource, onClick: () => { filterSource = ""; renderList(); } },
+      ...sources.map((src) => ({ label: src === "glyphh" ? "Glyphh" : SOURCE_LABEL[src].replace("From ", ""), checked: filterSource === src, onClick: () => { filterSource = src; renderList(); } })),
+    ] },
     { label: "Created by", children: [
       { label: "All", checked: !filterAuthor, onClick: () => { filterAuthor = ""; renderList(); } },
       ...authors.map((a) => ({ label: a, checked: filterAuthor === a, onClick: () => { filterAuthor = a; renderList(); } })),
@@ -2438,8 +2438,7 @@ function wire(): void {
   el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
-    // A NEW POWER IS GLYPHH'S TO BUILD (2026-10-09): one door, the powers modal's New power.
-    { label: "New power", onClick: () => openPowersModal({ tab: "skills", newPower: true }) },
+    ...KINDS.map((k) => ({ label: `New ${TYPE_LABEL[k]}`, onClick: () => void createNew(k) })),
     { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
@@ -2531,11 +2530,8 @@ function setScope(scope: "mine" | "discover", force = false): void {
   return { load: loadSkillsSettings, setScope };
 }
 
-/* ONE KIND, A POWER (his order, 2026-10-09: "Collapse 4 things into one
-   thing... a power"): this one page lists every power — what used to be a
-   skill, a task or an app — and says "power" for all of them. */
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", kinds: ["skill", "task", "app"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "power", nouns: "powers", icon: SKILL_ICON, back: "Powers",
+  kind: "skill", kinds: ["skill", "task"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
 });
 const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",

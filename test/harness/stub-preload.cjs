@@ -122,6 +122,7 @@ const YO_OVERRIDES = {
   rpaRegister: () => {}, rpaUnregister: () => {},
   railCollapseSet: () => Promise.resolve(),
   refreshAuth: () => Promise.resolve(),
+  localMcpStatus: () => Promise.resolve({ running: false, port: 8123 }),
   connectorsConnect: (appSlug) => { calls.connectorsConnect.push(appSlug); return Promise.resolve({ ok: true }); },
   glyphhAgentConnectRespond: (p) => { calls.connectRespond.push(JSON.parse(JSON.stringify(p))); return Promise.resolve(true); },
   glyphhLiveList: () => Promise.resolve(JSON.parse(JSON.stringify(liveRuns))),

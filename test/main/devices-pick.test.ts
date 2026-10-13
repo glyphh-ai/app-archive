@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deviceChecked, devicesForRun, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
+import { deviceChecked, devicesForRun, toggleDeviceIn, selfMachineId, foldersForRun, folderSteerLine } from "../../src/renderer/help/devices-pick.js";
 
 describe("the desktop is its own device (his report, 2026-10-07)", () => {
-  // `device` is the server's hash of app + hostname (attach.py device_key); the name is the hostname.
-  const rows = [{ machineId: "m-1", device: "3f9a0c1d2e4b5a69", name: "Christophers-Mac-Studio.local" }, { machineId: "m-2", device: "77aa0c1d2e4b5a00", name: "laptop.local" }];
+  const rows = [{ machineId: "m-1", device: "Christophers-Mac-Studio.local" }, { machineId: "m-2", device: "laptop.local" }];
   it("finds this machine's row by its host name, case-blind; none when not attached", () => {
     expect(selfMachineId(rows, "christophers-mac-studio.local")).toBe("m-1");
     expect(selfMachineId(rows, "other.local")).toBeNull();
@@ -27,7 +26,7 @@ describe("the desktop is its own device (his report, 2026-10-07)", () => {
     expect(on).toContain("Terminal panel is not a tool");
     const off = folderSteerLine("/Users/me/dev/happy-shoes", "mac.local", false);
     expect(off).toContain("remote control is off");
-    expect(off).toContain("Settings → System → Remote control");
+    expect(off).toContain("Settings → Remote control");
     expect(folderSteerLine("", "mac.local", true)).toBe("");
   });
 });
@@ -38,6 +37,11 @@ describe("which devices a session reaches (his order, 2026-10-07)", () => {
     expect(deviceChecked([], "m1")).toBe(false);
     expect(deviceChecked(["m2"], "m1")).toBe(false);
     expect(deviceChecked(["m1"], "m1")).toBe(true);
+  });
+  it("the first check starts the list with that one device; the next flips it", () => {
+    expect(toggleDeviceIn(undefined, "m1", ["m1", "m2"])).toEqual(["m1"]);
+    expect(toggleDeviceIn(["m2"], "m1", ["m1", "m2"])).toEqual(["m2", "m1"]);
+    expect(toggleDeviceIn(["m2", "m1"], "m1", ["m1", "m2"])).toEqual(["m2"]);
   });
   it("the run names the session's list, none by default; a device gone from the relay is dropped", () => {
     expect(devicesForRun(undefined, ["m1", "m2"])).toEqual([]);

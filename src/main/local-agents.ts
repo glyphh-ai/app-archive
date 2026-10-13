@@ -26,14 +26,13 @@
 import { ipcMain } from "electron";
 import cron from "node-cron";
 import { getLocalDb } from "./local-db.js";
-import { broadcast } from "./broadcast.js";
 import {
   armSchedule, runSchedule, setAgentProviders, touchSchedule,
   type ScheduleRow, type ScheduleContext, type SlotAgent,
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, checkSuperPowers, GLYPHH_AGENT, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type AgentWithheld, type AgentVoiceLike, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type BotAvatarLike } from "../shared/member-library.js";
 import { noteLibraryDelete } from "./library-events.js";
 import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
 
@@ -61,24 +60,6 @@ export interface AgentRow {
   skills: string[];
   /** App slugs this agent may drive. */
   apps: string[];
-  /** Its powers (shared/member-library.ts AgentRowLike): folders, connections, extra models. */
-  folders?: string[];
-  connections?: string[];
-  models?: string[];
-  /** The super powers it holds and may hand work to (2026-10-09). */
-  superPowers?: string[];
-  /** What Glyphh was denied (Glyphh's record only; shared/member-library.ts). */
-  withheld?: AgentWithheld;
-  /** Where its map's cards sit (2026-10-09). */
-  mapLayout?: Record<string, { x: number; y: number }>;
-  /** Directness 1 gentle … 5 blunt; temperament 1 kind … 5 spicy (2026-10-09). */
-  directness?: number;
-  temperament?: number;
-  /** The sliders and the voice (shared/member-library.ts AgentRowLike). */
-  personality?: number;
-  effort?: string;
-  voice?: AgentVoiceLike | null;
-  modelCaps?: Record<string, number>;
   /** Armed — false parks every task without deleting its schedule. */
   live: boolean;
   guardrails: GuardrailsPolicy | null;
@@ -138,14 +119,8 @@ function writeAgent(row: AgentRow): void {
   void remotePut("agent", row.slug, row).catch((e) => console.warn("[agents] save failed:", String(e)));
 }
 
-/** The SUPER POWERS: every agent row but Glyphh's own (GLYPHH_AGENT). */
 export function listAgents(): AgentRow[] {
-  return Array.from(agents.values()).filter((a) => a.slug !== GLYPHH_AGENT).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/** GLYPHH'S OWN RECORD, or null until the member first edits Glyphh. */
-export function glyphhRow(): AgentRow | null {
-  return readAgent(GLYPHH_AGENT);
+  return Array.from(agents.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function getAgent(ref: string): AgentRow {
@@ -158,52 +133,26 @@ interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
-  folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
-  withheld?: AgentWithheld | null;
-  mapLayout?: Record<string, { x: number; y: number }> | null;
-  personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
-  modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 
 /** WHO NEEDS TO KNOW THE ROSTER MOVED: the Glyphh loop rebuilds its spawn
  *  tool from it, so an agent made from Settings, from a chat (`agent_save`)
  *  or deleted anywhere reaches the next turn of every open conversation. */
-// LOAD-ORDER SAFE (his crash, 2026-10-09: "Cannot access 'changed' before
-// initialization"): glyphh-loop subscribes at ITS module load, which can run
-// inside this module's own imports (local-agents → local-library →
-// glyphh-loop → here), before a top-level `const` would exist. A function
-// declaration is hoisted, so the set is made on first use, whoever comes first.
-function changedSet(): Set<() => void> {
-  const g = globalThis as unknown as { __glyphhAgentsChanged?: Set<() => void> };
-  return (g.__glyphhAgentsChanged ??= new Set());
-}
+const changed = new Set<() => void>();
 export function onAgentsChanged(cb: () => void): () => void {
-  changedSet().add(cb);
-  return () => changedSet().delete(cb);
+  changed.add(cb);
+  return () => changed.delete(cb);
 }
 function announceAgents(): void {
-  for (const cb of changedSet()) { try { cb(); } catch { /* a listener's failure is its own */ } }
-  // Every window too: the rail paints the super powers' faces from this
-  // roster, so a new icon shows there the moment it is saved (his order,
-  // 2026-10-09).
-  try { broadcast("agents-changed"); } catch { /* no window yet */ }
+  for (const cb of changed) { try { cb(); } catch { /* a listener's failure is its own */ } }
 }
 
 export function saveAgent(input: AgentInput): AgentRow {
-  // An update may carry only what changed (the bot page's powers save alone,
-  // 2026-10-09): the name then is the one already stored.
-  const known = input.slug ? readAgent(slugify(String(input.slug))) : null;
-  const name = String(input.name ?? known?.name ?? "").trim();
+  const name = String(input.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
   const slug = slugify(String(input.slug || name));
-  const existing = known ?? readAgent(slug);
-  // WHO IT HOLDS (2026-10-09): never itself, never a loop — checked on every save that names them.
-  if (input.superPowers !== undefined) {
-    const roster = new Map(listAgents().filter((a) => a.slug !== slug).map((a) => [a.slug, a.superPowers ?? []] as const));
-    roster.set(slug, existing?.superPowers ?? []);
-    input = { ...input, superPowers: checkSuperPowers(slug, input.superPowers, roster) };
-  }
+  const existing = readAgent(slug);
   const row = buildAgentRow({ ...input, slug }, existing, new Date().toISOString());
   writeAgent(row);
   // Live flips park or arm every one of its tasks at once.
@@ -215,7 +164,6 @@ export function saveAgent(input: AgentInput): AgentRow {
 /** Delete the agent: its schedules go with it and the server drops the row. */
 export function deleteAgent(ref: string): void {
   const slug = String(ref);
-  if (slug === GLYPHH_AGENT) throw new Error("Glyphh can't be deleted");
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
   // would keep firing a prompt nobody can see or edit. Each is tombstoned:

@@ -7,7 +7,16 @@
 
 import { ipcMain } from "electron";
 import type { ConnectorManager } from "./connectors";
+import {
+  syncLocalMcpServer,
+  stopLocalMcpServer,
+  localMcpStatus,
+  localMcpGenToken,
+  localMcpListTokens,
+  localMcpRevokeToken,
+} from "./local-mcp-server";
 import { sendToHomeShell } from "./broadcast";
+import { setPreference } from "./stores/preferences-db";
 import { getAccountInfo, getAuthStatus } from "./auth";
 import { getClient } from "./glyphh-client";
 import { ForbiddenError } from "@glyphh/sdk";
@@ -152,8 +161,23 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     };
   });
 
-  // (The local MCP server and its tokens are gone, 2026-10-09: Glyphh's own
-  //  tools ride in the loop — host-tools.ts — and nothing outside drives it.)
+  // ── Local MCP server (127.0.0.1) — the loopback MCP surface ──
+  ipcMain.handle("local-mcp-set-enabled", async (_e, enabled: boolean) => {
+    setPreference("localMcpEnabled", !!enabled);
+    return await syncLocalMcpServer();
+  });
+  ipcMain.handle("local-mcp-status", () => localMcpStatus());
+  ipcMain.handle("local-mcp-set-port", async (_e, port: number) => {
+    const p = Number(port);
+    if (!Number.isInteger(p) || p < 1024 || p > 65535) return { ok: false, error: "Port must be 1024–65535." };
+    setPreference("localMcpPort", p);
+    // Bounce the server so the new port takes effect if it's running.
+    stopLocalMcpServer();
+    return await syncLocalMcpServer();
+  });
+  ipcMain.handle("local-mcp-tokens-list", () => localMcpListTokens());
+  ipcMain.handle("local-mcp-tokens-create", (_e, label: string) => localMcpGenToken(label));
+  ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
 
 

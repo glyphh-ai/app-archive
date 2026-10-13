@@ -7,10 +7,7 @@ vi.mock("../../src/main/relay-client", () => ({
   registerRelayHandler: (name: string, fn: (p: unknown) => unknown) => { handlers.set(name, fn); },
 }));
 
-interface Row {
-  id: string; slug: string; name: string; description: string; prompt: string; model: string; role?: "orchestrator" | "worker";
-  skills?: string[]; connections?: string[]; models?: string[]; folders?: string[]; personality?: number; effort?: string;
-}
+interface Row { id: string; slug: string; name: string; description: string; prompt: string; model: string; role?: "orchestrator" | "worker" }
 const rows = new Map<string, Row>();
 const slugify = (n: string): string => n.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 vi.mock("../../src/main/local-agents", () => ({
@@ -19,7 +16,7 @@ vi.mock("../../src/main/local-agents", () => ({
   getAgent: (ref: string) => { const r = rows.get(ref); if (!r) throw new Error(`agent "${ref}" not found`); return r; },
   saveAgent: (i: Partial<Row> & { slug?: string }) => {
     const slug = slugify(i.slug || i.name || "");
-    const r = { ...rows.get(slug), ...i, id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", role: i.role ?? "worker" };
+    const r = { id: slug, slug, name: i.name ?? "", description: i.description ?? "", prompt: i.prompt ?? "", model: i.model ?? "", role: i.role ?? "worker" };
     rows.set(slug, r);
     return r;
   },
@@ -31,21 +28,6 @@ vi.mock("../../src/main/agent-brief", () => ({
 }));
 vi.mock("../../src/main/loop-models", () => ({
   listLoopModels: async () => ({ ok: true, models: [{ id: "claude-opus-5", name: "claude-opus-5", providerSlug: "anthropic" }, { id: "gemini-3.8-flash", name: "gemini-3.8-flash", providerSlug: "google" }] }),
-}));
-// The connector catalog: what connections.apps answers for a search.
-const CATALOG = [
-  { id: "youtube_data_api", name: "YouTube Data API" },
-  { id: "youtube", name: "YouTube" },
-  { id: "linkedin", name: "LinkedIn" },
-  { id: "slack", name: "Slack" },
-];
-vi.mock("../../src/main/glyphh-client", () => ({
-  getClient: () => ({ connections: { apps: async ({ search }: { search: string }) => ({
-    apps: CATALOG.filter((a) => `${a.id} ${a.name}`.toLowerCase().includes(search.toLowerCase().split(" ")[0]!)),
-  }) } }),
-}));
-vi.mock("../../src/main/skills-fs", () => ({
-  listSkills: () => [{ id: "glyphh:ui-ux-code", name: "UI/UX code" }, { id: "glyphh:video-clips", name: "Video clips" }],
 }));
 vi.mock("../../src/main/org-models", () => ({ bareModel: (m: string) => m.replace(/^[a-z0-9_-]+::/i, "").trim() }));
 
@@ -82,10 +64,7 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
 
   it("lists, reads and deletes by id — and says so when there is no such agent", async () => {
     await call("agents.save", { name: "Writer", brief: "You write." });
-    expect(await call("agents.list", {})).toEqual([{
-      agent: "writer", name: "Writer", description: "", model: null, role: "worker", hasBrief: true,
-      powers: [], connections: [], models: [], folders: [], superPowers: [], personality: null, directness: null, temperament: null, effort: null,
-    }]);
+    expect(await call("agents.list", {})).toEqual([{ agent: "writer", name: "Writer", description: "", model: null, role: "worker", hasBrief: true }]);
     expect(await call("agents.get", { agent: "writer" })).toMatchObject({ brief: "You write." });
     expect(await call("agents.delete", { agent: "writer" })).toEqual({ agent: "writer", deleted: true });
     expect(() => handlers.get("agents.delete")!({ agent: "writer" })).toThrow(/not found/);
@@ -115,54 +94,5 @@ describe("agent tools — the Bots panel's role (his order, 2026-10-08)", () => 
     const kept = await call("agents.save", { agent: "boss", description: "plans the work" }) as { role: string };
     expect(kept.role).toBe("orchestrator");
     await expect(call("agents.save", { agent: "boss", role: "manager" })).rejects.toThrow(/role must be/);
-  });
-});
-
-describe("a super power is the agent plus its powers (his order, 2026-10-09)", () => {
-  beforeEach(() => { rows.clear(); });
-
-  it("a save carries its powers, connections, models, folders, personality and thinking", async () => {
-    const r = await call("agents.save", {
-      name: "Video Marketer", description: "Turns long videos into social posts", brief: "You cut videos.",
-      powers: ["video-clips", "glyphh:ui-ux-code"], connections: ["youtube_data_api"], models: ["google::gemini-3.8-flash"],
-      folders: ["/work/videos"], personality: 4, effort: "high",
-    }) as Record<string, unknown>;
-    expect(rows.get("video-marketer")).toMatchObject({
-      skills: ["glyphh:video-clips", "glyphh:ui-ux-code"], connections: ["youtube_data_api"], models: ["gemini-3.8-flash"],
-      folders: ["/work/videos"], personality: 4, effort: "high",
-    });
-    expect(r).toMatchObject({ powers: ["video-clips", "ui-ux-code"], connections: ["youtube_data_api"], personality: 4, effort: "high" });
-  });
-
-  it("a power that does not exist is refused by name, and nothing is saved", async () => {
-    await expect(call("agents.save", { name: "X", brief: "b", powers: ["nope"] })).rejects.toThrow(/no power called "nope".*skill_save/);
-    expect(rows.size).toBe(0);
-  });
-
-  it("personality and thinking are checked, and an update keeps the powers it was not told about", async () => {
-    await expect(call("agents.save", { name: "X", brief: "b", personality: 9 })).rejects.toThrow(/1 \(serious\) to 5/);
-    await expect(call("agents.save", { name: "X", brief: "b", effort: "turbo" })).rejects.toThrow(/effort is one of/);
-    await call("agents.save", { name: "Y", brief: "b", powers: ["video-clips"] });
-    await call("agents.save", { agent: "y", description: "new" });
-    expect(rows.get("y")!.skills).toEqual(["glyphh:video-clips"]);
-  });
-});
-
-describe("connections are looked up, never guessed (his report, 2026-10-09)", () => {
-  beforeEach(() => { rows.clear(); });
-
-  it("an exact connector slug is kept; an exact connector NAME maps to its slug", async () => {
-    await call("agents.save", { name: "Clips", brief: "b", connections: ["youtube_data_api", "LinkedIn"] });
-    expect(rows.get("clips")!.connections).toEqual(["youtube_data_api", "linkedin"]);
-  });
-
-  it("a short name maps to the catalog's best match; one with no match is refused with suggestions", async () => {
-    await call("agents.save", { name: "Clips", brief: "b", connections: ["youtube"] });
-    expect(rows.get("clips")!.connections).toEqual(["youtube"]);
-    await call("agents.save", { name: "Posts", brief: "b", connections: ["youtube-data"] });
-    expect(rows.get("posts")!.connections).toEqual(["youtube_data_api"]);
-    await expect(call("agents.save", { name: "Nope", brief: "b", connections: ["zzzz"] }))
-      .rejects.toThrow(/not a connector slug: "zzzz" — no connector matches.*connector_tools/);
-    expect(rows.has("nope")).toBe(false);
   });
 });

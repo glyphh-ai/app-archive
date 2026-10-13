@@ -139,7 +139,7 @@ export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-
 /** The pages the web's Settings modal lists (the test pins this list against
  *  the desktop-only ones so a page can never be on both sides). */
 export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
-  "general", "appearance", "memory", "privacy", "devices", "account", "usage", "connections-cfg",
+  "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "connections-cfg",
   "billing", "support", "about",
 ]);
 
@@ -147,10 +147,18 @@ export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
  *  browser lacks (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
 export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
 
-/** THE RAIL'S MENU: none (his order, 2026-10-09: "remove the other items…
- *  the entire top left rail"). The rail is + New, Glyphh, then Super powers;
- *  the full-screen pages open from elsewhere (the + box, the agent's menu). */
-export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([]);
+/** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
+ *  customize webpanels should be what is shown in the left rail", then
+ *  "remove connections and devices from the left rail on web"): Artifacts,
+ *  Customize — each opens FULL SCREEN (webPanelOpensFullScreen). Build folded
+ *  into Customize (his report, 2026-10-07). Connections and Devices stay
+ *  reachable inside Settings. The desktop's rail keeps the same two. */
+export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Object.freeze([
+  { sub: "artifacts", label: "Artifacts" },
+  { sub: "customize", label: "Customize" },
+  // A page of its own from the rail (his order, 2026-10-09).
+  { sub: "schedules", label: "Schedules" },
+]);
 
 /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05: "artifacts -> new
  *  web panel -> open an artifact it opens full screen in place of anything
@@ -163,11 +171,7 @@ export const WEB_RAIL_LINKS: ReadonlyArray<{ sub: string; label: string }> = Obj
  *  = close), an X on the right. Closing restores exactly what was showing.
  *  Customize takes this path on the desktop too (GROUP_PAGES); Artifacts
  *  stays an ordinary work panel there. */
-/** "bot" is the bot's edit page (his order, 2026-10-09: "editing a bot should
- *  be a page just like customize"), opened from the rail's ⋮ → Edit. */
-/* No "customize": the page is gone (his order, 2026-10-09); its name opens the powers modal.
- * No "schedules": the Schedules page is gone too (2026-10-10). */
-export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "bot"]);
+export const webFullScreenPanels: ReadonlyArray<string> = Object.freeze(["artifacts", "customize", "schedules"]);
 export function webPanelOpensFullScreen(key: string): boolean {
   return webFullScreenPanels.includes(key);
 }
@@ -194,7 +198,7 @@ export function groupOfSub(sub: string): GroupPage | null {
   return WEB_GROUP_ROWS.includes(sub) ? "customize" : null;
 }
 /** The header's title per full-screen panel ("‹ Artifacts"). */
-export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", bot: "Edit" });
+export const WEB_FULL_SCREEN_TITLES: Readonly<Record<string, string>> = Object.freeze({ artifacts: "Artifacts", customize: "Customize", schedules: "Schedules" });
 export function webFullScreenTitle(key: string): string {
   return WEB_FULL_SCREEN_TITLES[key] ?? key;
 }
@@ -236,6 +240,7 @@ export function webRailWordmark(web: boolean): boolean {
  *  web-surface.ts). Customize left this list on 2026-10-05: it is the rail's
  *  full-screen page now. */
 export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
+  "#rail-more-toggle",
   // The Workspaces tray (2026-10-08) is the desktop's: workspaces are kept there.
   "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body",
 ]);
@@ -284,11 +289,10 @@ export function webToolReachable(view: string): boolean {
  *  the agent as a source and as a swap target. On the web the agent card is
  *  a movable flow panel like any other: its head is the drag handle, it
  *  reorders among the panels and drives to a side, and the seams resize it.
- *  It still owns its column — nothing stacks under it. THE DESKTOP TOO (his
- *  report, 2026-10-09: "the glyphh agent can only be dragged once"): its own
- *  row is its drag handle there since the headers came off the panels. */
-export function agentCardMovable(_web: boolean): boolean {
-  return true;
+ *  It still owns its column — nothing stacks under it. The desktop keeps its
+ *  own rule (the agent never reflowed by a drag), untouched. */
+export function agentCardMovable(web: boolean): boolean {
+  return web;
 }
 
 /** + NEW ON THE WEB (his report, 2026-10-05: the rail's + New did nothing).

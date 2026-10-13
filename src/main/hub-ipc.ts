@@ -13,7 +13,6 @@
  * prompt: <SKILL.md body> } — `prompt` keeps the proxy's skills mirror fed.
  */
 
-import type { HomeKind } from "./skills-fs.js";
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getActiveUserId } from "./app-paths.js";
@@ -21,7 +20,7 @@ import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillM
 import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
 import { ensureInstanceTab, installFromHub, listInstances, findInstance } from "./app-instances.js";
 import { instanceCardId, isInstanceCardId, instanceKeyOfCardId } from "../shared/app-instances.js";
-import { GLYPHH_GUIDE_SLUG } from "../shared/glyphh-guide.js";
+import { houseViewOfApp } from "../shared/house-store.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
 interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
@@ -41,6 +40,8 @@ export interface DiscoverRow {
   categories: string[];
   /** App and task items: the manifest's icon.svg, from the catalog row. */
   icon?: string | null;
+  /** A house app's own panel (gimage, gdrive, …): the card wears that mark (his report, 2026-10-07). */
+  tool?: string | null;
   /** What kind of skill this is — the hub kind it was listed under. */
   type: Kind;
 }
@@ -61,12 +62,6 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
 type Kind = "skill" | "app" | "plugin" | "task";
 const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
 const kindsOf = (k: unknown): Kind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
-/** Where a hub item lands on this machine: the one home (an app's source keeps
- *  its own lane). A hub "plugin" is Claude Code's format and has no home here. */
-const homeKindOf = (k: Kind): HomeKind => {
-  if (k === "plugin") throw new Error("plugins were Claude Code's format; Glyphh installs powers only");
-  return k === "app" ? "app" : "skill";
-};
 /** The hub kind behind a local bundle: what the folder IS (its manifest), and
  *  only if it can't be read, the home its id names. */
 const kindOfId = (id: string): Kind => {
@@ -91,7 +86,7 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   // the desktop carries on disk — the house apps among them — are not
   // installs, and counting them ticked Drive, Audio, Video, Images and Slides
   // on Discover while Your apps stood at zero (his report, 2026-10-07).
-  const mine = new Set(listSkills("skill")
+  const mine = new Set(listSkills(["skill", "task", "plugin"])
     .map((sk) => `${kindOfId(sk.id)}:${sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase()}`));
   if (kinds.includes("app")) for (const i of await listInstances().catch(() => [])) mine.add(`app:${i.slug.toLowerCase()}`);
   const have = (kind: Kind, slug: string): boolean => mine.has(`${kind}:${(slug || "").toLowerCase()}`);
@@ -99,12 +94,11 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   for (const [kind, org] of orgLists) {
     for (const it of Array.isArray(org) ? org : []) {
       if (!it.headVersion) continue;
-      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
+      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, tool: kind === "app" ? houseViewOfApp(it.slug) : null, type: kind });
     }
   }
-  // The Glyphh power is built in: a catalog that still ships it is not offered.
-  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind) && x.slug !== GLYPHH_GUIDE_SLUG)) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind))) {
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, tool: p.kind === "app" ? houseViewOfApp(p.slug) : null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -168,7 +162,7 @@ export async function installHubItem(ref: string, kind: Kind): Promise<{ id: str
   }
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
-  const installed = installSkill(meta.slug, files, homeKindOf(kind));
+  const installed = installSkill(meta.slug, files, kind);
   origin(installed.id, Object.keys(files));
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
@@ -229,7 +223,7 @@ async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "o
 export interface BundleStanding { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
 async function standings(): Promise<Record<string, BundleStanding>> {
   const out: Record<string, BundleStanding> = {};
-  const mine = listSkills("skill");
+  const mine = listSkills(["skill", "task", "plugin"]);
   if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const catalog = await catalogRows(kinds);
@@ -260,7 +254,7 @@ async function standings(): Promise<Record<string, BundleStanding>> {
 export interface ShareState { head: number | null; pending: number | null; rejected: number | null }
 async function shareStates(): Promise<Record<string, ShareState>> {
   const out: Record<string, ShareState> = {};
-  const mine = listSkills("skill");
+  const mine = listSkills(["skill", "task", "plugin"]);
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
   const client = getClient();
   const lists = await Promise.all(kinds.map(async (k) =>
@@ -327,26 +321,24 @@ async function update(skillId: string): Promise<{ version: number }> {
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
   const name = skillId.slice(skillId.indexOf(":") + 1);
   const gone = (o.files ?? []).filter((f) => !(f in files));
-  installSkill(name, files, homeKindOf(o.kind));
+  installSkill(name, files, o.kind);
   if (gone.length) removeSkillFiles(skillId, gone);
   const version = versionOf(meta);
   setPreference(ORIGIN_KEY(skillId), { ...o, version, files: Object.keys(files) } satisfies InstallOrigin);
   return { version };
 }
 
-/** What every desktop gets without asking (his order, 2026-09-16): the memory
- *  power from the public catalog, installed once when absent. Keeping it
- *  CURRENT is the Update button's job, not this function's. */
-// No plugin: Claude Code's plugin of Glyphh served the CLIs, and the Glyphh loop is the only loop now (2026-10-09).
-// No Glyphh power: it is built into the loop (shared/glyphh-guide.ts), never installed (2026-10-09).
-const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh-memory" }];
+/** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
+ *  skill and its plugin from the public catalog, installed once when absent.
+ *  Keeping them CURRENT is the Update button's job, not this function's. */
+const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }, { kind: "skill", slug: "glyphh-memory" }];
 export async function installDefaultHubItems(): Promise<void> {
   try {
     const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);
     for (const want of DEFAULT_INSTALLS) {
       const hit = pub.find((p) => p.kind === want.kind && p.slug === want.slug);
       if (!hit) continue;
-      const have = listSkills(homeKindOf(want.kind)).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
+      const have = listSkills(want.kind).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
       if (have) continue;
       // NOTHING REWRITES A FOLDER BEHIND THE USER (his report, 2026-09-17:
       // "it showed as having an update once but it isn't showing anymore").

@@ -49,6 +49,7 @@ jobs:
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          ref: ce54b3007237207747da06246c32523231fffbce
           path: .sdk-src
 
       - name: Build the SDK (file:../sdk dependency)
@@ -133,6 +134,7 @@ jobs:
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          ref: ce54b3007237207747da06246c32523231fffbce
           path: .sdk-src
 
       - name: Build the SDK (file:../sdk dependency)
@@ -275,6 +277,7 @@ jobs:
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          ref: ce54b3007237207747da06246c32523231fffbce
           path: .sdk-src
 
       - name: Build the SDK (file:../sdk dependency)
@@ -337,6 +340,7 @@ jobs:
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          ref: ce54b3007237207747da06246c32523231fffbce
           path: .sdk-src
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

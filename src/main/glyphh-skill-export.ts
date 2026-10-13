@@ -1,0 +1,293 @@
+/**
+ * glyphh-skill-export — generate a provider-tailored "skill" file that teaches
+ * an external LLM (Claude, Gemini, OpenAI) how to drive the user's Glyphh
+ * through the MCP relay: open apps/layouts, run installed apps' tools, call
+ * connected accounts, and BUILD + DEPLOY new Glyphh apps.
+ *
+ * The BODY is the same everywhere (it's the same relay + tools); only the
+ * wrapper differs per provider (Claude wants SKILL.md frontmatter; Gemini /
+ * OpenAI want a plain system-instruction preamble).
+ */
+
+export type SkillProvider = "claude" | "gemini" | "openai";
+
+const ENDPOINT = "https://api.glyphh.ai/mcp";
+
+const BODY = `## What Glyphh is
+
+Glyphh is the user's workspace on their own machine. Over this MCP connection you
+drive it: open their apps and saved layouts as native OS windows, run the tools
+their installed apps expose, call their 3,500+ connected accounts, and even
+**build brand-new apps that run on their machine**, and — only when they ask —
+publish an app to a public URL. Building and opening execute LOCALLY (apps run on
+their machine, never a public URL, never a login); publishing to the public web is
+a separate, explicit step (see Publishing below). You send commands, Glyphh runs
+them locally and returns the result.
+
+## Connect
+
+Add Glyphh's MCP endpoint to your connectors/tools:
+
+    ${ENDPOINT}
+
+Use OAuth if your client supports it (approve the "Glyphh" connection). Otherwise
+paste a token generated in Glyphh → Settings → MCP as a Bearer header.
+
+## The tools
+
+**Check the connection**
+- \`relay_ping { message? }\` — round-trip smoke test; confirm the user's client is online before relying on other tools.
+
+**Windows & layouts** (open things on the user's screen)
+- \`panels_open { app }\` — open "browser", "terminal", or a saved-app slug in its own native window.
+- \`panels_list\` — list open app windows (slug, name, url, title, focused).
+- \`panels_switch { app }\` / \`panels_close { app }\` — focus / close a window.
+- \`layouts_open { name, mode? }\` — open a saved layout. \`mode:"screen"\` tiles the whole display (one OS window per app); \`mode:"window"\` tiles inside one window.
+
+**Installed app tools — the marketplace** (headless; no window needed)
+- \`app_list_tools\` — discover the MCP tools the user's installed Glyphh apps expose: \`[{ app, name, tools: [{ name, description, inputSchema }] }]\`. Every user's apps differ — discover first, never assume.
+- \`app_call_tool { app, tool, args }\` — run one headlessly (send a message, query a graph, search a vector store, create an event). \`args\` must match the tool's \`inputSchema\`.
+- \`app_install { dir }\` — install/update a Glyphh app from a FOLDER on the user's machine (a built bundle folder is zipped as it is; a project with a build script is built by the platform as a job — \`app_build_status { job }\` reads it) as an app in the cloud (an instance in the user's organization); its tools then light up for \`app_call_tool\` on every surface. Never read a bundle into a tool call; \`bundleBase64\` is only for a small bundle handed over from outside.
+
+**The user's agents** (sub-agents Glyphh hands work to — each with its own brief and model)
+- \`agents_list\` — the user's agents: \`[{ agent, name, description, model, hasBrief }]\`. \`description\` says when to use each one.
+- \`agent_get { agent }\` — one agent in full, its brief included.
+- \`agent_save { agent?, name?, description?, brief?, model? }\` — MAKE an agent (omit \`agent\`) or UPDATE one (pass it; omitted fields are kept). Write \`description\` as *when to use it* — the Glyphh agent reads it to decide what to hand over. **Omit \`brief\` and Glyphh writes one** on the user's default model from the name and description; pass your own when the user was specific about how the agent should work. \`model\` must be one of the user's models (\`models_available\`) — a cheap fast one for fan-out work, a strong one for the hard part; omit it to run on the main agent's. A name already in use is refused: update that agent instead.
+- \`agent_delete { agent }\` — only when the user asked for it.
+- Good agents are narrow: one job, one standard, a clear report. "Researcher: finds and cites primary sources" beats "Helper". A new agent can be handed work from the Glyphh agent's next turn.
+
+**Connected accounts** (the 3,500-app catalog, via Pipedream)
+- \`connector_list_tools\` — every tool the user's connected apps expose (Slack, GitHub, Notion, Gmail, Salesforce, …), with schemas.
+- \`connector_call_tool { slug, name, args }\` — call one of them.
+
+## RPA on a tab
+
+The user's tabs (web apps open in Glyphh) carry MAPPED COMMANDS: named actions
+on a page the user, or you, taught Glyphh once, that then run by name — on the
+user's own signed-in session, no API needed. A mapped command is
+\`{ key, description, action, selector?, text?, url?, script?, waitFor?, guide? }\`:
+\`key\` is its name (\`send\`, \`search\`), \`action\` is one of \`click\` | \`type\` |
+\`read\` | \`readHtml\` | \`goto\` | \`custom\`, \`selector\` is the element it acts on
+(click, type, read, readHtml), \`text\`/\`url\` take \`{{value}}\` for the caller's
+value, \`script\` is the page JavaScript a \`custom\` command runs (VALUE in scope),
+and \`guide\` \`{ pre?, post?, verify?, recover?, delay? }\` is what makes it run
+reliably unattended (what must be true before, what to expect after, a selector
+that must exist afterwards, what to try on failure, a wait). A SEQUENCE is a
+named list of steps over those commands that runs in order and stops where it fails.
+
+- \`rpa_commands { app }\` — what a tab has: its mapped commands and sequences, and whether its panel is open. Discover first.
+- \`rpa_pick { app }\` — ask the user to click the element on the tab; returns its selector, tag and text — the way to map without guessing a selector.
+- \`rpa_map { app, key, description, action, selector?, text?, url?, script?, waitFor?, guide? }\` / \`rpa_unmap { app, key }\` — teach or forget a command.
+- \`rpa_run { app, command, value? }\` — run one, the user watching (the panel opens if it is not up); \`value\` fills \`{{value}}\`. A read returns the text.
+- \`rpa_sequence_save { app, name, description, steps:[{ command, value?, waitFor? }] }\` / \`rpa_sequence_remove { app, name }\` / \`rpa_sequence_run { app, sequence, args? }\` — keep and play a sequence; \`args\` fills the steps' \`{{placeholders}}\`.
+
+Every mapped command is ALSO a tool named \`<tab>_<key>\` inside the Glyphh
+loop (\`gmail_send\`, \`linear_search\`), and a sequence \`<tab>_<name>\`, so an
+agent on the user's machine calls them like any other tool. A task program reaches the same doors as
+\`ctx.rpa.run(app, command, value?)\`, \`ctx.rpa.sequence(app, name, args?)\`,
+\`ctx.rpa.commands(app)\` and \`ctx.rpa.read(app, selector?)\`. An app panel
+declares \`rpa.commands\`, \`rpa.run\` and/or \`rpa.sequence\` in its manifest
+\`capabilities\` and calls them from its UI with \`glyphh.call\` — answered on the
+desktop the panel is open on, never on the app server.
+
+## Building a Glyphh app
+
+A Glyphh app is a portable \`.glyphh\` bundle (a zip) that installs in the
+cloud as an instance of the user's organization; its declared tools then light
+up for \`app_call_tool\` on every surface. When no existing tool does the job,
+**build one**: author the bundle, then deploy it with \`app_install\`.
+
+**Bundle layout** — files at the zip root:
+- \`manifest.json\` (required — the app contract)
+- \`index.html\` (the UI window; the manifest \`entry\`)
+- \`worker.js\` (optional — headless logic; the manifest \`worker\`)
+- any assets the UI references (relative paths)
+
+**manifest.json**
+\`\`\`json
+{
+  "manifestVersion": 2,
+  "kind": "glyphh-app",
+  "name": "Recall",
+  "slug": "recall",
+  "entry": "index.html",
+  "worker": "worker.js",
+  "description": "Ask questions over your notes.",
+  "capabilities": ["llm.chunk", "vector.upsert", "vector.search", "graph.cypher", "llm.complete", "secrets.get"],
+  "connectors": [],
+  "tools": [
+    { "name": "ingest", "description": "Index a document.", "handler": "ingest",
+      "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] } },
+    { "name": "ask", "description": "Answer from the indexed notes.", "handler": "ask",
+      "inputSchema": { "type": "object", "properties": { "q": { "type": "string" } }, "required": ["q"] } }
+  ]
+}
+\`\`\`
+Rules: each tool is backed by EXACTLY ONE of \`handler\` (a function in the worker)
+or \`capability\` (a 1:1 passthrough to a host capability). Every capability your
+worker/tools use MUST be listed in \`capabilities\` — the host enforces this
+per-app allowlist. Any \`connector.*\` capability requires a non-empty
+\`connectors\` list. Re-installing the same \`slug\` updates in place.
+
+**The worker (headless logic)** — \`worker.js\` runs sandboxed with one SDK:
+- \`glyphh.handle(name, async (args) => { ... })\` — register a handler (invoked for tool calls + cron firings). Register all handlers at the top level.
+- \`glyphh.call(method, args)\` — use a declared capability; returns \`{ ok, result }\` or \`{ ok:false, error }\`.
+Keep workers stateless (state lives in \`db.exec\`); handlers time out at 60s.
+
+**Capabilities (what an app can do)** — declare each in \`capabilities\`:
+- **Storage** — \`db.exec { sql, params? }\`: the app's own SQLite DB (one statement per call).
+- **Vector DB** — \`vector.upsert { collection, items:[{ id, text?, vector?, metadata? }], model? }\`, \`vector.search { collection, query|vector, k?, filter? }\`, \`vector.delete\`. \`text\` is embedded automatically ON-DEVICE (no key). Helpers: \`llm.chunk { text, maxChars?, overlap? }\`, \`llm.embed { text|texts }\`. Typical RAG: chunk → \`vector.upsert\` → \`vector.search\`.
+- **Knowledge graph** — \`graph.cypher { query, params? }\`: a real per-app **Kuzu** graph speaking full Cypher. Kuzu is schema-full, so the first calls are DDL, then queries: \`CREATE NODE TABLE Person(name STRING, PRIMARY KEY(name))\` → \`CREATE REL TABLE Knows(FROM Person TO Person)\` → \`MATCH (a:Person)-[:Knows*1..2]->(b) RETURN b.name\`. \`params\` are Cypher \`$\`-parameters.
+- **Models (BYOK)** — \`llm.complete { prompt, system?, provider?, model? }\` (one-shot) and \`agent.run { prompt, tools?, maxTurns? }\` (agentic loop over the app's own tools). Providers: \`anthropic\` (default) / \`openai\` / \`google\`. The key is the app's Config Var \`<PROVIDER>_API_KEY\` (\`ANTHROPIC_API_KEY\` / \`OPENAI_API_KEY\` / \`GOOGLE_API_KEY\`) — the host injects it; app code never handles keys.
+- **Connections** — \`connector.status\`, \`connector.tools\`, \`connector.call { connector, tool, args }\`, scoped to the manifest's \`connectors\` (Pipedream app slugs, e.g. \`slack\`, \`gmail\`, \`salesforce\`; browse pipedream.com/apps). Gate UI on \`connector.status\` — a well-behaved app shows "Connect X in Glyphh" instead of failing.
+- **Scheduling** — \`cron.schedule { id, cron, handler, args? }\` (+ \`cron.cancel\`/\`cron.list\`): persisted 5-field cron firing a worker handler.
+- **Notify** — \`notify.send { title, body }\`: an OS notification.
+- **Config vars / secrets** — \`secrets.get { key }\`, \`secrets.list\`: per-app encrypted vars the user sets on the app's **Config Vars** tab (host-only; never shown after entry). This is how an app *requires* a key: declare \`secrets.get\`, document the var name, and tell the user to set it.
+
+**Example — a RAG app with a knowledge graph** (\`worker.js\`):
+\`\`\`js
+glyphh.handle("ingest", async ({ text }) => {
+  const { result: { chunks } } = await glyphh.call("llm.chunk", { text });
+  await glyphh.call("vector.upsert", { collection: "notes",
+    items: chunks.map((t, i) => ({ id: Date.now() + ":" + i, text: t })) });
+  // (optionally extract entities and write them with graph.cypher)
+  return { indexed: chunks.length };
+});
+glyphh.handle("ask", async ({ q }) => {
+  const { result: { matches } } = await glyphh.call("vector.search", { collection: "notes", query: q, k: 6 });
+  const context = matches.map(m => m.text).join("\\n---\\n");
+  const key = (await glyphh.call("secrets.get", { key: "ANTHROPIC_API_KEY" })).result?.value;
+  const { result } = await glyphh.call("llm.complete", {
+    provider: "anthropic", prompt: "Answer using only this context:\\n" + context + "\\n\\nQ: " + q });
+  return { answer: result.text };
+});
+\`\`\`
+
+**Deploy** — install the bundle and its tools go live:
+\`app_install { dir }\` → then \`app_list_tools\` shows \`recall\`'s tools
+and \`app_call_tool { app:"recall", tool:"ask", args:{ q } }\` runs them.
+Re-install the same slug to update the instance in place.
+
+## Publishing — give an app a public URL
+
+To put a hosted app on the internet at \`<slug>.glyphh.app\`, use the control-plane
+tools directly (no UI needed):
+
+1. \`create_app_entry { kind: "glyphh", slug, name }\` — register the app once.
+2. \`build_app\` — upload the built app. In a Glyphh runtime session pass
+   \`{ slug, distDir: "dist" }\` and the runtime walks the built folder and uploads
+   it itself — never read built files or paste their contents into the call. From
+   an external client, send \`{ slug, files: { "index.html": "…", … } }\` — the
+   dist/ contents as a path→content map (under 16 MB total). Either way it cuts a
+   release, builds it, and (unless \`deploy:false\`) deploys it live, returning the
+   \`url\` and the release \`status\` — a \`failed\` status carries the compiler error to fix.
+3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
+   If \`get_app\` shows a release with no finished build, call \`build_app\`.
+
+## Integration — pick the lane
+
+Three lanes move data between an app and the world. **Connectors** (the 3,500+
+connected accounts): Glyphh reaching OUT into SaaS — use agent tools/loops for
+anything with a connector or needing logic. **Pipelines**: raw data in/out for
+systems we don't control (customer's n8n/make/Boomi, crons) — a token + a
+self-describing door, no model in the loop. **Webhooks**: signed change
+notifications out, so nothing polls. Logic or SaaS → loop + connectors; raw
+customer data → hand them the pipeline contract.
+
+## App data doors — pipelines in, webhooks out
+
+**Pipelines (the bi-directional data API — n8n / make.com / Boomi):** a NAMED
+per-app token moves data in and out; the app schema is the contract.
+1. \`create_ingest_token { slug, label, expiresDays? }\` (org admin) — the RAW
+   token, shown once; hand it to the user for \`Authorization: Bearer\`.
+2. \`GET /api/ingest/<slug>\` returns the DATA MODEL as JSON Schema per table —
+   give it to the platform so it can map fields. \`POST { table, rows: [...] }\`
+   (≤200/call) seeds data in through the validated insert path;
+   \`GET /api/ingest/<slug>/<table>\` reads data out. \`get_ingest { slug }\`
+   returns the door + token hints. A token only touches that one app's tables.
+   (A manifest may still declare named hooks \`ingest: [{ name, table?, embed? }]\`
+   at \`/api/ingest/<slug>/<name>\` — \`embed\` columns index into the app's
+   embeddings plane.)
+
+**Files plane (uploads + generated images):** declare \`files: true\` in the
+manifest and the app gets scoped blob storage on the platform — no bucket, no
+credentials. From inside the app: \`POST /api/app/data/files?name=<n>\` with the
+raw body uploads (≤10MB each, 500MB per app); \`GET /api/app/data/files\` lists;
+\`GET /api/app/data/files/<id>\` serves the bytes (use as an <img src>);
+\`DELETE\` removes. NEVER wire an external S3/R2 for app data — the platform
+plane keeps client data on-infra, exportable and governed.
+
+**Webhooks (outbound):** the user registers a URL on the app and the platform
+POSTs \`{ app, table, op, at, rows }\` to it whenever the app's data changes,
+signed \`X-Glyphh-Signature: sha256=<hmac>\` with the secret shown once at
+creation.
+
+Both are managed on the app (App → Data) and aggregate to Settings → Webhooks
+for org-admin oversight.
+
+**CSS alignment (strict):** a glyphh app is a panel INSIDE the product — its
+surfaces must be indistinguishable from the host workbench. Build on the house
+dark tokens the scaffold ships (\`--bg #1a1a1c\`, \`--panel #252528\`,
+\`--bg-2 #2e2e32\`, \`--line #3f3f46\`, \`--ink #f1f1f1\`, \`--muted #c4c4c4\`,
+\`--dim #828282\`, \`--accent #af5fff\`, ok \`#28c840\` / warn \`#f0a030\` /
+danger \`#ff7a70\`, Inter with system fallbacks). Never invent a palette or
+restyle buttons — alignment with the host is a review criterion.
+
+A deployed app lives at \`<slug>.glyphh.app\`. Who may open it is the app's
+**access**, set on its Deploy tab (or \`apps edit --access\`): *members* (visitors
+sign in with a Glyphh account) or *public* (anyone with the link). It is checked
+at the edge on every request, before anything reaches the app.
+
+An INSTALLED \`.glyphh\` bundle is the other shape: it runs on the user's own
+machine and exposes the tools its manifest declares. Those are reachable through
+\`app_list_tools\` / \`app_call_tool\` — the owner approves each tool, and the
+per-app guardrails (input cap, rolling token + call budgets, concurrency) bound
+every call.
+
+Provider keys stay host-only: the model call runs on the user's machine and the
+server never sees the key.
+
+## How to work
+
+1. **Discover first.** \`app_list_tools\` (+ \`panels_list\` / \`connector_list_tools\`) — every user's setup differs; never assume a tool exists.
+2. **Prefer a declared tool.** \`app_call_tool\` / \`connector_call_tool\` are deterministic and headless — use them over anything manual.
+3. **Chain.** Feed one tool's result into the next.
+4. **Build when needed.** No tool for the job? Author a \`.glyphh\` (worker + capabilities), \`app_install\` it, then call its tools. Publish it if the user wants it on the web.
+
+## Guardrails
+
+- These tools act on the user's real machine and accounts. Confirm before anything destructive or outward-facing (sending messages, posting, deleting, publishing, making public).
+- Provider/API keys are host-only — never ask the user to paste a key to you; they set \`<PROVIDER>_API_KEY\` on the app's Config Vars tab.
+- If a call returns "yo-client isn't connected", the user's Glyphh app is closed or offline — ask them to open it.
+`;
+
+function frontmatterClaude(): string {
+  return `---
+name: glyphh
+description: Drive the user's Glyphh workspace over MCP — open their apps and saved layouts as native windows, run the tools their installed apps expose, call their 3,500+ connected accounts, make and manage the agents Glyphh hands work to, and build + deploy new Glyphh apps (SQLite, on-device vector search, a Kuzu knowledge graph, cron, connectors, and BYOK models), then publish them to a public URL. Use when the user asks to open/arrange apps, act through a Glyphh app or connected account, make or change an agent, automate something on their machine, or build/publish an app.
+---
+
+# Glyphh
+
+`;
+}
+
+function preamble(provider: "gemini" | "openai"): string {
+  const name = provider === "gemini" ? "Gemini" : "your assistant";
+  return `# Glyphh skill
+
+Paste this into ${name}'s custom instructions (${provider === "gemini" ? "a Gem's instructions" : "a Custom GPT's instructions or a system prompt"}) after connecting Glyphh's MCP endpoint. It teaches you to drive the user's Glyphh workspace.
+
+`;
+}
+
+/** Build the skill file (name + content) for a provider. */
+export function generateGlyphhSkill(provider: SkillProvider): { filename: string; content: string } {
+  if (provider === "claude") {
+    return { filename: "SKILL.md", content: frontmatterClaude() + BODY };
+  }
+  if (provider === "gemini") {
+    return { filename: "glyphh-gemini-instructions.md", content: preamble("gemini") + BODY };
+  }
+  return { filename: "glyphh-openai-instructions.md", content: preamble("openai") + BODY };
+}

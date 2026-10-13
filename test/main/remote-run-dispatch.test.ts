@@ -1,8 +1,8 @@
 /**
  * remote-run-dispatch.test.ts — the relay frame → callback routing for the
- * SWARM (his report, 2026-10-05): a sub-agent's frames never reach the
- * thread's onToken/onTool; its approval reaches the dock, named; the parent's
- * thinking reaches the fold.
+ * SWARM (his report, 2026-10-05): a sub-agent's frames reach onAgentFrame and
+ * never the thread's onToken/onTool; its approval reaches the dock, named;
+ * the parent's thinking reaches the fold.
  */
 import { describe, it, expect } from "vitest";
 import { dispatchFrame, parseOpenRef, type HarnessWireFrame, type RemoteRunCallbacks } from "../../src/renderer/help/remote-run.js";
@@ -16,6 +16,7 @@ function harness() {
     onToken: (d) => log.push(["token", d]),
     onThinking: (t) => log.push(["thinking", t]),
     onTool: (t) => log.push(["tool", t.name]),
+    onAgentFrame: (f) => log.push(["agent", `${f.type}:${f.agent?.childId ?? "-"}`]),
     onApproval: (a) => log.push(["approval", a.title]),
     onOpenApp: (t) => log.push(["open", `${t.ref ?? ""}|${t.url ?? ""}`]),
   };
@@ -24,7 +25,7 @@ function harness() {
 }
 
 describe("dispatchFrame — the swarm's frames leave the thread", () => {
-  it("a child's delta, thinking and tool never reach the thread; the parent's text and thinking do", () => {
+  it("a child's delta, thinking and tool go to the feed only; the parent's text and thinking to the thread", () => {
     const h = harness();
     h.run(fr({ type: "delta", delta: "swarm", agent: child }));
     h.run(fr({ type: "thinking", text: "child thinks", agent: child }));
@@ -33,15 +34,18 @@ describe("dispatchFrame — the swarm's frames leave the thread", () => {
     h.run(fr({ type: "delta", delta: "parent" }));
     h.run(fr({ type: "thinking", text: "parent thinks" }));
     h.run(fr({ type: "tool", phase: "start", name: "bash" }));
-    expect(h.log).toEqual([["token", "parent"], ["thinking", "parent thinks"], ["tool", "bash"]]);
+    expect(h.log).toEqual([
+      ["agent", "delta:r#1"], ["agent", "thinking:r#1"], ["agent", "tool:r#1"], ["agent", "agent:r#1"],
+      ["token", "parent"], ["thinking", "parent thinks"], ["tool", "bash"],
+    ]);
     expect(h.state.text).toBe("parent");
   });
 
-  it("a child's approval reaches the dock, titled with the child's name", () => {
+  it("a child's approval reaches the feed AND the dock, titled with the child's name", () => {
     const h = harness();
     h.run(fr({ type: "approval", id: "a1", kind: "command", title: "rm -rf build", detail: "", agent: child }));
     h.run(fr({ type: "approval", id: "a2", kind: "command", title: "npm test", detail: "" }));
-    expect(h.log).toEqual([["approval", "Researcher: rm -rf build"], ["approval", "npm test"]]);
+    expect(h.log).toEqual([["agent", "approval:r#1"], ["approval", "Researcher: rm -rf build"], ["approval", "npm test"]]);
   });
 });
 
@@ -56,10 +60,10 @@ describe("open-app — the page opens what the agent asked for (his report, 2026
     expect(h.state.text).toBe("");
   });
 
-  it("a sub-agent never opens a panel on the member's page", () => {
+  it("a child's open-app stays in the swarm feed — a sub-agent never opens a panel on the member's page", () => {
     const h = harness();
     h.run(fr({ type: "open-app", ref: "crm", agent: child }));
-    expect(h.log).toEqual([]);
+    expect(h.log).toEqual([["agent", "open-app:r#1"]]);
   });
 
   it("parseOpenRef: layout:<name> is a workspace, settings:<page> a Settings page (lower-cased), anything else an app slug; an empty name is nothing", () => {

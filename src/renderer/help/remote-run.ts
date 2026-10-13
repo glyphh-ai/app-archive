@@ -35,7 +35,6 @@ import type { Source } from "./code-source-chip.js";
 import { devicesForRun, foldersForRun, selfMachineId } from "./devices-pick.js";
 import { hostHas } from "./web-surface.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
-import { onOtherDesktop } from "./session-locus.js";
 
 // ── SDK handle mirrors (window.glyphhSdk = the raw @glyphh/sdk client) ─────────
 
@@ -62,6 +61,11 @@ export type HarnessWireFrame = (
 
 /** A sub-agent as the engine names it on every frame of its work. */
 export interface SubAgentRef { childId: string; slug: string; name: string; model: string }
+
+/** A frame that belongs to the swarm view, not the thread: a child's own
+ *  delta / thinking / tool / approval (tagged `agent`), or the `agent`
+ *  start/done frame itself. */
+export type SubAgentWireFrame = HarnessWireFrame & { agent: SubAgentRef };
 
 const childOf = (frame: HarnessWireFrame): SubAgentRef | null =>
   frame.agent && typeof frame.agent === "object" && typeof frame.agent.childId === "string" ? frame.agent : null;
@@ -225,11 +229,6 @@ export interface CloudRunStartPayload {
   devices?: string[];
   /** The member's named cloud environment (personal environments, 2026-10-05); absent = Default. */
   environmentId?: string;
-  /** ANOTHER DESKTOP (the picker, 2026-10-09): the relay runs the turn on
-   *  `machineId`, inside `workdir`; absent = the cloud. */
-  target?: "cloud" | "desktop";
-  machineId?: string;
-  workdir?: string;
 }
 
 export type CloudRunDoneEvent = { chatId: string; runId: string } & (
@@ -445,40 +444,7 @@ export function isRemoteSource(source?: Source): boolean {
  *  CLOUD source, on the DESKTOP (main's cloud lane); a desktop local session
  *  stays on the local harness (window.glyphh.glyphhRun → main). */
 export function canRunRemote(source?: Source): boolean {
-  if (onOtherDesktop(source) && !!desktopCloudLane()) return true;   // another desktop, over the relay
   return isRemoteSource(source) && (!!sdk()?.harnessViaApi || !!desktopCloudLane());
-}
-
-/** THE GLYPHH MACHINE ASLEEP (2026-10-10): a send to it wakes it and waits for
- *  it to attach (the first start fetches the app, so allow a few minutes).
- *  Null when the source names no Glyphh machine, or it never came. */
-async function wakeAndWait(source: Source, callbacks: RemoteRunCallbacks, signal?: AbortSignal): Promise<string | null> {
-  if (source.kind !== "local" || !source.machine) return null;
-  const g = window.glyphh as unknown as { machinesList?: () => Promise<{ machines?: Array<Record<string, unknown>> }>; machinesStart?: (id: string) => Promise<unknown> };
-  const mine = await g.machinesList?.().catch(() => null);
-  const hit = (mine?.machines ?? []).find((m) => String(m.name ?? "") === source.machine);
-  if (!hit || !g.machinesStart) return null;
-  callbacks.onStep?.({ id: "wake", type: "wake", status: `Waking ${source.machine}…` });
-  await g.machinesStart(String(hit.id)).catch(() => undefined);
-  const until = Date.now() + 6 * 60_000;
-  while (Date.now() < until && !signal?.aborted) {
-    await new Promise((r) => setTimeout(r, 4_000));
-    const id = await attachedIdFor(source);
-    if (id) { callbacks.onStep?.({ id: "wake", type: "wake", status: "done" }); return id; }
-  }
-  return null;
-}
-
-/** The attached desktop a source names, NOW: the socket id changes on every
- *  reconnect, so a stale id is found again by the machine's name. */
-async function attachedIdFor(source: Source): Promise<string | null> {
-  if (source.kind !== "local" || (!source.machineId && !source.machine)) return null;
-  const read = (window.glyphh as unknown as { attachDevicesList?: () => Promise<DevicesAnswer> }).attachDevicesList;
-  const a = read ? await read().catch(() => null) : null;
-  const rows = a ? deviceRowsOf(a).devices : [];
-  const hit = rows.find((d) => d.machineId === source.machineId) ?? (source.machine ? rows.find((d) => d.name === source.machine) : undefined);
-  if (hit && hit.machineId !== source.machineId) source.machineId = hit.machineId;
-  return hit?.machineId ?? null;
 }
 
 /** The honest typed failure — never thrown to the UI, always rendered as the
@@ -550,6 +516,12 @@ export interface RemoteRunCallbacks {
   /** The model's thinking, streamed — the fold above the answer (code.ts
    *  thinkingEl); the local path's `glyphh-agent:thinking`. */
   onThinking?: (text: string) => void;
+  /** A SUB-AGENT's frame (tagged `agent`), or an agent start/done. The thread
+   *  never sees these (a child's words would read as the parent's answer);
+   *  the Agents work panel builds the swarm view from them (subagent-feed.ts).
+   *  A child's approval ALSO reaches onApproval, titled with the child's name:
+   *  the person is the only one who can answer it. */
+  onAgentFrame?: (frame: SubAgentWireFrame) => void;
   onAnswer?: (fullText: string) => void;
   /** The turn's USER prompt — the run's first frame. Only surfaces OBSERVING a run
    *  started elsewhere render this (the initiating surface already has its own bubble,
@@ -600,10 +572,12 @@ export function dispatchFrame(
   state: { text: string; error: string | null },
   run: HarnessRunHandle,
 ): void {
-  // A SUB-AGENT's frames never reach the parent's bubble (a child's words
-  // would read as the parent's answer); its approval goes on to the dock
-  // below, named — the person is the only one who can answer it.
+  // THE SWARM'S FRAMES (his report, 2026-10-05: the web's Agents panel showed
+  // nothing): a child's frames and the agent start/done go to the feed, and a
+  // child's delta/thinking/tool stop here — never the parent's bubble. Its
+  // approval goes on to the dock below, named.
   const child = childOf(frame);
+  if (child || frame.type === "agent") cb.onAgentFrame?.(frame as SubAgentWireFrame);
   if (frame.type === "agent" || (child && frame.type !== "approval")) return;
   switch (frame.type) {
     case "log":
@@ -780,18 +754,8 @@ export async function runRemoteTurn(
   const isLocal = chat.source?.kind === "local";
   // The desktop's lane is the CLOUD only: its local sessions are main's own
   // loop (code.ts never routes one here — canRunRemote says no).
-  // ...unless the session is bound to ANOTHER desktop (the picker's Remote):
-  // the lane relays it there, inside that machine's grants.
-  const otherDesktop = !!lane && isLocal && onOtherDesktop(chat.source);
-  if (lane && isLocal && !otherDesktop) {
+  if (lane && isLocal) {
     const u = unavailable("open", new Error("a desktop session runs on this machine's own loop, not the cloud lane"));
-    callbacks.onError?.(u.detail);
-    return u;
-  }
-  const relayTo = otherDesktop && chat.source ? (await attachedIdFor(chat.source)) ?? (await wakeAndWait(chat.source, callbacks, opts.signal)) : null;
-  if (otherDesktop && !relayTo) {
-    const name = chat.source?.kind === "local" ? chat.source.machine : "";
-    const u = unavailable("open", new Error(`${name || "That desktop"} is not attached right now. Open Glyphh there with remote control on.`));
     callbacks.onError?.(u.detail);
     return u;
   }
@@ -840,7 +804,6 @@ export async function runRemoteTurn(
       threadId,
       prompt,
       mode: modeFor(chat),
-      ...(relayTo ? { target: "desktop" as const, machineId: relayTo, ...(workdir ? { workdir } : {}) } : {}),
       ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
         ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
       ...(repo ? { repo } : {}),

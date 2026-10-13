@@ -14,21 +14,18 @@
 import { threadLocus } from "./thread-locus.js";
 import { refreshBuildBadge } from "./app-updates.js";
 import {
-  LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
-  recentsKeeps, sessionLocked, sourceLocus, defaultLocus,
-  type Locus, type RecentsFilter, type RecentsRowLike, newSessionSource,
-  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank, onOtherDesktop,
+  LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
+  locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
+  type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike, newSessionSource,
+  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
-import { AVATAR_INK, avatarOf, botAvatarSvg } from "./bot-avatar.js";
-import { openPowersModal } from "./powers-modal.js";
-import { openNewSuperPowerModal, setNewSuperPowerDoors } from "./super-power-new.js";
-import { addTasks, boardCounts, boardText, emptyBoard, findTask, updateTask, type Board, type NewTask, type TaskStatus } from "./team-board.js";
-import { openBoardPanel, refreshBoard } from "./board-panel.js";
+import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
+import { openBotsPanel } from "./bots-events.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
 import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
@@ -38,7 +35,7 @@ import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, logLines, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, setSpeakerVoice, setVoiceChatProvider, speakTeamLine, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
 import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
@@ -54,17 +51,15 @@ import { openCreateWorkspaceModal } from "./workspace-create.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
-import { mountComposerPlus, manageTargetOf, PLUS_CHECK, readConnectorRows, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
+import { mountComposerPlus, manageTargetOf, PLUS_CHECK, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
-import { dropPager, pageSlice, DROP_PAGE } from "./drop-page.js";
-import { createSourceChip, type Source, createGitChip, openFolderPicker, openMachinePicker, machineChipLabel, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
-import { gitLaneFor, machineStateFor, onWhereChange, openWhereCard, projectLabel, wakeAndWatch, wakeError } from "./where-card.js";
+import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
 import { panelFsRoute } from "./panel-fs-route.js";
 // THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
 // the composer, the phone's pair at desktop width; the rules are shared.
 import { createCloudChips, type CloudChips } from "./cloud-chips.js";
 import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
-import { deviceChecked, folderSteerLine, selfMachineId } from "./devices-pick.js";
+import { deviceChecked, toggleDeviceIn, folderSteerLine, selfMachineId } from "./devices-pick.js";
 import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
 import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
 import { groupByDate } from "./recents-groups.js";
@@ -75,6 +70,7 @@ import {
   type RemoteChat, type AttachHandle, stopRunById, parseOpenRef,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
+import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
@@ -83,14 +79,8 @@ import { artifactStandingLine } from "./artifact-rules.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app" | "handoff"; attachments?: AttachRef[]; /** A TEAM MEMBER'S WORDS (swarm.ts, 2026-10-09): the super power who said it, drawn with its face and name. */ speaker?: string; /** A hand-off's live card in the team thread. */ handoff?: TeamHandoff; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
-/** One hand-off in a team thread (swarm.ts): who, what, and how it stands. */
-interface TeamHandoff { id: string; member: string; name: string; ask: string; status: "working" | "done" | "failed" | "stopped"; startedAt: number; endedAt?: number }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app"; attachments?: AttachRef[]; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
-  /** A TEAM THREAD (his order, 2026-10-09: swarm mode): the super powers on it. */
-  members?: string[];
-  /** Its WORK BOARD (phase 2): tasks, owners, statuses, the timeline (help/team-board.ts). */
-  board?: Board;
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
    *  made while it was current. Absent → the global workspace folder. */
@@ -590,37 +580,6 @@ async function refreshModelList(force?: boolean): Promise<void> {
   paintModelChip();
 }
 
-/** Switch the session's model — the model chip's pick and the + box's Models
- *  power share it (his order, 2026-10-09). Mid-chat, it asks first: the new
- *  model has none of this conversation cached. */
-async function chooseSessionModel(id: string | null): Promise<void> {
-  const c = current();
-  // SWITCHING MID-CHAT COSTS (his order, 2026-09-20, as Claude's app warns):
-  // the new model has none of this conversation in its cache, so the whole
-  // context is sent again on the next turn. Ask before a live chat moves.
-  const before = effectiveModelId() || "";
-  const after = bareModelId(id || "") || "";
-  if (c && c.messages.length && before !== after) {
-    const ok = await yoConfirm({
-      title: "Switch models?",
-      message: "Switching models mid-conversation re-sends the whole conversation to the new model, which can increase token usage. New chats start fresh.",
-      confirmText: "Switch",
-      cancelText: "Keep current",
-    });
-    if (!ok) return;
-  }
-  if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
-  else pendingModels = id ? { default: id } : null;
-  paintModelChip();
-}
-/** A model's price as the + box shows it: dollars per million tokens, in and out. */
-function modelPriceLine(m: AvailModel): string {
-  const f = (n: number): string => (n >= 10 ? n.toFixed(0) : n >= 1 ? n.toFixed(2).replace(/0$/, "") : n.toFixed(2));
-  const i = m.inputUsdPerMTok, o = m.outputUsdPerMTok;
-  if (typeof i !== "number" || typeof o !== "number") return "";
-  return `$${f(i)} in · $${f(o)} out per 1M tokens`;
-}
-
 function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
@@ -640,20 +599,30 @@ function renderModelMenu(): void {
   menu.appendChild(pane);
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
   const choose = async (id: string | null): Promise<void> => {
+    const c = current();
     menu.classList.add("hidden");
-    await chooseSessionModel(id);
+    // SWITCHING MID-CHAT COSTS (his order, 2026-09-20, as Claude's app warns):
+    // the new model has none of this conversation in its cache, so the whole
+    // context is sent again on the next turn. Ask before a live chat moves.
+    const before = effectiveModelId() || "";
+    const after = bareModelId(id || "") || "";
+    if (c && c.messages.length && before !== after) {
+      const ok = await yoConfirm({
+        title: "Switch models?",
+        message: "Switching models mid-conversation re-sends the whole conversation to the new model, which can increase token usage. New chats start fresh.",
+        confirmText: "Switch",
+        cancelText: "Keep current",
+      });
+      if (!ok) return;
+    }
+    if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
+    else pendingModels = id ? { default: id } : null;
+    paintModelChip();
   };
-  // THE MODELS CAN BE MANY (his order, 2026-10-09): one page at a time, the
-  // picked one's page first; a search pages its matches (drop-page.ts).
-  let page = Math.floor(Math.max(0, modelsForLoop().findIndex((m) => m.id === selectedModel()?.id)) / DROP_PAGE);
   const paint = (): void => {
     list.textContent = "";
-    pane.querySelector(".drop-pager")?.remove();
     const q = search.value.trim().toLowerCase();
-    const matched = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
-    const paged = pageSlice(matched, page);
-    page = paged.page;
-    const rows = paged.items;
+    const rows = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
     if (!autoOnly()) {
       // THE CURRENT CHOICE CARRIES THE CHECK (his report, 2026-09-29: "there is
       // no check mark by the current selected model"), and Default names the
@@ -689,7 +658,7 @@ function renderModelMenu(): void {
         head.textContent = g.label;
         list.appendChild(head);
       }
-      for (const m of g.rows) {
+      for (const m of g.rows.slice(0, 200)) {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "code-drop-item drop-item-2line" + (selectedModel()?.id === m.id ? " selected" : "");
@@ -707,10 +676,8 @@ function renderModelMenu(): void {
         list.appendChild(item);
       }
     }
-    const pager = dropPager(page, paged.pages, (p) => { page = p; paint(); });
-    if (pager) pane.appendChild(pager);
   };
-  search.addEventListener("input", () => { page = 0; paint(); });
+  search.addEventListener("input", paint);
   paint();
   requestAnimationFrame(() => search.focus());
 }
@@ -768,82 +735,6 @@ function renderModeMenu(): void {
     });
     menu.appendChild(item);
   }
-}
-
-/** THE SHELL WANTS A NEW HOST (main/net-proxy.ts): Allow once (this session),
- *  Always (every session), or Deny. Closing the box is Deny. */
-function showNetAsk(req: { id: string; chatId: string; host: string }): void {
-  const answer = (choice: "once" | "always" | "deny"): void => {
-    void (window.glyphh as unknown as { netAnswer?: (id: string, c: string) => Promise<boolean> }).netAnswer?.(req.id, choice);
-  };
-  const session = chats.find((c) => c.id === req.chatId);
-  const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay";
-  overlay.innerHTML = `
-    <div class="confirm-box" role="dialog" aria-modal="true">
-      <div class="confirm-head"><h3>Allow network access?</h3></div>
-      <div class="confirm-body">
-        <p style="margin:0;">A command in <b></b> wants to reach <b class="net-host"></b>. The session's sandbox only lets it reach hosts you allow.</p>
-      </div>
-      <div class="confirm-foot">
-        <button class="action-btn secondary" type="button" data-c="deny">Deny</button>
-        <button class="action-btn secondary" type="button" data-c="once">Allow once</button>
-        <button class="action-btn primary" type="button" data-c="always">Always allow</button>
-      </div>
-    </div>`;
-  const bolds = overlay.querySelectorAll("b");
-  bolds[0]!.textContent = session?.title || "this session";
-  bolds[1]!.textContent = req.host;
-  let done = false;
-  const close = (choice: "once" | "always" | "deny"): void => {
-    if (done) return;
-    done = true;
-    answer(choice);
-    overlay.remove();
-    document.removeEventListener("keydown", onKey);
-  };
-  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close("deny"); } };
-  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close("deny"); });
-  overlay.querySelectorAll<HTMLButtonElement>("button[data-c]").forEach((b) => b.addEventListener("click", () => close(b.dataset.c as "once" | "always" | "deny")));
-  document.addEventListener("keydown", onKey);
-  document.body.appendChild(overlay);
-}
-
-/** RUN OUTSIDE THE SANDBOX? (main/shell-fence.ts, the escape hatch): asked every
- *  time, the exact command and the agent's reason shown. Closing the box is No. */
-function showOutsideAsk(req: { id: string; chatId: string; command: string; reason: string }): void {
-  const session = chats.find((c) => c.id === req.chatId);
-  const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay";
-  overlay.innerHTML = `
-    <div class="confirm-box" role="dialog" aria-modal="true">
-      <div class="confirm-head"><h3>Run outside the sandbox?</h3></div>
-      <div class="confirm-body">
-        <p style="margin:0 0 8px;"><b></b> wants to run this command without the session's sandbox, in its folder:</p>
-        <pre class="outside-cmd" style="white-space:pre-wrap;word-break:break-all;margin:0 0 8px;"></pre>
-        <p style="margin:0;" class="outside-why"></p>
-      </div>
-      <div class="confirm-foot">
-        <button class="action-btn secondary" type="button" data-run="0">Don't run</button>
-        <button class="action-btn primary" type="button" data-run="1">Run it once</button>
-      </div>
-    </div>`;
-  overlay.querySelector("b")!.textContent = session?.title || "This session";
-  overlay.querySelector(".outside-cmd")!.textContent = req.command;
-  overlay.querySelector(".outside-why")!.textContent = req.reason ? `Why: ${req.reason}` : "";
-  let done = false;
-  const close = (run: boolean): void => {
-    if (done) return;
-    done = true;
-    void (window.glyphh as unknown as { outsideAnswer?: (id: string, run: boolean) => Promise<boolean> }).outsideAnswer?.(req.id, run);
-    overlay.remove();
-    document.removeEventListener("keydown", onKey);
-  };
-  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(false); } };
-  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(false); });
-  overlay.querySelectorAll<HTMLButtonElement>("button[data-run]").forEach((b) => b.addEventListener("click", () => close(b.dataset.run === "1")));
-  document.addEventListener("keydown", onKey);
-  document.body.appendChild(overlay);
 }
 
 /** The permission-modes explainer — the standard dialog skeleton, a bit
@@ -1050,10 +941,6 @@ function initComposerControls(): void {
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     if (usageWrap && !usageWrap.contains(t)) el("code-usage-pop")?.classList.add("hidden");
-    // The microphone menu closes on a click away too (his report, 2026-10-09);
-    // its level meter stops itself (and lets go of the mic) once it is hidden.
-    const micWrap = el("code-mic-wrap");
-    if (micWrap && !micWrap.contains(t)) el("code-mic-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -1494,6 +1381,9 @@ function observeIfRunning(chat: CodeChat): void {
         r.thinking = (r.thinking ?? "") + text;
         queueStreamPaint(chatId);
       },
+      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
+      // Agents panel's rows here, never this thread's bubble.
+      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       // The run settled — land it, but KEEP the observer: the watcher keeps polling and
       // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
@@ -1999,17 +1889,6 @@ function rootShellTo(dir: string): void {
 function setThreadFolder(dir: string): void {
   if (!dir) return;
   const c = current();
-  // A SESSION IS BOUND TO ITS FOLDER (his order, 2026-10-09: "lock that
-  // down"): once it has a turn and a folder, nothing moves it — a pick, a
-  // workspace stamp, a cwd change. A born session with no folder yet may take
-  // one, once. Work somewhere else = a new session.
-  const had = c ? threadFolder(c) : "";
-  if (c && c.messages.length > 0 && had && had !== dir) {
-    console.warn("[folder] refused: a started session keeps its folder", JSON.stringify({ chatId: c.id, folder: had, asked: dir }));
-    rootShellTo(had);
-    paintSourceDependents();
-    return;
-  }
   if (c) {
     c.workdir = dir;
     if (c.source?.kind === "local") c.source = { ...c.source, path: dir };
@@ -2103,6 +1982,7 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
+  if (pendingDevices) { c.devices = pendingDevices; pendingDevices = undefined; }
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
@@ -2558,58 +2438,6 @@ const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentCo
  *  account connection right in the thread; the button runs the SAME in-app
  *  OAuth the Connections page uses (connectorsConnect), and the waiting tool
  *  is answered when it finishes. The user never leaves the chat. */
-/** A team member's face and name, over its words in a team thread. */
-function speakerHeadEl(slug: string): HTMLElement {
-  const head = document.createElement("div");
-  head.className = "team-speaker";
-  const face = document.createElement("span");
-  face.className = "team-speaker-face";
-  face.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 22 });
-  const name = document.createElement("span");
-  name.className = "team-speaker-name";
-  name.textContent = railBots.find((b) => b.slug === slug)?.name ?? slug;
-  head.append(face, name);
-  return head;
-}
-
-/** A HAND-OFF CARD (his order, 2026-10-09): the member's face, what it was
- *  asked, how it stands, and a door to its own thread — live while it works. */
-function handoffCardEl(h: TeamHandoff): HTMLElement {
-  const card = document.createElement("div");
-  card.className = `team-card ${h.status}`;
-  const face = document.createElement("span");
-  face.className = "team-card-face";
-  face.innerHTML = botAvatarSvg(avatarOf({ slug: h.member, avatar: railBotAvatars.get(h.member) ?? null }), h.status === "working" ? "generating" : h.status === "done" ? "done" : "error", { size: 34 });
-  const main = document.createElement("div");
-  main.className = "team-card-main";
-  const top = document.createElement("div");
-  top.className = "team-card-top";
-  const who = document.createElement("span");
-  who.className = "team-card-name";
-  who.textContent = h.name;
-  const state = document.createElement("span");
-  state.className = "team-card-state";
-  const secs = Math.max(1, Math.round(((h.endedAt ?? Date.now()) - h.startedAt) / 1000));
-  state.textContent = h.status === "working" ? "Working…" : h.status === "done" ? `Done · ${secs}s` : h.status === "stopped" ? "Stopped" : "Couldn't finish";
-  top.append(who, state);
-  const ask = document.createElement("div");
-  ask.className = "team-card-ask";
-  ask.textContent = h.ask;
-  main.append(top, ask);
-  const open = document.createElement("button");
-  open.type = "button";
-  open.className = "action-btn secondary team-card-open";
-  open.textContent = h.status === "working" ? "Watch" : "Open";
-  open.title = `Open ${h.name}'s thread`;
-  open.addEventListener("click", () => {
-    railPickedKey = h.member;
-    renderRailSessions();
-    sessOpen({ id: `bots/${h.member}`, cli: GLYPHH_LOOP, title: h.name, cwd: "", mtime: 0, bot: h.member });
-  });
-  card.append(face, main, open);
-  return card;
-}
-
 function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "code-connect-card";
@@ -2799,10 +2627,7 @@ function openLocalSession(id: string): void {
   gotoSection("agent");
 }
 
-/** The super power thread whose face glows on its next paint (openGlyphhSession). */
-let botFlashFor: string | null = null;
 function renderThread(): void {
-  paintTeamBar();
   // The composer's working state belongs to the SESSION ON SCREEN — every
   // switch lands here, so recompute (a background session keeps running;
   // this one's send must not wear its stop state).
@@ -2824,9 +2649,6 @@ function renderThread(): void {
   thread.appendChild(inner);
   stopGhostRotation();
   const c = current();
-  // The glow is spent on the first paint after the open, empty thread or not.
-  const flashBot = !!c && botFlashFor === c.id;
-  botFlashFor = null;
   // A server-adopted thread paints as soon as its lazily-fetched messages land.
   if (c) hydrateMessagesIfNeeded(c.id);
   document.querySelector(".code-agent")?.classList.remove("work-landing");
@@ -2848,15 +2670,6 @@ function renderThread(): void {
     const title = document.createElement("div");
     title.className = "code-ghost-title";
     title.textContent = greeting(ghostName);
-    // A SUPER POWER'S THREAD wears ITS face and ITS name in the centre (his
-    // order, 2026-10-09), and the face glows once when the thread is opened.
-    if (c?.bot) {
-      const slug = c.bot;
-      mark.classList.add("code-ghost-bot");
-      mark.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle");
-      title.textContent = railBots.find((b) => b.slug === slug)?.name ?? c.title;
-      if (flashBot) mark.classList.add("flash");
-    }
     // SAYING = the rotating slogan (secondary font); rotation preserved.
     const quote = document.createElement("div");
     quote.className = "code-ghost-quote";
@@ -2909,11 +2722,6 @@ function renderThread(): void {
         // WHAT THE TURN MADE (his order, 2026-09-29): a card with a look at it.
         el.className = "code-artifact-wrap";
         el.appendChild(artifactCardEl(b.msg.artifact, openImageLightbox));
-      } else if (b.msg.kind === "handoff" && b.msg.handoff) {
-        // A HAND-OFF, LIVE (his order, 2026-10-09: "each task is a live card…
-        // the user can open that super power directly to its own thread running").
-        el.className = "code-connect-wrap";
-        el.appendChild(handoffCardEl(b.msg.handoff));
       } else if (b.msg.kind === "app" && b.msg.app) {
         // THE APP THE TURN BUILT (his decisions, 2026-10-07): Build and run,
         // Open, Share to publish — the next step, in the thread.
@@ -2928,9 +2736,7 @@ function renderThread(): void {
         return;
       } else {
         if (b.msg.thinking && b.msg.thinking.trim()) inner.appendChild(thinkingEl(b.msg.thinking));
-        // A MEMBER SPEAKS AS ITSELF: its face and name over its words.
-        if (b.msg.speaker) inner.appendChild(speakerHeadEl(b.msg.speaker));
-        el.className = "code-agent-text" + (b.msg.speaker ? " team-said" : "");
+        el.className = "code-agent-text";
         el.innerHTML = formatMarkdown(b.msg.text);
         inner.appendChild(el);
         if (b.msg.timing) {
@@ -3380,6 +3186,8 @@ const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
  *  raw cloud constant, so the desktop's default stays the user's machine. */
 let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
+/** The Devices picks made before a session is born (newChat stamps them). */
+let pendingDevices: string[] | undefined;
 
 /** The folders this member's DESKTOP sessions ran in, newest first — the
  *  recents the folder picker lists on the web ("the last 5") and the second
@@ -3673,6 +3481,9 @@ function initWorkdirGate(): void {
  */
 const CHIP_TITLES: Record<string, string> = {
   "dash-wd-btn": "Pick the working folder",
+  "dash-wd-add": "Add folder",
+  "code-workdir-btn": "Pick the working folder",
+  "code-workdir-add": "Add folder",
   "code-plus-chip": "Attach files",
 };
 
@@ -3697,7 +3508,7 @@ function homeChips(): void {
   if (cloudChips) {
     const [envEl, repoEl] = cloudChips.els;
     const row = onHome ? document.getElementById("dash-wd-chips") : host;
-    const before = onHome ? document.getElementById("dash-machine-btn") : (host?.firstElementChild ?? null);
+    const before = onHome ? document.getElementById("dash-wd-btn") : (host?.firstElementChild ?? null);
     if (row && (envEl.parentElement !== row || envEl.nextElementSibling !== repoEl)) {
       row.insertBefore(envEl, before && before !== envEl && before !== repoEl ? before : row.firstChild);
       envEl.insertAdjacentElement("afterend", repoEl);
@@ -3732,14 +3543,13 @@ function paintGitState(): void {
   const seq = ++gitStateSeq;
   const paint = (git: { isRepo: boolean; branch?: string } | null): void => {
     if (seq !== gitStateSeq) return;   // a newer pick landed while we asked
-    // THE ONE CHIP (2026-10-10) names a branch only when there is one: a
-    // folder with no git says nothing here (the card offers Track changes),
-    // and a machine that is down shows no branch at all.
-    const down = !!document.getElementById("code-machine-btn")?.matches(".where-asleep, .where-waking");
-    if (!git || !git.isRepo || down) { hide(); return; }
+    if (!git) { hide(); return; }
     (wrap as HTMLElement).style.display = "";
-    label.textContent = git.branch || "git";
-    wrap.setAttribute("title", `On the branch ${git.branch || "(none)"}`);
+    wrap.classList.toggle("no-git", !git.isRepo);
+    label.textContent = git.isRepo ? (git.branch || "git") : "No git";
+    wrap.setAttribute("title", git.isRepo
+      ? `Git repository${git.branch ? ` on ${git.branch}` : ""}`
+      : "No git repository in this folder yet");
   };
   // A CLOUD session's git state is its WORKER workspace's (his report,
   // 2026-10-04) — asked over the cloud lane, scoped to the session; this
@@ -3756,14 +3566,6 @@ function paintGitState(): void {
     return;
   }
   if (src.kind !== "local") { hide(); return; }
-  // ANOTHER MACHINE'S FOLDER is read ON that machine (2026-10-10): this
-  // desktop's own files:git-info answered "no git" for the Glyphh machine.
-  if (!onWebTarget() && src.machine) {
-    const { lane } = gitLaneFor(src, threadFolder() || src.path || "");
-    if (!lane) { hide(); return; }
-    void lane.info().then(paint, () => paint(null));
-    return;
-  }
   // The DESKTOP's local source carries no path — the machine's own working
   // directory is the folder in play there, so fall back to it.
   const dirOf = async (): Promise<string> => src.path
@@ -3903,11 +3705,14 @@ function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
   const cloud = activeSource().kind !== "local";
+  // A CLOUD source browses the POD workspace with the folder chip (his ask,
+  // 2026-08-20) — only the + (a machine mkdir) has nothing to do there.
+  const FOLDER_CHIPS = new Set(["dash-wd-add", "code-workdir-add"]);
   for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
     el2.classList.remove("chip-disabled");
-    el2.classList.remove("hidden");
+    el2.classList.toggle("hidden", cloud && FOLDER_CHIPS.has(id));
     el2.setAttribute("title", title);
   }
   // The source is changeable ONLY on a NEW (unborn) session. Once a session is
@@ -3938,14 +3743,11 @@ function paintSourceDependents(): void {
     const set = composerChipSet({ surface: "web", locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
     cloudChips.refresh();
     const [envEl, repoEl] = cloudChips.els;
-    // THE MACHINE CHIP SAYS WHERE A SESSION RUNS on the web too (his report,
-    // 2026-10-10: "the app web is still showing this?"): the old environment
-    // chip and its Choose environment menu stay off.
-    envEl.classList.add("hidden");
+    envEl.classList.toggle("hidden", !set.environment);
     if (!set.repo) repoEl.classList.add("hidden");
     // A menu anchored to a chip that just hid would paint as a stray
     // scrollbar capsule (his report, 2026-10-05): it closes with the chip.
-    cloudChips.closeMenus();
+    if (!set.environment || !set.repo) cloudChips.closeMenus();
     for (const id of ["dash-wd-btn", "code-workdir-btn", "dash-wd-branch-wrap", "code-workdir-branch-wrap"]) {
       document.getElementById(id)?.classList.toggle("hidden", !set.folder);
     }
@@ -3957,23 +3759,9 @@ function paintSourceDependents(): void {
   // both surfaces from the SOURCE, so a machine's cwd can't overwrite the pick.
   {
     const src = activeSource();
-    // THE MACHINE CHIP SHOWS THE MACHINE (2026-10-09): a monitor or a cloud,
-    // then its name; the folder chip beside it names the folder.
-    for (const id of ["dash-machine-name", "code-machine-name"]) {
-      const nameEl = document.getElementById(id);
-      if (nameEl) nameEl.textContent = machineChipLabel(src, webMachineName(src));
-    }
-    // BOTH CHIPS LOCK once the session has a turn, and say why.
-    {
-      const born = bornLocus() !== null;
-      const folderNow = src.kind === "local" ? threadFolder() : "";
-      // THE ONE CHIP still opens once born (2026-10-10): its card keeps the
-      // machine and project fixed and the branch changeable.
-      document.getElementById("code-machine-btn")?.setAttribute("title", born
-        ? `This session works in ${folderNow || "its folder"} on ${machineChipLabel(src, webMachineName(src))}. Start a new session to work somewhere else.`
-        : "Where Glyphh works");
-    }
-    for (const id of ["dash-machine-btn", "code-machine-btn"]) {
+    // THE CHIP SHOWS THE LOCUS (his order, 2026-10-04): a monitor or a cloud
+    // before the folder's name, on both rows and both surfaces.
+    for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
       const svg = document.getElementById(id)?.querySelector(":scope > svg");
       const want = LOCUS_SVG[sourceLocus(src)];
       if (svg && svg.getAttribute("data-locus") !== sourceLocus(src)) {
@@ -3983,58 +3771,31 @@ function paintSourceDependents(): void {
         if (next) { next.setAttribute("data-locus", sourceLocus(src)); svg.replaceWith(next); }
       }
     }
+    if (src.kind !== "local") {
+      const dir = (src as { dir?: string }).dir || "";
+      const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir) : "workspace";
+      for (const id of ["dash-wd-name", "code-workdir-name"]) {
+        const nameEl = document.getElementById(id);
+        if (nameEl) nameEl.textContent = leaf;
+      }
+      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+        document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
+      }
+    }
     // THE CHIP IS THE RUN'S FOLDER (his report, 2026-09-29): what it names is
-    // exactly what the next turn works in — threadFolder(), never a second
-    // field. Not made yet (the Glyphh machine's bare workspace, a cloud folder
-    // before its first send) it is a New project (his pick, 2026-10-10).
-    const nameEl = document.getElementById("code-workdir-name");
-    if (nameEl) nameEl.textContent = projectLabel(src, src.kind === "local" ? threadFolder() : "");
+    // exactly what the next turn works in — threadFolder(), never a second field.
+    const folder = src.kind === "local" ? threadFolder() : "";
+    if (src.kind === "local" && folder) {
+      const leaf = folder.replace(/\/+$/, "").split("/").filter(Boolean).pop() || folder;
+      for (const id of ["dash-wd-name", "code-workdir-name"]) {
+        const nameEl = document.getElementById(id);
+        if (nameEl) nameEl.textContent = leaf;
+      }
+      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+        document.getElementById(id)?.setAttribute("title", `This session works in ${folder} — and only there`);
+      }
+    }
   }
-  paintWhereState();
-}
-
-/** THE ONE CHIP'S MACHINE (his decision, 2026-10-10): asleep it reads
- *  "<name> · asleep · Wake", waking it spins with "Waking <name>… ~2 min"
- *  until the machine is up, then shows the project again. */
-let whereStateSeq = 0;
-function paintWhereState(): void {
-  const chip = document.getElementById("code-machine-btn");
-  if (!chip) return;
-  const src = activeSource();
-  const seq = ++whereStateSeq;
-  void machineStateFor(src).then((state) => {
-    if (seq !== whereStateSeq) return;
-    const name = machineChipLabel(src, webMachineName(src));
-    const asleep = state === "asleep";
-    const busy = state === "waking" || state === "starting";
-    chip.classList.toggle("where-asleep", asleep);
-    chip.classList.toggle("where-waking", busy);
-    document.getElementById("code-where-spin")?.classList.toggle("hidden", !busy);
-    document.getElementById("code-where-wake")?.classList.toggle("hidden", !asleep);
-    document.getElementById("code-workdir-btn")?.classList.toggle("hidden", asleep || busy);
-    if (asleep || busy) {
-      const wrap = document.getElementById("code-workdir-branch-wrap");
-      if (wrap) wrap.style.display = "none";
-    }
-    const nameEl = document.getElementById("code-machine-name");
-    if (nameEl) nameEl.textContent = busy ? `Waking ${name}… ~2 min` : asleep ? `${name} · asleep` : name;
-    const failed = src.kind === "local" ? wakeError(src.machine || "") : "";
-    chip.classList.toggle("where-failed", !!failed && asleep);
-    if (bornLocus() === null) {
-      chip.setAttribute("title", failed && asleep ? failed
-        : asleep ? `${name} is asleep. Wake starts it; the first start takes a few minutes.`
-        : busy ? `${name} is starting. It's ready in a minute or two.`
-        : "Where Glyphh works");
-    }
-    if (!asleep && !busy) paintGitState();
-  });
-}
-
-/** On the web, the attached desktop a local source runs on, by its id, else the only one attached. */
-function webMachineName(src: Source): string {
-  if (!onWebTarget() || src.kind !== "local") return "";
-  const known = threadStore.attachedMachines();
-  return (src.machineId && known.find((m) => m.id === src.machineId)?.name) || src.machine || (known.length === 1 ? known[0]!.name ?? "" : "");
 }
 
 /** Web target check (the bridge stamps the html class; the global came later). */
@@ -4073,37 +3834,43 @@ function setCloudDir(rel: string): void {
   repaintSourceUi();
 }
 
-/** THE MACHINE CHIP AND THE FOLDER CHIP (his order, 2026-10-09: "let the
- *  user pick the machine, then the folder picker is another picker"). The
- *  machine chip lists Local: and Remote: machines; the folder chip lists the
- *  folders of the session's machine. Both are LOCKED once the session has a
- *  turn: a session is bound to its machine and its folder ("let's lock that
- *  down"). Registered in CAPTURE so the workbench's own handler on the folder
- *  button (the desktop's recents menu + OS picker) never runs. */
+/** THE FOLDER CHIP OPENS THE LOCUS PICKER on BOTH surfaces (his order,
+ *  2026-10-04): "On this desktop" / "On <machine>" and "In the cloud", in one
+ *  drop (code-source-chip.ts openFolderLocusPicker). Registered in CAPTURE so
+ *  the workbench's own handler on the same button (the desktop's recents
+ *  menu + OS picker) never runs — the picker offers both inside. The + chip
+ *  keeps its one job: a new folder (the OS picker on the desktop, fs.mkdir
+ *  over the relay on web). */
 function initFolderLocusChips(): void {
-  const chip = document.getElementById("code-machine-btn");
-  if (!chip) return;
-  // The workbench asks for a repaint when the folder or its git changes.
-  (window as unknown as { __glyphhRepaintWhere?: () => void }).__glyphhRepaintWhere = () => paintSourceDependents();
-  const pickers = { getSource: activeSource, onPick: pickSource, recentFolders: recentDesktopFolders };
-  // The machine waking repaints the chip (where-card.ts watches it come up).
-  onWhereChange(() => paintSourceDependents());
-  chip.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    // "Wake" on an asleep chip wakes it straight away; the rest opens the card.
-    if ((e.target as HTMLElement).closest("#code-where-wake")) { void wakeAndWatch(activeSource()); return; }
-    const born = bornLocus() !== null;
-    openWhereCard(chip, {
-      getSource: activeSource,
-      folder: () => (activeSource().kind === "local" ? threadFolder() : ""),
-      machineName: () => machineChipLabel(activeSource(), webMachineName(activeSource())),
-      locked: () => (born ? "Fixed for this session. Start a new session to work somewhere else." : null),
-      openMachine: () => openMachinePicker(chip, pickers),
-      openProject: () => openFolderPicker(chip, pickers),
-      onGitChanged: () => paintGitState(),
-    });
-  }, true);
+  for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+    const chip = document.getElementById(id);
+    chip?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const c = current();
+      const onHome = document.body.classList.contains("composer-on-home");
+      // A BORN session's locus is fixed (cloud stays cloud): the picker shows
+      // the other place but will not pick it.
+      const bornLocus = c && c.messages.length > 0 && !onHome ? sourceLocus(c.source ?? pendingSource) : null;
+      openFolderLocusPicker(chip, {
+        getSource: activeSource,
+        onPick: pickSource,
+        bornLocus,
+        cloudScope: cloudBrowseScope(),
+        onPickCloudDir: (rel) => setCloudDir(rel),
+        recentFolders: recentDesktopFolders,
+      });
+    }, true);
+  }
+  if (!onWebTarget()) return;
+  for (const id of ["dash-wd-add", "code-workdir-add"]) {
+    const chip = document.getElementById(id);
+    chip?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();   // the workbench's native-picker handler must not run
+      openNewFolderDrop(chip, { getSource: activeSource, onPick: pickSource });
+    }, true);
+  }
 }
 
 // ── Composer attachments ─────────────────────────────────────────────────
@@ -4409,9 +4176,8 @@ function flushPendingNotes(tries = 0): void {
 }
 
 function queueAttachments(refs: AttachRef[]): void {
-  // Same path twice = once (re-dropping a folder shouldn't stack chips); a door
-  // that answered nothing (the web's) is never a chip.
-  for (const r of refs) if (r && typeof r.path === "string" && r.path && !pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
+  // Same path twice = once (re-dropping a folder shouldn't stack chips).
+  for (const r of refs) if (!pendingAttach.some((p) => p.path === r.path)) pendingAttach.push(r);
   paintAttachChips();
 }
 
@@ -4427,16 +4193,13 @@ async function handleComposerPaste(e: ClipboardEvent): Promise<void> {
   }
   if (!files.length) return;
   e.preventDefault();
-  // THE WEB HAS NO FILE DOOR (his report, 2026-10-10: a paste threw on
-  // app.glyphh.ai): a pasted file or image is said, not crashed on.
-  if (onWebTarget()) { toastOk("Pasting files and images works in the Glyphh desktop app."); return; }
   const paths: string[] = [];
   const refs: AttachRef[] = [];
   for (const f of files) {
     const p = window.glyphh.getPathForFile(f);
     if (p) { paths.push(p); continue; }
     if (!f.type.startsWith("image/")) continue;
-    try { const saved = await window.glyphh.glyphhSaveClipboardImage(await f.arrayBuffer()); if (saved) refs.push(saved); }
+    try { refs.push(await window.glyphh.glyphhSaveClipboardImage(await f.arrayBuffer())); }
     catch { /* oversized/empty clipboard image — skip */ }
   }
   if (paths.length) refs.push(...await window.glyphh.glyphhClassifyPaths(paths));
@@ -4451,7 +4214,10 @@ function wireComposerAttachments(): void {
   // as shortcuts to the same attach tray.
   const plusWrap = el("code-plus-wrap");
   if (plusWrap) {
-    const toTarget = (t: ManageTarget): void => { openSettingsModal(t.sub); };
+    const toTarget = (t: ManageTarget): void => {
+      if (t.kind === "group") openGroupTab(t.group, t.sub);
+      else openSettingsModal(t.sub);
+    };
     plusMenu = mountComposerPlus(plusWrap, el("code-plus-chip") as HTMLButtonElement | null, {
       surface: onWeb() ? "web" : "desktop",
       has: hostHas,
@@ -4460,13 +4226,22 @@ function wireComposerAttachments(): void {
       attachFiles: () => { void window.glyphh.glyphhPickAttachments("files").then((refs) => { if (refs.length) queueAttachments(refs); }); },
       // "Add folder…" hands the loop READ ACCESS to a directory — a Code idea
       // (Work has no tool to walk one with; the row is Code-only).
+      attachFolder: () => { void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); }); },
+      workingFolder: async () => { const d = await wb()?.getCwdExplicit?.(); return d ? String(d) : null; },
+      pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
       openTarget: toTarget,
-      // EVERY POWER OPENS IN THE ONE MODAL (his order, 2026-10-09: "the + at the
-      // bottom of the page by the agent input launches every power add etc.
-      // into the same modal as edit super power does").
-      openPowers: (tab) => (window as unknown as { __glyphhOpenPowers?: (t: string) => void }).__glyphhOpenPowers?.(tab),
+      openConnector: (slug) => { openConnectionOnLoad(slug); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      // ADD CONNECTOR LANDS ON DISCOVER (his report, 2026-10-07): the page's
+      // one Yours | Discover switch flips to Discover before the tab opens.
+      addConnector: () => { setGroupScope("discover"); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
+      deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
+      toggleDevice: (id, attached) => {
+        const c = current();
+        const next = toggleDeviceIn(c?.devices ?? pendingDevices, id, attached);
+        if (c) { c.devices = next; void saveStore(); } else pendingDevices = next;
+      },
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
@@ -4762,9 +4537,11 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
     return true;
   }
-  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor"]);
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
+    "gpoint", "slides", "gdrive", "drive", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco" };
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", drive: "gdrive", design: "gdesign",
+      image: "gimage", video: "gvideo", sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
   }
@@ -5103,9 +4880,7 @@ function send(): void {
           finishRun(c.id, "⚠ Pick a working folder to start — Glyphh works inside the folder you choose, and only there (folder button at the top of this pane).");
           return;
         }
-        // Out of its holder's powers (main turn-scope.ts): the reason, in its own words.
-        const scoped = /OUT_OF_SCOPE: (.*)$/s.exec(msg);
-        finishRun(c.id, `⚠ ${scoped ? scoped[1] : msg}`);
+        finishRun(c.id, `⚠ ${msg}`);
       });
   };
   void saveStore().then(() => launch(false));
@@ -5243,6 +5018,9 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         r.thinking = (r.thinking ?? "") + text;
         queueStreamPaint(chatId);
       },
+      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
+      // Agents panel's rows here, never this thread's bubble.
+      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
       onPermission: (mode) => adoptSessionMode(chatId, mode),
       onDone: (text) => { finishRun(chatId, text); },
       onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
@@ -5414,6 +5192,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   // artifact — it sends through the seated agent and paints the reply from
   // here. Detail: the session, the reply text, whether it was stopped.
   document.dispatchEvent(new CustomEvent("glyphh-agent:turn-finished", { detail: { chatId, text, stopped } }));
+  subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)
@@ -5986,6 +5765,7 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
  *  Recents has neither and always shows. */
 interface RailSectionDef { toggle: string; body: string; pref: string; head?: string; showPref?: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
+  { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen", head: "rail-layouts-head", showPref: RAIL_SHOW_LAYOUTS_PREF },
 ];
 // Enabled (the Appearance option) and open (the disclosure) are separate
@@ -6121,10 +5901,15 @@ const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 // vendor CLIs wear their public marks, fetched once through main on the
 // desktop and through the front door's /webicon proxy on the web (the ONE
 // table in help/cli-marks.ts is also that proxy's allowlist).
-/** THE RECENTS' ONE FILTER is the search (his order, 2026-10-09: the place
- *  funnel went — the dropdown groups by place and every row wears its glyph). */
+/** THE PLACE FILTER (his order, 2026-10-04): the same funnel gains a second
+ *  group — All places / This desktop / Cloud — persisted on its own pref and
+ *  applied by the ONE filter function below, in the rail and the dropdown. */
+let locusFilter: LocusFilter = "";
+/** The rail's and the dropdown's one filter. `among` is the loops the list
+ *  can hold: a loop filter naming none of them is no filter there; `tab`
+ *  absent = every type (the CLI window's own pool). */
 function sessFilter(opts: { query?: string }): RecentsFilter {
-  return opts.query ? { query: opts.query } : {};
+  return { locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
 }
 function sessFilterRow(sess: RailSession): RecentsRowLike {
   return { title: sess.title, cwd: sess.cwd, locus: sess.locus ?? "local" };
@@ -6132,20 +5917,65 @@ function sessFilterRow(sess: RailSession): RecentsRowLike {
 function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
   return recentsKeeps(sessFilterRow(sess), f);
 }
-
-/** A TEAM's mark: up to three members' faces, overlapping. */
-function teamMarkEl(team: readonly string[]): HTMLSpanElement {
-  const mark = document.createElement("span");
-  mark.className = "code-sess-mark team-mark";
-  mark.title = `Team: ${team.map((s) => railBots.find((b) => b.slug === s)?.name ?? s).join(", ")}`;
-  for (const slug of team.slice(0, 3)) {
-    const f = document.createElement("span");
-    f.className = "team-mark-face";
-    f.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 16 });
-    mark.appendChild(f);
-  }
-  return mark;
+/** Both lists re-render on either change: the rail here, the dropdown off the event. */
+function filtersChanged(): void {
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  renderRailSessions();
+  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
 }
+function setLocusFilter(place: LocusFilter): void {
+  locusFilter = place;
+  void window.glyphh.setPreference?.(LOCUS_FILTER_PREF, place);
+  filtersChanged();
+}
+const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
+let loopFilterMenu: HTMLDivElement | null = null;
+/** THE PLACE FILTER's menu (his order, 2026-10-04): All places / This desktop /
+ *  Cloud — one pick, the rail and the dropdown both narrow to it. (The loop
+ *  rows went with the CLI agents, 2026-10-08.) */
+function openPlaceFilterMenu(anchor: HTMLElement): void {
+  loopFilterMenu?.remove();
+  const m = document.createElement("div");
+  m.className = "code-menu loop-filter-menu";
+  const row = (label: string, on: boolean, mark: HTMLElement | null, onClick: () => void): void => {
+    const b = document.createElement("button");
+    b.className = "code-menu-item" + (on ? " on" : "");
+    if (mark) b.appendChild(mark);
+    const span = document.createElement("span");
+    span.className = "loop-label";
+    span.textContent = label;
+    b.appendChild(span);
+    if (on) {
+      const check = document.createElement("span");
+      check.className = "menu-check";
+      check.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+      b.appendChild(check);
+    }
+    b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openPlaceFilterMenu(anchor); });
+    m.appendChild(b);
+  };
+  // THE PLACES (his order, 2026-10-04): one pick, the rail and the dropdown
+  // both narrow to it. The mark is the row's own locus glyph.
+  row("All places", locusFilter === "", null, () => setLocusFilter(""));
+  for (const o of LOCUS_OPTIONS) {
+    const mark = document.createElement("span");
+    mark.className = "code-sess-locus loop-mark";
+    mark.innerHTML = LOCUS_SVG[o.key];
+    row(o.name, locusFilter === o.key, mark, () => setLocusFilter(locusFilter === o.key ? "" : o.key));
+  }
+  // Placed by the one rule (menu-place.ts): below the funnel, hanging from
+  // its left edge, flipped to its right edge / above it when the viewport has
+  // no room there (his report, 2026-10-04: cut off with the agent on the right).
+  placeFixedMenu(anchor, m, { align: "left", side: "auto" });
+  loopFilterMenu = m;
+  const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
+  document.addEventListener("mousedown", close, true);
+}
+void (window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve("")).then((place) => {
+  locusFilter = locusFilterOf(place);
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  renderRailSessions();
+}).catch(() => {});
 
 /** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
@@ -6158,7 +5988,12 @@ function sessMarkEl(sess: RailSession): HTMLSpanElement {
     mark.title = "Bot";
     return mark;
   }
-  mark.innerHTML = glyphhFace(18);
+  {
+    const img = document.createElement("img");
+    img.src = GLYPHH_MASCOT_SRC;
+    img.alt = "";
+    mark.appendChild(img);
+  }
   mark.title = "Glyphh";
   return mark;
 }
@@ -6188,9 +6023,6 @@ interface RailSession {
   /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
    *  bot's cat and opens the Bots panel on it, never the agent panel. */
   bot?: string;
-  /** A TEAM THREAD (his order, 2026-10-09: "recents that were team / swarms
-   *  need an icon"): its members, whose faces the row wears. */
-  team?: string[];
   /** Where the thread runs (his rule, 2026-10-04): the desktop, or the cloud. */
   locus?: Locus;
   /** WEB ONLY: a desktop session whose folder the attached desktop has not
@@ -6200,79 +6032,14 @@ interface RailSession {
 let railSessions: RailSession[] = [];
 /** The bots' avatars by slug (their agent records), for the rail's bot rows. */
 const railBotAvatars = new Map<string, { variant: number; color: string } | null>();
-/** THE RAIL IS THE BOTS (his order, 2026-10-09: "the left rail is bot avatar
- *  … and name —> far right of same row the three dots"): the roster, in the
- *  order the library keeps it. */
-let railBots: Array<{ slug: string; name: string; connections: string[] }> = [];
-
-/** The member's connected accounts, by slug (null until read): a super power
- *  whose connections are not all here wears a red count on the rail (his
- *  order, 2026-10-09: "a red rounded square with a number for the number of
- *  connections that are required but not connected"). */
-let railConnected: Set<string> | null = null;
-let railConnectedWired = false;
-async function refreshRailConnected(): Promise<void> {
-  const rows = await readConnectorRows(window.glyphh as unknown as PlusApi).catch(() => null);
-  if (!rows) return;
-  railConnected = new Set(rows.filter((r) => r.kind === "account" && r.on).map((r) => r.slug));
-  renderRailSessions();
-}
-/** The connections a super power needs that are not connected yet. */
-function missingConnections(b: { connections: string[] }): string[] {
-  return railConnected ? b.connections.filter((c) => !railConnected!.has(c)) : [];
-}
-
-/** Glyphh's own face, picked on its page; null = the mascot. */
-let glyphhAvatar: { variant: number; color: string; image?: string } | null = null;
-function glyphhFace(size: number): string {
-  return glyphhAvatar
-    ? botAvatarSvg(avatarOf({ slug: "glyphh", avatar: glyphhAvatar }), "idle", { size })
-    : `<img src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
-}
-
-/** Each super power's own voice, by slug (voice-mic.ts setSpeakerVoice reads it). */
-const railBotVoices = new Map<string, { model: string; voiceId: string }>();
-
-/** Read the roster; true when it was actually read (an empty list counts). */
-let rosterKnown = false;
-async function primeBotAvatars(): Promise<boolean> {
+async function primeBotAvatars(): Promise<void> {
   const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
   const env = await api.libraryAgentsList?.().catch(() => null);
-  if (!env?.ok || !Array.isArray(env.data)) return false;
-  const before = rosterKnown ? new Set(railBots.map((b) => b.slug)) : null;
+  if (!env?.ok || !Array.isArray(env.data)) return;
   railBotAvatars.clear();
-  railBotVoices.clear();
-  const bots: Array<{ slug: string; name: string; connections: string[] }> = [];
-  for (const a of env.data as Array<{ slug?: string; name?: string; connections?: unknown; avatar?: { variant: number; color: string } | null; voice?: { model?: string; voiceId?: string } | null }>) {
-    if (!a || typeof a.slug !== "string") continue;
-    railBotAvatars.set(a.slug, a.avatar ?? null);
-    if (a.voice?.model && a.voice.voiceId) railBotVoices.set(a.slug, { model: a.voice.model, voiceId: a.voice.voiceId });
-    bots.push({ slug: a.slug, name: String(a.name || a.slug), connections: Array.isArray(a.connections) ? a.connections.map(String).filter(Boolean) : [] });
+  for (const a of env.data as Array<{ slug?: string; avatar?: { variant: number; color: string } | null }>) {
+    if (a && typeof a.slug === "string") railBotAvatars.set(a.slug, a.avatar ?? null);
   }
-  railBots = bots;
-  rosterKnown = true;
-  // GLYPHH'S OWN RECORD (2026-10-09): its name on the rail, its voice on its threads.
-  void (window.glyphh as unknown as { libraryAgentGet?: (ref: string) => Promise<{ ok: boolean; data?: unknown }> }).libraryAgentGet?.("glyphh").then((r) => {
-    const g = r?.ok ? r.data as { name?: string; avatar?: { variant: number; color: string; image?: string } | null; voice?: { model?: string; voiceId?: string } | null } : null;
-    const nameEl = document.getElementById("rail-glyphh-name");
-    if (nameEl) nameEl.textContent = (g?.name || "Glyphh").trim() || "Glyphh";
-    // GLYPHH'S FACE (his order, 2026-10-09): the one picked on its page, else the mascot.
-    const before = JSON.stringify(glyphhAvatar);
-    glyphhAvatar = g?.avatar ?? null;
-    const markEl = document.querySelector("#rail-glyphh .rail-glyphh-mark");
-    if (markEl) markEl.outerHTML = glyphhAvatar ? `<span class="rail-glyphh-mark">${glyphhFace(52)}</span>` : `<img class="rail-glyphh-mark" src="${GLYPHH_MASCOT_SRC}" alt="" draggable="false" />`;
-    if (JSON.stringify(glyphhAvatar) !== before) renderRailSessions();
-    if (g?.voice?.model && g.voice.voiceId) railBotVoices.set("glyphh", { model: g.voice.model, voiceId: g.voice.voiceId });
-    else railBotVoices.delete("glyphh");
-  }).catch(() => { /* the rail keeps "Glyphh" */ });
-  if (before) leaveGoneSuperPowers([...before].filter((slug) => !bots.some((b) => b.slug === slug)));
-  // The connected accounts, read once here and again whenever one moves.
-  if (!railConnectedWired) {
-    railConnectedWired = true;
-    (window.glyphh as unknown as { onConnectorsChanged?: (cb: () => void) => void }).onConnectorsChanged?.(() => { void refreshRailConnected(); });
-    void refreshRailConnected();
-  }
-  return true;
 }
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
@@ -6407,11 +6174,7 @@ async function loadRailSessions(): Promise<void> {
   railSessions = rows
     // A thread adopted from the server (a cloud thread, or one made on another
     // surface) carries only a messageCount until opened — it lists all the same.
-    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0
-      // A CLOUD thread's transcript is its worker's, so the server's row says 0
-      // messages: listed by its title on every surface (his report, 2026-10-10:
-      // the desktop listed the cloud sessions, app.glyphh.ai did not).
-      || (threadLocus(c) === "cloud" && !!(c.title || "").trim() && c.title !== "New session"))
+    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0)
     .map((c) => {
       const locus = threadLocus(c);
       // THE FOLDER IS THE THREAD'S (his rule): a thread adopted from the
@@ -6426,16 +6189,13 @@ async function loadRailSessions(): Promise<void> {
         mode: SESSION_MODE,
         locus,
         ...(c.bot ? { bot: c.bot } : {}),
-        ...(c.members?.length ? { team: [...c.members] } : {}),
         ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
       };
     })
     .sort((a, b) => b.mtime - a.mtime);
   reconcileWebDefaultFolder();
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
-  // The rail's rows: Glyphh and its super powers. Only a roster that was
-  // really read can say "none yet" — a failed read never opens the intro.
-  if (await primeBotAvatars()) void maybeIntroSuperPowers();
+  if (railSessions.some((s) => s.bot)) await primeBotAvatars();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -6531,7 +6291,7 @@ function agentForSess(_sess: RailSession): RailCliAgent | undefined { return rai
  * It never fails quietly — that silence is what made this look like a dead
  * click.
  */
-async function openGlyphhSession(id: string, title?: string): Promise<void> {
+async function openGlyphhSession(id: string): Promise<void> {
   await loadStore().catch(() => { /* the cache still answers below */ });
   let chat = chats.find((x) => x.id === id);
   if (!chat) {
@@ -6539,22 +6299,12 @@ async function openGlyphhSession(id: string, title?: string): Promise<void> {
     const row = ((snap?.chats as CodeChat[]) ?? []).find((c) => c.id === id);
     if (row) { chats.push(row); chat = row; }
   }
-  // A BOT'S OR A POWER'S LIFELONG THREAD (his orders, 2026-10-09): one each,
-  // `bots/<slug>` or `powers/<id>`, born the first time the member opens it —
-  // then it is a thread like any.
-  if (!chat && (id.startsWith("bots/") || id.startsWith("powers/"))) {
-    const isBot = id.startsWith("bots/");
-    chat = { id, title: title || id.slice(id.indexOf("/") + 1), createdAt: Date.now(), messages: [], mode: SESSION_MODE, ...(isBot ? { bot: id.slice(5) } : {}), permission: defaultMode } as CodeChat;
-    chats.push(chat);
-    void saveStore();
-  }
   if (!chat) {
     console.warn("[sess] open failed — no such thread in the store or the shared file", JSON.stringify({ id, chats: chats.length }));
     toastOk("That session could not be opened.");
     return;
   }
   console.warn("[sess] open", JSON.stringify({ id, mode: SESSION_MODE, turns: chat.messages?.length ?? 0 }));
-  if (chat.bot) botFlashFor = chat.id;
   selectChat(chat);
   // A thread adopted as metadata carries no turns until fetched; renderThread
   // asks too, but asking here means the history lands even if the thread is
@@ -6599,6 +6349,7 @@ function sessGrantCard(sess: RailSession): void {
 function sessOpen(sess: RailSession): void {
   if (sess.locked) { sessGrantCard(sess); return; }
   // A BOT'S THREAD opens the Bots panel on that bot (his order, 2026-10-08).
+  if (sess.bot) { openBotsPanel(sess.bot); return; }
   // AGENT PANELS ARE INSTANCES in the shell (his ruling, 2026-09-26): a
   // running session fronts the panel that runs it; any other lands in the
   // panel the user touched last, else in a fresh one. The shell's own
@@ -6633,7 +6384,7 @@ function sessOpen(sess: RailSession): void {
   }
   // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
   // (select first — seating a different loop stamps the CURRENT chat).
-  if (sess.cli === "glyphh") { void openGlyphhSession(sess.id, sess.title); return; }
+  if (sess.cli === "glyphh") { void openGlyphhSession(sess.id); return; }
   // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
   // recent opens in the agent CHAT panel, adopted with its transcript and
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
@@ -6685,524 +6436,76 @@ document.addEventListener("mousedown", (ev) => {
 function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
   if (!host) return;
-  // THE RAIL IS THE BOTS (his order, 2026-10-09): Glyphh first, then every bot
-  // — the mascot, the name, the ⋮ at the far right. A click opens that one's
-  // chat in the same Glyphh UI; the threads themselves live in the recents
-  // dropdown at the agent's top right, which reads railSessions as before.
+  const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
+  // THE TAB IS THE FILTER HERE TOO (his report, 2026-09-29: "changing the tabs
+  // doesn't change the left rail's recents list in any way"). The panel's own
+  // list and the dropdown were filtered; this one, the one he was looking at,
+  // was not.
+  // ONE FILTER with the dropdown (his order, 2026-10-04): type, loop, place, search.
+  const railFilter = sessFilter({ query: q });
+  const items = railSessions.filter((x) => sessFilterKeeps(x, railFilter));
+  const painted = JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null });
+  if (painted !== railPaintedLog) { railPaintedLog = painted; console.warn("[rail] painted", painted); }
   host.textContent = "";
-  document.getElementById("rail-glyphh")?.classList.toggle("active", railPickedKey === "glyphh");
-  const row = (o: { key: string; name: string; mark: HTMLElement; liveId?: string; onOpen: () => void; menu?: (btn: HTMLElement) => void; badge?: HTMLElement }): void => {
-    const r = document.createElement("div");
-    r.className = "code-history-item rail-bot-row";
-    r.dataset.bot = o.key;
-    r.classList.toggle("active", railPickedKey === o.key);
-    const label = document.createElement("span");
-    label.className = "code-history-title";
-    label.textContent = o.name;
-    label.title = o.name;
-    r.append(o.mark, label);
-    if (o.liveId && sessDotState(o.liveId) !== "idle") r.appendChild(sessDot(o.liveId));
-    if (o.badge) r.appendChild(o.badge);
-    if (o.menu) {
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "wb-session-empty";
+    empty.textContent = q ? "No sessions match." : "No sessions yet.";
+    host.appendChild(empty);
+    return;
+  }
+  for (const sec of sessSections(items)) {
+    host.appendChild(sessSectionHead(sec.label, sec.title));
+    for (const sess of sec.rows) {
+      const row = document.createElement("div");
+      row.className = "code-history-item";
+      // Leading slot: the RUNNING pulse while the session has a live turn —
+      // here, in another agent panel, or in the CLI — else the locus icon.
+      // Either way it toggles the pin.
+      // Leading slot: the state dot while a turn is live, else WHERE the session
+      // runs — the desktop's Glyphh agent or a CLI (his order, 2026-09-30).
+      const idle = sessDotState(sess.id) === "idle";
+      const dot = idle ? document.createElement("span") : sessDot(sess.id);
+      if (idle) {
+        dot.className = "code-sess-ic";
+        // The one place glyph a row wears: the cloud, or this desktop.
+        const cloud = (sess.locus ?? "local") === "cloud";
+        dot.innerHTML = cloud ? LOCUS_SVG.cloud : SESS_LOCAL_SVG;
+        dot.title = cloud ? LOCUS_TITLE.cloud : "Desktop";
+      }
+      dot.classList.toggle("pinned", sessPinned(sess.id));
+      dot.title = `${dot.title} — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
+      dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
+      const markEl = sessMarkEl(sess);
+      const label = document.createElement("span");
+      label.className = "code-history-title";
+      label.textContent = sessDisplayTitle(sess.title);
+      label.title = sess.title;   // the FULL name stays one hover away
       const menuBtn = document.createElement("button");
       menuBtn.className = "code-chat-menu-btn";
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-      menuBtn.addEventListener("click", (e) => { e.stopPropagation(); o.menu!(menuBtn); });
-      r.appendChild(menuBtn);
+      menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
+      // WHERE IT RUNS (his rule, 2026-10-04): the rail lists the desktop's
+      // threads and the cloud's side by side, each wearing its locus — the
+      // same element the recents dropdown wears (sessLocusEl).
+      // The leading glyph already says where it runs; a trailing one only
+      // when the row is locked (the lock and its grant card).
+      if (sess.locked) row.append(dot, markEl, label, sessLocusEl(sess), menuBtn);
+      else row.append(dot, markEl, label, menuBtn);
+      if (sess.locked) row.classList.add("locked");
+      row.addEventListener("click", () => sessOpen(sess));
+      host.appendChild(row);
     }
-    r.addEventListener("click", () => { railPickedKey = o.key; renderRailSessions(); o.onOpen(); });
-    // A super power drags into a conversation to join its team.
-    if (o.key !== "glyphh") {
-      r.draggable = true;
-      r.addEventListener("dragstart", (e) => {
-        e.dataTransfer?.setData(SUPER_POWER_DRAG, o.key);
-        e.dataTransfer?.setData("text/plain", o.name);
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-      });
-    }
-    host.appendChild(r);
-  };
-  // SUPER POWERS ONLY (his order, 2026-10-09: "The left rail are only super
-  // powers"): the bots — powers combined, carrying skills, tasks, schedules.
-  // The powers themselves live in the chest, not here.
-  // The label and the search are the rail's own markup now (his order,
-  // 2026-10-09: "SUPERPOWERS label, and a search under it, then the list").
-  const q = (el<HTMLInputElement>("rail-sp-search")?.value ?? "").trim().toLowerCase();
-  const shown = railBots.filter((b) => !q || b.name.toLowerCase().includes(q) || b.slug.includes(q));
-  if (!shown.length) {
-    const empty = document.createElement("div");
-    empty.className = "wb-session-empty";
-    empty.textContent = q ? "No super power matches." : "No super powers yet — ask Glyphh to make one.";
-    host.appendChild(empty);
   }
-  for (const b of shown) {
-    const mark = document.createElement("span");
-    mark.className = "code-sess-mark rail-bot-mark";
-    mark.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 56 });
-    const id = `bots/${b.slug}`;
-    // CONNECTIONS STILL TO CONNECT: a red count; a click opens the first one's page.
-    const missing = missingConnections(b);
-    let badge: HTMLElement | undefined;
-    if (missing.length) {
-      const bd = document.createElement("button");
-      bd.type = "button";
-      bd.className = "rail-sp-badge";
-      bd.textContent = String(missing.length);
-      const names = missing.map((m) => m.replace(/_/g, " ")).join(", ");
-      bd.title = `${missing.length} connection${missing.length === 1 ? "" : "s"} to connect: ${names}`;
-      bd.setAttribute("aria-label", bd.title);
-      bd.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openPowersModal({ tab: "connections", focus: { tab: "connections", name: missing[0]! } });
-      });
-      badge = bd;
-    }
-    row({ key: b.slug, name: b.name, mark, liveId: id,
-      onOpen: () => { leaveWorkspace(); sessOpen({ id, cli: GLYPHH_LOOP, title: b.name, cwd: "", mtime: 0, bot: b.slug }); },
-      menu: (btn) => openRailBotMenu(btn, b), ...(badge ? { badge } : {}) });
-  }
-}
-
-// ── THE TEAM (his order, 2026-10-09: swarm mode) ───────────────────────────
-/** The hand-offs running in this panel, by id → the member's thread (for Stop). */
-const teamRuns = new Map<string, string>();
-const SUPER_POWER_DRAG = "application/x-glyphh-super-power";
-
-/** Put a super power on a team thread (the member dragged it in, or Glyphh brought it). */
-function addTeamMember(chat: CodeChat, slug: string): boolean {
-  if (!slug || slug === "glyphh" || chat.bot || chat.id.startsWith("powers/")) return false;
-  const now = chat.members ?? [];
-  if (now.includes(slug)) return false;
-  chat.members = [...now, slug];
-  void saveStore();
-  if (current()?.id === chat.id) paintTeamBar();
-  return true;
-}
-function removeTeamMember(chat: CodeChat, slug: string): void {
-  chat.members = (chat.members ?? []).filter((m) => m !== slug);
-  void saveStore();
-  if (current()?.id === chat.id) paintTeamBar();
-}
-
-/** THE FACES ABOVE THE INPUT: who is on this thread's team, × to let one go, + to bring one in. */
-function paintTeamBar(): void {
-  const host = el("code-team-bar");
-  if (!host) return;
-  const c = current();
-  const members = c && !c.bot ? (c.members ?? []).filter((m) => railBots.some((b) => b.slug === m)) : [];
-  host.hidden = !members.length;
-  host.textContent = "";
-  if (!members.length || !c) return;
-  const label = document.createElement("span");
-  label.className = "team-bar-label";
-  label.textContent = "Team";
-  host.appendChild(label);
-  for (const slug of members) {
-    const b = railBots.find((x) => x.slug === slug)!;
-    const chip = document.createElement("span");
-    chip.className = "team-chip";
-    chip.title = b.name;
-    const face = document.createElement("span");
-    face.className = "team-chip-face";
-    face.innerHTML = botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), sessDotState(`bots/${slug}`) !== "idle" ? "generating" : "idle", { size: 20 });
-    const name = document.createElement("span");
-    name.className = "team-chip-name";
-    name.textContent = b.name;
-    const x = document.createElement("button");
-    x.type = "button";
-    x.className = "team-chip-x";
-    x.textContent = "×";
-    x.title = `Take ${b.name} off the team`;
-    x.setAttribute("aria-label", x.title);
-    x.addEventListener("click", () => removeTeamMember(c, slug));
-    chip.append(face, name, x);
-    host.appendChild(chip);
-  }
-  // THE BOARD: what the team is doing, at a glance; a click opens it.
-  if (c.board?.tasks.length) {
-    const n = boardCounts(c.board);
-    const board = document.createElement("button");
-    board.type = "button";
-    board.className = "team-board-btn";
-    board.title = "Open the work board";
-    board.innerHTML = `<span class="team-board-label">Board</span>${n.working ? `<span class="tb-n st-working">${n.working} working</span>` : ""}${n.review ? `<span class="tb-n st-review">${n.review} to review</span>` : ""}${n.blocked ? `<span class="tb-n st-blocked">${n.blocked} blocked</span>` : ""}<span class="tb-n st-done">${n.done}/${c.board.tasks.length} done</span>`;
-    board.addEventListener("click", () => openTeamBoard(c));
-    host.appendChild(board);
-  }
-  const add = document.createElement("button");
-  add.type = "button";
-  add.className = "team-add";
-  add.textContent = "+";
-  add.title = "Bring a super power onto the team";
-  add.addEventListener("click", (e) => { e.stopPropagation(); openTeamPicker(add, c); });
-  host.appendChild(add);
-}
-/** The + in the faces bar: every super power not on the team yet. */
-function openTeamPicker(anchor: HTMLElement, chat: CodeChat): void {
-  closeSessMenu();
-  const m = document.createElement("div");
-  m.className = "code-menu sp-filter-menu";
-  const left = railBots.filter((b) => !(chat.members ?? []).includes(b.slug));
-  if (!left.length) {
-    const none = document.createElement("div");
-    none.className = "code-menu-item";
-    none.textContent = "Everyone is on the team";
-    m.appendChild(none);
-  }
-  for (const b of left) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "code-menu-item";
-    const face = document.createElement("span");
-    face.className = "loop-mark sp-filter-face";
-    face.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 18 });
-    const label = document.createElement("span");
-    label.className = "loop-label";
-    label.textContent = b.name;
-    row.append(face, label);
-    row.addEventListener("click", () => { closeSessMenu(); addTeamMember(chat, b.slug); });
-    m.appendChild(row);
-  }
-  m.style.zIndex = "10040";
-  placeFixedMenu(anchor, m, { align: "left", side: "auto" });
-  sessMenuEl = m;
-}
-
-/** A team member's name for the board: a super power's, or Glyphh's own. */
-function teamName(slug: string): string {
-  if (slug === "glyphh") return document.getElementById("rail-glyphh-name")?.textContent?.trim() || "Glyphh";
-  return railBots.find((b) => b.slug === slug)?.name ?? slug;
-}
-/** A face for the board: a super power's cat, or Glyphh's mark. */
-function teamFace(slug: string): string {
-  if (slug === "glyphh") return glyphhFace(20);
-  return botAvatarSvg(avatarOf({ slug, avatar: railBotAvatars.get(slug) ?? null }), "idle", { size: 20 });
-}
-/** Who may own a task on this team: Glyphh and its members. */
-const teamOwners = (chat: CodeChat): Set<string> => new Set(["glyphh", ...(chat.members ?? [])]);
-
-/** A BOARD CHANGE (swarm.ts: board_add / board_update / board_list from the
- *  lead, or a member at work): applied to the team thread this panel owns,
- *  saved, repainted, and answered with the board as the model reads it. */
-function applyBoardOp(req: { team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }): { ok: boolean; text: string; error?: string } {
-  const team = chats.find((x) => x.id === req.team);
-  if (!team) return { ok: false, text: "", error: "the team thread isn't open in this panel" };
-  team.board ??= emptyBoard();
-  const owners = teamOwners(team);
-  if (req.by !== "glyphh") owners.add(req.by);
-  try {
-    if (req.op === "add") addTasks(team.board, (Array.isArray(req.args.tasks) ? req.args.tasks : []) as NewTask[], req.by, req.parent, owners, Date.now());
-    else if (req.op === "update") updateTask(team.board, req.args.task, req.args, req.by, owners, Date.now());
-  } catch (err) {
-    return { ok: false, text: "", error: err instanceof Error ? err.message : String(err) };
-  }
-  if (req.op !== "list") { void saveStore(); if (current()?.id === team.id) paintTeamBar(); refreshBoard(); }
-  return { ok: true, text: boardText(team.board, teamName) };
-}
-
-/** THE WORK BOARD for a team thread, on screen (help/board-panel.ts). */
-function openTeamBoard(chat: CodeChat): void {
-  openBoardPanel({
-    title: `${chat.title || "Team"} · work board`,
-    board: () => chat.board ?? emptyBoard(),
-    nameOf: teamName,
-    faceOf: teamFace,
-    openThread: (slug) => {
-      if (slug === "glyphh") { sessOpen({ id: chat.id, cli: GLYPHH_LOOP, title: chat.title, cwd: "", mtime: 0 }); return; }
-      railPickedKey = slug;
-      renderRailSessions();
-      sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: teamName(slug), cwd: "", mtime: 0, bot: slug });
-    },
-    update: (taskId, patch) => {
-      chat.board ??= emptyBoard();
-      try { updateTask(chat.board, taskId, patch, "you", teamOwners(chat), Date.now()); }
-      catch (err) { return err instanceof Error ? err.message : String(err); }
-      void saveStore();
-      paintTeamBar();
-      refreshBoard();
-      return null;
-    },
-  });
-}
-
-/** A HAND-OFF, RUN HERE (swarm.ts asks the panel holding the team thread): the
- *  member's own thread gets the lead's words and runs like any send; its card
- *  in the team thread is live; its answer lands back as its own message. */
-async function runTeamTurn(req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }): Promise<void> {
-  const g = window.glyphh as unknown as { teamHandoffDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> };
-  const reply = (r: { ok: boolean; text: string; error?: string }): void => { void g.teamHandoffDone?.(req.id, r); };
-  const team = chats.find((x) => x.id === req.team);
-  if (!team) { reply({ ok: false, text: "", error: "the team thread isn't open in this panel" }); return; }
-  if (req.joins) addTeamMember(team, req.member);
-  // THE TASK IT WORKS ON (phase 2): working, owned by the member, from now.
-  team.board ??= emptyBoard();
-  const task = req.taskId ? findTask(team.board, req.taskId) : undefined;
-  const boardMove = (patch: { status?: TaskStatus; owner?: string; note?: string }): void => {
-    if (!task) return;
-    try { updateTask(team.board!, task.id, patch, req.from ?? "glyphh", new Set([...teamOwners(team), req.member]), Date.now()); } catch { /* the board refused: leave it */ }
-    refreshBoard();
-  };
-  boardMove({ status: "working", owner: req.member, note: `Handed to ${req.name}` });
-  const card: TeamHandoff = { id: req.id, member: req.member, name: req.name, ask: req.ask, status: "working", startedAt: Date.now() };
-  team.messages.push({ role: "assistant", kind: "handoff", text: req.ask, at: Date.now(), handoff: card });
-  const memberId = `bots/${req.member}`;
-  let member = chats.find((x) => x.id === memberId);
-  if (!member) {
-    member = { id: memberId, title: req.name, createdAt: Date.now(), messages: [], mode: SESSION_MODE, bot: req.member, permission: defaultMode } as CodeChat;
-    chats.push(member);
-  }
-  // A MEMBER AT WORK ON A TEAM TASK can split it and hand parts to the super powers it holds.
-  const taskLine = task ? `\n\n(Team task ${task.id} "${task.title}". To split it, add sub-tasks with board_add; hand parts to the super powers you hold with hand_off.)` : "";
-  member.messages.push({ role: "user", text: `${req.lead}: ${req.ask}${taskLine}`, at: Date.now(), speaker: req.from ?? "glyphh" });
-  liveRuns.set(memberId, { runId: null, text: "", bubble: null, startAt: Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
-  ensureRunTicker();
-  teamRuns.set(req.id, memberId);
-  await saveStore();
-  renderHistory();
-  renderThread();
-  const finished = new Promise<{ text: string; stopped: boolean }>((resolve) => {
-    const on = (e: Event): void => {
-      const d = (e as CustomEvent<{ chatId: string; text: string; stopped: boolean }>).detail;
-      if (d?.chatId !== memberId) return;
-      document.removeEventListener("glyphh-agent:turn-finished", on);
-      resolve({ text: String(d.text ?? ""), stopped: !!d.stopped });
-    };
-    document.addEventListener("glyphh-agent:turn-finished", on);
-  });
-  // THE LEAD'S FOLDER IS THE PERIMETER (his rule, 2026-10-09: the session is bound
-  // to its folder and nothing gets out): the member works in the team thread's
-  // folder, under the team thread's permission mode — never auto by default.
-  const folder = threadFolder(team);
-  if (!folder) { liveRuns.delete(memberId); teamRuns.delete(req.id); card.status = "failed"; card.endedAt = Date.now(); void saveStore(); renderThread(); reply({ ok: false, text: "", error: "this conversation has no folder; pick one before handing work off" }); return; }
-  member.workdir = folder;
-  try {
-    await window.glyphh.glyphhRun({ chatId: memberId, mode: SESSION_MODE, workdir: folder, permission: team.permission ?? defaultMode });
-  } catch (err) {
-    liveRuns.delete(memberId);
-    card.status = "failed";
-    card.endedAt = Date.now();
-    teamRuns.delete(req.id);
-    void saveStore();
-    renderThread();
-    reply({ ok: false, text: "", error: err instanceof Error ? err.message : String(err) });
-    return;
-  }
-  const done = await finished;
-  teamRuns.delete(req.id);
-  // A REFUSAL IS NOT AN ANSWER (his report, 2026-10-09: the card said "Done ·
-  // 1s" over "That model isn't reachable right now"): the card says it failed,
-  // the member's thread keeps the refusal, and Glyphh is told — it never
-  // speaks as the member.
-  const refused = !!done.text.trim() && !!turnError(done.text);
-  card.status = done.stopped ? "stopped" : refused || !done.text.trim() ? "failed" : "done";
-  card.endedAt = Date.now();
-  // The task waits on the lead's review — or is blocked, with why.
-  if (card.status === "done") boardMove({ status: "review", note: `${req.name} answered` });
-  else boardMove({ status: "blocked", note: card.status === "stopped" ? `${req.name} was stopped` : `${req.name} couldn't finish` });
-  // THEIR ANSWER, AS THEMSELVES, in the team thread — and aloud, in their own
-  // voice, after whoever is speaking (voice mode on in this team's thread only).
-  if (card.status === "done") {
-    team.messages.push({ role: "assistant", text: done.text, at: Date.now(), speaker: req.member });
-    void speakTeamLine(done.text, railBotVoices.get(req.member) ?? null, team.id);
-  }
-  void saveStore();
-  renderHistory();
-  renderThread();
-  reply(card.status === "done" ? { ok: true, text: done.text }
-    : { ok: false, text: "", error: done.stopped ? `${req.name} was stopped` : refused ? `${req.name} couldn't run: ${done.text.slice(0, 300)}` : `${req.name} didn't answer` });
-}
-
-/** THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
- *  to it opens its conversation the way its rail row does. */
-function openNewSuperPower(): void {
-  openNewSuperPowerModal();
-}
-// Every New super power screen (the rail's dialog, the powers modal's tab)
-// talks to it and opens its page the way its rail row does.
-setNewSuperPowerDoors({
-  onTalk: (slug, name) => {
-    railPickedKey = slug;
-    renderRailSessions();
-    leaveWorkspace();
-    sessOpen({ id: `bots/${slug}`, cli: GLYPHH_LOOP, title: name, cwd: "", mtime: 0, bot: slug });
-  },
-  onOpenPage: (slug) => { (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.(slug); },
-});
-
-/** FIRST TIME, IT OPENS ITSELF (his order, 2026-10-09: "this modal should load
- *  on startup for first time users"): on the desktop's shell, once the rail
- *  has read the roster, a member with no super powers who has never seen it
- *  gets it once; the preference keeps it from coming back. */
-const SUPER_POWER_INTRO_PREF = "superPowerIntroShown";
-let superPowerIntroChecked = false;
-async function maybeIntroSuperPowers(): Promise<void> {
-  if (superPowerIntroChecked) return;
-  superPowerIntroChecked = true;
-  if (onWeb() || (new URLSearchParams(window.location.search).get("solo") || "")) return;
-  if (railBots.length) return;
-  const g = window.glyphh as unknown as { getPreference?: (k: string, d?: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => unknown };
-  const seen = await Promise.resolve(g.getPreference?.(SUPER_POWER_INTRO_PREF, false)).catch(() => true);
-  if (seen) return;
-  void g.setPreference?.(SUPER_POWER_INTRO_PREF, true);
-  window.setTimeout(() => openNewSuperPower(), 900);
-}
-
-/** A SUPER POWER THAT IS GONE LEAVES THE SCREEN (his report, 2026-10-09:
- *  "deleting the super power while on the same page didn't go back to an
- *  empty agent or the last agent"): whatever deleted it — its page, the
- *  rail's ⋮, Glyphh's agent_delete, a pull from the server — its Edit page
- *  closes, and a member in its conversation lands on Glyphh's home. */
-function leaveGoneSuperPowers(gone: string[]): void {
-  if (!gone.length) return;
-  const w = window as unknown as { __wbCloseBotPage?: (slug: string) => void };
-  let home = false;
-  for (const slug of gone) {
-    w.__wbCloseBotPage?.(slug);
-    if (currentId === `bots/${slug}` || railPickedKey === slug) home = true;
-  }
-  if (home) openGlyphhNew();
-}
-
-/** GLYPHH, A NEW SESSION: Glyphh picked on the rail, any workspace closed, a
- *  fresh thread — where a deleted super power's member lands. */
-function openGlyphhNew(): void {
-  railPickedKey = "glyphh";
-  renderRailSessions();
-  leaveWorkspace();
-  railNewGlyphh();
-}
-
-/** A new Glyphh session in the open agent — set at init (initCode). */
-let railNewGlyphh: () => void = () => {};
-/** A RAIL CLICK CLOSES THE WORKSPACE (his order, 2026-10-09: "if a workspace is
- *  open and the user clicks the glyphh agent … or any super power the layout
- *  should be closed and that panel loaded") — every card goes, then the thread
- *  opens in a fresh agent panel. */
-function leaveWorkspace(): void {
-  const w = window as unknown as { __wbWorkspaceOpen?: () => boolean; __wbEchoReset?: () => void };
-  if (w.__wbWorkspaceOpen?.()) w.__wbEchoReset?.();
-}
-/** GLYPHH, the rail's first row (his order, 2026-10-09): its newest
- *  thread (the rest are in the recents dropdown), else a new one. */
-function openGlyphhHome(): void {
-  railPickedKey = "glyphh";
-  renderRailSessions();
-  document.getElementById("rail-glyphh")?.classList.add("active");
-  leaveWorkspace();
-  const newest = railSessions.find((x) => !x.bot && !x.id.startsWith("powers/"));
-  if (newest) sessOpen(newest);
-  else railNewGlyphh();
-}
-
-/** Which rail row the member opened last — it wears the active state. */
-let railPickedKey = "glyphh";
-
-/** A bot row's ⋮: edit it (Customize › Agents), or delete it (the standard confirm). */
-function openRailBotMenu(anchor: HTMLElement, b: { slug: string; name: string }): void {
-  closeSessMenu();
-  const m = document.createElement("div");
-  m.className = "code-menu";
-  const item = (label: string, danger: boolean, run: () => void): void => {
-    const x = document.createElement("button");
-    x.className = "code-menu-item" + (danger ? " danger" : "");
-    x.textContent = label;
-    x.addEventListener("click", () => { closeSessMenu(); run(); });
-    m.appendChild(x);
-  };
-  // EDIT BOT IS A PAGE (his order, 2026-10-09): the form left, its powers right.
-  // "Edit" and "Delete" (his order, 2026-10-09: "these are not bots they are Super Powers").
-  item("Edit", false, () => {
-    const w = window as unknown as { __wbOpenBotPage?: (slug: string) => void; __glyphhOpenSettings?: (sub?: string) => void };
-    if (w.__wbOpenBotPage) w.__wbOpenBotPage(b.slug);
-    else w.__glyphhOpenSettings?.("agents");
-  });
-  item("Delete", true, () => {
-    void confirmAction({ title: `Delete ${b.name}?`, body: "The super power goes. Its conversation stays in your recents.", confirmLabel: "Delete", danger: true }).then(async (ok) => {
-      if (!ok) return;
-      await (window.glyphh as unknown as { libraryAgentDelete?: (ref: string) => Promise<unknown> }).libraryAgentDelete?.(b.slug);
-      if (railPickedKey === b.slug) railPickedKey = "glyphh";
-      await primeBotAvatars();
-      renderRailSessions();
-    });
-  });
-  // Placed by the one rule (menu-place.ts): under the ⋮, its right edge on
-  // the ⋮'s, flipped above when the rail runs out (his report, 2026-10-09:
-  // a fixed 180px offset landed it over the bot's name).
-  m.style.zIndex = "10040";
-  placeFixedMenu(anchor, m, { align: "right", side: "auto" });
-  sessMenuEl = m;
 }
 
 /** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
  *  search on top, the rail's grouping, rows with pin + delete icons. */
 /** The recents dropdown's one width (help/menu-place.ts caps it to the room). */
 export const SESSION_MENU_WIDTH = 360;
-/** Who a thread belongs to: a super power's slug, or Glyphh. */
-const sessOwner = (sess: RailSession): string => sess.bot ?? "glyphh";
-const RECENTS_FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
-const MENU_CHECK_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
-
-/** THE SUPER POWER FILTER (his order, 2026-10-09: "use the search filter we
- *  had… the filter is as you said each face and name… with a check"): the
- *  funnel beside the search lists Glyphh and every super power, face and
- *  name, a check on each that is on. Many may be on. */
-function openSuperPowerFilterMenu(anchor: HTMLElement, shown: Set<string>, changed: () => void): void {
-  document.querySelector(".sp-filter-menu")?.remove();
-  if (!anchor.isConnected) return;
-  const m = document.createElement("div");
-  m.className = "code-menu loop-filter-menu sp-filter-menu";
-  const row = (key: string, name: string, mark: HTMLElement): void => {
-    const on = shown.has(key);
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "code-menu-item" + (on ? " on" : "");
-    b.setAttribute("role", "menuitemcheckbox");
-    b.setAttribute("aria-checked", String(on));
-    b.appendChild(mark);
-    const label = document.createElement("span");
-    label.className = "loop-label";
-    label.textContent = name;
-    b.appendChild(label);
-    const check = document.createElement("span");
-    check.className = "menu-check";
-    check.innerHTML = on ? MENU_CHECK_SVG : "";
-    b.appendChild(check);
-    b.addEventListener("mousedown", (e) => e.stopPropagation());
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (shown.has(key)) shown.delete(key); else shown.add(key);
-      changed();
-      openSuperPowerFilterMenu(anchor, shown, changed);
-    });
-    m.appendChild(b);
-  };
-  const glyphh = document.createElement("span");
-  glyphh.className = "loop-mark sp-filter-face";
-  glyphh.innerHTML = glyphhFace(18);
-  row("glyphh", "Glyphh", glyphh);
-  for (const b of railBots) {
-    const face = document.createElement("span");
-    face.className = "loop-mark sp-filter-face";
-    face.innerHTML = botAvatarSvg(avatarOf({ slug: b.slug, avatar: railBotAvatars.get(b.slug) ?? null }), "idle", { size: 18 });
-    row(b.slug, b.name, face);
-  }
-  m.addEventListener("mousedown", (e) => e.stopPropagation());
-  placeFixedMenu(anchor, m, { align: "right", side: "auto" });
-  m.style.zIndex = "10050";
-  const close = (ev: MouseEvent): void => {
-    if (!m.contains(ev.target as Node) && ev.target !== anchor && !anchor.contains(ev.target as Node)) { m.remove(); document.removeEventListener("mousedown", close, true); }
-  };
-  document.addEventListener("mousedown", close, true);
-}
-
 function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSession) => void }): void {
   document.querySelector(".wb-session-menu")?.remove();
-  // THE OPEN ONE BY DEFAULT (his order, 2026-10-09: "defaults to the super
-  // power you have open with all others off but allows you to flip it on for
-  // others… pinning keeps it across all filters").
-  const openOwner = current()?.bot ?? "glyphh";
-  const shown = new Set<string>([openOwner]);
   const menu = document.createElement("div");
   menu.className = "code-drop wb-session-menu";
   let menuQuery = "";
@@ -7216,20 +6519,22 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
+  // The same place filter the rail has, to the right of the search (his order,
+  // 2026-09-16, restored 2026-09-30) — in every agent window's recents.
   const filterBtn = document.createElement("button");
   filterBtn.type = "button";
-  filterBtn.className = "rail-filter-btn";
-  filterBtn.title = "Filter by super power";
-  filterBtn.setAttribute("aria-label", "Filter by super power");
-  filterBtn.innerHTML = RECENTS_FILTER_SVG;
-  const markFilter = (): void => { filterBtn.classList.toggle("active", !(shown.size === 1 && shown.has(openOwner))); };
-  markFilter();
+  filterBtn.className = "rail-filter-btn" + (recentsFilterActive({ locus: locusFilter }) ? " active" : "");
+  filterBtn.title = "Filter by place";
+  filterBtn.innerHTML = FILTER_SVG;
   filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-  filterBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openSuperPowerFilterMenu(filterBtn, shown, () => { markFilter(); paint(); });
-  });
+  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openPlaceFilterMenu(filterBtn); });
   searchWrap.appendChild(filterBtn);
+  const onFilter = (): void => {
+    if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
+    filterBtn.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+    paint();
+  };
+  document.addEventListener("glyphh:loop-filter-changed", onFilter);
   menu.appendChild(searchWrap);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
@@ -7239,31 +6544,20 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    // The search, and the super powers that are on; a pinned thread shows under every filter.
+    // THE RAIL'S FILTER, verbatim (his order, 2026-10-04): the same function, the same prefs.
     const menuFilter = sessFilter({ query: q });
-    const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter) && (sessPinned(x.id) || shown.has(sessOwner(x))));
+    const visible = pool.filter((x) => sessFilterKeeps(x, menuFilter));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row" + (sess.locked ? " locked" : "");
       row.appendChild(sessDot(sess.id));
       row.appendChild(sessLocusEl(sess));
-      // Whose thread it is: the super power's face, or Glyphh's — a TEAM
-      // thread wears its members' faces, stacked.
-      const owner = sess.team?.length ? teamMarkEl(sess.team) : sessMarkEl(sess);
-      owner.classList.add("wb-session-owner");
-      row.appendChild(owner);
       const title = document.createElement("button");
       title.type = "button";
       title.className = "code-drop-item wb-session-title";
       title.textContent = sessDisplayTitle(sess.title);
       title.title = sess.title;
-      title.addEventListener("click", () => {
-        menu.remove();
-        // The rail follows: picking another super power's thread selects it there.
-        railPickedKey = sessOwner(sess);
-        renderRailSessions();
-        opts.onPick(sess);
-      });
+      title.addEventListener("click", () => { menu.remove(); opts.onPick(sess); });
       const pin = document.createElement("button");
       pin.type = "button";
       pin.className = "code-icon-btn wb-session-pin" + (sessPinned(sess.id) ? " on" : "");
@@ -7292,7 +6586,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
     if (!visible.length) {
       const empty = document.createElement("div");
       empty.className = "wb-session-empty";
-      empty.textContent = q ? "No sessions match." : shown.size ? "No sessions yet." : "Pick a super power in the filter.";
+      empty.textContent = q ? "No sessions match." : "No sessions yet.";
       listHost.appendChild(empty);
     }
   };
@@ -7302,18 +6596,8 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   // and type switch (his report, 2026-10-05: the recents ran past the
   // menu's bottom clipped, and the menu re-sized with its content).
   placeDropup(anchor, menu, { width: SESSION_MENU_WIDTH, scrollEl: listHost });
-  // The super power filter's menu is the dropdown's own (his report,
-  // 2026-10-09: "selecting a filter jumped it to the other side of the
-  // page" — a click in it closed the dropdown under it and the menu
-  // re-placed against a gone button). Closing the dropdown closes it too.
   const dismiss = (e: MouseEvent): void => {
-    const t = e.target as HTMLElement | null;
-    // The delete's confirmation is the dropdown's own step (his report,
-    // 2026-10-10: "when deleting a session the chip should not close afterwards").
-    if (menu.contains(t) || t?.closest?.(".sp-filter-menu") || t?.closest?.(".confirm-overlay")) return;
-    menu.remove();
-    document.querySelector(".sp-filter-menu")?.remove();
-    document.removeEventListener("mousedown", dismiss, true);
+    if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
   };
   document.addEventListener("mousedown", dismiss, true);
 }
@@ -7524,9 +6808,19 @@ function paintLayoutsGrid(host: RailGridHost): void {
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { host.page = pg; paintLayoutsGrid(host); }));
-  // No workspaces yet: nothing below the head (his order, 2026-10-09: the
-  // "+ Workspace" button repeated the head's +).
-  if (!layouts.length && q) railEmpty(list, q, "Workspace", "layouts");
+  if (!layouts.length) {
+    if (q) railEmpty(list, q, "Workspace", "layouts");
+    else {
+      // No workspaces yet: the one action is the same + as the head's.
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "app-rail-empty-btn";
+      btn.textContent = "+ Workspace";
+      btn.title = "Create workspace — save what is on screen";
+      btn.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
+      list.appendChild(btn);
+    }
+  }
 }
 
 function renderRailAgents(): void {
@@ -7587,73 +6881,12 @@ function initRailApps(): void {
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
+  el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
+  el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openPlaceFilterMenu(e.currentTarget as HTMLElement); });
+  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initWorkspacesVsplit();
-  el("rail-glyphh")?.addEventListener("click", () => openGlyphhHome());
-  // THE TEAM (swarm.ts): main asks this panel to run a member's turn.
-  {
-    const g = window.glyphh as unknown as {
-      onTeamHandoff?: (cb: (req: { id: string; team: string; member: string; name: string; lead: string; from?: string; ask: string; joins: boolean; taskId?: string | null }) => void) => unknown;
-      onTeamHandoffStop?: (cb: (req: { id: string }) => void) => unknown;
-    };
-    g.onTeamHandoff?.((req) => { void runTeamTurn(req); });
-    (window.glyphh as unknown as {
-      onTeamBoard?: (cb: (req: { id: string; team: string; op: "add" | "update" | "list"; args: Record<string, unknown>; by: string; parent: string | null }) => void) => unknown;
-      teamBoardDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean>;
-    }).onTeamBoard?.((req) => {
-      const r = applyBoardOp(req);
-      void (window.glyphh as unknown as { teamBoardDone?: (id: string, r: { ok: boolean; text: string; error?: string }) => Promise<boolean> }).teamBoardDone?.(req.id, r);
-    });
-    g.onTeamHandoffStop?.((req) => { const id = teamRuns.get(req.id); if (id) void window.glyphh.glyphhStop?.(id); });
-    // THE SHELL'S NETWORK ASK (main/net-proxy.ts): a command in a session wants a host the sandbox doesn't know yet.
-    (window.glyphh as unknown as { onNetAsk?: (cb: (req: { id: string; chatId: string; host: string }) => void) => unknown }).onNetAsk?.((req) => { showNetAsk(req); });
-    (window.glyphh as unknown as { onOutsideAsk?: (cb: (req: { id: string; chatId: string; command: string; reason: string }) => void) => unknown }).onOutsideAsk?.((req) => { showOutsideAsk(req); });
-    // DRAG A SUPER POWER INTO THE CHAT (his order, 2026-10-09): drop on the agent.
-    const zone = document.querySelector<HTMLElement>(".code-agent");
-    if (zone) {
-      zone.addEventListener("dragover", (e) => {
-        if (!e.dataTransfer?.types.includes(SUPER_POWER_DRAG)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-        zone.classList.add("team-drop");
-      });
-      zone.addEventListener("dragleave", (e) => { if (!zone.contains(e.relatedTarget as Node)) zone.classList.remove("team-drop"); });
-      zone.addEventListener("drop", (e) => {
-        const slug = e.dataTransfer?.getData(SUPER_POWER_DRAG);
-        zone.classList.remove("team-drop");
-        if (!slug) return;
-        e.preventDefault();
-        if (!current()) newChat();
-        const c = current()!;
-        if (c.bot) { toastOk("Teams live in Glyphh's conversations: open Glyphh, then drag them in."); return; }
-        addTeamMember(c, slug);
-      });
-    }
-  }
-  // Glyphh's ⋮: Edit, and only Edit — Glyphh is never deleted.
-  el("rail-glyphh-menu")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const btn = e.currentTarget as HTMLElement;
-    closeSessMenu();
-    const m = document.createElement("div");
-    m.className = "code-menu";
-    const x = document.createElement("button");
-    x.className = "code-menu-item";
-    x.textContent = "Edit";
-    x.addEventListener("click", () => { closeSessMenu(); (window as unknown as { __wbOpenBotPage?: (s: string) => void }).__wbOpenBotPage?.("glyphh"); });
-    m.appendChild(x);
-    m.style.zIndex = "10040";
-    placeFixedMenu(btn, m, { align: "right", side: "auto" });
-    sessMenuEl = m;
-  });
-  // The landing after a delete (the super power page's Delete lands here):
-  // a NEW Glyphh session (his order, 2026-10-09: "it should just open the new
-  // agent session"), never the last thread.
-  (window as unknown as { __glyphhOpenHome?: () => void }).__glyphhOpenHome = () => openGlyphhNew();
-  // THE NEW SUPER POWER MODAL (his order, 2026-10-09): built by Glyphh; Talk
-  // to it opens its conversation the way its rail row does.
-  el("rail-sp-new")?.addEventListener("click", (e) => { e.stopPropagation(); openNewSuperPower(); });
-  el<HTMLInputElement>("rail-sp-search")?.addEventListener("input", () => renderRailSessions());
   // ONE CREATE DOOR (his order, 2026-10-08): the rail's +, the agent menu's
   // "Create workspace…". A panel is its own document — it asks the shell,
   // which owns the arrangement; the shell opens the modal.
@@ -7668,12 +6901,6 @@ function initRailApps(): void {
   }
   // The + beside Workspaces: save what is on screen as a workspace.
   el("rail-layouts-add")?.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
-  // RESET (his order, 2026-10-09): the old Echo "remove all" — every panel and
-  // the open workspace close; the surface then seats a fresh Glyphh agent.
-  el("rail-layouts-reset")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
-  });
   syncRailLayout();
   void loadRecentApps();
   // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
@@ -7817,7 +7044,7 @@ export function openRunRef(t: { ref?: string; url?: string }): void {
 
 /** Open a built-in WORK PANEL as a workbench panel — the Apps page's "Work
  *  panels" cards. Same cold-safe mechanics as openAppInWorkbench: flip to the
- *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenTool,
+ *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenGPoint,
  *  __wbOpenMedia, …) is assigned by the workbench init. */
 export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): void {
   showWorkspaceSurface();
@@ -7868,38 +7095,6 @@ export function initCode(): void {
   if (inited) return;
   inited = true;
   initAnchorEvents();
-  // The mark above the composer is the vector cat, so it blinks like the
-  // rail's (his order, 2026-10-10: "make him bigger just a tad, let him blink").
-  const sourceMascot = document.getElementById("code-source-mascot");
-  if (sourceMascot) sourceMascot.innerHTML = botAvatarSvg({ variant: 1, color: AVATAR_INK }, "idle", { size: 28 });
-  // THE POWERS MODAL, for every caller in this document and the ones that
-  // cannot import it (the workbench bundle). An AGENT PANEL is its own
-  // document, so its overlay would stop at the panel's edges (his report,
-  // 2026-10-09: "the modal overlay isn't covering the left rail"): a panel
-  // asks the shell through main, and the shell opens it over the window.
-  {
-    const solo = (new URLSearchParams(window.location.search).get("solo") || "") === "tool:coding";
-    const g = window.glyphh as unknown as { agentPanelOpenPowers?: (tab: string) => Promise<boolean>; onAgentPanelOpenPowers?: (cb: (p: { tab: string }) => void) => void };
-    const tabOf = (tab: string): "folders" | "connections" | "models" | "skills" => (tab === "connections" || tab === "models" || tab === "folders" ? tab : "skills");
-    (window as unknown as { __glyphhOpenPowers?: (tab: string) => void }).__glyphhOpenPowers = (tab) => {
-      if (solo && g.agentPanelOpenPowers) { void g.agentPanelOpenPowers(tabOf(tab)); return; }
-      openPowersModal({ tab: tabOf(tab) });
-    };
-    if (!solo) g.onAgentPanelOpenPowers?.((p) => openPowersModal({ tab: tabOf(p.tab) }));
-  }
-  // A SUPER POWER'S NEW FACE SHOWS AT ONCE (his order, 2026-10-09): the rail
-  // repaints from the roster whenever it moves — main announces every save,
-  // delete and server pull; the web's library shim fires the window event.
-  // A super power's thread is read aloud in its own voice.
-  setSpeakerVoice(() => (currentId.startsWith("bots/") ? railBotVoices.get(currentId.slice(5)) ?? null : railBotVoices.get("glyphh") ?? null));
-  setVoiceChatProvider(() => currentId);
-  let botsRepaint = 0;
-  const repaintBots = () => {
-    const mine = ++botsRepaint;
-    void primeBotAvatars().then(() => { if (mine === botsRepaint) renderRailSessions(); }).catch(() => { /* the next move repaints */ });
-  };
-  (window.glyphh as unknown as { onAgentsChanged?: (cb: () => void) => () => void }).onAgentsChanged?.(repaintBots);
-  window.addEventListener("glyphh:agents-changed", repaintBots);
   // The collapsed bar's one-line status rides the SAME timeline event the Plan
   // slot already consumes — no second subscription onto the frame stream.
   document.addEventListener("glyphh-agent:timeline", (ev) => {
@@ -7977,6 +7172,8 @@ export function initCode(): void {
     // The agent's door to Settings (2026-09-17): the same panel the dock opens.
     else if (cmd.action === "settings") openSettingsModal(String((cmd as { sub?: string }).sub || "") || undefined);
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
+    else if (cmd.action === "gdesign") (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
+    else if (cmd.action === "gmedia") (window as unknown as { __wbOpenMedia?: (view: string, assetId?: string, songId?: string) => void }).__wbOpenMedia?.((cmd as unknown as { view: string }).view, (cmd as unknown as { assetId?: string }).assetId, (cmd as unknown as { songId?: string }).songId);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's
@@ -8187,9 +7384,7 @@ export function initCode(): void {
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
-  // (The rail's + New left the rail, his order 2026-10-09; this is the door
-  // the Glyphh row uses when there is no thread yet.)
-  railNewGlyphh = () => {
+  el("code-new-chat")?.addEventListener("click", () => {
     const w = window as unknown as {
       __initCodeWorkbench?: () => void;
       __wbOpenGlyphhAgent?: () => void;
@@ -8223,7 +7418,7 @@ export function initCode(): void {
       w.__wbOpenGlyphhAgent?.();
     };
     go();
-  };
+  });
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // The artifact viewer names the artifact in hand for the CURRENT session
   // (code-workbench.ts __wbSendToAgent passes it through before it types).
@@ -8466,6 +7661,12 @@ export function initCode(): void {
     }).then((ok) => {
       if (ok) (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
     });
+  });
+  // Icon hover zoom (Appearance slider) — every icon scales by this on
+  // hover. Settings applies it live; this seeds it at boot.
+  void window.glyphh.getPreference?.("iconHoverZoom", 1.08).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
   });
   // Echo Agent panel transparency (Appearance slider) — the CSS var the
   // caret panel reads. Settings applies it live; this seeds it at boot.

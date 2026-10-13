@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appRowKind,
-  agentClock, buildAgentRow, checkSuperPowers, cleanMapLayout, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
+  agentClock, buildAgentRow, buildScheduleData, buildTabRow, bundleDataOf, bundleOfPageId, bundlePageId, bundleRowOf, dripId, dripRecordOf,
   filesClock, filesSignature, isCronShape, isDripData, isGridLayout, isScheduleData, layoutRowOf, mergeServerFirst, mergeTabLocal,
   normalizeRemoteRow, rowClock, scheduleViewOf, sqlClock, tabClock, tabRecordOf, tabRowOf, threadLocus,
   workspaceClock, workspaceId, workspaceSurfaceOf, type GridLayoutLike, type TabRowLike,
@@ -28,9 +28,7 @@ describe("agents — role and avatar (the Bots panel, his order 2026-10-08)", ()
     const kept = buildAgentRow({ description: "plans" }, boss, "2026-10-08T00:00:02.000Z");
     expect(kept.role).toBe("orchestrator");
     expect(kept.avatar).toEqual({ variant: 8, color: "#af5fff" });
-    // Sixteen faces since 2026-10-09: 16 is a face, 17 is not.
-    expect(buildAgentRow({ avatar: { variant: 16, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toEqual({ variant: 16, color: "#fff" });
-    expect(buildAgentRow({ avatar: { variant: 17, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
+    expect(buildAgentRow({ avatar: { variant: 13, color: "#fff" } }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
     expect(buildAgentRow({ avatar: null }, boss, "2026-10-08T00:00:03.000Z").avatar).toBeNull();
   });
 });
@@ -92,7 +90,7 @@ describe("app tabs", () => {
 describe("agents", () => {
   it("buildAgentRow is local-agents' saveAgent row — the same on both surfaces", () => {
     const made = buildAgentRow({ name: "Ada Lovelace", prompt: "p", guardrails: { maxInputTokens: "12" as unknown as number, windowCalls: 0 } }, null, "2026-10-04T00:00:00.000Z");
-    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", role: "worker", avatar: null, skills: [], apps: [], folders: [], connections: [], models: [], mapLayout: {}, superPowers: [], voice: null, modelCaps: {}, live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
+    expect(made).toEqual({ id: "ada-lovelace", slug: "ada-lovelace", name: "Ada Lovelace", description: "", prompt: "p", provider: "", model: "", role: "worker", avatar: null, skills: [], apps: [], live: true, guardrails: { maxInputTokens: 12, maxOutputTokens: null, windowSeconds: null, windowTokens: null, windowCalls: null, maxConcurrent: null }, createdAt: "2026-10-04T00:00:00.000Z", updatedAt: "2026-10-04T00:00:00.000Z" });
     const edited = buildAgentRow({ live: false, guardrails: {} }, made, "2026-10-05T00:00:00.000Z");
     expect(edited).toMatchObject({ slug: "ada-lovelace", name: "Ada Lovelace", prompt: "p", live: false, guardrails: null, createdAt: "2026-10-04T00:00:00.000Z" });
     expect(agentClock(edited)).toBe(Date.parse("2026-10-05T00:00:00.000Z"));
@@ -203,29 +201,5 @@ describe("appRowKind — what kind of row a desktop's panelApps.list hands over"
     expect(appRowKind({ system: true, appArchetype: "glyphh-self", url: null, execPath: null })).toBeNull();
     expect(appRowKind({ system: true, appArchetype: "glyphh-nav", url: null, execPath: null })).toBeNull();
     expect(appRowKind({ system: false, appArchetype: null, url: null, execPath: null })).toBeNull();
-  });
-});
-
-describe("a super power holds super powers, never itself, never a loop (his order, 2026-10-09)", () => {
-  const roster = new Map<string, string[]>([["a", []], ["b", ["c"]], ["c", ["a"]], ["d", []]]);
-  it("takes other super powers, cleaned", () => {
-    expect(checkSuperPowers("a", ["d", " d ", ""], roster)).toEqual(["d"]);
-  });
-  it("refuses itself, an unknown one, and a loop through others", () => {
-    expect(() => checkSuperPowers("a", ["a"], roster)).toThrow(/can't hold itself/);
-    expect(() => checkSuperPowers("a", ["zed"], roster)).toThrow(/no super power called "zed"/);
-    // b holds c, c holds a: a holding b would loop.
-    expect(() => checkSuperPowers("a", ["b"], roster)).toThrow(/loop: "b" already holds/);
-  });
-  it("the row never lists itself", () => {
-    const row = buildAgentRow({ name: "A", slug: "a", superPowers: ["a", "d"] }, null, "2026-10-09T00:00:00.000Z");
-    expect(row.superPowers).toEqual(["d"]);
-  });
-});
-
-describe("a map layout is stored clean (2026-10-09)", () => {
-  it("keeps finite positions, rounds them, drops the rest", () => {
-    expect(cleanMapLayout({ a: { x: 1.6, y: 2 }, b: { x: "x", y: 1 }, "": { x: 1, y: 1 } })).toEqual({ a: { x: 2, y: 2 } });
-    expect(cleanMapLayout(null)).toEqual({});
   });
 });

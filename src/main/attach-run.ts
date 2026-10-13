@@ -22,6 +22,7 @@
  */
 import type { WebContents } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
+import { getWorkingDirectory } from "./working-directory.js";
 import { pushToAttach } from "./attach-host.js";
 import { appendStoredMessage, runAgentTurn, stopAgentChat, setAgentPermission, respondAgentApproval } from "./agent-ipc.js";
 import { turnText, relayPermission, markRelaySink } from "./attach-run-frames.js";
@@ -64,9 +65,9 @@ export function installAttachRunHandlers(): void {
     if (!prompt && !Array.isArray(p.messages)) throw new Error("agent.run requires { prompt } or { messages }");
     const text = turnText(p, prompt);
     const sink = makeSink(runId, chatId);
-    // A relayed turn names its folder (remote-control.ts guarded it); none, no turn.
-    const workdir = str(p, "workdir");
-    if (!workdir) throw new Error("agent.run requires { workdir }: a folder this machine granted");
+    // ONE TYPE (2026-10-08): a relayed turn with no folder works in the
+    // member's working folder (the set folder, else home).
+    const workdir = str(p, "workdir") || getWorkingDirectory();
     appendStoredMessage(chatId, { role: "user", text }, { mode: "code", workdir });
     sink.send("glyphh-agent:prompt", { text });
     // The RELAYING client's permission and model win over this machine's own:

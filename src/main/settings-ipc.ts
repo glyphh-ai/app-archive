@@ -3,6 +3,7 @@ import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { generateGlyphhSkill } from "./glyphh-skill-export";
 import { type DevicePrompt, startDeviceLogin, cancelDeviceLogin } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { SessionCache } from "./session-cache";
@@ -214,5 +215,44 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  // Export a provider-tailored Glyphh skill (Claude / Gemini / OpenAI) — a file
+  // that teaches that LLM to drive Glyphh over the MCP relay.
+  //
+  // Claude has a canonical on-disk skill location (~/.claude/skills/<name>/
+  // SKILL.md, picked up by Claude Code + Desktop), so that export installs
+  // there directly — no save dialog. Gemini/OpenAI have no standard location
+  // (their file is pasted into custom instructions), so those still ask.
+  ipcMain.handle("export-glyphh-skill", async (_e, provider: string) => {
+    const p = provider === "gemini" || provider === "openai" ? provider : "claude";
+    const { filename, content } = generateGlyphhSkill(p as "claude" | "gemini" | "openai");
+
+    if (p === "claude") {
+      try {
+        const dir = path.join(os.homedir(), ".claude", "skills", "glyphh");
+        fs.mkdirSync(dir, { recursive: true });
+        const dest = path.join(dir, "SKILL.md");
+        fs.writeFileSync(dest, content, "utf8");
+        return { ok: true, path: dest };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
+    const result = await dialog.showSaveDialog(win, {
+      title: "Export Glyphh skill",
+      defaultPath: filename,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
+    try {
+      fs.writeFileSync(result.filePath, content, "utf8");
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 }

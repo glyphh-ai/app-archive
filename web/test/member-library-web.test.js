@@ -323,7 +323,7 @@ describe('Discover on web — the same catalog reads as hub-ipc', () => {
     const r = await lib.skillsDiscover(['skill', 'task', 'plugin']);
     expect(r.ok).toBe(true);
     expect(r.data.map((d) => d.ref)).toEqual(['glyphh:pub-3', 'org:org-1', 'glyphh:pub-1', 'glyphh:pub-2']);
-    expect(r.data[1]).toEqual({ ref: 'org:org-1', from: 'org', id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', version: 1, installed: false, installs: 1, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null, type: 'skill' });
+    expect(r.data[1]).toEqual({ ref: 'org:org-1', from: 'org', id: 'org-1', slug: 'notes', name: 'notes', description: 'Keep notes', author: 'Ada', version: 1, installed: false, installs: 1, updatedAt: '2026-10-03T00:00:00.000Z', createdAt: '2026-10-03T00:00:00.000Z', categories: ['memory'], icon: null, tool: null, type: 'skill' });
     expect(r.data[0]).toMatchObject({ from: 'glyphh', author: 'Glyphh', version: 3, installs: 40, type: 'plugin', icon: null });
     expect(r.data[3]).toMatchObject({ type: 'task', icon: '<svg/>' });
     expect(http.calls.filter((c) => c.method === 'GET').map((c) => c.path).sort()).toEqual(['/api/hub/public', '/api/library/plugin', '/api/library/skill', '/api/library/task']);
@@ -331,9 +331,9 @@ describe('Discover on web — the same catalog reads as hub-ipc', () => {
     expect((await lib.skillsDiscover('plugin')).data.map((d) => d.ref)).toEqual(['glyphh:pub-3']);
     const withApps = (await lib.skillsDiscover(['skill', 'app', 'task'])).data;
     expect(withApps.map((d) => d.ref)).toEqual(['org:org-1', 'glyphh:pub-1', 'glyphh:pub-2', 'glyphh:pub-4', 'glyphh:pub-5', 'glyphh:pub-6']);
-    expect(withApps.find((d) => d.ref === 'glyphh:pub-6')).toMatchObject({ slug: 'images' });
-    expect(withApps.find((d) => d.ref === 'glyphh:pub-6')).not.toHaveProperty('tool');
-    expect(withApps.find((d) => d.ref === 'glyphh:pub-4')).toMatchObject({ slug: 'crm' });
+    // A house app's card wears its own panel's mark; any other app none (his report, 2026-10-07: generic icons on Discover).
+    expect(withApps.find((d) => d.ref === 'glyphh:pub-6')).toMatchObject({ slug: 'images', tool: 'gimage' });
+    expect(withApps.find((d) => d.ref === 'glyphh:pub-4')).toMatchObject({ slug: 'crm', tool: null });
     // An instance of the slug = installed (his report, 2026-10-07: Discover "has no idea it is already installed").
     const withInst = hubLib(fakeLibrary(), { ...hubRoutes(), 'GET /api/app-instances': [{ key: 'images~u1', slug: 'images', kind: 'personal', status: 'ready', manifest: { name: 'Images' } }] });
     const rows2 = (await withInst.lib.skillsDiscover(['skill', 'app'])).data;
@@ -534,12 +534,11 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     const rows = (await lib.skillsList(['skill', 'app', 'task'])).data;
     expect(rows.map((r) => r.id)).toEqual(['app-tab:drive']);   // the bundle on the machine makes it an app
     expect((await buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 }).skillsList('app')).data).toEqual([]);   // a row left over from a delete is nothing
-    expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', author: 'you' });
-    expect(rows[0]).not.toHaveProperty('tool');
+    expect(rows[0]).toMatchObject({ source: 'app', type: 'app', name: 'Drive', tool: 'gdrive', author: 'you' });
     expect(rows[0]).not.toHaveProperty('locus');
     expect(rows[0]).not.toHaveProperty('data');
     expect((await lib.skillGet('app-tab:drive')).data).toMatchObject({ name: 'Drive', body: "Glyphh's Drive", files: [] });
-    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', cloud: false } });   // a bundle on a machine, not a cloud instance
+    expect(await lib.skillTab('app-tab:drive')).toEqual({ ok: true, data: { slug: 'drive', name: 'Drive', tool: 'gdrive', cloud: false } });   // a bundle on a machine, not a cloud instance
   });
   it("the panel app list is what is installed — an instance, or a bundle on a machine — and nothing synthesized; a glyphh row with nothing behind it is not an app (his law, 2026-10-06; his report, 2026-10-07)", async () => {
     const lib = buildMemberLibrary({ memberLibrary: tabs() }, { now: () => 9_000 });
@@ -549,13 +548,22 @@ describe("the web's Skills page carries the installed APPS that are tab rows (hi
     const withInst = buildMemberLibrary({ memberLibrary: tabs(), http: { get: async (p) => (p === '/api/app-instances' ? [{ key: 'drive~u1', slug: 'drive', kind: 'personal', status: 'ready', manifest: { name: 'Drive' } }] : undefined) }, token: async () => 't' }, { now: () => 9_000 });
     const rows2 = await withInst.panelAppsList();
     expect(rows2.map((r) => r.slug)).toEqual(['drive', 'gmail']);
-    expect(rows2.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { instance: 'drive~u1' } });
+    expect(rows2.find((r) => r.slug === 'drive')).toMatchObject({ name: 'Drive', appArchetype: 'glyphh-app', launchConfig: { tool: 'gdrive', instance: 'drive~u1' } });
   });
   it("deleting a tab-row card on the web tombstones the library row — never 'this runs on your desktop' (his report, 2026-10-07)", async () => {
     const fake = tabs();
     const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
     expect(await lib.skillDelete('app-tab:drive')).toEqual({ ok: true, data: true });
     expect(fake.remove).toHaveBeenCalledWith('tab', 'drive', { updatedAt: 9_000 });
+  });
+  it("a house tab row that arrives WITHOUT its tool still opens its own panel on the web (Images → gimage; his report 2026-10-05: Open did nothing)", async () => {
+    const fake = tabs();
+    const rows = await fake.list('tab');
+    fake.list = vi.fn(async (kind) => (kind === 'tab' ? [...rows, { id: 'images', updatedAt: 7_500, data: { ...rows[0].data, id: 'images', slug: 'images', name: 'Images', nativeRef: '/Users/me/.glyphh/apps/images/app.json', config: null } }] : []));
+    const lib = buildMemberLibrary({ memberLibrary: fake }, { now: () => 9_000 });
+    expect(await lib.skillTab('app-tab:images')).toEqual({ ok: true, data: { slug: 'images', name: 'Images', tool: 'gimage', cloud: false } });
+    expect((await lib.skillsList(['app'])).data.find((r) => r.id === 'app-tab:images')).toMatchObject({ tool: 'gimage' });
+    expect((await lib.skillsList('skill')).data).toEqual([]);
   });
 });
 

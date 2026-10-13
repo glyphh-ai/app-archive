@@ -36,7 +36,7 @@ const SYSTEM = [
 /** The model the member chose as their default, if their team still carries
  *  it; else the team/org default; else "". A pick the team dropped would be
  *  refused by the gateway, so it is never used. */
-export async function defaultModel(): Promise<string> {
+async function defaultModel(): Promise<string> {
   const picked = bareModel(String(getPreference<string>("defaultModel", "") || ""));
   if (picked) {
     const list = await listLoopModels().catch(() => null);

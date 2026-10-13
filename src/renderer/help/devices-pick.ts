@@ -15,6 +15,12 @@ export function deviceChecked(chatDevices: readonly string[] | undefined, machin
   return !!chatDevices && chatDevices.includes(machineId);
 }
 
+/** The session's list after a toggle: the one id flipped (an empty list the
+ *  first time). `attached` is not consulted: nothing joins by default. */
+export function toggleDeviceIn(chatDevices: readonly string[] | undefined, machineId: string, _attached: readonly string[]): string[] {
+  const base = chatDevices ? [...chatDevices] : [];
+  return base.includes(machineId) ? base.filter((d) => d !== machineId) : [...base, machineId];
+}
 
 /** What the run names: the session's list, none by default; a device no
  *  longer attached is dropped (the gateway would refuse it). */
@@ -29,15 +35,13 @@ export function devicesForRun(chatDevices: readonly string[] | undefined, attach
 // device tools reach only the folders a machine granted. The turn now
 // carries its own folder for the machine it was born on. ─────────────────
 
-/** This machine's row among the attached devices: the one whose NAME (its
- *  hello's hostname) is this host's. The server's `device` key is a HASH of
- *  app and hostname (attach.py device_key), so it never equals the hostname:
- *  matching on it lost this desktop and listed it as a remote machine (his
- *  report, 2026-10-09). Null when the desktop is not attached. */
-export function selfMachineId(rows: readonly { machineId: string; device: string; name?: string }[], hostname: string): string | null {
+/** This machine's row among the attached devices: the one whose stable
+ *  device key is this host's name. Null when the desktop is not attached
+ *  (remote control off) — then no folder can ride, and the steer says so. */
+export function selfMachineId(rows: readonly { machineId: string; device: string }[], hostname: string): string | null {
   const host = hostname.trim().toLowerCase();
   if (!host) return null;
-  const hit = rows.find((r) => r.machineId && (r.name ?? "").trim().toLowerCase() === host);
+  const hit = rows.find((r) => r.device.trim().toLowerCase() === host && r.machineId);
   return hit ? hit.machineId : null;
 }
 
@@ -58,7 +62,7 @@ export function folderSteerLine(folder: string, hostname: string, attached: bool
   if (!f) return "";
   const where = hostname.trim() ? `on the member's desktop "${hostname.trim()}"` : "on the member's desktop";
   if (!attached) {
-    return `[The folder for this session is ${f} ${where}, but remote control is off there, so the device tools cannot reach it. Say so plainly and ask the member to turn on Settings → System → Remote control on that desktop; do not open a Terminal panel to work around it.]`;
+    return `[The folder for this session is ${f} ${where}, but remote control is off there, so the device tools cannot reach it. Say so plainly and ask the member to turn on Settings → Remote control on that desktop; do not open a Terminal panel to work around it.]`;
   }
   if (!on) {
     return `[The folder for this session is ${f} ${where}, but that device is not turned on for this session, so the device tools cannot reach it. Say so plainly and ask the member to check the device under + → Devices; do not open a Terminal panel to work around it.]`;

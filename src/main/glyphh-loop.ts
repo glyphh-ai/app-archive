@@ -14,32 +14,26 @@
  */
 
 import type { WebContents } from "electron";
-import { GlyphhLoop, LOOP_EFFORTS, readsByName, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
+import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, type LoopEvent, type LoopMcpServer, type LoopPermission, type LoopSkill, type SeedTurn } from "@glyphh/sdk/loop";
 import { createHash } from "node:crypto";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { listSkills } from "./skills-fs.js";
-import { GLYPHH_GUIDE_SLUG, GLYPHH_POWER_LINE } from "../shared/glyphh-guide.js";
+import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
 import { gatewayCreds, mcpCreds } from "./gateway-token.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
-import { projectStanding } from "./project-notes.js";
-import { hostTools } from "./host-tools.js";
+import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { inTurnChat, inTurnFolder } from "./turn-folder.js";
-import { fencedShell } from "./shell-fence.js";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { getWorkingDirectory } from "./working-directory.js";
 import { onModelStateChanged } from "./model-watch.js";
+import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 import { frameTargets, isRelaySink } from "./attach-run-frames.js";
 import { openRing, recordFrame } from "./attach-run-ring.js";
 import { attachmentImageRefs, attachmentPromptBlock, validAttachments, type AttachRef } from "./glyphh-agent-attachments.js";
 import { commitBackgroundTurn } from "./agent-ipc.js";
 import { lendSplit } from "./mcp-lend.js";
-import { isScreenFamily } from "./unattended-tools.js";
-import { holdAs, loopScope, noteTurnModel, turnRefusal } from "./turn-scope.js";
+import { UNATTENDED_HIDDEN, UNATTENDED_MCP_PATH, isScreenFamily } from "./unattended-tools.js";
 import { mineSync as tabRows } from "./apps-store.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { commandToolSpec, rpaOf, sequenceToolSpec } from "../shared/rpa.js";
@@ -60,33 +54,6 @@ export interface LoopRunPayload {
   /** What the composer attached: images ride as vision blocks, files and
    *  folders as a manifest the loop's read tools open. */
   attachments?: AttachRef[];
-  /** Gateway tags every model call of this turn carries (x-glyphh-router-tags):
-   *  a super power's `glyphh-power:<slug>`, which its monthly caps meet. */
-  tags?: string[];
-}
-
-/** THE TURN'S TAGS, reaching the loop's fetch (his order, 2026-10-09: a super
- *  power's monthly model cap "enforced by the gateway"). The loop's requests
- *  happen inside the run, so the run's async context carries its tags to the
- *  one fetch both loops share; only model calls (/v1/messages) wear them. */
-const callTags = new AsyncLocalStorage<string[]>();
-/** THE THREAD A TURN RUNS ON, for the tools inside it (swarm.ts hand_off:
- *  which team is asking). Set around every panel turn, like the tags. */
-export { currentTurnChat } from "./turn-folder.js";
-
-/** A run with no folder of its own (a schedule, a skill run, the Bots panel)
- *  works in a fresh, empty folder of its own — never the working folder or home. */
-function scratchFolder(): string {
-  return mkdtempSync(path.join(tmpdir(), "glyphh-run-"));
-}
-function taggedFetch(input: string, init: RequestInit): Promise<Response> {
-  const tags = callTags.getStore();
-  if (tags?.length && /\/v1\/messages$/.test(input)) {
-    const headers = new Headers(init.headers);
-    headers.set("x-glyphh-router-tags", tags.join(","));
-    return fetch(input, { ...init, headers });
-  }
-  return fetch(input, init);
 }
 
 /**
@@ -104,7 +71,8 @@ function taggedFetch(input: string, init: RequestInit): Promise<Response> {
  */
 // ONE BELT (his order, 2026-10-08: "just code"): the one type's belt is the
 // union of what the two carried.
-const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get", "hand_off", "board_add", "board_update", "board_list", "run_outside_sandbox"]);
+const CORE_BELT: ReadonlySet<string> = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]);
+const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> = { work: CORE_BELT, code: CORE_BELT };
 
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
@@ -112,22 +80,20 @@ const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringi
 /** Each installed app's tools, and each of the member's own MCP connections'
  *  tools, as catalog entries. A connection that will not answer in a few
  *  seconds simply has no entries this time. */
-async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
+async function catalogEntries(): Promise<LoopCatalogEntry[]> {
   const out: LoopCatalogEntry[] = [];
-  // GLYPHH'S OWN TOOLS, IN PROCESS (his order, 2026-10-09: "it is our own agent
-  // loop, why do we need an mcp server to reach our own shit?"): host-tools.ts,
-  // lent by the same rules the local server's tools were (mcp-lend.ts) — the
-  // belt's few by name, the rest found with find_tools. An unattended run gets
-  // them without the screen-touching ones.
-  const creds = await mcpCreds().catch(() => null);
-  const split = lendSplit({ localUp: true, gatewayUp: !!creds, connections: connectionsAvailable(), belt: new Set(CORE_BELT) });
-  for (const t of hostTools({ unattended })) {
-    if (!split.local(t.name)) continue;
-    out.push({
-      name: t.name, description: t.description, family: "Glyphh", inputSchema: t.inputSchema,
-      readOnly: readsByName(t.name), ...(CORE_BELT.has(t.name) ? { belt: true } : {}),
-      run: (args) => t.run(args),
-    });
+  const apps = await listInstanceTools().catch(() => []);
+  for (const a of apps) {
+    for (const t of a.tools) {
+      out.push({
+        name: safe(`${a.app}_${t.name}`), description: (t.description || `${a.name}: ${t.name}`).slice(0, 1000), family: `app: ${a.name}`,
+        ...(t.inputSchema ? { inputSchema: t.inputSchema } : {}),
+        run: async (args) => {
+          try { return { text: asText(await callInstanceTool(a.app, t.name, args)), failed: false }; }
+          catch (err) { return { text: err instanceof Error ? err.message : String(err), failed: true }; }
+        },
+      });
+    }
   }
   // RPA ON A TAB (his order, 2026-10-07): every command mapped on a saved tab,
   // and every sequence, is a tool of its own, <tab>_<key>, that drives the
@@ -174,17 +140,15 @@ async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
   return out;
 }
 
-/** The member's enabled powers, for the prompt's index (read with skill_get). */
+/** The member's enabled skills, for the prompt's index (read with skill_get). */
 async function skillIndex(): Promise<LoopSkill[]> {
   try {
-    const rows = listSkills("skill")
-      .filter((sk) => sk.enabled)
-      .map((sk) => {
-        const slug = sk.id.slice(sk.id.indexOf(":") + 1);
-        return { slug, name: sk.name, description: sk.description };
-      });
-    // The Glyphh power is built in and leads every index: no folder holds it.
-    return [{ slug: GLYPHH_GUIDE_SLUG, name: "Glyphh", description: GLYPHH_POWER_LINE }, ...rows];
+    return listSkills("skill")
+      // Not the house "glyphh" skill: it is written for OUTSIDE clients over MCP
+      // (relay_ping, app_list_tools, connector_call) and would steer the loop to
+      // tools it no longer carries. The loop's own prompt says how Glyphh works.
+      .filter((sk) => sk.enabled && sk.id.slice(sk.id.indexOf(":") + 1) !== "glyphh")
+      .map((sk) => ({ slug: sk.id.slice(sk.id.indexOf(":") + 1), name: sk.name, description: sk.description }));
   } catch { return []; }
 }
 
@@ -197,7 +161,7 @@ let lastLibrary = "";
 function libraryChanged(): boolean {
   let sig = "";
   try {
-    const skills = listSkills("skill").map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
+    const skills = listSkills(["skill", "task", "plugin"]).map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
     const conns = listConnRows().map((c) => `${c.slug}:${c.enabled ? 1 : 0}:${c.hiddenTools.join(",")}`).sort();
     // A tab's RPA mapping changed (a command mapped, a sequence saved) → the
     // catalog carries a new tool; the tab rows ride the fingerprint for it.
@@ -221,14 +185,23 @@ async function mcpServers(): Promise<LoopMcpServer[]> { return mcpServersFor(fal
  *  2026-10-08: "the terminal window keeps randomly showing up"): the local
  *  server's unattended door, with every tool that touches the screen left
  *  out, so a schedule or a task slot can never open a panel. */
-async function mcpServersFor(_unattended: boolean): Promise<LoopMcpServer[]> {
-  // ONE SERVER LENT: the gateway's /mcp (the member's library, the cloud clock,
-  // the app instances, the connected accounts' lookup pair). Glyphh's own tools
-  // ride in process (catalogEntries) — no local server, no port, no token.
+async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
   const out: LoopMcpServer[] = [];
   const connections = connectionsAvailable();
+  const local = await startLocalMcpServer().then(() => localMcpStatus().port).catch((err) => {
+    console.warn("[glyphh-loop] local MCP unavailable:", err instanceof Error ? err.message : err);
+    return 0;
+  });
   const creds = await mcpCreds().catch(() => null);
-  const split = lendSplit({ localUp: true, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
+  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
+  if (local > 0) {
+    const token = localMcpGenToken(unattended ? "glyphh-loop-unattended" : "glyphh-loop", 365).token;
+    out.push({
+      name: "glyphh-app", url: `http://127.0.0.1:${local}${unattended ? UNATTENDED_MCP_PATH : "/mcp"}`,
+      headers: { Authorization: `Bearer ${token}` }, tag: "Glyphh", core: CORE,
+      allow: unattended ? (t: string) => split.local(t) && !UNATTENDED_HIDDEN.has(t) : split.local,
+    });
+  }
   if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection", allow: split.gateway });
   if (!connections) console.warn("[glyphh-loop] connections lane off for this org — no connector tools lent");
   return out;
@@ -274,17 +247,10 @@ const loop = new GlyphhLoop({
   gateway: gatewayCreds,
   mcpServers,
   agents: agentDefs,
-  catalog: () => catalogEntries(false),
+  catalog: catalogEntries,
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
-  // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
-  standing: projectStanding,
-  // THE SCOPE (his order, 2026-10-10: "NO EXCEPTIONS"): every call, held to its holder's powers.
-  scope: loopScope,
-  fetch: taggedFetch,
-  // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
-  shell: fencedShell,
   warn: (m) => console.warn(m),
 });
 /** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
@@ -296,17 +262,10 @@ const unattendedLoop = new GlyphhLoop({
   gateway: gatewayCreds,
   mcpServers: () => mcpServersFor(true),
   agents: agentDefs,
-  catalog: async () => (await catalogEntries(true)).filter((e) => !isScreenFamily(e.family)),
+  catalog: async () => (await catalogEntries()).filter((e) => !isScreenFamily(e.family)),
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
-  // THE PROJECT'S RULES (2026-10-10): GLYPHH.md in the session's folder, every turn.
-  standing: projectStanding,
-  // THE SCOPE (his order, 2026-10-10: "NO EXCEPTIONS"): every call, held to its holder's powers.
-  scope: loopScope,
-  fetch: taggedFetch,
-  // THE SESSION'S SHELL MATCHES CLAUDE CODE (shell-fence.ts): writes in the folder, reads but the deny-list, network through the proxy.
-  shell: fencedShell,
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -328,11 +287,6 @@ const seenTurns = new Map<string, number>();
 /** Where each chat's frames go — the panel that started the turn, until
  *  another panel adopts the run (agent-live.ts re-points it here). */
 const loopSenders = new Map<string, WebContents>();
-/** The panel holding a chat's frames now (swarm.ts asks it to run a member's turn). */
-export function loopSenderOf(chatId: string): WebContents | null {
-  const s = loopSenders.get(chatId);
-  return s && !s.isDestroyed() ? s : null;
-}
 registerRunRebinder((chatId, sender, opts) => {
   if (!loop.has(chatId)) return { rebound: false, previous: null };
   const previous = loopSenders.get(chatId) ?? null;
@@ -355,9 +309,6 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const picked = bareModel(p.model ?? "");
   if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
   const model = picked || orgRequiredModel();
-  const refused = turnRefusal(p.chatId, { folder: p.workdir ?? "", model });
-  if (refused) throw new Error(`OUT_OF_SCOPE: ${refused}`);
-  noteTurnModel(p.chatId, model);
   const n = p.history?.length ?? 0;
   const prev = seenTurns.get(p.chatId);
   if (prev !== undefined && n - prev > 2) loop.forget(p.chatId);
@@ -394,8 +345,10 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     // A SUB-AGENT'S WORDS ARE NOT THE ANSWER (his order, 2026-09-29): a child's
     // deltas are its own feed, so they must never join the parent's reply or
     // the turn's committed text — the person would read the swarm's thinking
-    // spliced into one answer.
+    // spliced into one answer. They still reach the panel, tagged, and the
+    // Agents panel renders them under the child that said them.
     const child = !!ev.agent;
+    recordSwarmFrame(p.chatId, ev);
     if (type === "setup") { mark("working", ev.runId); clock.ready ||= Date.now(); }
     else if (type === "approval") mark("waiting", ev.runId);
     else if (type === "error" && !child) mark("error", ev.runId);
@@ -448,7 +401,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   const manifest = attachmentPromptBlock(files);
   const images = attachmentImageRefs(atts).map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mediaType, data: im.data } }));
   const effort = LOOP_EFFORTS.find((e) => e === p.effort);
-  const run = (): ReturnType<typeof loop.run> => loop.run({
+  const started = await loop.run({
     chatId: p.chatId, text: [text, manifest].filter(Boolean).join("\n\n"), model,
     ...(images.length ? { images } : {}),
     ...(effort ? { effort } : {}),
@@ -457,13 +410,68 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     ...(p.workspace ? { workspace: p.workspace } : {}),
     ...(p.history ? { history: p.history } : {}),
   }, emit);
-  const started = await inTurnFolder(p.workdir ?? "", () => inTurnChat(p.chatId, () => (p.tags?.length ? callTags.run(p.tags, run) : run())));
   return started;
 }
 
 /** One engine event as the host sees it: the run it belongs to, and the
  *  sub-agent it came from when it is a child's. */
 export type LoopFrame = LoopEvent & { runId: string; agent?: { childId: string; slug: string; name: string; model: string } };
+
+/** THE SWARM'S FEED (his order, 2026-09-29): every sub-agent frame is written
+ *  to main's ledger as well as sent on, because the panel that shows the
+ *  swarm is not the panel that started the turn. The parent's `done` ends its
+ *  swarm. One tap for the agent panel's turns and the Bots panel's. */
+function recordSwarmFrame(chatId: string, ev: LoopFrame): void {
+  const { type, ...payload } = ev;
+  if (ev.agent) {
+    if (type === "agent") {
+      const a = ev as unknown as { phase: "start" | "done"; task?: string; failed?: boolean; summary?: string };
+      if (a.phase === "start") subagents.start(ev.agent, chatId, ev.runId, String(a.task ?? ""));
+      else subagents.finish(ev.agent, !!a.failed, String(a.summary ?? ""));
+    } else if (type === "delta") {
+      subagents.text(ev.agent, String((payload as { delta?: string }).delta ?? ""));
+    } else if (type === "tool") {
+      const t = payload as { phase: "start" | "done"; name?: string; title?: string; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string };
+      subagents.tool(ev.agent, t.phase, String(t.name ?? ""), String(t.title ?? t.name ?? ""), t.failed, t.preview, { detail: t.detail, input: t.input, output: t.output });
+    } else if (type === "approval") {
+      subagents.approval(ev.agent, String((payload as { title?: string }).title ?? ""));
+    }
+    return;
+  }
+  if (type === "done") subagents.endRun(ev.runId);
+}
+
+/**
+ * A BOT'S TURN (his order, 2026-10-08: "use the glyphh agent loop as the
+ * orchestrator and run it in the Bot ui. The orchestrator is just a set of
+ * personality and instructions we feed into the loop"). The same interactive
+ * engine as the agent panel, on the bot's own thread (`bots/<slug>`), so the
+ * bot's conversation keeps its history and the swarm it spawns is ledgered
+ * under it. The brief leads the first message of the thread; the frames go
+ * to whoever asked (the Bots panel), never to an agent panel.
+ */
+export async function runBotTurn(
+  p: { chatId: string; text: string; model?: string; workdir?: string; history?: SeedTurn[] },
+  onFrame: (ev: LoopFrame) => void,
+): Promise<{ runId: string }> {
+  const picked = bareModel(p.model ?? "");
+  if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
+  const model = picked || orgRequiredModel();
+  if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
+  return loop.run({
+    chatId: p.chatId, text: p.text, model, permission: "auto",
+    // ONE TYPE (2026-10-08): every turn works in a folder — the bot's, else
+    // the member's working folder (working-directory.ts: the set folder, else home).
+    workdir: p.workdir || getWorkingDirectory(),
+    ...(p.history?.length ? { history: p.history } : {}),
+  }, (ev) => {
+    const frame = ev as LoopFrame;
+    recordSwarmFrame(p.chatId, frame);
+    onFrame(frame);
+  });
+}
+
+export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId); }
 
 /**
  * A TURN WITH NO PANEL — a schedule firing, a skill run, a task's slot (his
@@ -476,50 +484,28 @@ export type LoopFrame = LoopEvent & { runId: string; agent?: { childId: string; 
  */
 export async function runGlyphhHeadless(
   prompt: string,
-  opts: {
-    model?: string; workdir?: string; chatId?: string;
-    /** The super power this run works as (a schedule's agent, a task slot's); absent = Glyphh. */
-    as?: string | null;
-    /** The turn that started this run (skill_run, a task's slot): the run is held to it too. */
-    parent?: string | null;
-    /** Every engine event, for a host that shows the run's progress. */
-    onEvent?: (ev: LoopEvent) => void;
-    /** Answer every approval "no" at once: nobody is there to answer it, and an unanswered one hangs the run. */
-    declineApprovals?: boolean;
-  } = {},
+  opts: { model?: string; workdir?: string } = {},
 ): Promise<{ ok: boolean; text: string; error?: string }> {
-  const chatId = opts.chatId || `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const chatId = `headless-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   let text = "";
   let error = "";
-  // A run with no folder of its own gets an empty one, removed after: never the working folder or home.
-  const model = bareModel(opts.model ?? "") || orgRequiredModel();
-  const release = holdAs(chatId, opts.as, opts.parent ?? null);
-  const refused = turnRefusal(chatId, { folder: opts.workdir ?? "", model, scratch: !opts.workdir });
-  if (refused) { release(); return { ok: false, text: "", error: refused }; }
-  noteTurnModel(chatId, model);
-  const scratch = opts.workdir ? "" : scratchFolder();
-  const workdir = opts.workdir || scratch;
   try {
-    await inTurnFolder(workdir, () => unattendedLoop.run({
-      chatId, text: prompt, model, permission: "auto",
-      workdir,
+    await unattendedLoop.run({
+      chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
+      // ONE TYPE (2026-10-08): a run with no folder of its own works in the
+      // member's working folder (the set folder, else home).
+      workdir: opts.workdir || getWorkingDirectory(),
     }, (ev) => {
       if (ev.type === "delta") text += String((ev as { delta?: string }).delta ?? "");
       else if (ev.type === "error") error = String((ev as { error?: string }).error ?? "");
-      else if (ev.type === "approval" && opts.declineApprovals) unattendedLoop.respondApproval((ev as { id: string }).id, false);
-      try { opts.onEvent?.(ev); } catch { /* a watcher's failure is its own */ }
-    }));
+    });
   } finally {
-    release();
     unattendedLoop.forget(chatId);
-    if (scratch) { try { rmSync(scratch, { recursive: true, force: true }); } catch { /* the OS clears tmp */ } }
   }
   return error ? { ok: false, text, error } : { ok: true, text };
 }
 
 export function stopGlyphhLoop(chatId: string): boolean { return loop.stop(chatId); }
-/** Stop a headless run started with its own chatId (the powers modal's Stop). */
-export function stopGlyphhHeadless(chatId: string): boolean { return unattendedLoop.stop(chatId); }
 /** The chat's spend so far, for the composer's context meter. */
 export function glyphhLoopUsage(chatId: string): { inTokens: number; outTokens: number; cacheRead: number } { return loop.usage(chatId); }
 /** /compact from the composer: the model summarizes and the chat continues. */

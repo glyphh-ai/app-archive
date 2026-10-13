@@ -19,6 +19,15 @@
 
 export type Locus = "local" | "cloud";
 
+/** The place filter: "" = every place, else one locus. */
+export type LocusFilter = "" | Locus;
+
+export const LOCUS_FILTER_PREF = "recentsLocusFilter";
+export const LOCUS_OPTIONS: ReadonlyArray<{ key: Locus; name: string }> = [
+  { key: "local", name: "This desktop" },
+  { key: "cloud", name: "Cloud" },
+];
+
 export const LOCUS_TITLE: Record<Locus, string> = {
   local: "Runs on the desktop",
   cloud: "Runs in the cloud",
@@ -31,6 +40,11 @@ export const LOCUS_SVG: Record<Locus, string> = {
   cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .4-9A7 7 0 0 0 4.3 12.3 3.5 3.5 0 0 0 5.5 19z"/></svg>`,
 };
 export const LOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+
+/** Coerce a stored preference into a place filter; anything else is "all". */
+export function locusFilterOf(v: unknown): LocusFilter {
+  return v === "local" || v === "cloud" ? v : "";
+}
 
 /** A session with NO turns anywhere — never written to, on any surface. A
  *  thread adopted from the server carries only a messageCount until it is
@@ -50,15 +64,16 @@ export interface RecentsRowLike {
   locus?: Locus;
 }
 
-/** THE SEARCH is the recents' one filter (his order, 2026-10-09: the place
- *  funnel went — the list is grouped by place and every row wears its glyph). */
 export interface RecentsFilter {
+  /** The place picked in the funnel; "" = every place. */
+  locus: LocusFilter;
   /** The search box, matched against title and folder. */
   query?: string;
 }
 
-/** Does the search keep this row? */
+/** Does the filter keep this row? One rule for the rail and the dropdown. */
 export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
+  if (f.locus && (row.locus ?? "local") !== f.locus) return false;
   const q = (f.query ?? "").trim().toLowerCase();
   if (q && !`${row.title} ${row.cwd}`.toLowerCase().includes(q)) return false;
   return true;
@@ -66,6 +81,11 @@ export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
 
 export function filterRecents<T extends RecentsRowLike>(rows: readonly T[], f: RecentsFilter): T[] {
   return rows.filter((r) => recentsKeeps(r, f));
+}
+
+/** Is the funnel narrowing anything the list can hold? Lights the button. */
+export function recentsFilterActive(f: Pick<RecentsFilter, "locus">): boolean {
+  return !!f.locus;
 }
 
 // ── THE GRANT ────────────────────────────────────────────────────────────
@@ -106,9 +126,9 @@ export function sessionLocked(
 }
 
 export const GRANT_CARD = {
-  title: "Grant this folder under Settings → System on your desktop",
+  title: "Grant this folder in Remote control on your desktop",
   body: (folder: string): string =>
-    `This session works in ${folder}, which the desktop has not granted for remote control. Open Settings → System → Remote control on your desktop and add the folder, then open the session again.`,
+    `This session works in ${folder}, which the desktop has not granted for remote control. Open Settings → Remote control on your desktop and add the folder, then open the session again.`,
 };
 
 // ── THE PICKER ───────────────────────────────────────────────────────────
@@ -180,7 +200,7 @@ export function pickerSections(input: {
   const desktop: PickerDesktopSection = input.surface === "desktop"
     ? { kind: "desktop", label: "On this desktop", folders: [] }
     : machine
-      ? { kind: "desktop", label: `On ${machine.name}`, machine, folders: machine.folders, ...(machine.folders.length ? {} : { empty: "No folder is granted on this desktop yet — add one under Settings → System → Remote control there." }) }
+      ? { kind: "desktop", label: `On ${machine.name}`, machine, folders: machine.folders, ...(machine.folders.length ? {} : { empty: "No folder is granted on this desktop yet — add one under Settings → Remote control there." }) }
       : { kind: "desktop", label: "On your desktop", folders: [], empty: "No desktop is attached — turn remote control on in the Glyphh desktop app." };
   const cloud: PickerCloudSection = { kind: "cloud", label: "In the cloud", spaces: input.spaces };
   if (input.bornLocus === "cloud") desktop.locked = LOCUS_LOCKED_HINT.cloud;
@@ -309,112 +329,4 @@ export function filterPickerRows(rows: PickerRows, query: string): PickerRows {
     desktop: rows.desktop.filter((f) => f.toLowerCase().includes(q)),
     cloud: rows.cloud.filter((c) => `${c.label} ${c.id}`.toLowerCase().includes(q)),
   };
-}
-
-// ── THE MACHINES: LOCAL AND REMOTE (his order, 2026-10-09) ───────────────
-//
-// The picker lists machines, then each machine's folders. LOCAL is this
-// desktop, always (never on the web). REMOTE is every other machine: the
-// member's other desktops attached for remote control (their grants are the
-// perimeter, nothing outside them is offered) and the Glyphh machine. A
-// session is bound to its machine and folder at birth.
-
-/** local: this desktop. desktop: another attached desktop, the Glyphh machine
- *  too once it is awake (it runs this app, 2026-10-10). glyphh: the Glyphh
- *  machine asleep (picking it wakes it). cloud: the cloud workspace lane, for a
- *  member with no Glyphh machine yet. */
-export type MachineKind = "local" | "desktop" | "glyphh" | "cloud";
-/** The Glyphh machine's one granted folder (rrotor machine/desktop.ts GLYPHH_WORKSPACE). */
-export const GLYPHH_MACHINE_WORKSPACE = "/data/workspace";
-export interface PickerMachineRow {
-  kind: MachineKind;
-  name: string;
-  /** The attach socket's id (a remote desktop): minted anew per reconnect. */
-  id?: string;
-  /** The folders the machine granted (a remote desktop). */
-  folders: readonly string[];
-  hint: string;
-  /** Why the machine offers nothing, when it does not. */
-  empty?: string;
-  /** The born session runs on another machine. */
-  locked?: string;
-  /** The Glyphh machine's own id (/api/machines), on its row asleep or awake. */
-  glyphhId?: string;
-}
-export interface MachinePicker { local: PickerMachineRow | null; remote: PickerMachineRow[] }
-export interface GlyphhMachine { id: string; name: string; state?: string; default?: boolean }
-export interface MachineSource { kind: string; machineId?: string; machine?: string }
-
-/** A local source that names ANOTHER desktop, seen from this one. Local picks
- *  carry no machine ("local" is the old synthesized id for this desktop). */
-export function onOtherDesktop(source: MachineSource | null | undefined): boolean {
-  return source?.kind === "local" && ((!!source.machineId && source.machineId !== "local") || !!source.machine);
-}
-
-/** The row a source runs on, or null when its machine is not listed now. */
-export function machineOfSource(p: MachinePicker, source: MachineSource | null | undefined): PickerMachineRow | null {
-  if (!source) return null;
-  if (source.kind !== "local") return p.remote.find((r) => r.kind === "cloud") ?? p.remote.find((r) => r.kind === "glyphh" || !!r.glyphhId) ?? null;
-  if (p.local && !onOtherDesktop(source)) return p.local;
-  return p.remote.find((r) => r.kind === "desktop" && ((!!source.machineId && r.id === source.machineId) || (!!source.machine && r.name === source.machine)))
-    ?? p.remote.find((r) => r.kind === "glyphh" && !!source.machine && r.name === source.machine)
-    ?? null;
-}
-
-const lockedOn = (name: string | null): string =>
-  name ? `This session runs on ${name}. Start a new session to work somewhere else.` : "This session runs on another machine. Start a new session to work somewhere else.";
-
-export function machinePicker(input: {
-  surface: "desktop" | "web";
-  /** The member's attached desktops (the relay). */
-  desktops: readonly PickerMachine[];
-  /** This desktop among them (the desktop surface): never listed as remote. */
-  selfId: string | null;
-  glyphh: readonly GlyphhMachine[];
-  /** The open session's source once it has a turn; null = nothing is born. */
-  born: MachineSource | null;
-}): MachinePicker {
-  const local: PickerMachineRow | null = input.surface === "desktop"
-    ? { kind: "local", name: "This desktop", folders: [], hint: "Any folder on this computer" }
-    : null;
-  const g = input.glyphh.find((m) => m.default) ?? input.glyphh[0];
-  const others = input.desktops.filter((d) => !(input.surface === "desktop" && input.selfId && d.id === input.selfId));
-  // THE GLYPHH MACHINE AWAKE is an attached desktop by its own name (it runs this app).
-  const awake = g ? others.find((d) => d.name === g.name) : undefined;
-  const remote: PickerMachineRow[] = others
-    .filter((d) => d !== awake)
-    .map((d): PickerMachineRow => ({
-      kind: "desktop", name: d.name, ...(d.id ? { id: d.id } : {}), folders: d.folders,
-      hint: d.folders.length ? `Desktop · ${d.folders.length === 1 ? "1 folder" : `${d.folders.length} folders`} granted` : "Desktop",
-      ...(d.folders.length ? {} : { empty: "No folder is granted on this desktop yet. Add one under Settings → System → Remote control there." }),
-    }));
-  if (g && awake) {
-    remote.push({
-      kind: "desktop", name: g.name, ...(awake.id ? { id: awake.id } : {}), folders: awake.folders, glyphhId: g.id, hint: "Glyphh machine · awake",
-      ...(awake.folders.length ? {} : { empty: "The machine is starting up. Its folders show here in a moment." }),
-    });
-  } else if (g) {
-    const starting = g.state === "running" || g.state === "starting";
-    remote.push({ kind: "glyphh", name: g.name, folders: [], glyphhId: g.id, hint: starting ? "Glyphh machine · starting" : "Glyphh machine · asleep, wakes when you pick it" });
-  } else {
-    remote.push({ kind: "cloud", name: "Glyphh cloud", folders: [], hint: "Cloud folders" });
-  }
-  const picker: MachinePicker = { local, remote };
-  if (input.born) {
-    const home = machineOfSource(picker, input.born);
-    const why = lockedOn(home?.name ?? null);
-    for (const row of [local, ...remote]) if (row && row !== home) row.locked = why;
-  }
-  return picker;
-}
-
-/** A named folder on the Glyphh machine is a workspace of its own, keyed
- *  `f-<name>` (a run's thread id: letters, digits, - and _, up to 64). */
-export function namedFolderId(name: string): string {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-  return slug ? `f-${slug}` : "";
-}
-/** The name of a named folder's workspace, or "" for a session's own. */
-export function namedFolderOf(id: string): string {
-  return id.startsWith("f-") ? id.slice(2) : "";
 }

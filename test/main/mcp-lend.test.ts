@@ -6,7 +6,7 @@
  * the local tools use.
  */
 import { describe, expect, it, vi } from "vitest";
-import { APP_TOOLS, CLOUD_TOOLS, LOOP_HIDDEN, MACHINE_TOOLS, WINDOW_TOOLS, lendSplit } from "../../src/main/mcp-lend.js";
+import { CLOUD_TOOLS, LOOP_HIDDEN, MACHINE_TOOLS, WINDOW_TOOLS, lendSplit } from "../../src/main/mcp-lend.js";
 
 vi.mock("electron", () => ({ BrowserWindow: class {}, dialog: {}, ipcMain: { handle: () => undefined } }));
 vi.mock("../../src/main/relay-client.js", () => ({ dispatchRelayMethod: async () => undefined }));
@@ -19,13 +19,13 @@ vi.mock("../../src/main/stores/preferences-db.js", () => ({ getPreference: () =>
 const BELT = new Set(["panels_open", "panels_list", "panels_close", "panels_available", "rpa_read", "rpa_screenshot", "settings_open", "skill_get"]);
 
 describe("lendSplit", () => {
-  it("gives the windows to the local server and the library and clock to the gateway", () => {
+  it("gives the windows to the local server and the library, clock and apps to the gateway", () => {
     const s = lendSplit({ localUp: true, gatewayUp: true, connections: true, belt: BELT });
     for (const t of ["panels_open", "panels_list", "panels_switch", "panels_close", "layouts_open", "settings_open"]) {
       expect(s.local(t), t).toBe(true);
       expect(s.gateway(t), t).toBe(false);
     }
-    for (const t of ["skills_list", "skill_save", "tasks_list", "task_runs", "schedules_list", "schedule_save", "agents_list"]) {
+    for (const t of ["skills_list", "skill_save", "tasks_list", "task_runs", "schedules_list", "schedule_save", "agents_list", "app_releases", "app_pin"]) {
       expect(s.local(t), t).toBe(false);
       expect(s.gateway(t), t).toBe(true);
     }
@@ -37,11 +37,15 @@ describe("lendSplit", () => {
       expect(MACHINE_TOOLS.has(t), t).toBe(true);
       expect(CLOUD_TOOLS.has(t), t).toBe(false);
     }
-    // NO APP TOOLS (his order, 2026-10-09): neither server lends one, whoever offers it.
-    for (const t of APP_TOOLS) {
-      expect(s.local(t), t).toBe(false);
-      expect(s.gateway(t), t).toBe(false);
-    }
+    // app_install { dir } zips or tars THIS machine's folder: the local server
+    // answers it (and the job it starts); the gateway's base64 copies are not
+    // lent beside it — app_deploy is hidden from the loop outright (2026-10-07).
+    expect(s.local("app_install")).toBe(true);
+    expect(s.gateway("app_install")).toBe(false);
+    expect(s.local("app_build_status")).toBe(true);
+    expect(s.local("glyphh_app_scaffold")).toBe(true);
+    expect(MACHINE_TOOLS.has("app_install")).toBe(true);
+    expect(s.local("app_deploy")).toBe(false);
     // RPA ON A TAB (2026-10-07): the picker and the mapped runs act on THIS
     // screen's panels — local only, never the gateway.
     for (const t of ["rpa_commands", "rpa_pick", "rpa_map", "rpa_unmap", "rpa_run", "rpa_sequence_save", "rpa_sequence_remove", "rpa_sequence_run"]) {
@@ -62,8 +66,7 @@ describe("lendSplit", () => {
   it("lets the gateway answer everything when the local server is down", () => {
     const s = lendSplit({ localUp: false, gatewayUp: true, connections: true, belt: BELT });
     expect(s.gateway("panels_open")).toBe(true);
-    expect(s.gateway("app_install")).toBe(false);
-    expect(s.gateway("app_deploy")).toBe(false);
+    expect(s.gateway("app_install")).toBe(true);
     expect(s.gateway("skill_get")).toBe(true);
     expect(s.gateway("skills_list")).toBe(true);
     // No desktop: the gateway's copies run a task or a skill in the cloud.

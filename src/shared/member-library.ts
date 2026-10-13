@@ -382,43 +382,6 @@ export interface AgentRowLike {
   avatar?: BotAvatarLike | null;
   skills: string[];
   apps: string[];
-  /** THE BOT'S POWERS (his order, 2026-10-09: "the list of powers this bot
-   *  has: folder(s), connections, models"). Folders it works in (the first
-   *  is its working folder; the rest it can read), the connections it uses
-   *  (connector slugs), and the models it may use beside the one it runs on
-   *  (`model`). A row without them has none. */
-  folders?: string[];
-  connections?: string[];
-  models?: string[];
-  /** THE SUPER POWERS IT HOLDS (his order, 2026-10-09: "should a super power
-   *  hold other super powers… agree"): the slugs of the other super powers it
-   *  may hand work to — and the only ones. Never itself, never a loop. */
-  superPowers?: string[];
-  /** WHAT GLYPHH WAS DENIED (his order, 2026-10-09: Glyphh's record holds
-   *  EVERYTHING — every connection, power, super power and model, and the
-   *  folders granted under Settings → System — until the member takes one
-   *  away). Glyphh's record only; a super power's lists say what it holds. */
-  withheld?: AgentWithheld;
-  /** WHERE ITS MAP'S CARDS SIT (his order, 2026-10-09: "drag things around and
-   *  have it save"): card key → canvas position. Absent = the automatic layout. */
-  mapLayout?: Record<string, { x: number; y: number }>;
-  /** THE SLIDERS AND THE VOICE (his order, 2026-10-09: "sliders on the super
-   *  power.. personality, thinking effort or speed, and add voice… Each super
-   *  power will and can have its own voice"). Personality 1 (serious) … 5
-   *  (playful), 3 = as it comes; effort is the loop's dial (low … max); the
-   *  voice is a TTS model and one of its voices. Absent = the defaults. */
-  personality?: number;
-  /** TWO MORE SLIDERS (his order, 2026-10-09: "Gentle -> Blunt and Kind ->
-   *  Spicy why not both?"): directness 1 gentle … 5 blunt, temperament 1 kind
-   *  … 5 spicy; 3 (or none) adds nothing. */
-  directness?: number;
-  temperament?: number;
-  effort?: string;
-  voice?: AgentVoiceLike | null;
-  /** MONTHLY CAPS (his order, 2026-10-09): model name → dollars a month this
-   *  super power may spend on it; absent = no limit. The gateway enforces
-   *  them (server power_caps.py) on calls tagged with its slug. */
-  modelCaps?: Record<string, number>;
   live: boolean;
   guardrails: GuardrailsPolicyLike | null;
   createdAt: string;
@@ -426,99 +389,13 @@ export interface AgentRowLike {
 }
 
 export type AgentRole = "orchestrator" | "worker";
-/** `image` is a generated picture (his order, 2026-10-09: "+ add new… generate
- *  an avatar"), a small PNG/JPEG/WebP data URL; drawn in place of the face. */
-export interface BotAvatarLike { variant: number; color: string; image?: string }
-
-/** The largest avatar picture a row carries (a 256px PNG is well under this). */
-export const AVATAR_IMAGE_MAX = 400_000;
-export function cleanAvatarImage(v: unknown): string | null {
-  const s = String(v ?? "");
-  return s.length <= AVATAR_IMAGE_MAX && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(s) ? s : null;
-}
+export interface BotAvatarLike { variant: number; color: string }
 
 export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
   provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
   skills?: string[]; apps?: string[];
-  folders?: string[]; connections?: string[]; models?: string[]; superPowers?: string[];
-  withheld?: AgentWithheld | null;
-  mapLayout?: Record<string, { x: number; y: number }> | null;
-  personality?: number; directness?: number; temperament?: number; effort?: string; voice?: AgentVoiceLike | null;
-  modelCaps?: Record<string, number> | null;
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
-}
-
-/** What Glyphh was denied, by kind (AgentRowLike.withheld). */
-export interface AgentWithheld { folders?: string[]; connections?: string[]; models?: string[]; skills?: string[]; superPowers?: string[] }
-export const WITHHELD_KINDS = ["folders", "connections", "models", "skills", "superPowers"] as const;
-/** Withheld as stored: the five kinds, names cleaned, empty kinds dropped. */
-export function cleanWithheld(v: unknown): AgentWithheld {
-  const out: AgentWithheld = {};
-  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
-  for (const k of WITHHELD_KINDS) {
-    const names = cleanNames((v as Record<string, unknown>)[k]);
-    if (names.length) out[k] = names;
-  }
-  return out;
-}
-/** What Glyphh holds of one kind: everything there is, less what was withheld. */
-export function glyphhHolds(everything: readonly string[], withheld: AgentWithheld | null | undefined, kind: keyof AgentWithheld): string[] {
-  const no = new Set(withheld?.[kind] ?? []);
-  return everything.filter((x) => !no.has(x));
-}
-
-/** GLYPHH'S OWN RECORD (his order, 2026-10-09: "give Glyphh a record with no
- *  Delete… they can change its name all they want"): the agent row with this
- *  slug is Glyphh — its brief, powers, super powers, sliders and voice ride
- *  its own conversations. It is never a super power: no list offers it, no
- *  delete takes it, its face is the mascot. */
-export const GLYPHH_AGENT = "glyphh";
-
-/** Caps as stored: a positive dollar amount per model, two decimals; anything else is no limit. */
-export function cleanModelCaps(v: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
-  for (const [model, usd] of Object.entries(v as Record<string, unknown>)) {
-    const n = Math.round(Number(usd) * 100) / 100;
-    const m = String(model).trim();
-    if (m && Number.isFinite(n) && n > 0 && n <= 1_000_000) out[m] = n;
-  }
-  return out;
-}
-
-/** A super power's voice: the speech model it speaks through and the voice. */
-export interface AgentVoiceLike { model: string; voiceId: string; name?: string }
-/** The loop's effort dial, slowest-cheapest first (sdk/loop LOOP_EFFORTS). */
-export const AGENT_EFFORTS: ReadonlyArray<string> = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
-export const PERSONALITY_DEFAULT = 3;
-export function cleanPersonality(v: unknown): number | undefined {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : undefined;
-}
-export function cleanEffort(v: unknown): string | undefined {
-  const s = String(v ?? "").trim();
-  return AGENT_EFFORTS.includes(s) ? s : undefined;
-}
-export function cleanVoice(v: unknown): AgentVoiceLike | null {
-  const o = v as AgentVoiceLike | null;
-  if (!o || typeof o !== "object") return null;
-  const model = String(o.model ?? "").trim().slice(0, 200);
-  const voiceId = String(o.voiceId ?? "").trim().slice(0, 200);
-  if (!model || !voiceId) return null;
-  const name = String(o.name ?? "").trim().slice(0, 80);
-  return name ? { model, voiceId, name } : { model, voiceId };
-}
-
-/** A list of names as stored: trimmed, no blanks, no repeats, order kept. */
-export function cleanNames(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  const out: string[] = [];
-  for (const x of v) {
-    const t = String(x ?? "").trim();
-    if (t && !out.includes(t)) out.push(t);
-  }
-  return out;
 }
 
 /** A row's role, "worker" for every row that predates the field. */
@@ -530,10 +407,8 @@ export function cleanAvatar(v: unknown): BotAvatarLike | null {
   if (!a || typeof a !== "object") return null;
   const variant = Math.round(Number(a.variant));
   const color = String(a.color ?? "").trim();
-  // Sixteen faces since 2026-10-09 (help/bot-avatar.ts AVATAR_VARIANTS).
-  if (!Number.isFinite(variant) || variant < 1 || variant > 16 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
-  const image = cleanAvatarImage(a.image);
-  return image ? { variant, color, image } : { variant, color };
+  if (!Number.isFinite(variant) || variant < 1 || variant > 12 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
+  return { variant, color };
 }
 
 export const agentSlug = (name: string): string =>
@@ -559,8 +434,6 @@ export function cleanGuardrails(g: GuardrailsPolicyLike | null | undefined): Gua
   return Object.values(out).some((v) => v !== null) ? out : null;
 }
 
-const optional = <K extends string, V>(k: K, v: V | undefined): Partial<Record<K, V>> => (v === undefined ? {} : ({ [k]: v } as Record<K, V>));
-
 /** The agent record an input makes over an existing one — local-agents'
  *  saveAgent and the web's create/update build the SAME row through this. */
 export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | null, nowIso: string): AgentRowLike {
@@ -581,56 +454,11 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     avatar,
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
     apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
-    folders: Array.isArray(input.folders) ? cleanNames(input.folders) : cleanNames(existing?.folders),
-    connections: Array.isArray(input.connections) ? cleanNames(input.connections) : cleanNames(existing?.connections),
-    models: Array.isArray(input.models) ? cleanNames(input.models) : cleanNames(existing?.models),
-    mapLayout: input.mapLayout === undefined ? cleanMapLayout(existing?.mapLayout) : cleanMapLayout(input.mapLayout),
-    superPowers: (Array.isArray(input.superPowers) ? cleanNames(input.superPowers) : cleanNames(existing?.superPowers)).filter((s) => s !== slug),
-    ...(slug === GLYPHH_AGENT ? { withheld: input.withheld === undefined ? cleanWithheld(existing?.withheld) : cleanWithheld(input.withheld) } : {}),
-    ...optional("personality", input.personality === undefined ? cleanPersonality(existing?.personality) : cleanPersonality(input.personality)),
-    ...optional("directness", input.directness === undefined ? cleanPersonality(existing?.directness) : cleanPersonality(input.directness)),
-    ...optional("temperament", input.temperament === undefined ? cleanPersonality(existing?.temperament) : cleanPersonality(input.temperament)),
-    ...optional("effort", input.effort === undefined ? cleanEffort(existing?.effort) : cleanEffort(input.effort)),
-    voice: input.voice === undefined ? cleanVoice(existing?.voice) : cleanVoice(input.voice),
-    modelCaps: input.modelCaps === undefined ? cleanModelCaps(existing?.modelCaps) : cleanModelCaps(input.modelCaps),
     live: input.live === undefined ? existing?.live ?? true : !!input.live,
     guardrails: input.guardrails === undefined ? existing?.guardrails ?? null : cleanGuardrails(input.guardrails),
     createdAt: existing?.createdAt ?? nowIso,
     updatedAt: nowIso,
   };
-}
-
-/** A map layout as stored: up to 300 cards, each a finite x and y. */
-export function cleanMapLayout(v: unknown): Record<string, { x: number; y: number }> {
-  const out: Record<string, { x: number; y: number }> = {};
-  if (!v || typeof v !== "object") return out;
-  for (const [k, p] of Object.entries(v as Record<string, unknown>).slice(0, 300)) {
-    const x = Number((p as { x?: unknown })?.x);
-    const y = Number((p as { y?: unknown })?.y);
-    if (k && k.length <= 300 && Number.isFinite(x) && Number.isFinite(y)) out[k] = { x: Math.round(x), y: Math.round(y) };
-  }
-  return out;
-}
-
-/** WHO A SUPER POWER MAY HOLD (his order, 2026-10-09: "a super power can't
- *  add itself, and two can't hold each other"): `picks` for `slug`, checked
- *  against what every other super power holds. Refuses itself, a slug that is
- *  no super power, and any loop — A holding B when B already reaches A,
- *  directly or through others. Returns the picks, cleaned. */
-export function checkSuperPowers(slug: string, picks: unknown, roster: ReadonlyMap<string, readonly string[]>): string[] {
-  const want = cleanNames(picks);
-  if (want.includes(slug)) throw new Error("a super power can't hold itself");
-  const unknown = want.filter((w) => !roster.has(w));
-  if (unknown.length) throw new Error(`no super power called ${unknown.map((u) => `"${u}"`).join(", ")} — agents_list names them`);
-  const reaches = (from: string, target: string, seen = new Set<string>()): boolean => {
-    if (from === target) return true;
-    if (seen.has(from)) return false;
-    seen.add(from);
-    return (roster.get(from) ?? []).some((n) => reaches(n, target, seen));
-  };
-  const loops = want.filter((w) => reaches(w, slug));
-  if (loops.length) throw new Error(`that would be a loop: ${loops.map((l) => `"${l}"`).join(", ")} already ${loops.length === 1 ? "holds" : "hold"} this super power`);
-  return want;
 }
 
 export function isAgentRow(v: unknown): v is AgentRowLike {

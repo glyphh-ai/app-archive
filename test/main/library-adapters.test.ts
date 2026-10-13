@@ -7,7 +7,7 @@
  * (2026-10-04: db rows with cloud storage) run over a temp SQLite — node's
  * own, standing in for better-sqlite3, whose binary here is Electron's.
  */
-import { existsSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -50,7 +50,6 @@ vi.mock("../../src/main/local-agents.js", () => ({
 import { readTombstones } from "../../src/main/library-events.js";
 import { bundleAdapter, dripAdapter, manifestOf, readSyncState, scheduleAdapter } from "../../src/main/library-adapters.js";
 import { initLocalDb, getLocalDb } from "../../src/main/local-db.js";
-import { tidyHomes } from "../../src/main/skills-fs.js";
 import { DripManager, setDripManagerInstance } from "../../src/main/drip-manager.js";
 import { deleteSchedule, listSchedulesView, saveSchedule, setScheduleEnabled, stopLoopScheduler } from "../../src/main/local-library.js";
 import type { MemberLibraryItem } from "@glyphh/sdk";
@@ -85,35 +84,35 @@ describe("skills and tasks (folders)", () => {
     expect(a.localFiles!("notes")!.find((f) => f.path === "run.sh")!.size).toBe(12);
   });
 
-  it("a pull writes the folder (stamping mtimes), parks it when the record says disabled, and a remote delete removes it — a power with a program lands in the one home", () => {
-    const a = bundleAdapter("skill");
-    a.apply(item("skill", "digest", 6_000, { name: "digest", enabled: false, type: "task" }, []), [
+  it("a pull writes the folder (stamping mtimes), parks it when the record says disabled, and a remote delete removes it", () => {
+    const a = bundleAdapter("task");
+    a.apply(item("task", "digest", 6_000, { name: "digest", enabled: false, type: "task" }, []), [
       { path: "SKILL.md", bytes: new TextEncoder().encode("---\nname: digest\n---\n"), mtime: 5_000 },
       { path: "task.json", bytes: new TextEncoder().encode('{"name":"digest","program":"run.js"}'), mtime: 5_000 },
     ]);
-    const parked = join(root, "user", "skills-disabled", "glyphh", "digest");
+    const parked = join(root, "user", "skills-disabled", "task", "digest");
     expect(existsSync(join(parked, "task.json"))).toBe(true);
     expect(existsSync(join(root, "user", "tasks", "digest"))).toBe(false);
     expect(manifestOf(parked).map((f) => f.path)).toEqual(["SKILL.md", "task.json"]);
     expect(manifestOf(parked)[0].mtime).toBe(5_000);
-    const row = a.list().find((r) => r.id === "digest");
-    expect(row).toMatchObject({ id: "digest", data: { enabled: false } });
+    const [row] = a.list();
+    expect(row).toMatchObject({ id: "digest", data: { enabled: false, manifest: { name: "digest", program: "run.js" } } });
     // Enabled on the web: the folder moves home, the unchanged file is kept (bytes: null).
-    a.apply(item("skill", "digest", 7_000, { name: "digest", enabled: true, type: "task" }, []), [
+    a.apply(item("task", "digest", 7_000, { name: "digest", enabled: true, type: "task" }, []), [
       { path: "SKILL.md", bytes: null, mtime: 5_000 }, { path: "task.json", bytes: null, mtime: 5_000 },
     ]);
-    expect(existsSync(join(root, "user", "skills", "digest", "task.json"))).toBe(true);
+    expect(existsSync(join(root, "user", "tasks", "digest", "task.json"))).toBe(true);
     expect(existsSync(parked)).toBe(false);
     a.remove("digest");
-    expect(existsSync(join(root, "user", "skills", "digest"))).toBe(false);
-    expect(a.list().find((r) => r.id === "digest")).toBeUndefined();
+    expect(existsSync(join(root, "user", "tasks", "digest"))).toBe(false);
+    expect(a.list()).toEqual([]);
   });
 
   // AN APP CARRIES ITS SKILL (his law, 2026-10-06): installing an app writes a
-  // library `skill` row (`app-<slug>`, files SKILL.md). It lands in the one
-  // home like any power — and nothing is linked into a CLI's folder any more
-  // (his order, 2026-10-09: "our agent loop is the only loop").
-  it("a skill row an app install wrote (`app-<slug>`, source app) lands in the one home, and no CLI folder hears of it", () => {
+  // library `skill` row (`app-<slug>`, files SKILL.md). It is a skill row like
+  // any other — no special case here — so it lands in the skills home and
+  // links into every CLI's folder, and a delete (the uninstall) takes it back.
+  it("a skill row an app install wrote (`app-<slug>`, source app) lands in the skills home like any skill and links into every CLI's folder", () => {
     mkdirSync(join(home, ".claude"), { recursive: true });
     const a = bundleAdapter("skill");
     a.apply(item("skill", "app-images", 9_000, { name: "Images", description: "Save, list and generate images", enabled: true, type: "skill", source: "app", app: "images" }, []), [
@@ -122,27 +121,10 @@ describe("skills and tasks (folders)", () => {
     const dir = join(root, "user", "skills", "app-images");
     expect(existsSync(join(dir, "SKILL.md"))).toBe(true);
     expect(a.list().find((r) => r.id === "app-images")).toMatchObject({ data: { name: "Images", description: "Save, list and generate images", enabled: true, type: "skill" } });
-    expect(existsSync(join(home, ".claude", "skills", "app-images"))).toBe(false);
+    expect(readlinkSync(join(home, ".claude", "skills", "app-images"))).toBe(dir);
     a.remove("app-images");
     expect(existsSync(dir)).toBe(false);
-  });
-
-  it("tidying the homes moves the old tasks home in and takes Glyphh's own CLI links out, leaving a CLI's own folders alone", () => {
-    const tasks = join(root, "user", "tasks");
-    mkdirSync(join(tasks, "nightly"), { recursive: true });
-    writeFileSync(join(tasks, "nightly", "SKILL.md"), "---\nname: nightly\n---\n");
-    writeFileSync(join(tasks, "nightly", "task.json"), '{"name":"nightly","program":"run.js"}');
-    const cli = join(home, ".claude", "skills");
-    mkdirSync(join(cli, "their-own"), { recursive: true });
-    writeFileSync(join(cli, "their-own", "SKILL.md"), "---\nname: their-own\n---\n");
-    mkdirSync(join(skills, "ours"), { recursive: true });
-    writeFileSync(join(skills, "ours", "SKILL.md"), "---\nname: ours\n---\n");
-    symlinkSync(join(skills, "ours"), join(cli, "ours"), "dir");
-    tidyHomes(true);
-    expect(existsSync(join(skills, "nightly", "task.json"))).toBe(true);
-    expect(existsSync(join(tasks, "nightly"))).toBe(false);
-    expect(existsSync(join(cli, "ours"))).toBe(false);
-    expect(existsSync(join(cli, "their-own", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".claude", "skills", "app-images"))).toBe(false);
   });
 });
 

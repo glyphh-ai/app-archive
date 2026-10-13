@@ -20,15 +20,13 @@
  * conversation.
  */
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import * as fsWatch from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
-import { getAgent, glyphhRow, type AgentRow } from "./local-agents.js";
-import { powerOfChat } from "../shared/powers.js";
-import { botEffort, botPersonalityNote, botPowersNote, botWorkFolder } from "../shared/bot-powers.js";
+import { startLocalMcpServer } from "./local-mcp-server.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 // The server's copy of every local thread (his rule, 2026-10-04): each write
 // here publishes the index + the new messages (thread-publish.ts).
@@ -51,7 +49,7 @@ const sessionsFile = (): string => path.join(STORE_DIR(), "agent-sessions.json")
 const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
 interface StoredMessage { role?: string; text?: string; at?: number }
-interface StoredChat { id?: string; updatedAt?: number; messages?: StoredMessage[]; /** A team thread's super powers (swarm.ts). */ members?: string[] }
+interface StoredChat { id?: string; updatedAt?: number; messages?: StoredMessage[] }
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null; /** Ids the saver deleted — dropped from the merge. */ deleted?: string[] }
 
 /** A chat's folder as an absolute path: a display "~" that leaked into the
@@ -163,7 +161,7 @@ function saveSessionsFile(snap: SessionsSnapshot, from?: WebContents): void {
 }
 
 /** A stored chat by id, for the turn text and the loop's seed history. */
-export function storedChat(chatId: string): StoredChat | undefined {
+function storedChat(chatId: string): StoredChat | undefined {
   return (loadSessionsFile().chats as StoredChat[]).find((x) => x?.id === chatId);
 }
 
@@ -266,87 +264,37 @@ export interface RunPayload {
   effort?: string;
 }
 
-/** THE TEAM BRIEF (his order, 2026-10-09: swarm mode): who is on the team,
- *  and how Glyphh leads it — first person, one hand-off at a time per member. */
-function teamNote(members: readonly string[]): string {
-  const rows = members.map((slug) => { try { return getAgent(slug); } catch { return null; } }).filter((a): a is AgentRow => !!a);
-  if (!rows.length) return "";
-  return [
-    "You lead a TEAM in this conversation. The user brought these super powers in:",
-    ...rows.map((a) => `- ${a.name} (${a.slug}): ${a.description || "no description"}`),
-    "Work like a team lead, on the team's WORK BOARD. First plan the job as tasks with board_add (owner, what each waits on). Then hand each task to its owner with hand_off { member, task, taskId }, speaking to them by name in first person; independent tasks can go out in parallel. Each works on their own thread and answers here as themselves; their task moves to review. Review every answer: board_update it to done, or back to working with a note saying what to fix, and hand it back. Keep blocked tasks marked blocked with the reason. Do small glue work yourself (your own tasks, owner \"glyphh\"). Close with one summary from board_list: what was done, what was found, what is left. Never invent an answer a member did not give.",
-  ].join("\n");
-}
-
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
  *  executor's fake WebContents that forwards frames up the socket (attach-run.ts). */
-/** The bot a `bots/<slug>` thread is with, or null (any other thread, or a bot since deleted). */
-function botOfChat(chatId: string): AgentRow | null {
-  if (!chatId.startsWith("bots/")) return null;
-  try { return getAgent(chatId.slice(5)); } catch { return null; }
-}
-
-/** A folder as its real path when it is an existing directory, else "". */
-function realFolder(dir: string): string {
-  if (!dir || !path.isAbsolute(dir)) return "";
-  try {
-    const real = realpathSync(dir);
-    return statSync(real).isDirectory() ? real : "";
-  } catch { return ""; }
-}
-
 export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<{ runId: string }> {
   // A TURN RUNS IN ITS THREAD'S FOLDER OR NOT AT ALL (his rule, 2026-09-29:
   // "The agent should work from the selected folder period!!! that is a hard
   // hard constraint, it is sandboxed to that folder"). There is no fallback:
   // NO_WORKDIR is the composer's cue to ask. One type since 2026-10-08: every
   // turn is this kind of turn.
-  // A BOT'S THREAD (his order, 2026-10-09: "the user can click a bot and its
-  // Glyphh chat history opens. Same ui same everything"): `bots/<slug>` runs
-  // in the same chat as any Glyphh thread, carrying the bot's brief (its
-  // personality) and its model. With no folder picked it works in the
-  // member's working folder, as the bot's own runs always have.
-  const bot = botOfChat(p.chatId);
-  // A POWER'S THREAD (`powers/<id>`, his order 2026-10-09): talking to a power
-  // directly — its brief leads the turn, like a bot's.
-  const power = powerOfChat(p.chatId);
-  // THE SESSION'S FOLDER IS THE PERIMETER (his rule, 2026-10-09): every turn —
-  // a plain thread, a super power's, a power's — runs in the folder the session
-  // picked, or a bot's folder INSIDE it. No fallback to the working folder or home.
-  const picked = realFolder(String(p.workdir ?? "").trim());
-  if (!picked) throw new Error("NO_WORKDIR: this session has no folder yet");
-  const folder = bot ? realFolder(botWorkFolder(bot, picked)) || picked : picked;
+  const folder = String(p.workdir ?? "").trim();
+  if (!folder) throw new Error("NO_WORKDIR: this session has no folder yet");
+  if (folder) {
+    let ok = false;
+    try { ok = statSync(folder).isDirectory(); } catch { ok = false; }
+    if (!ok) throw new Error(`NO_WORKDIR: this session's folder no longer exists (${folder})`);
+  }
+  await startLocalMcpServer().catch(() => { /* the turn still runs, with fewer tools and honestly so */ });
   // The composer's contract (unchanged since the bridge): the user turn is
   // already IN the chat store when run arrives — same-renderer IPC ordering
   // guarantees the save landed first.
   const chat = storedChat(p.chatId);
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
-  // GLYPHH'S OWN RECORD (his order, 2026-10-09): a plain Glyphh thread wears
-  // what the member set on Glyphh's Edit page — its brief, sliders, powers and
-  // super powers. Its folder stays the thread's own (a thread's folder is its
-  // sandbox); a super power's or a power's thread is unchanged.
-  const self = bot ?? (power ? null : glyphhRow());
-  // Glyphh holds everything but what was withheld (2026-10-09), so its brief
-  // names no list of powers; a super power's names the ones it holds.
-  // A TEAM THREAD (swarm.ts): Glyphh leads the super powers the member dragged in.
-  const team = !bot && !power ? teamNote(storedChat(p.chatId)?.members ?? []) : "";
-  const brief = [String(self?.prompt ?? power?.brief ?? "").trim(), botPersonalityNote(self), botPowersNote(bot ?? null, folder), team].filter(Boolean).join("\n\n");
-  // The effort slider: a super power's own setting (or Glyphh's) leads its turns.
-  const effort = self ? botEffort(self, p.effort) : p.effort;
-  const attachments = p.attachments ?? [];
-  const text = [brief, steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
-  const model = String(bot?.model ?? "").trim() || p.model;
+  const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
   return runGlyphhLoopTurn(sender, {
     chatId: p.chatId,
     ...(p.permission ? { permission: p.permission } : {}),
-    ...(model ? { model } : {}),
-    ...(effort ? { effort } : {}),
-    workdir: folder,
+    ...(p.model ? { model: p.model } : {}),
+    ...(p.effort ? { effort: p.effort } : {}),
+    ...(p.workdir ? { workdir: p.workdir } : {}),
     ...(p.workspace ? { workspace: p.workspace } : {}),
-    ...(attachments.length ? { attachments } : {}),
-    // A super power's calls wear its tag: the gateway holds them to its caps.
-    ...(bot ? { tags: [`glyphh-power:${bot.slug}`] } : {}),
+    ...(p.attachments?.length ? { attachments: p.attachments } : {}),
     history: chat?.messages ?? [],
   }, text);
 }

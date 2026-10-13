@@ -4,7 +4,7 @@
  * cloud gets the same tools as the desktop; the local server must win for the
  * window tools and the gateway's for the rest).
  *
- * Glyphh's own tools (host-tools.ts, in process since 2026-10-09) are this machine: its windows, its
+ * The local server (local-mcp-server.ts) is this machine: its windows, its
  * folders, its loopback apps. The gateway's /mcp (server glyphh/docs/glyphh-
  * mcp.md) is the member's cloud reach: the library the desktop syncs from,
  * the cloud clock, the app instances on the farm, the connected accounts.
@@ -19,8 +19,13 @@ export const WINDOW_TOOLS: ReadonlySet<string> = new Set([
   "relay_ping", "panels_open", "panels_list", "panels_switch", "panels_close", "layouts_open", "settings_open",
 ]);
 
-/** What only this machine can do: the local server answers it. */
+/** The desktop's folder: `app_install { dir }` zips or tars a folder ON THIS
+ *  MACHINE (the gateway's copies want base64 only a cloud session's pod can
+ *  hand them), so the local server answers it like a window tool; the build
+ *  job it starts is read here too. The gateway's `app_deploy` (sourceBase64)
+ *  is hidden from the loop: nothing big rides through the model. */
 export const MACHINE_TOOLS: ReadonlySet<string> = new Set([
+  "app_install", "app_build_status", "glyphh_app_scaffold",
   // RPA ON A TAB (2026-10-07): the picker, the mapping and the runs act on a
   // panel on THIS screen, so only the local server answers them.
   "rpa_commands", "rpa_pick", "rpa_map", "rpa_unmap", "rpa_run", "rpa_sequence_save", "rpa_sequence_remove", "rpa_sequence_run",
@@ -37,12 +42,7 @@ export const CLOUD_TOOLS: ReadonlySet<string> = new Set([
   "skills_list", "skill_get", "skill_save", "skill_enable", "skill_delete", "skill_retype",
   "tasks_list", "task_get", "task_runs",
   "schedules_list", "schedule_save", "schedule_run", "schedule_delete", "agents_list",
-]);
-
-/** NO APP TOOLS (his order, 2026-10-09: there is one thing, a power): never lent
- *  to the loop from either server, whatever an older gateway still offers. */
-export const APP_TOOLS: ReadonlySet<string> = new Set([
-  "app_list_tools", "app_call_tool", "app_install", "app_deploy", "app_releases", "app_pin", "app_build_status", "glyphh_app_scaffold",
+  "app_list_tools", "app_call_tool", "app_releases", "app_pin",
 ]);
 
 /** The gateway's connections lane: the lookup pair the loop drives connected
@@ -64,7 +64,7 @@ export const LOCAL_CONNECTION_TOOLS: ReadonlySet<string> = new Set([
  *  entry; connected accounts go through the gateway's search). External MCP
  *  clients still get them — this is the loop's view only. */
 export const LOOP_HIDDEN: ReadonlySet<string> = new Set([
-  "relay_ping",
+  "relay_ping", "app_list_tools", "app_call_tool", "app_deploy",
   "connector_tools", "connector_call", "connections_list_tools", "connections_call_tool",
 ]);
 
@@ -84,12 +84,11 @@ export interface LendState {
 export function lendSplit(s: LendState): { local: (tool: string) => boolean; gateway: (tool: string) => boolean } {
   return {
     local: (t) =>
-      !LOOP_HIDDEN.has(t) && !APP_TOOLS.has(t)
+      !LOOP_HIDDEN.has(t)
       && (s.connections || !LOCAL_CONNECTION_TOOLS.has(t))
       && !(s.gatewayUp && CLOUD_TOOLS.has(t) && !s.belt.has(t)),
     gateway: (t) =>
-      !APP_TOOLS.has(t)
-      && !(s.localUp && (WINDOW_TOOLS.has(t) || MACHINE_TOOLS.has(t) || s.belt.has(t)))
+      !(s.localUp && (WINDOW_TOOLS.has(t) || MACHINE_TOOLS.has(t) || s.belt.has(t)))
       && (s.connections || !GATEWAY_CONNECTION_TOOLS.has(t)),
   };
 }

@@ -12,10 +12,10 @@ export type BundleKind = "skill" | "app" | "task" | "plugin";
 
 /** Where the user finds each kind, for an agent's answer. */
 export const WHERE_TO_SEE: Record<BundleKind, string> = {
-  skill: "Your powers (Customize › Powers, or the + box › Your powers)",
-  app: "Your powers, and its panel opens like any app",
-  task: "Your powers; it runs on its own — put it on a clock with schedule_save",
-  plugin: "Your powers",
+  skill: "Settings → Build → Skills (type Skill)",
+  app: "Settings → Build → Skills (type App) and the Apps work panel",
+  task: "Settings → Build → Skills (type Task); put it on a clock with schedule_save",
+  plugin: "Settings → Build → Plugins",
 };
 
 // ── a connection dependency ────────────────────────────────────────────

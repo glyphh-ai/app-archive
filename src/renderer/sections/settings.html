@@ -47,17 +47,19 @@
                    his order, 2026-09-16) and the work panel's own shape (Tabs,
                    Workspaces, Drips, Schedules) under one header, in the Customize
                    page's tab order (surface.ts CUSTOMIZE_TAB_ORDER). -->
-              <div class="settings-nav-group not-on-platform hidden" id="nav-group-customize">Customize</div>
-              <!-- ONE KIND, A POWER (his order, 2026-10-09): skills, tasks, plugins and apps are one tab. -->
-              <button class="settings-nav-item not-on-platform hidden" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg><span>Powers</span></button>
+              <div class="settings-nav-group not-on-platform" id="nav-group-customize">Customize</div>
+              <button class="settings-nav-item not-on-platform" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Skills</span></button>
               <!-- AGENTS (his order, 2026-09-29): the definitions the Glyphh loop can
                    hand work to — a name, when to use it, a brief, a model slot. -->
-              <button class="settings-nav-item not-on-platform hidden" data-sub="agents"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg><span>Agents</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="agents"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg><span>Agents</span></button>
               <!-- Apps moved onto Skills (his order, 2026-09-17): every bundle is a skill
                    and the type says which kind. The tab is hidden, not gone. -->
-              <button class="settings-nav-item not-on-platform hidden" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>Apps</span></button>
-              <button class="settings-nav-item not-on-platform hidden" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
-              <button class="settings-nav-item not-on-platform hidden" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>Apps</span></button>
+              <!-- Artifacts sits with the rest of what you BUILD and submit
+                   (his order, 2026-09-18), not with what you customize. -->
+              <button class="settings-nav-item not-on-platform" data-sub="artifacts"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Artifacts</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
               <!-- Tasks moved onto Skills (2026-09-17), same as Apps: hidden, not gone. -->
               <button class="settings-nav-item not-on-platform hidden" data-sub="tasks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg><span>Tasks</span></button>
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
@@ -68,10 +70,11 @@
                    remote control on, with Disconnect; the ones disconnected from the
                    web, with Allow. On the web and the desktop alike (settings-devices.ts). -->
               <button class="settings-nav-item not-on-platform" data-sub="devices"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Devices</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="remote"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span>System</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="remote"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span>Remote control</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
               <div class="settings-nav-group">Help</div>
               <button class="settings-nav-item" data-sub="support"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Support</span></button>
               <button class="settings-nav-item hidden" data-sub="about"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg><span>About</span></button>
@@ -131,10 +134,7 @@
                      streamed to the tab. Experimental, so OFF by default and a
                      two-click switch: on asks first (the warning below + "Turn on"),
                      off is immediate. help/settings.ts + help/streamed-panels-flag.ts. -->
-                <!-- GONE FROM SETTINGS (his order, 2026-10-09: "these all go from app ->
-                     settings"): Streamed web panels, Default workspace and
-                     Interface sounds — hidden, their prefs stay as they are. -->
-                <label class="settings-toggle set-pref-row hidden" id="streamed-panels-row">
+                <label class="settings-toggle set-pref-row" id="streamed-panels-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Streamed web panels</div>
                     <div class="set-pref-desc">On the web, URL apps and the Browser open as a page streamed from a worker. Off, those panels show a card instead.</div>
@@ -153,7 +153,7 @@
                 <!-- The row grammar (his spec, 2026-08-24): title left with its
                      description UNDER it, the value control aligned to the
                      page's right edge. -->
-                <div class="set-pref-row hidden">
+                <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Default workspace</div>
                     <div class="set-pref-desc">The workspace that opens on a fresh start (when no previous arrangement is being restored). &ldquo;None&rdquo; boots to the bare landing.</div>
@@ -163,7 +163,7 @@
                   </div>
                 </div>
 
-                <div class="set-pref-row hidden">
+                <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></div>
                     <div class="set-pref-desc">The tiny hover and click sounds. Zero turns them off.</div>
@@ -234,8 +234,7 @@
                 <details class="memory-disclosure">
                   <summary>How we protect your data</summary>
                   <ul class="docs-list">
-                    <li>Your memory is kept in your Glyphh account, on Glyphh's servers, private to you. Every machine you sign in on shares it: this desktop, your other desktops and your Glyphh machine. It reaches a model only inside the prompts of your own sessions.</li>
-                    <li>When you accept, the memory this desktop kept on its own moves into your account, and the copy on this machine is removed.</li>
+                    <li>Your memory is stored on this machine, in Glyphh's own app data, and nowhere else. It never leaves it except inside the prompts of your own sessions.</li>
                     <li>Your organization's gateway meters tokens and spend. It does not store your prompts or your answers.</li>
                     <li>You can clear your memory here at any time, and Glyphh forgets it at once.</li>
                     <li>Glyphh does not sell your data and does not train models on it.</li>
@@ -283,12 +282,8 @@
               <!-- REMOTE CONTROL (his order, 2026-09-30): this device takes turns from
                    mobile.glyphh.ai only when switched on here, and only in the folders
                    granted here (main/remote-control.ts). An org admin can turn it off. -->
-              <!-- SYSTEM (his order, 2026-10-09: "rename remote control -> system and add
-                   the settings for the sandbox plus device control"): this computer's
-                   remote control, its devices and the sandbox every session runs in. -->
               <div class="settings-panel" data-sub="remote">
-                <h2>System</h2>
-                <h3 class="settings-subheading">Remote control</h3>
+                <h2>Remote control</h2>
                 <p class="section-desc">Run sessions on this computer from your phone at mobile.glyphh.ai. Turns work only in the folders you grant here, and your approvals still apply.</p>
                 <div class="set-pref-desc hidden" id="remote-org-off">Your organization's admin has turned remote control off.</div>
                 <label class="settings-toggle set-pref-row">
@@ -306,21 +301,6 @@
                   <div class="set-pref-text"></div>
                   <div class="set-pref-value"><button class="action-btn" id="remote-add-folder">Add folder…</button></div>
                 </div>
-                <!-- Devices move in here on the desktop (settings.ts); the web keeps its own Devices page. -->
-                <div id="system-devices" class="hidden"><h3 class="settings-subheading">Devices</h3></div>
-                <h3 class="settings-subheading">Sandbox</h3>
-                <p class="set-pref-desc">Every command a session runs is fenced to its folder: it can't write elsewhere, can't read your keys and credentials, and reaches the network only through hosts you allow.</p>
-                <label class="settings-toggle set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Strict sandbox</div>
-                    <div class="set-pref-desc">Nothing ever runs outside the sandbox, even when you'd be asked first.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-sandbox-strict" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <div class="set-pref-desc" id="sandbox-builtin"></div>
-                <div id="sandbox-hosts"></div>
-                <div id="sandbox-ports"></div>
               </div>
 
               <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the
@@ -332,14 +312,7 @@
                 <h2>Memory</h2>
                 <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
 
-                <!-- PRIVACY IS REQUIRED (his order, 2026-10-09: "the memory page… needs a
-                     banner about privacy being required and a link to it"): shown
-                     until the memory policy is accepted (help/settings-memory.ts). -->
-                <div class="settings-callout memory-privacy-banner hidden" id="memory-accept-note" role="note">
-                  <svg class="memory-privacy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6 20 6v6c0 5-3.4 8.2-8 9.4C7.4 20.2 4 17 4 12V6z"/><path d="m9 12 2 2 4-4"/></svg>
-                  <span class="memory-privacy-text"><strong>Privacy consent is required.</strong> Memory stays off until you accept the memory policy on the Privacy page.</span>
-                  <button type="button" class="action-btn secondary memory-privacy-link" id="memory-privacy-open">Open Privacy</button>
-                </div>
+                <p class="set-pref-desc hidden" id="memory-accept-note">Memory is off until you accept the memory policy under <strong>Privacy</strong>.</p>
                 <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
                 <p class="set-pref-desc hidden" id="memory-org-note"></p>
                 <label class="settings-toggle set-pref-row">
@@ -483,6 +456,16 @@
                   <input type="checkbox" id="settings-rail-layouts" />
                   <span class="toggle-switch"></span>
                 </label>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Icon zoom</div>
+                    <div class="set-pref-desc">How much dock icons magnify on hover.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
+                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
+                  </div>
+                </div>
 
                 <!-- Echo Agent sliders — OFF the surface (his order, 2026-09-14: "remove the echo agent configs");
                      the prefs + CSS vars behind them stay wired (remove = hide, never delete). -->
@@ -1062,11 +1045,6 @@
                   <label class="settings-label" for="agents2-name">Name</label>
                   <input type="text" id="agents2-name" class="settings-input" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
 
-                  <!-- THE ICON (his order, 2026-10-09): one of the Glyphh mascot's sixteen
-                       faces, all black for now; Side-eye until picked. -->
-                  <label class="settings-label">Icon</label>
-                  <div id="agents2-icon-faces" class="agents2-faces" role="group" aria-label="Face"></div>
-
                   <label class="settings-label" for="agents2-desc">When to use it</label>
                   <input type="text" id="agents2-desc" class="settings-input" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
 
@@ -1113,6 +1091,10 @@
                   <button id="conn2-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Connections</span></button>
                   <div id="conn2-detail"></div>
                 </div>
+                <!-- The REAL connections section is adopted in here (its list and
+                     toolbar hidden): the catalog modal and the connect flow are the
+                     originals, driven by Add → New connection. -->
+                <div id="conncfg-legacy" class="conncfg-legacy"></div>
               </div>
               <div class="settings-panel" data-sub="org-library">
                 <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>
@@ -1583,6 +1565,82 @@
                    is gone; what remains is the LOCAL 127.0.0.1 MCP server this
                    machine runs — the product's front door for Claude/any client —
                    plus the Glyphh Skill export. Desktop-only. -->
+              <div class="settings-panel" data-sub="mcp">
+                <h2>MCP Server</h2>
+                <!-- LOCAL (desktop only): the 127.0.0.1 server this machine
+                     runs for a local LLM tool. -->
+                <div class="glyphh-desktop-only">
+                <p class="section-desc">Let Claude, Cursor, or any MCP client drive your workspace from this machine. Uses an API key as its token.</p>
+
+                <!-- Glyphh Skill — teaches the connected assistant how to drive
+                     this workspace. Claude installs straight into
+                     ~/.claude/skills; Gemini/ChatGPT save a file to paste into
+                     custom instructions. -->
+                <h3 class="settings-subheading hidden" style="margin:4px 0 4px;">Glyphh Skill</h3>
+                <p class="settings-hint hidden" style="margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
+                <div class="settings-actions hidden" style="flex-wrap:wrap;margin-bottom:18px;">
+                  <button id="export-skill-claude" class="action-btn primary" data-provider="claude">Install for Claude</button>
+                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Export for Gemini</button>
+                  <button id="export-skill-openai" class="action-btn" data-provider="openai">Export for ChatGPT</button>
+                  <span id="export-skill-status" class="settings-hint"></span>
+                </div>
+
+                <div id="mcp-section-wrap" class="settings-form">
+                  <!-- ── Local MCP server (this machine). Opt-in: runs a
+                       127.0.0.1 HTTP MCP server so a local LLM (Claude Desktop,
+                       Cursor, the claude CLI) connects directly — no cloud,
+                       lowest latency. Exposes the same tool surface as the
+                       relay. ── -->
+                  <div id="local-mcp-section" class="hidden" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border-2);">
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Local server</h3>
+                    <label class="settings-toggle" style="margin-bottom:10px;">
+                      <input type="checkbox" id="local-mcp-toggle" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Run a local MCP server</span>
+                        <span class="toggle-desc">Serve Glyphh's tools from this machine over 127.0.0.1 — direct, no cloud round-trip. Best for a local LLM on the same computer.</span>
+                      </div>
+                    </label>
+                    <span id="local-mcp-status" class="settings-hint" style="display:inline-block;margin-bottom:8px;">Stopped.</span>
+
+                    <div id="local-mcp-body">
+                      <!-- Port -->
+                      <h4 class="acct-row-head" style="margin:16px 0 6px;">Port</h4>
+                      <div class="settings-inline">
+                        <input id="local-mcp-port" type="text" class="settings-input settings-input-sm" value="7860" />
+                        <button id="local-mcp-port-save" class="action-btn">Save</button>
+                      </div>
+
+                      <!-- Config -->
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Config</h4>
+                      <p class="settings-hint" style="margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
+                      <div style="position:relative;">
+                        <pre id="local-mcp-config" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
+                        <button id="local-mcp-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
+
+                      <!-- Tokens -->
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Access Tokens</h4>
+                      <p class="settings-hint" style="margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
+                      <div id="local-mcp-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                          <code id="local-mcp-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
+                          <button id="local-mcp-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
+                        </div>
+                      </div>
+                      <div id="local-mcp-tokens-list" style="margin-bottom:10px;"></div>
+                      <div class="settings-inline">
+                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;" />
+                        <button id="local-mcp-gen-token" class="action-btn primary">+ Generate</button>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+                </div>
+              </div>
+
               <div class="settings-panel" data-sub="download">
                 <h2>Download</h2>
                 <p class="section-desc">The Glyphh desktop app — macOS, Windows, and Linux. Installs update themselves.</p>
@@ -2036,6 +2094,10 @@
               </div>
 
 
+              <div class="settings-panel settings-panel-section" data-sub="artifacts">
+                <div id="settings-files-host"></div>
+              </div>
+
               <!-- SKILLS (his order, 2026-09-16) — the Agent Skills standard: every
                    skill is a folder with SKILL.md at its root, read from the CLIs'
                    own skill directories and Glyphh's. List → detail (Overview /
@@ -2043,12 +2105,12 @@
               <div class="settings-panel skills-panel" data-sub="skills">
                 <div id="skills-list-view">
                   <div class="skills-head">
-                    <h2>Powers</h2>
+                    <h2>Skills</h2>
                     <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="skills-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" /></div>
                     <button id="skills-add" class="action-btn primary" type="button">Add ▾</button>
                   </div>
                   <div class="skills-tabs">
-                    <button class="skills-tab active" data-tab="mine" type="button">Your powers</button>
+                    <button class="skills-tab active" data-tab="mine" type="button">Your skills</button>
                     <button class="skills-tab" data-tab="discover" type="button">Discover</button>
                     <div style="flex:1;"></div>
                     <span id="skills-count" class="skills-count"></span>
@@ -2368,6 +2430,12 @@
                     </div>
                   </div>
                 </div>
+              </div>
+              <!-- Connections — the connections section body (from
+                   sections/connections.html) is MOVED into this host on open and
+                   parked back on close; loadConnections binds unchanged. -->
+              <div class="settings-panel settings-panel-section" data-sub="connections">
+                <div id="settings-connections-host"></div>
               </div>
 
               <!-- Layouts — the layout builder/library management page moved in

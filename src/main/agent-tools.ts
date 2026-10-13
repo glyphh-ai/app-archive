@@ -15,12 +15,6 @@
  *                                 headless (his order, 2026-10-07)
  *   agents.delete {agent}
  *
- * A SUPER POWER IS THE AGENT PLUS ITS POWERS (his order, 2026-10-09: "the
- * agent / glyphh skill… well versed in super powers"): a save also carries
- * the powers it holds, the connections and models it may use, its folders,
- * personality and thinking — what the super power's Edit page sets, so a
- * super power built in a chat is whole the moment it lands.
- *
  * Every save is checked the way the page checks it: a model must be one the
  * member's team carries (a slot naming anything else would be refused at spawn
  * time), and making an agent never silently overwrites one that exists.
@@ -31,70 +25,14 @@ import { deleteAgent, getAgent, listAgents, saveAgent, slugify } from "./local-a
 import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { bareModel } from "./org-models.js";
-import { listSkills } from "./skills-fs.js";
-import { getClient } from "./glyphh-client.js";
-import { agentRoleOf, cleanEffort, cleanNames, cleanPersonality, AGENT_EFFORTS, GLYPHH_AGENT, type AgentRole } from "../shared/member-library.js";
+import { agentRoleOf, type AgentRole } from "../shared/member-library.js";
 
-interface SaveParams {
-  agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown;
-  powers?: unknown; connections?: unknown; models?: unknown; folders?: unknown; personality?: unknown; effort?: unknown; superPowers?: unknown;
-  directness?: unknown; temperament?: unknown;
-}
+interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-function summary(a: ReturnType<typeof getAgent>) {
-  return {
-    agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim(),
-    powers: (a.skills ?? []).map((id) => id.slice(id.indexOf(":") + 1)), connections: a.connections ?? [], models: a.models ?? [],
-    folders: a.folders ?? [], superPowers: a.superPowers ?? [], personality: a.personality ?? null,
-    directness: a.directness ?? null, temperament: a.temperament ?? null, effort: a.effort ?? null,
-  };
-}
-
-/** CONNECTIONS ARE LOOKED UP, NEVER GUESSED (his report, 2026-10-09: "the
- *  agent got the connector name wrong, it shouldn't guess… so the link can
- *  be used to map it"). Each name is LOOKED UP in the connector catalog: an
- *  exact app id is kept; the same name or id (case and punctuation aside)
- *  maps to it; otherwise the catalog's own best match — the top-ranked app
- *  whose id or name starts with what was asked ("youtube" → youtube_data_api)
- *  — is taken. Only a name the catalog has nothing for is refused, with the
- *  nearest real ones. A catalog that can't be read keeps names as given. */
-export async function checkedConnections(raw: unknown): Promise<string[]> {
-  const want = cleanNames(raw);
-  const out: string[] = [];
-  const wrong: string[] = [];
-  for (const name of want) {
-    const words = name.replace(/[_-]+/g, " ").trim();
-    let apps: Array<{ id: string; name: string }>;
-    try { apps = (await getClient().connections.apps({ search: words, limit: 10 })).apps.map((a) => ({ id: a.id, name: a.name })); }
-    catch { out.push(name); continue; }
-    const norm = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const n = norm(name);
-    const hit = apps.find((a) => a.id === name)
-      ?? apps.find((a) => norm(a.name) === n || norm(a.id) === n)
-      // The catalog ranks by relevance: its first app that starts with the ask.
-      ?? apps.find((a) => norm(a.id).startsWith(n) || norm(a.name).startsWith(n));
-    if (hit) { if (!out.includes(hit.id)) out.push(hit.id); continue; }
-    const near = apps.slice(0, 5).map((a) => `${a.id} (${a.name})`).join(", ");
-    wrong.push(`"${name}"${near ? ` — did you mean: ${near}` : " — no connector matches"}`);
-  }
-  if (wrong.length) throw new Error(`not a connector slug: ${wrong.join("; ")}. Look it up with connector_tools { query } and use the exact app slug it returns.`);
-  return out;
-}
-
-/** Power slugs (or ids) → the library ids a super power holds; an unknown one is refused by name. */
-function checkedPowers(raw: unknown): string[] {
-  const want = cleanNames(raw);
-  const have = listSkills("skill");
-  const missing: string[] = [];
-  const ids = want.map((w) => {
-    const hit = have.find((sk) => sk.id === w || sk.id.slice(sk.id.indexOf(":") + 1) === w || sk.name === w);
-    if (!hit) missing.push(w);
-    return hit?.id ?? "";
-  });
-  if (missing.length) throw new Error(`no power called ${missing.map((m) => `"${m}"`).join(", ")} — build it first with skill_save, or pick from skills_list`);
-  return [...new Set(ids)];
+function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; role: AgentRole; hasBrief: boolean } {
+  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
 }
 /** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
 function checkedRole(raw: unknown): AgentRole {
@@ -132,7 +70,6 @@ export function installAgentRelayHandlers(): void {
     if (!name) throw new Error("an agent needs a name");
     // MAKING never overwrites: a name that slugs onto an existing agent is that
     // agent, and changing it is an explicit update.
-    if (!ref && slugify(name) === GLYPHH_AGENT) throw new Error(`"${name}" is Glyphh's own name — pick another for a super power`);
     if (!ref && listAgents().some((a) => a.slug === slugify(name))) {
       throw new Error(`an agent called "${name}" already exists — pass { agent: "${slugify(name)}" } to update it`);
     }
@@ -149,31 +86,7 @@ export function installAgentRelayHandlers(): void {
       brief = g.brief;
       generated = true;
     }
-    // ITS POWERS (2026-10-09): each field left out keeps what it has.
-    const powers = p.powers === undefined ? undefined : checkedPowers(p.powers);
-    const connections = p.connections === undefined ? undefined : await checkedConnections(p.connections);
-    const models = p.models === undefined ? undefined : await Promise.all(cleanNames(p.models).map((m) => checkedModel(m)));
-    const personality = p.personality === undefined ? undefined : cleanPersonality(p.personality);
-    if (p.personality !== undefined && personality === undefined) throw new Error("personality is 1 (serious) to 5 (playful)");
-    const directness = p.directness === undefined ? undefined : cleanPersonality(p.directness);
-    if (p.directness !== undefined && directness === undefined) throw new Error("directness is 1 (gentle) to 5 (blunt)");
-    const temperament = p.temperament === undefined ? undefined : cleanPersonality(p.temperament);
-    if (p.temperament !== undefined && temperament === undefined) throw new Error("temperament is 1 (kind) to 5 (spicy)");
-    const effort = p.effort === undefined ? undefined : cleanEffort(p.effort);
-    if (p.effort !== undefined && effort === undefined) throw new Error(`effort is one of ${AGENT_EFFORTS.join(", ")}`);
-    const row = saveAgent({
-      ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role,
-      ...(powers ? { skills: powers } : {}),
-      ...(connections !== undefined ? { connections } : {}),
-      ...(models ? { models: models.filter(Boolean) } : {}),
-      ...(p.folders !== undefined ? { folders: cleanNames(p.folders) } : {}),
-      ...(personality !== undefined ? { personality } : {}),
-      ...(directness !== undefined ? { directness } : {}),
-      ...(temperament !== undefined ? { temperament } : {}),
-      ...(effort !== undefined ? { effort } : {}),
-      // The super powers it holds: checked for itself and loops by saveAgent.
-      ...(p.superPowers !== undefined ? { superPowers: cleanNames(p.superPowers) } : {}),
-    });
+    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });
 

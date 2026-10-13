@@ -23,8 +23,6 @@ import os from "os";
 import fs from "fs";
 import { execFile } from "child_process";
 import { followWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
-import { fenceArgv, NO_FENCE } from "./shell-fence.js";
-import { proxyUrlFor } from "./net-proxy.js";
 
 interface Running { proc: pty.IPty; wc: WebContents }
 
@@ -37,12 +35,9 @@ function key(wcId: number, termId: string): string { return `${wcId}:${termId}`;
  * relay-pty.ts). One place so shell choice / `-il` / env inheritance never
  * drift between the local and relayed paths.
  */
-export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number; light?: boolean; fence?: string }): pty.IPty {
+export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number; light?: boolean }): pty.IPty {
   const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "/bin/zsh");
   const shellArgs = os.platform() === "win32" ? [] : ["-il"];
-  // A REMOTE terminal (relay-pty.ts) is fenced to its granted folder, writes
-  // like the loop's bash (Seatbelt); with no sandbox it does not start.
-  const fenced = opts.fence ? fencedShell(shell, shellArgs, opts.fence) : null;
   // COLORFGBG is the classic light/dark hint TUIs read ("fg;bg" in ANSI
   // indices) — CLIs that auto-detect the background pick the right variant.
   const env: Record<string, string> = { ...(process.env as Record<string, string>) };
@@ -52,22 +47,13 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
   let cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
   try { if (!fs.statSync(cwd).isDirectory()) throw new Error("not a directory"); }
   catch { console.warn("[wb-term] cwd is not a directory; spawning in home", JSON.stringify({ cwd })); cwd = os.homedir(); }
-  return pty.spawn(fenced ? fenced.file : shell, fenced ? fenced.args : shellArgs, {
+  return pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: opts.cols || 80,
     rows: opts.rows || 24,
     cwd,
     env,
   });
-}
-
-function fencedShell(shell: string, args: string[], folder: string): { file: string; args: string[] } {
-  // The shared fence (shell-fence.ts), network through the proxy with nobody to ask: the allowlist only.
-  const proxy = proxyUrlFor(null);
-  const env = proxy ? [`HTTP_PROXY=${proxy}`, `HTTPS_PROXY=${proxy}`, `http_proxy=${proxy}`, `https_proxy=${proxy}`, "NO_PROXY=", "no_proxy="] : [];
-  const fenced = fenceArgv(["/usr/bin/env", ...env, shell, ...args], folder, proxy ? Number(new URL(proxy).port) : null);
-  if (!fenced) throw new Error(NO_FENCE);
-  return fenced;
 }
 
 function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number, light?: boolean): void {

@@ -11,6 +11,7 @@ import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
 import { dispatchRelayMethod } from "./relay-client";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
+import { BUILTIN_WORKPANELS, WORKPANEL_REFUSAL } from "./saved-tabs";
 import { scanChromeProfiles, importFromChrome } from "./chrome-import";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
@@ -176,7 +177,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
+  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
@@ -259,6 +260,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       const slug = String(input.slug || input.name || "").toLowerCase().trim()
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) return { ok: false, error: "A name is required." };
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
       const app = await appsStore.createEntry({
         kind: entryKind(input),
         slug,
@@ -279,6 +281,9 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       // the whole patch — a glyphh app's kind comes from its bundle.
       const kind = patch.isBrowser !== undefined ? entryKind(patch) : undefined;
       const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug) || BUILTIN_WORKPANELS.has(String(patch.slug ?? ""))) {
+        return { ok: false, error: WORKPANEL_REFUSAL };
+      }
       // RPA ON A TAB (2026-10-07): the General form rebuilds launchConfig from
       // its own fields, so a save there carries the mapping forward unless the
       // caller sets `rpa` itself.
@@ -307,6 +312,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
     try {
       const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
       await appsStore.removeEntry(slug);
       invalidateOrgApps();
       return { ok: true };

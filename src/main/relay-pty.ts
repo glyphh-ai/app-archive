@@ -36,6 +36,7 @@ import type * as pty from "node-pty";
 import { spawnShellPty } from "./wb-terminal.js";
 import { registerRelayHandler, pushLocal } from "./relay-client.js";
 import { pushToAttach as pushUp } from "./attach-host.js";
+import { getWorkingDirectory } from "./working-directory.js";
 
 /** A relay pty's frames go UP the attach socket (the web terminal that opened
  *  it, through remote-control.ts's door) and onto the local push bus. The
@@ -103,11 +104,10 @@ export function installRelayPty(): void {
       throw new Error(`relay pty limit reached (${MAX_RELAY_PTYS}) — close a web terminal first`);
     }
     const ptyId = `pty-${randomUUID()}`;
-    // A REMOTE terminal opens in the granted folder remote control named
-    // (remote-control.ts guards it) and is fenced to it; no folder, no terminal.
-    const cwd = typeof p?.cwd === "string" ? p.cwd : "";
-    if (!cwd) throw new Error("a remote terminal needs a folder this machine granted");
-    const proc = spawnShellPty({ cwd, fence: cwd, cols: Number(p?.cols) || 80, rows: Number(p?.rows) || 24 });
+    // The web client may know a working folder (a layout's folder); otherwise
+    // the machine's last-used working folder, which itself falls back to $HOME.
+    const cwd = (typeof p?.cwd === "string" && p.cwd.length > 0) ? p.cwd : getWorkingDirectory();
+    const proc = spawnShellPty({ cwd, cols: Number(p?.cols) || 80, rows: Number(p?.rows) || 24 });
     const entry: RelayPty = { proc, buf: [], flushTimer: null, closed: false };
     ptys.set(ptyId, entry);
     proc.onData((data) => {

@@ -107,36 +107,62 @@
         <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
              platform — filled by initOrgSwitcher(); hidden for single-org users. -->
         <div id="org-switch-rail" class="org-switch hidden"></div>
-        <!-- GLYPHH, the rail's first row (his orders, 2026-10-09; + New left the
-             rail): its newest thread,
-             else a new one (help/code.ts openGlyphhHome). -->
-        <!-- GLYPHH'S ⋮ (his order, 2026-10-09: "Glyphh needs a super power edit
-             button... the same three dots, no ability to delete"): Edit only.
-             The name is the member's (Glyphh's own record). -->
-        <div class="rail-glyphh-wrap">
-          <button id="rail-glyphh" class="app-rail-nav-item rail-glyphh-row" type="button">
-            <img class="rail-glyphh-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
-            <span id="rail-glyphh-name">Glyphh</span>
+        <!-- + New: a QUIET ROW, not a filled button (his order + screenshot,
+             2026-09-29): it reads as one of the rail's own destinations, in
+             the same grammar as Customize and More below. -->
+        <button id="code-new-chat" class="app-rail-nav-item code-new-session-rail" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New</span>
+        </button>
+        <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
+             Layouts (each opens the modal at that section; the pages live in
+             the modal). Everything else stays modal-only. -->
+        <nav class="app-rail-nav" data-rail-section="menu">
+          <!-- THE RAIL'S MENU (his order, 2026-10-05): Artifacts, Customize
+               on both surfaces — help/surface.ts WEB_RAIL_LINKS. Connections
+               and Devices left the web rail the same day ("remove connections
+               and devices from the left rail on web"); they live in Settings.
+               Artifacts opens the work panel (full screen on the web);
+               Customize opens its page. -->
+          <button class="app-rail-nav-item" data-settings-sub="artifacts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            <span>Artifacts</span>
           </button>
-          <button id="rail-glyphh-menu" class="code-chat-menu-btn rail-glyphh-menu" type="button" title="More" aria-label="More"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></button>
-        </div>
-        <!-- THE RAIL'S NAV ROWS ARE GONE (his order, 2026-10-09: "remove the other
-             items… the entire top left rail"): + New, Glyphh, then Super powers. -->
+          <!-- Customize (his order, 2026-09-20): opens as a work-panel page
+               in the workbench that carries its Settings group's pages as
+               tabs — the same pages, bigger. ONE page since his report,
+               2026-10-07 ("The Build and Customize tabs are confusing. It
+               should just be one tab"): Build's tabs live here, and its
+               update count (#rail-build-badge, app-updates.ts) rides this row. -->
+          <button class="app-rail-nav-item" data-settings-sub="customize">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v6"/></svg>
+            <span>Customize</span><span id="rail-build-badge" class="rail-count hidden"></span>
+          </button>
+          <!-- Schedules (his order, 2026-10-09): its own full-screen page, like Artifacts. -->
+          <button class="app-rail-nav-item" data-settings-sub="schedules">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            <span>Schedules</span>
+          </button>
+          <!-- More: the fly-out for the second-tier destinations (the
+               Browser) — opens IN THE WORKBENCH (navigation.ts). -->
+          <button id="rail-more-toggle" class="app-rail-nav-item app-rail-more-toggle" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            <span>More</span>
+          </button>
+        </nav>
         <!-- Recents — BACK (his order, 2026-09-10): the sessions are the CLI
              agents' own stores now (Claude first); a click resumes that exact
              conversation on its agent. Same section grammar as Apps below. -->
-        <!-- SUPER POWERS (his orders, 2026-10-09): the label, a search under it,
-             then the list — each bot's mascot, its name, the ⋮. A click opens its
-             chat in the Glyphh UI; the threads live in the recents dropdown at the
-             agent's top right. The powers themselves live in the + box. -->
-        <div id="rail-recents-body" class="app-rail-section-body rail-sp-body" data-rail-section="recents">
-          <!-- THE + (his order, 2026-10-09: "a new button next to super powers that
-               opens a new super power modal"): help/super-power-new.ts. -->
-          <div class="code-history-sec rail-sp-head"><span>Super powers</span>
-            <button id="rail-sp-new" class="rail-sp-new" type="button" title="New super power" aria-label="New super power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
-          </div>
+        <div class="code-rail-label app-rail-section-head" data-rail-section="recents">
+          <button id="rail-recents-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Recents</span>
+          </button>
+        </div>
+        <div id="rail-recents-body" class="app-rail-section-body" data-rail-section="recents">
           <div class="app-rail-search">
-            <input id="rail-sp-search" class="rail-recents-search" type="text" placeholder="Search super powers…" spellcheck="false" autocomplete="off" />
+            <input id="recent-sessions-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
+            <button id="recent-sessions-filter" class="rail-filter-btn" type="button" title="Filter by loop and place"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></button>
           </div>
           <div id="recent-sessions-list" class="code-history"></div>
         </div>
@@ -152,12 +178,6 @@
           </button>
           <button id="rail-layouts-add" class="rail-label-btn" type="button" title="Create workspace — save what is on screen" aria-label="Create workspace">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <!-- RESET (his order, 2026-10-09: "reset the workspace back to clean re: the
-               remove all we had on echo panel"): every panel and the open workspace
-               close, and a fresh Glyphh agent comes up. -->
-          <button id="rail-layouts-reset" class="rail-label-btn" type="button" title="Reset — close everything, back to a clean Glyphh" aria-label="Reset workspace">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><polyline points="3 3 3 9 9 9"/></svg>
           </button>
         </div>
         <div id="rail-layouts-body" class="hidden app-rail-section-body" data-rail-section="layouts">
@@ -193,6 +213,9 @@
       <main id="help-content">
         <div id="page-body">
 
+        <!-- Dashboard / Home — the landing section (welcome, budget, spend,
+             apps deployed, usage chart). -->
+        <!--#include sections/dashboard.html -->
 
         <!-- Docs -->
 
@@ -201,13 +224,18 @@
 
         <!-- MCP section removed — merged into Apps tabs -->
 
+        <!-- Files — the artifacts gallery (opens in the workbench, not the modal) -->
+        <!--#include sections/files.html -->
 
         <!-- Layouts -->
 
+        <!--#include sections/drips.html -->
+        <!--#include sections/schedules.html -->
 
 
 
 
+        <!--#include sections/connections.html -->
 
         <!-- Code — the William agent surface (chats | agent | workbench) -->
         <!--#include sections/code.html -->
@@ -280,7 +308,7 @@
 
     <!-- The new-release card lives in the rail (#app-rail-update). -->
   </div>
-  <!-- Chart.js (auto build) → window.Chart, used by the Usage chart. -->
+  <!-- Chart.js (auto build) → window.Chart, used by the Home dashboard chart. -->
   <script src="app-libs/chart.js"></script>
   <!-- Code workbench engine (esbuild bundle: xterm + rails) → window.__initCodeWorkbench -->
   <script src="code-workbench-bundle.js"></script>

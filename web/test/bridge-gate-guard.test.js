@@ -24,14 +24,24 @@ import { scanRenderer, unshimmedNames, contractNames, preloadNames } from './hel
 /** file → { name → why it is safe on web } */
 const ALLOWED = {
   'src/renderer/code-workbench.ts': {
+    gitInfo: 'window.wb.gitInfo — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
     listDir: 'window.wb.listDir — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
   },
   // apps.ts: glyphhAppPreviewOpen is SERVED on web since 2026-10-04 (apps
   // live in the cloud — member-library-web.js answers the instance's panel
   // path through this origin's /app-host proxy).
-  // settings-skills.ts: every name it reads is SERVED on web since 2026-10-04
-  // (member-library-web.js — the library from the server, the machine actions
-  // answering NEEDS_DESKTOP, the runs honest empties).
+  'src/renderer/help/files.ts': {
+    filesRename: 'the Rename row is offered only when hostHas("filesRename")',
+  },
+  // schedules.ts, drips.ts and settings-skills.ts: every name they read is
+  // SERVED on web since 2026-10-04 (member-library-web.js — the library from
+  // the server, the machine actions answering NEEDS_DESKTOP, the runs honest
+  // empties); drips.ts keeps its Stop/Play behind hostHas.
+  'src/renderer/help/settings.ts': {
+    localMcpSetEnabled: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
+    localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
+    localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
+  },
   'src/renderer/help/code.ts': {
     appInstallFolder: 'buildAndRunApp sends the agent a turn instead unless hostHas("appInstallFolder") — the folder is on the worker on the web (the app card, 2026-10-07)',
     appBuildStatus: 'followAppJob returns before the read unless hostHas("appBuildStatus") (the app card, 2026-10-07)',
@@ -47,9 +57,9 @@ const ALLOWED = {
 describe('the web bridge gate guard', () => {
   it('reads both contracts (preload.ts and web-contract.js)', () => {
     const p = preloadNames(), w = contractNames();
-    // pickWorkingDir is the desktop's OS folder picker — never served on web.
-    expect(p.has('pickWorkingDir')).toBe(true);
-    expect(w.has('pickWorkingDir')).toBe(false);
+    // localMcpSetPort is the desktop's loopback MCP server — never served on web.
+    expect(p.has('localMcpSetPort')).toBe(true);
+    expect(w.has('localMcpSetPort')).toBe(false);
     expect(w.has('loopModels')).toBe(true);
     expect(w.has('wsStateLoad')).toBe(true);
     // Schedules and drips are member-library records since 2026-10-04: the
@@ -59,7 +69,7 @@ describe('the web bridge gate guard', () => {
     expect(w.has('dripsList')).toBe(true);
     expect(w.has('dripsSave')).toBe(true);
     expect(w.has('dripsDelete')).toBe(true);
-    expect(unshimmedNames()).toContain('pickWorkingDir');
+    expect(unshimmedNames()).toContain('localMcpSetPort');
     expect(unshimmedNames()).toContain('dripsRunning');     // what is on screen is the desktop's overlay
   });
 

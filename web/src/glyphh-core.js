@@ -304,7 +304,7 @@ const NATIVE = new Set([
 // NOTE: Ada (memory/vectors/encoding) is deliberately NOT here — it is cloud-only
 // now, so a user's memory + sessions are portable to any surface. The only thing
 // genuinely local is the file system (and the shell that acts on it).
-const LOCAL_PREFIXES = ['files:', 'git:', 'pty:', 'terminal:', 'workingDir'];
+const LOCAL_PREFIXES = ['files:', 'git:', 'pty:', 'terminal:', 'localMcp', 'workingDir'];
 const LOCAL_NAMES = new Set([
   'getWorkingDir', 'setWorkingDir', 'pickWorkingDir', 'getWorkingDirRecents',
   // dripsPreview is NOT local anymore — drips render on web (web-contract wires
@@ -313,7 +313,7 @@ const LOCAL_NAMES = new Set([
   // P6 routes these over attach to a connected provider.
   'pickExecutable', 'pickDirectory', 'layoutsPickFolder',
   'glyphhPickAttachments', 'glyphhClassifyPaths', 'glyphhSaveClipboardImage',
-  'appImport', 'appExport', 'appGraduate',
+  'exportGlyphhSkill', 'appImport', 'appExport', 'appGraduate',
 ]);
 
 /**

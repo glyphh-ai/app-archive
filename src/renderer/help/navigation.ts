@@ -9,22 +9,23 @@ import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
 import { loadGatewayKeys } from "./gateway-keys.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { initUsageEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
+import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
 import { loadRemoteControl } from "./settings-remote.js";
-import { loadSandbox } from "./settings-sandbox.js";
 import { initDevices, loadDevices } from "./settings-devices.js";
+import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
-import { openPowersModal } from "./powers-modal.js";
-import { toastInfo } from "./toast.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
+import { loadConnections, initConnections } from "./connections.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
 import { loadMemorySettings } from "./settings-memory.js";
+import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadAdminPlans, loadAdminOrgs, loadAdminModels, loadAdminUsage } from "./settings-admin.js";
@@ -157,7 +158,12 @@ function activeSection(): string {
 
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
-  if (sec === "customize") loadSettingsGroup(sec);
+  if (sec === "dashboard") void loadDashboard();
+  else if (sec === "customize") loadSettingsGroup(sec);
+  else if (sec === "drips") loadDrips();
+  else if (sec === "schedules") void loadSchedulesPage();
+  else if (sec === "connections") void loadConnections();
+  else if (sec === "files") void loadFiles();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
   else if (sec === "support") loadSupport();
@@ -180,8 +186,6 @@ export function gotoSection(section: string, sub?: string): void {
     openSettingsModal(sub);
     return;
   }
-  // The Customize page is gone (2026-10-09): its name opens the powers modal.
-  if (section === "customize" || section === "build") { openPowersFor(sub); return; }
   // "Customize" — the rail's app-settings entry. Opens the modal on the app-
   // config anchor ("app" → appearance via SETTINGS_SUB_ALIAS).
   if (section === "app") {
@@ -200,12 +204,22 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
+  // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
+  // as section panels beside the agent, never inside settings.
+  if (["drips", "connections"].includes(section)) {
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
+    return;
+  }
   // Content sections need the window body — if Glyphh is collapsed to the
   // rail, expand it (the workspace apps slide back right).
+  if (["files"].includes(section)) {
+    void window.glyphh.railCollapseSet?.(false);
+  }
   void window.glyphh.setPreference?.("homeLastSection", section);
   void window.glyphh.setPreference?.("homeLastSub", sub || "");
-  // 2.5.0 shell: "code" is the agent surface; the full-screen pages
-  // (Artifacts, a super power's page) are the only other things it opens.
+  // 2.5.0 shell: every section IS a workbench panel — opening one replaces
+  // the workspace with just that panel; "code" is the agent surface. The
+  // loader runs via __wbSectionLoad once the panel's DOM mounts.
   resetEditors();
   document.body.dataset.railSection = section;
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenSection?: (s: string) => void };
@@ -276,6 +290,10 @@ export function closeSettingsModal(): void {
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
+  // Park every adopted section body (the whole-node sections) back into
+  // its own hidden section FIRST, so the settings layout below doesn't carry
+  // any of them back into the settings pen.
+  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   // Park the shared .settings-layout DOM back in its hidden section pen so its
   // ids stay unique and it's ready to be re-adopted next open.
   const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
@@ -333,11 +351,11 @@ function arrangeAppSettingsNav(): void {
       const pick = (sub: string): Element | null =>
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
-      // Memory, Appearance, Account, Usage, MCP Server.
+      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
       // Appearance sits right under General (his order, 2026-09-20).
       // Connections lives in BUILD on both hosts (his order, 2026-10-05: the
       // web's Build page is the desktop's, tab for tab).
-      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "usage", "mcp"]) {
+      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -383,11 +401,6 @@ export function openSettingsModal(sub?: string): void {
   // THE GROUP PAGE (his order, 2026-10-07): a Customize row is a tab of the
   // full-screen page on both surfaces, never a page of the modal — a deep
   // link, the + menu's Manage rows and every older caller land there.
-  // POWERS NEVER OPEN IN SETTINGS (his report, 2026-10-09: "it pulled up some
-  // old app -> settings connection page that should be dead… it should have
-  // pulled up the connections modal in the bottom of the page by the chat
-  // input"): connections, models and every kind of power open the powers modal.
-  if (sub && POWER_SUBS.has(sub)) { openPowersFor(sub); return; }
   const group = sub ? groupOfSub(sub) : null;
   if (group && sub) { openGroupTab(group, sub); return; }
   // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
@@ -875,6 +888,7 @@ function loadSettingsSub(sub: string): void {
   // members, billing (the license), apps, download, support, docs,
   // and the super-admin Plans/Orgs console.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
+  else if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
@@ -889,6 +903,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
+  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   // Organization › General — the org record page (admin-gated nav).
   else if (sub === "org-general") void loadOrgPanel();
@@ -902,9 +917,11 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
-  else if (sub === "remote") { void loadRemoteControl(); void loadSandbox(); if (document.getElementById("system-devices")?.classList.contains("hidden") === false) { initDevices(); void loadDevices(); } }
+  else if (sub === "remote") void loadRemoteControl();
   else if (sub === "devices") { initDevices(); void loadDevices(); }
   // The installer is a terminal panel, not a settings page: open it and step aside.
+  // Artifacts adopts the FILES section (the gallery page) — same page, second door.
+  else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
 // ── The Customize work-panel ──────────────────────────────────────────────
@@ -1047,23 +1064,11 @@ export function loadSettingsGroup(group: string): void {
  *  already-open page just switches. Whether the page was painted is read
  *  BEFORE the open (his report, 2026-10-07: a fresh mount painted the tab
  *  through loadSettingsGroup and then showed it a second time). */
-export function openGroupTab(_group: GroupPage, sub: string): void {
-  // THE CUSTOMIZE PAGE IS GONE (his order, 2026-10-09): its tabs are the powers
-  // modal's now — every power, connection and model opens there.
-  openPowersFor(sub);
-}
-
-/** Settings pages that are powers now: they open the powers modal, never Settings. */
-const POWER_SUBS: ReadonlySet<string> = new Set(["powers", "connections", "connections-cfg", "mcp", "models", "skills", "tasks", "apps", "plugins", "agents"]);
-
-/** A Customize tab's name → the powers modal's tab (the page is gone, 2026-10-09). */
-export function openPowersFor(sub?: string): void {
-  const s = String(sub ?? "");
-  if (s === "agents") { toastInfo("Super powers live in the left rail: open one's ⋮ to edit it."); return; }
-  const tab = s === "connections-cfg" || s === "connections" ? "connections" : s === "models" ? "models" : "skills";
-  // Through the chat's door when it is up: it routes an agent panel's ask to the shell.
-  const door = (window as unknown as { __glyphhOpenPowers?: (t: string) => void }).__glyphhOpenPowers;
-  if (door) door(tab); else openPowersModal({ tab });
+export function openGroupTab(group: GroupPage, sub: string): void {
+  groupLastSub[group] = sub;
+  const painted = !!document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"] .settings-group-tabs > .skills-tab[data-sub="${sub}"]`);
+  (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(group);
+  if (painted) showGroupTab(group, sub);
 }
 
 /** THE PAGE'S ONE TOOLBAR (his order, 2026-10-09: "make the header of the
@@ -1075,8 +1080,6 @@ export function openPowersFor(sub?: string): void {
 let lentTools: Array<{ el: HTMLElement; parent: HTMLElement; next: Node | null }> = [];
 // The workbench hands lent tools home before a section leaves for its own page.
 (window as unknown as { __glyphhReturnGroupTools?: () => void }).__glyphhReturnGroupTools = () => returnGroupTools();
-// The powers modal borrows a settings panel (Your powers = Customize › Skills) and loads it through here.
-(window as unknown as { __glyphhLoadSettingsSub?: (sub: string) => void }).__glyphhLoadSettingsSub = (sub: string) => loadSettingsSub(sub);
 function returnGroupTools(): void {
   for (const t of lentTools.reverse()) {
     try { t.parent.insertBefore(t.el, t.next && t.next.parentNode === t.parent ? t.next : null); } catch { /* origin gone with its panel */ }
@@ -1146,6 +1149,9 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
  */
 function returnGroupPanels(): void {
   returnGroupTools();   // a lent search / Add goes home with its panel
+  // Park adopted sections BEFORE moving their hosts: a section mounted into a
+  // group panel makes that panel an ancestor of the pen it must return to.
+  for (const s of Object.keys(SETTINGS_SECTIONS)) parkSettingsSection(s);
   for (const sub of Object.keys(groupPanelPen)) {
     const pen = groupPanelPen[sub];
     const panel = document.querySelector<HTMLElement>(`.settings-group-host .settings-panel[data-sub="${sub}"]`);
@@ -1167,6 +1173,49 @@ function rehostOpenGroups(): void {
   });
 }
 
+// ── Whole-section in-modal adoption (A2 apps/connections, A3 loops/skills/
+//    agents) ────────────
+//
+// Move-not-clone discipline. These layouts are styled through selectors scoped to
+// `.help-section[data-section=X]` and its DIRECT children — so moving only the
+// children out would break those rules. Instead the WHOLE `.help-section` node
+// is moved into the panel host and given `.active` (so its full-height flex +
+// detail-pane CSS still applies), then parked straight back into #page-body on
+// close. Its `data-section` never triggers the workbench, since nothing routes
+// these sections there anymore.
+const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
+  files: { host: "settings-files-host" },
+  connections: { host: "settings-connections-host" },
+};
+
+/** Where a moved section lives when NOT adopted (the hidden #page-body pen),
+ *  captured on first mount so it can be parked back precisely. */
+const settingsSectionPen: Record<string, HTMLElement | null> = {};
+
+/** Adopt the whole .help-section[data-section=X] node into its settings-modal
+ *  host and activate it. Idempotent — a no-op once already adopted. */
+function mountSettingsSection(section: string): void {
+  const cfg = SETTINGS_SECTIONS[section];
+  if (!cfg) return;
+  const host = document.getElementById(cfg.host);
+  const sec = document.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
+  if (!host || !sec) return;
+  if (sec.parentElement === host) { sec.classList.add("active"); return; }
+  settingsSectionPen[section] = sec.parentElement as HTMLElement | null;
+  sec.classList.add("active");
+  host.appendChild(sec);
+}
+
+/** Park a section's node back into its hidden #page-body pen and deactivate it. */
+function parkSettingsSection(section: string): void {
+  const cfg = SETTINGS_SECTIONS[section];
+  if (!cfg) return;
+  const host = document.getElementById(cfg.host);
+  const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
+  const pen = settingsSectionPen[section];
+  if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
+}
+
 // ── Init ─────────────────────────────────────────────────
 
 export function initHelp() {
@@ -1174,6 +1223,10 @@ export function initHelp() {
   primeGroupPrefs();       // the Customize page's remembered tab and scope (his report, 2026-10-07)
   document.getElementById("help-close")?.addEventListener("click", closeHelp);
 
+  // The workbench bundle can't import help modules — it calls this bridge
+  // after mounting a section panel so the section's data actually loads.
+  (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad =
+    (section: string) => loadActiveSection(section);
   // (The header's Glyphh mark is gone — no logo in the chrome cluster.)
   // The code section is the permanent shell now — always active.
   document.querySelector(`.help-section[data-section="code"]`)?.classList.add("active");
@@ -1186,9 +1239,7 @@ export function initHelp() {
   // Scope to the MAIN settings nav's own direct items.
   const settingsSubNav = settingsNavOwn<HTMLButtonElement>(".settings-nav-item");
   settingsSubNav.forEach((btn) => {
-    // An external row (Platform) is a plain link: it opens in the browser, and
-    // the settings modal steps aside rather than staying up behind it.
-    if (btn instanceof HTMLAnchorElement) { btn.addEventListener("click", () => closeSettingsModal()); return; }
+    if (btn instanceof HTMLAnchorElement) return; // an external row (Platform) is a plain link
     btn.addEventListener("click", () => {
       // Docs has its own topics nav, so it opens as its own section — and the
       // settings modal must step aside for it.
@@ -1208,7 +1259,63 @@ export function initHelp() {
     });
   });
 
-  // (The rail's nav rows and the More fly-out are gone, his order 2026-10-09.)
+  // ── App rail (Code-primary surface) ─────────────────────────────────────
+  // Three rail links — Connections / Apps / Layouts — each opens the SETTINGS
+  // MODAL at its section (the pages live in the modal; the rail is otherwise
+  // + New session and Recents only).
+  // Rail items open IN THE WORKBENCH (section cards) — the rail is the
+  // workspace's front door, and Settings stays a small preferences surface.
+  const RAIL_WB_SECTIONS: Record<string, string> = { customize: "customize", schedules: "schedules" };
+  document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const sub = btn.dataset.settingsSub!;
+      // THE ARTIFACTS PANEL (his order, 2026-10-05): the rail's Artifacts
+      // opens the work panel — an ordinary card on the desktop, full screen
+      // on the web (code-workbench.ts __wbOpenTool) — never the Settings page.
+      if (sub === "artifacts") { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("artifacts"); return; }
+      const wb = RAIL_WB_SECTIONS[sub];
+      if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
+      else openSettingsModal(sub);
+    });
+  });
+  // The More fly-out — second-tier rail destinations, every one a WORKBENCH
+  // surface: Loops/Skills open as section cards, Browser as the preview
+  // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
+  const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
+    { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
+  ];
+  const moreToggle = document.getElementById("rail-more-toggle");
+  let moreMenu: HTMLDivElement | null = null;
+  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; moreToggle?.classList.remove("open"); document.removeEventListener("click", onMoreOutside, true); };
+  const onMoreOutside = (ev: MouseEvent): void => {
+    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
+  };
+  moreToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (moreMenu) { closeMore(); return; }
+    const menu = document.createElement("div");
+    menu.id = "rail-more-menu";
+    menu.className = "code-menu rail-more-menu";
+    for (const it of MORE_ITEMS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "app-rail-nav-item";
+      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
+      b.addEventListener("click", () => { closeMore(); it.open(); });
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+    moreMenu = menu;
+    const r = moreToggle.getBoundingClientRect();
+    menu.style.left = `${r.right + 6}px`;
+    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
+    moreToggle.classList.add("open");
+    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
+  });
+  // (Artifacts rides the same data-settings-sub path — every rail link opens
+  // the settings modal; the files PAGE stays reachable via gotoSection for
+  // other callers, and closing the modal parks the adopted node back.)
 
   // The "More" fly-out (Loops / Skills / Agents) was removed in A3 — those
   // sections live in the Settings modal now, so the rail no longer carries a
@@ -1308,11 +1415,15 @@ export function initHelp() {
   const boot = (name: string, fn: () => void): void => {
     try { fn(); } catch (err) { console.error(`[init] ${name} failed:`, err); }
   };
-  boot("usage", initUsageEvents);
+  boot("dashboard", initDashboardEvents);
   boot("org", initOrgPanel);
   boot("settings", initSettings);
+  boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
+  boot("drips", initDripsEvents);
+  boot("schedules", initSchedulesEvents);
+  boot("connections", initConnections);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).
