@@ -122,15 +122,6 @@ export const WEB_CUSTOMIZE_SUBS: ReadonlyArray<string> = Object.freeze([]);
  *  its rows in this order under the one Customize header. */
 export const CUSTOMIZE_TAB_ORDER: ReadonlyArray<string> = Object.freeze(["skills", "agents", "apps", "connections-cfg", "plugins", "tasks"]);
 
-/** The tabs with a Discover half (a hub / a directory). The page's one
- *  Yours | Discover switch spans every tab (his report, 2026-10-07: "instead
- *  of each tab having a different Yours / Discover it should span all the
- *  tabs and switching it should stay"); a tab without one shows an empty
- *  state under Discover rather than a dead switch. */
-export const DISCOVER_SUBS: ReadonlyArray<string> = Object.freeze(["skills", "apps", "plugins", "tasks", "connections-cfg"]);
-export function subHasDiscover(sub: string): boolean {
-  return DISCOVER_SUBS.includes(sub);
-}
 
 /** The settings nav group header the web's Settings modal does not list —
  *  the rail's Customize page carries those tabs on the web. */
@@ -139,13 +130,14 @@ export const WEB_HIDDEN_NAV_GROUPS: ReadonlyArray<string> = Object.freeze(["nav-
 /** The pages the web's Settings modal lists (the test pins this list against
  *  the desktop-only ones so a page can never be on both sides). */
 export const WEB_KEPT_SUBS: ReadonlyArray<string> = Object.freeze([
-  "general", "appearance", "memory", "privacy", "devices", "account", "artifacts", "usage", "connections-cfg",
-  "billing", "support", "about",
+  "general", "appearance", "models", "memory", "artifacts", "connections-cfg",
+  "billing",
 ]);
 
 /** The MCP Server page is the DESKTOP's local MCP door — a capability the
- *  browser lacks (his order, 2026-10-05: "mcp server shouldn't be on the web"). */
-export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp"]);
+ *  browser lacks (his order, 2026-10-05: "mcp server shouldn't be on the web").
+ *  Loops are the CLIs installed on this machine: the browser has none. */
+export const WEB_DESKTOP_ONLY_EXTRA: ReadonlyArray<string> = Object.freeze(["mcp", "loops"]);
 
 /** THE RAIL'S MENU ON THE WEB (his order, 2026-10-05: "In web the build,
  *  customize webpanels should be what is shown in the left rail", then
@@ -251,6 +243,11 @@ export const WEB_HIDDEN_RAIL: ReadonlyArray<string> = Object.freeze([
 export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
   "#streamed-panels-row",
   "#rail-layouts-row",
+  // The loops are the desktop's CLIs: the web runs Glyphh's own loop alone.
+  "#agent-defaults-head",
+  "#default-loop-row",
+  "#default-view-row",
+  "#cli-gateway-row",
 ]);
 
 // ── THE TOOL VIEWS ─────────────────────────────────────────────────────────
@@ -347,6 +344,8 @@ export function surfaceLayoutCells(cells: ReadonlyArray<LayoutCellIn>, apps: Rea
     const id = String(c?.panelId ?? "").trim();
     if (!id) { skipped.push("an empty cell"); continue; }
     if (id.toLowerCase() === LAYOUT_AGENT_CELL) { keep.push({ kind: "agent" }); continue; }
+    // A loop's own cell (agent:<cli>) is an agent cell too; it opens as the chat where there is no terminal for it.
+    if (/^agent:/i.test(id)) { keep.push({ kind: "agent" }); continue; }
     if (id.startsWith("tool:")) {
       // a saved cell may name a view by its older alias (the open does the same)
       const raw = id.slice(5);

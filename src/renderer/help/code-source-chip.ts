@@ -217,58 +217,6 @@ export function createSourceChip(opts: {
 // ── The GIT chip (landing row, after the folder) ──────────────────────────
 const BRANCH_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>`;
 
-/** The repo picker for a CLOUD source — the repository the remote agent checks
- *  out into the project workspace. Hidden on a local source (the passive
- *  branch mirror covers local); "Connect GitHub" when no account is linked
- *  (renderRepos carries the connect flow + poll). */
-export function createGitChip(opts: {
-  getSource: () => Source;
-  onPick: (s: Source) => void;
-}): { el: HTMLElement; refresh: () => void } {
-  const wrap = document.createElement("div");
-  wrap.className = "cl-runtime-chip-wrap";
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "cl-runtime-chip cl-runtime-btn";
-  btn.title = "The GitHub repository this cloud workspace checks out";
-  wrap.appendChild(btn);
-
-  let menu: HTMLElement | null = null;
-  const closeMenu = (): void => { menu?.remove(); menu = null; };
-
-  // VISIBILITY IS THE SPACE'S CALL, not this chip's — Code shows every chip,
-  // Work and Chat show no repo chip at all. Hiding itself on a local source
-  // (as it used to) meant a Code session working on a machine folder had no
-  // GitHub control anywhere.
-  const paint = (): void => {
-    const s = opts.getSource();
-    const label = s.kind === "cloud-repo" && s.repo ? lastSeg(s.repo) : "Connect GitHub";
-    btn.innerHTML = `${BRANCH_SVG}<span class="cl-runtime-lbl"></span>${CHEV}`;
-    (btn.querySelector(".cl-runtime-lbl") as HTMLElement).textContent = label;
-  };
-
-  const pick = (next: Source): void => { opts.onPick(next); paint(); closeMenu(); };
-
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (menu) { closeMenu(); return; }
-    closeAllDrops();
-    menu = document.createElement("div");
-    menu.className = "code-drop-up ws-source-drop";
-    wrap.appendChild(menu);
-    menu.classList.add("ws-drop-flex");
-    renderRepos(menu, opts, pick, closeMenu);
-    clampDropUp(menu, btn);
-    clampDropX(menu, btn);
-  });
-  document.addEventListener("mousedown", (e) => {
-    if (menu && !wrap.contains(e.target as Node)) closeMenu();
-  }, true);
-
-  paint();
-  return { el: wrap, refresh: paint };
-}
-
 /** Open the MACHINE FOLDER BROWSER as a drop anchored to `anchor` — the folder
  *  chip's web plumbing (desktop keeps the native OS picker). Resolves the
  *  source's machine (machineId) so multi-desktop picks land on the right box. */
@@ -382,7 +330,12 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
   const paintRoot = async (): Promise<void> => {
     const { search, list } = frame();
     list.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your places…</div>`);
-    const [machines, spaces, reach] = await Promise.all([listMachines(), listSpaces(), probeSources()]);
+    // THE DESKTOP WORKS IN LOCAL FOLDERS ONLY: there is no cloud runtime to
+    // ask, so it reads no machines, cloud folders or reachability.
+    const local = surface === "desktop";
+    const [machines, spaces, reach] = local
+      ? [[] as Awaited<ReturnType<typeof listMachines>>, [] as Awaited<ReturnType<typeof listSpaces>>, {} as Awaited<ReturnType<typeof probeSources>>]
+      : await Promise.all([listMachines(), listSpaces(), probeSources()]);
     if (!menu.isConnected) return;
     const model = pickerSections({
       surface,
@@ -476,7 +429,8 @@ export function openFolderLocusPicker(anchor: HTMLElement, opts: {
         }
       }
 
-      // ── the cloud ──────────────────────────────────────────────────────
+      // ── the cloud (the web only) ───────────────────────────────────────
+      if (local) return;
       const cloudLabel = document.createElement("div");
       cloudLabel.className = "ws-sec-label";
       cloudLabel.innerHTML = `${LOCUS_SVG.cloud}<span></span>`;
@@ -845,10 +799,7 @@ async function probeCloud(): Promise<{ ok: boolean | null; why?: string }> {
     try { await h().fsSpaces(); return { ok: true }; }
     catch (err) { return answered(err) ? { ok: true } : { ok: false, why: `Can't reach the cloud runtime right now (${errorText(err)})` }; }
   }
-  const g = (window as unknown as { glyphh?: { threadsList?: () => Promise<unknown> } }).glyphh;
-  if (typeof g?.threadsList !== "function") return { ok: null };
-  try { await g.threadsList(); return { ok: true }; }
-  catch (err) { return answered(err) ? { ok: true } : { ok: false, why: `Can't reach the cloud runtime right now (${errorText(err)})` }; }
+  return { ok: null };   // the desktop has no cloud runtime to reach
 }
 
 /** Probe both, cached briefly so opening the menu twice is not two round trips.
@@ -979,164 +930,6 @@ async function listMachines(): Promise<AttachedMachine[]> {
   // Desktop with no SDK attach: the running machine IS the local one.
   if (!isWeb() && wbh()?.pickCwd) return [{ id: "local", name: "This machine", capabilities: [] }];
   return [];
-}
-
-/** The DESKTOP's git bridge (preload IPC) — the renderer has no SDK handle
- *  there. Present ⇒ the picker runs on it and a pick CLONES into the local
- *  folder ("create from git locally", his spec 2026-08-27). */
-type DesktopGit = {
-  gitStatus?: () => Promise<{ ok: boolean; status?: { connected: boolean }; error?: string }>;
-  gitRepos?: () => Promise<{ ok: boolean; repos?: Repo[]; error?: string }>;
-  gitConnect?: () => Promise<{ ok: boolean; error?: string }>;
-  gitCloneInto?: (repo: string, dir: string) => Promise<{ ok: boolean; error?: string }>;
-};
-const desktopGit = (): DesktopGit | null => {
-  // hostHas, not typeof: the web bridge fabricates a function for any name.
-  if (!hostHas("gitCloneInto")) return null;
-  return (window as unknown as { glyphh?: DesktopGit }).glyphh ?? null;
-};
-
-// ── Cloud → GitHub repo picker ───────────────────────────────────────────
-function renderRepos(
-  menu: HTMLElement,
-  opts: { getSource: () => Source },
-  pick: (s: Source) => void,
-  onBack: () => void,
-): void {
-  backHead(menu, "GitHub repo", onBack);
-  const body = document.createElement("div");
-  menu.appendChild(body);
-  body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Loading…</div>`);
-
-  const s = sdk();
-  const dg = s?.git?.status ? null : desktopGit();
-  if (!s?.git?.status && !dg) {
-    body.textContent = "";
-    body.insertAdjacentHTML("beforeend",
-      `<div class="ws-note"><div class="ws-note-title">GitHub needs an update</div><div class="ws-note-body">This build can't reach GitHub yet — update the Glyphh desktop app.</div></div>`);
-    return;
-  }
-
-  const current = opts.getSource().kind === "cloud-repo" ? (opts.getSource() as { repo: string }).repo : "";
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-  const paintRepos = (repos: Repo[]): void => {
-    body.textContent = "";
-    const list = document.createElement("div");
-    list.className = "code-repo-drop-list";
-    // Search is ALWAYS present (not just past 8 repos) and stays pinned while
-    // the LIST scrolls beneath it.
-    const search = document.createElement("input");
-    search.type = "text";
-    search.className = "loop-drop-search repo-drop-search";
-    search.placeholder = "Search repositories…";
-    search.spellcheck = false;
-    search.autocomplete = "off";
-    search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-    // Search at the TOP, like every other popup (his call, 2026-08-27 —
-    // replacing the bottom seat this drop-up experimented with).
-    body.appendChild(search);
-    body.appendChild(list);
-    const draw = (): void => {
-      list.textContent = "";
-      const q = (search?.value || "").trim().toLowerCase();
-      const shown = q ? repos.filter((r) => r.fullName.toLowerCase().includes(q)) : repos;
-      if (!shown.length) {
-        list.insertAdjacentHTML("beforeend", `<div class="drop-empty">${repos.length ? "No repositories match." : "No repositories found."}</div>`);
-        return;
-      }
-      for (const r of shown) {
-        const it = drillItem(r.fullName, `${r.private ? "private" : "public"} · ${r.defaultBranch}`, r.fullName === current ? CHECK : "");
-        if (r.fullName === current) it.classList.add("selected");
-        it.addEventListener("click", () => {
-          // THE PICK HONORS THE SESSION'S LOCUS (his rule, 2026-08-28: "they
-          // should be able to do this from anywhere"). A CLOUD session gets
-          // the repo as its cloud checkout — desktop and web identically; the
-          // desktop-only extra is that a LOCAL session clones the repo into
-          // the working folder instead.
-          const locus = opts.getSource().kind;
-          if (!dg || locus !== "local") { pick({ kind: "cloud-repo", repo: r.fullName }); return; }
-          // LOCAL: clone into the current working folder — the empty-folder
-          // check lives in main; a non-empty folder answers with exactly why.
-          void (async () => {
-            it.classList.add("busy");
-            const cwd = String(await (window as unknown as { wb?: { getCwd?: () => Promise<string> } }).wb?.getCwd?.() ?? "");
-            if (!cwd) { paintNote("Pick a working folder first — the repo clones into it."); return; }
-            const res = await dg.gitCloneInto!(r.fullName, cwd);
-            if (!res.ok) { paintNote(res.error || "Clone failed."); return; }
-            onBack();
-            // The folder just became a repo — the workbench repaints the
-            // workdir bar + git dot off this event.
-            window.dispatchEvent(new CustomEvent("glyphh:cwd-content-changed"));
-          })();
-        });
-        list.appendChild(it);
-      }
-    };
-    search.addEventListener("input", draw);
-    draw();
-    requestAnimationFrame(() => search.focus());
-  };
-
-  const paintNote = (msg: string): void => {
-    body.querySelector(".ws-clone-note")?.remove();
-    body.insertAdjacentHTML("beforeend", `<div class="ws-note ws-clone-note"><div class="ws-note-body"></div></div>`);
-    (body.querySelector(".ws-clone-note .ws-note-body") as HTMLElement).textContent = msg;
-  };
-  const load = async (): Promise<boolean> => {
-    try {
-      const st = dg ? (await dg.gitStatus!()).status : await s!.git!.status!();
-      if (!st?.connected) return false;
-      const repos = dg ? ((await dg.gitRepos!()).repos ?? []) : (s!.git!.repos ? await s!.git!.repos!() : []);
-      paintRepos(Array.isArray(repos) ? repos : []);
-      // ── account rows under the list ─────────────────────────────────────
-      // A GitHub App only lists repos its INSTALLATION was granted — a short
-      // list is a grant question, not a bug, so say where to widen it. And
-      // the connection needs a door OUT (there was none anywhere).
-      const manage = drillItem("Manage repository access…", "Grant the Glyphh app more repositories on GitHub", "");
-      manage.addEventListener("click", () => { window.open("https://github.com/settings/installations", "_blank", "noopener"); });
-      body.appendChild(manage);
-      const disc = drillItem("Disconnect GitHub", "Unlink this account (repos stop listing here)", "");
-      disc.addEventListener("click", () => {
-        if (!s?.git?.disconnect) return;
-        void s.git.disconnect()
-          .then(() => { body.textContent = ""; connectRow(); })
-          .catch(() => { /* the row stays; a failed unlink changes nothing */ });
-      });
-      body.appendChild(disc);
-      return true;
-    } catch { return false; }
-  };
-
-  const connectRow = (): void => {
-    body.textContent = "";
-    const row = drillItem("Connect GitHub…", "Link your account to clone a repository", "");
-    row.addEventListener("click", () => {
-      const arm = (): void => {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(() => {
-          void load().then((ok) => { if (ok && pollTimer) { clearInterval(pollTimer); pollTimer = null; } });
-        }, 2500);
-        setTimeout(() => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }, 180000);
-      };
-      if (dg) {
-        // Desktop: main opens the OAuth link in the default browser; the
-        // callback's self-closing page ends there, and the poll picks the
-        // fresh connection up here.
-        void dg.gitConnect!().then((r) => { if (r.ok) arm(); });
-        return;
-      }
-      if (!s?.git?.connect) return;
-      void s.git.connect().then((link) => {
-        if (!link?.url) return;
-        window.open(link.url, "glyphh-git-oauth", "width=600,height=760");
-        arm();
-      });
-    });
-    body.appendChild(row);
-  };
-
-  void load().then((connected) => { if (!connected) connectRow(); });
 }
 
 // ── Local → attached-machine folder browser ──────────────────────────────

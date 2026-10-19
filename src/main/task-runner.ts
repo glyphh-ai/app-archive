@@ -10,13 +10,9 @@
  *
  * Each run is one utility process (task-host.ts). Main answers its ctx calls
  * here: agent turns through the slotted agent's headless CLI, connection
- * tools, app data, Jev decisions (ctx.decide / ctx.route, task-decide.ts),
- * checkpoints, logs. Every answer is journaled in loop_runs
+ * tools, app data, checkpoints, logs. Every answer is journaled in loop_runs
  * as it lands, so the run has a story and a cursor: a run cut off mid-way
  * resumes on the next boot from the last checkpoint the program chose.
- *
- * Desktop only. The fork stores and distributes bundles through the hub and
- * never executes one.
  */
 
 import { broadcast as broadcastToRenderers } from "./broadcast";
@@ -33,12 +29,8 @@ import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { onUserChange } from "./user-scope.js";
-import { noteLibrarySave } from "./library-events.js";
-import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { pickSlotAgent, type SlotRosterEntry } from "./task-slot-pick.js";
-import { mcpCreds } from "./gateway-token.js";
-import { answerDecision } from "./task-decide.js";
 
 /** A slot: the agent it names and the model it runs on (every slot runs on the Glyphh loop). */
 export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
@@ -58,7 +50,7 @@ export interface TaskSpec {
   slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
   connections: string[]; schedule: string | null; enabled: boolean; dir: string;
 }
-export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "decide" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
+export interface RunEvent { t: string; kind: "agent" | "connection" | "data" | "checkpoint" | "log" | "resume" | "rpa"; [k: string]: unknown }
 export interface RunJournal { checkpoints: Record<string, unknown>; events: RunEvent[] }
 export interface TaskRun {
   id: string; taskSlug: string; scheduleId: string | null; trigger: string; startedAt: string; durationMs: number | null;
@@ -79,8 +71,6 @@ function readManifest(dir: string): TaskManifest {
 
 function writeManifest(dir: string, m: TaskManifest): void {
   fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(m, null, 2) + "\n", "utf-8");
-  // The bundle changed on this machine: the member library hears it (library-sync.ts).
-  noteLibrarySave("task", path.basename(dir));
 }
 
 function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
@@ -188,7 +178,7 @@ function pinCommonJs(dir: string): void {
 
 /** A program that hands one prompt to one slot: the shape every pre-bundle task had. */
 function promptProgram(prompt: string, slot: string): string {
-  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\n// A decision with fixed options: ctx.route(state, ["a", "b"], { minConfidence, fallback }) (Jev, deterministic).\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
+  return `// A Glyphh task: the desktop runs this program itself. The slotted agent does the work.\nconst PROMPT = ${JSON.stringify(prompt)};\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents[${JSON.stringify(slot)}].run(PROMPT));\n  return { output: turn.text };\n};\n`;
 }
 
 /** Slot → agent (+ its model), written into task.json (the install-time
@@ -340,11 +330,8 @@ async function connectionCall(spec: TaskSpec, appSlug: string, tool: string, arg
   if (mode !== "allow") {
     throw new Error(`"${tool}" on ${appSlug} is set to ${mode === "never" ? "Never" : "Needs approval"} — an unattended run only uses tools set to Always allow on the Connections page`);
   }
-  const a = args && typeof args === "object" ? args as Record<string, unknown> : {};
-  if (listConnRows().some((r) => r.slug === appSlug)) return callConnectionTool(appSlug, tool, a);
-  // One client, one refusal rule (gateway-mcp.ts) — the desktop's own connector
-  // lane and this one were two implementations of the same call.
-  return callGatewayTool(appSlug, tool, a);
+  if (!listConnRows().some((r) => r.slug === appSlug)) throw new Error(`no connection named "${appSlug}" — add it on the Connections page`);
+  return callConnectionTool(appSlug, tool, args && typeof args === "object" ? args as Record<string, unknown> : {});
 }
 
 function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<unknown> {
@@ -384,10 +371,6 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
         return Promise.reject(err);
       }
     }
-    case "decide":
-    case "route":
-      // Jev through GlyphhRouter on the member's credential (task-decide.ts).
-      return answerDecision(kind, args, { creds: mcpCreds, push: (ev) => push(ev) });
     case "checkpoint-get": {
       const [key] = args as [string];
       const hit = Object.prototype.hasOwnProperty.call(l.journal.checkpoints, key);
@@ -561,7 +544,6 @@ export function resumeInterruptedRuns(): void {
 
 export function stopTaskRunner(): void {
   for (const [id, l] of live) { clearTimeout(l.timer); try { l.proc.kill(); } catch { /* down anyway */ } live.delete(id); }
-  resetGatewayMcp();
 }
 
 // ── IPC ──────────────────────────────────────────────────────────────────────

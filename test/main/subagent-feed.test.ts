@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { createSubAgentFeed } from "../../src/renderer/help/subagent-feed.js";
-import type { SubAgentWireFrame } from "../../src/renderer/help/remote-run.js";
+import type { SubAgentWireFrame } from "../../src/renderer/help/run-frames.js";
 
 const ref = (n: number, slug = "researcher") => ({ childId: `run#${n}`, slug, name: slug, model: "cheap-model" });
 let seq = 0;

@@ -1,7 +1,7 @@
 /**
  * glyphh-app-ai — AI/data services for Glyphh apps (spec v2):
  *
- *   llm.embed        { text | texts, model? }     local embeddings (ONNX, on-device)
+ *   llm.embed        { text | texts, model? }     local embeddings (on-device)
  *   llm.chunk        { text, maxChars?, overlap? } split text for embedding pipelines
  *   vector.upsert    { collection, items }        per-app vector store
  *   vector.search    { collection, query|vector, k?, filter? }
@@ -11,10 +11,8 @@
  *
  * Everything here is ON-DEVICE and slug-scoped like the other services:
  * vectors in ~/.glyphh/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
- * Embeddings run on the GATEWAY (2026-09-16): the org publishes embedding
- * models, the member picks one in Settings, and every embed is a governed,
- * metered call with their own key. No model ships and no vendor key sits on
- * this machine. Remote chat access (llm.complete / agent.run) lives in
+ * Embeddings run on this machine too (embeddings-config.ts): one built-in
+ * local model, no download and no key. Remote chat access (llm.complete / agent.run) lives in
  * glyphh-app-agent.ts and runs on the app's own config-var key.
  *
  * Vector search is exact cosine over Float32 blobs — at desktop scale
@@ -27,7 +25,7 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
-import { gatewayEmbed, offers, orgEmbedModels, resolveEmbedModel } from "./embeddings-config.js";
+import { localEmbed, offers, orgEmbedModels, resolveEmbedModel } from "./embeddings-config.js";
 
 // kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
 // OPTIONAL feature, and on some machines the prebuilt can't load — most often a
@@ -53,11 +51,11 @@ function loadKuzu(): KuzuModule | null {
 // ── embeddings (llm.embed) ──────────────────────────────────
 const MAX_EMBED_BATCH = 64;
 const MAX_EMBED_CHARS = 8_000;
-const NO_EMBED_MODEL = "no embedding model is configured — pick one in Settings, or ask your org admin to publish one";
+const NO_EMBED_MODEL = "no embedding model is configured";
 
 async function embedTexts(texts: string[], model: string): Promise<number[][]> {
   if (!model) throw new Error(NO_EMBED_MODEL);
-  return gatewayEmbed(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
+  return localEmbed(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
 }
 
 export async function llmEmbed(args: Record<string, unknown>): Promise<{ model: string; dim: number; vectors: number[][] }> {

@@ -7,38 +7,59 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  defaultLocus, newSessionSource, filterRecents, folderGranted, locusFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
+  defaultLocus, newSessionSource, filterRecents, folderGranted, locusFilterOf, loopFilterOf, pickerSections, recentsFilterActive, recentsKeeps,
   sessionLocked, sourceLocus, LOCUS_LOCKED_HINT, sessionIsBlank, type RecentsRowLike,
   defaultWebFolder, filterPickerRows, pickerRecent, PICKER_RECENT_MAX,
   folderAfterPick, canWalkUp,
 } from "../../src/renderer/help/session-locus";
 
 const row = (p: Partial<RecentsRowLike> & { title: string }): RecentsRowLike =>
-  ({ cwd: "", locus: "local", ...p });
+  ({ cwd: "", loopKey: "glyphh", locus: "local", ...p });
 
 const rows: RecentsRowLike[] = [
-  row({ title: "fix the sync bug", cwd: "/Users/me/code/app", locus: "local" }),
-  row({ title: "blog post", locus: "cloud" }),
-  row({ title: "claude refactor", cwd: "/Users/me/code/app", locus: "local" }),
-  row({ title: "triage mail", locus: "local" }),
+  row({ title: "fix the sync bug", cwd: "/Users/me/code/app", loopKey: "glyphh", locus: "local" }),
+  row({ title: "blog post", loopKey: "glyphh", locus: "cloud" }),
+  row({ title: "claude refactor", cwd: "/Users/me/code/app", loopKey: "claude", locus: "local" }),
+  row({ title: "triage mail", loopKey: "glyphh", locus: "local" }),
 ];
 
 describe("the one recents filter", () => {
   it("keeps everything with nothing picked", () => {
-    expect(filterRecents(rows, { locus: "" })).toHaveLength(4);
-    expect(recentsFilterActive({ locus: "" })).toBe(false);
+    expect(filterRecents(rows, { loops: [], locus: "" })).toHaveLength(4);
+    expect(recentsFilterActive({ loops: [], locus: "" })).toBe(false);
   });
 
-  it("narrows by place — This desktop / Cloud", () => {
-    expect(filterRecents(rows, { locus: "cloud" }).map((r) => r.title)).toEqual(["blog post"]);
-    expect(filterRecents(rows, { locus: "local" })).toHaveLength(3);
-    expect(recentsFilterActive({ locus: "cloud" })).toBe(true);
+  it("narrows by loop: one or several, the rest drop out", () => {
+    expect(filterRecents(rows, { loops: ["claude"], locus: "" }).map((r) => r.title)).toEqual(["claude refactor"]);
+    expect(filterRecents(rows, { loops: ["claude", "glyphh"], locus: "" })).toHaveLength(4);
+    expect(filterRecents(rows, { loops: ["codex"], locus: "" })).toHaveLength(0);
+    expect(recentsFilterActive({ loops: ["codex"], locus: "" })).toBe(true);
+  });
+
+  it("narrows by place — This desktop / Cloud — on top of the loop filter", () => {
+    expect(filterRecents(rows, { loops: [], locus: "cloud" }).map((r) => r.title)).toEqual(["blog post"]);
+    expect(filterRecents(rows, { loops: [], locus: "local" })).toHaveLength(3);
+    expect(filterRecents(rows, { loops: ["claude"], locus: "local" }).map((r) => r.title)).toEqual(["claude refactor"]);
+    expect(filterRecents(rows, { loops: ["claude"], locus: "cloud" })).toHaveLength(0);
+    expect(recentsFilterActive({ loops: [], locus: "cloud" })).toBe(true);
   });
 
   it("applies the search exactly as the rail does", () => {
-    expect(filterRecents(rows, { locus: "", query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
+    expect(filterRecents(rows, { loops: [], locus: "", query: "APP" }).map((r) => r.title)).toEqual(["fix the sync bug", "claude refactor"]);
   });
 
+  it("a loop filter naming none of the loops a list can hold is no filter there", () => {
+    const cliOnly = new Set(["claude", "codex"]);
+    expect(recentsKeeps(rows[2]!, { loops: ["glyphh"], among: cliOnly, locus: "" })).toBe(true);
+    expect(recentsKeeps(rows[2]!, { loops: ["codex"], among: cliOnly, locus: "" })).toBe(false);
+    expect(recentsFilterActive({ loops: ["glyphh"], among: cliOnly, locus: "" })).toBe(false);
+  });
+
+  it("coerces the stored loop pick: a list of ids, deduplicated; anything else is every loop", () => {
+    expect(loopFilterOf(["claude", "codex", "claude", " ", 3])).toEqual(["claude", "codex"]);
+    expect(loopFilterOf("claude")).toEqual([]);
+    expect(loopFilterOf(null)).toEqual([]);
+  });
 
   it("a row with no locus stamp is the desktop's", () => {
     expect(recentsKeeps(row({ title: "old", locus: undefined }), { loops: [], locus: "local" })).toBe(true);

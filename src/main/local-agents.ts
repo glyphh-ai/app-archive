@@ -33,8 +33,7 @@ import {
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
 import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type BotAvatarLike } from "../shared/member-library.js";
-import { noteLibraryDelete } from "./library-events.js";
-import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
+import { libraryDelete, libraryRows, libraryWrite } from "./member-library-local.js";
 
 /** Local caps. Blank fields mean "no cap" — the pre-purge page called these
  *  guardrails and inherited an org ceiling; locally there is no ceiling, so
@@ -93,34 +92,31 @@ const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-// THE RUNNING COPY of the server's agent rows (library-remote.ts primes it).
-const agents = new Map<string, AgentRow>();
-function readAgent(slug: string): AgentRow | null {
-  return agents.get(String(slug)) ?? null;
-}
-/** Load (or reload) every agent the server holds for this member. */
-export async function primeAgents(): Promise<void> {
-  const fresh = await remoteList<AgentRow>("agent");
-  const before = new Map(agents);
-  agents.clear();
-  for (const r of fresh) {
+// THE RUNNING COPY of the local library's agent rows (member-library-local.ts),
+// read the first time anything asks.
+const agentRows = new Map<string, AgentRow>();
+let loaded = false;
+function agents(): Map<string, AgentRow> {
+  if (loaded) return agentRows;
+  for (const r of libraryRows<AgentRow>("agent")) {
     if (!isAgentRow(r.data)) continue;
-    const row = { ...(r.data as AgentRow), slug: r.id, id: r.id, updatedAt: new Date(r.updatedAt).toISOString() };
-    agents.set(row.slug, row);
-    const old = before.get(row.slug);
-    if (!old || old.live !== row.live) rearmTasksOf(row.slug);
+    agentRows.set(r.id, { ...(r.data as AgentRow), slug: r.id, id: r.id, updatedAt: new Date(r.updatedAt).toISOString() });
   }
-  announceAgents();
+  loaded = true;
+  return agentRows;
+}
+function readAgent(slug: string): AgentRow | null {
+  return agents().get(String(slug)) ?? null;
 }
 
-/** The row lands in the running copy at once and on the server behind it. */
+/** The row lands in the running copy and the library together. */
 function writeAgent(row: AgentRow): void {
-  agents.set(row.slug, row);
-  void remotePut("agent", row.slug, row).catch((e) => console.warn("[agents] save failed:", String(e)));
+  agents().set(row.slug, row);
+  libraryWrite("agent", row.slug, row);
 }
 
 export function listAgents(): AgentRow[] {
-  return Array.from(agents.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(agents().values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function getAgent(ref: string): AgentRow {
@@ -161,20 +157,17 @@ export function saveAgent(input: AgentInput): AgentRow {
   return row;
 }
 
-/** Delete the agent: its schedules go with it and the server drops the row. */
+/** Delete the agent: its schedules go with it. */
 export function deleteAgent(ref: string): void {
   const slug = String(ref);
   const db = getLocalDb();
   // Its schedules go with it — an orphaned cron with no agent to frame it
-  // would keep firing a prompt nobody can see or edit. Each is tombstoned:
-  // they are library records of their own, and the server must drop them too.
+  // would keep firing a prompt nobody can see or edit.
   for (const t of rawTasksOf(slug)) disarm(t.id);
   db.prepare("DELETE FROM loop_runs WHERE schedule_id IN (SELECT id FROM loop_schedules WHERE owner_agent_id = ?)").run(slug);
-  const owned = rawTasksOf(slug).map((t) => t.id);
   db.prepare("DELETE FROM loop_schedules WHERE owner_agent_id = ?").run(slug);
-  for (const id of owned) noteLibraryDelete("schedule", id);
-  agents.delete(slug);
-  void remoteRemove("agent", slug).catch((e) => console.warn("[agents] delete failed:", String(e)));
+  agents().delete(slug);
+  libraryDelete("agent", slug);
   announceAgents();
 }
 
@@ -305,8 +298,7 @@ export function deleteAgentTask(agentSlug: string, taskId: string): void {
   const db = getLocalDb();
   disarm(String(taskId));
   db.prepare("DELETE FROM loop_runs WHERE schedule_id = ?").run(String(taskId));
-  const gone = db.prepare("DELETE FROM loop_schedules WHERE id = ? AND owner_agent_id = ?").run(String(taskId), String(agentSlug));
-  if (gone.changes) noteLibraryDelete("schedule", String(taskId));
+  db.prepare("DELETE FROM loop_schedules WHERE id = ? AND owner_agent_id = ?").run(String(taskId), String(agentSlug));
 }
 
 export function listAgentTaskRuns(taskId: string): Array<{ id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }> {

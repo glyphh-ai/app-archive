@@ -23,7 +23,6 @@ import { webContents, type WebContents } from "electron";
 import { dispatchRelayMethod, registerRelayHandler } from "./relay-client.js";
 import { panelIsLive } from "./rpa.js";
 import { readRow, updateEntry } from "./apps-store.js";
-import { invalidateOrgApps } from "./org-apps.js";
 import {
   normalizeCommand, normalizeSequence, rpaOf, substitute, withCommand, withSequence, withoutCommand, withoutSequence,
   type RpaCommand, type RpaConfig, type RpaSequence,
@@ -57,7 +56,6 @@ async function writeTabRpa(slug: string, cfg: RpaConfig): Promise<RpaConfig> {
   const row = readRow(slug);
   if (!row) throw new Error(`no saved tab "${slug}"`);
   await updateEntry(slug, { config: { ...(row.config ?? {}), rpa: cfg } });
-  invalidateOrgApps();
   return cfg;
 }
 

@@ -1,13 +1,31 @@
 {
-  "name": "glyphh-apps",
-  "private": true,
-  "productName": "Glyphh Desktop",
+  "name": "@glyphh-ai/app",
   "version": "1.7.1",
-  "description": "Glyphh Desktop \u2014 Your AI workspace.",
+  "productName": "Glyphh",
+  "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glyphh-ai/app.git"
+  },
   "main": "dist/main/main.js",
+  "bin": {
+    "glyphh": "bin/glyphh.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
-    "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco",
+    "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:cli",
+    "build:cli": "tsc -p cli/tsconfig.json && rm -rf dist/cli && esbuild cli/src/main.tsx --bundle --platform=node --format=esm --target=node20 --jsx=automatic --outfile=dist/cli/main.mjs --sourcemap --external:ink --external:react",
+    "typecheck:cli": "tsc -p cli/tsconfig.json",
     "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/pdf-raster.ts --bundle --outfile=dist/renderer/pdf-raster.js --platform=browser --format=iife && esbuild node_modules/pdfjs-dist/build/pdf.worker.mjs --bundle --outfile=dist/renderer/pdf-raster-worker.js --platform=browser --format=esm --minify && shx cp src/renderer/pdf-raster.html dist/renderer/",
     "build:main": "rm -rf dist/main && tsc",
     "build:skill-flow": "esbuild src/renderer/skill-flow.tsx --bundle --outfile=dist/renderer/skill-flow.js --platform=browser --format=iife --jsx=automatic --loader:.css=css",
@@ -26,22 +44,16 @@
     "test:web": "vitest run web/test",
     "test:web:watch": "vitest web/test",
     "clean:local": "bash scripts/clean-local.sh",
+    "build:sdk": "npm --prefix packages/glyphh-sdk ci && npm --prefix packages/glyphh-sdk run build",
+    "prepare": "npm run build:sdk",
+    "prepack": "npm run build:sdk && rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk && cp -R packages/glyphh-sdk/package.json packages/glyphh-sdk/dist node_modules/@glyphh/sdk/",
     "postinstall": "electron-rebuild",
-    "package:mac": "electron-builder --mac",
-    "package:win": "electron-builder --win",
     "test:harness": "npm run build && electron test/harness/run-harness.mjs",
     "test:harness:fast": "electron test/harness/run-harness.mjs",
-    "test": "vitest run",
-    "package:linux": "electron-builder --linux"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/glyphh-ai/app.git"
+    "test": "vitest run"
   },
   "author": "Glyphh AI",
-  "license": "LicenseRef-Proprietary",
   "devDependencies": {
-    "@electron/rebuild": "^3.7.0",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
@@ -50,16 +62,16 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
-    "electron": "^42.5.1",
-    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
+    "ink-testing-library": "^4.0.0",
     "shx": "^0.4.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
-    "@glyphh/sdk": "file:../sdk",
+    "@electron/rebuild": "^3.7.0",
+    "@glyphh/sdk": "file:./packages/glyphh-sdk",
     "@google/genai": "^2.10.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/cytoscape": "^3.21.9",
@@ -75,7 +87,8 @@
     "dagre": "^0.8.5",
     "dompurify": "^3.4.13",
     "dotenv": "^17.4.2",
-    "electron-updater": "^6.8.9",
+    "electron": "^42.5.1",
+    "ink": "^6.8.0",
     "js-yaml": "^4.1.1",
     "kuzu": "^0.11.3",
     "marked": "^14.0.0",
@@ -105,5 +118,11 @@
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0",
     "werift": "^0.24.3"
+  },
+  "bundleDependencies": [
+    "@glyphh/sdk"
+  ],
+  "engines": {
+    "node": ">=20"
   }
 }

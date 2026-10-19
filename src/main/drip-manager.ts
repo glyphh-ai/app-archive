@@ -5,20 +5,13 @@
  * electron-free module src/shared/drip-effects.ts (the web runner renders the
  * same docs). This file owns what only the desktop has: transparent overlay
  * BrowserWindows (full-screen over every app, or windowed over the yo window)
- * and the custom-preset store: the drips table of ~/.glyphh user-state.sqlite,
- * which since 2026-10-04 is this machine's copy of the member library's `drip`
- * records (his rule: "anything that could be local before is now a db row
- * with cloud storage"). A save stamps the writer's clock and tells the sync;
- * a delete tombstones; the sync (library-adapters.ts dripAdapter) writes what
- * the web saved back into the table through applyRemoteDrip / removeDripLocal.
+ * and the custom-preset store: the drips table of ~/.glyphh user-state.sqlite.
  */
 
 import { BrowserWindow, screen } from "electron";
-import type { MemberLibraryItem } from "@glyphh/sdk";
 import { getLocalDb } from "./local-db";
 import { getMainWindowRef } from "./main-window-ref";
-import { noteLibraryDelete, noteLibrarySave } from "./library-events";
-import { dripId, dripRecordOf, isDripData, rowClock, type DripDataLike } from "../shared/member-library";
+import { dripId, dripRecordOf } from "../shared/member-library";
 import {
   BUILTIN_EFFECTS,
   ONE_SHOT_EFFECTS,
@@ -39,37 +32,11 @@ export interface CustomDrip {
   recipe: string;
 }
 
-interface DripRow { name: string; recipe: string; updated_at: string | null; updated_ms: number | null }
-
-/** Every preset as the sync's local row: id = the name, the record, the writer's clock. */
-export function listDripRecords(): Array<{ id: string; updatedAt: number; data: DripDataLike }> {
-  const rows = getLocalDb().prepare("SELECT name, recipe, updated_at, updated_ms FROM drips").all() as DripRow[];
-  return rows.map((r) => ({ id: r.name, updatedAt: rowClock(r.updated_ms, r.updated_at), data: dripRecordOf(r.name, r.recipe) }));
-}
-
-/** A preset the server holds lands in the table at the server's clock. Never
- *  announced to the sync — it came from there — but the manager's cache (the
- *  `.drip` command path) learns it. */
-export function applyRemoteDrip(item: MemberLibraryItem): void {
-  if (!isDripData(item.data)) throw new Error(`drip ${item.id}: not a drip record`);
-  const rec = dripRecordOf(item.id, item.data.recipe);
-  getLocalDb().prepare(
-    `INSERT INTO drips (name, recipe, updated_at, updated_ms) VALUES (?, ?, datetime('now'), ?)
-     ON CONFLICT(name) DO UPDATE SET recipe = excluded.recipe, updated_at = excluded.updated_at, updated_ms = excluded.updated_ms`,
-  ).run(rec.name, rec.recipe, item.updatedAt);
-  current?.refreshFromDb();
-}
-
-/** The server tombstoned it: the row goes, quietly (no tombstone of our own). */
-export function removeDripLocal(name: string): void {
-  getLocalDb().prepare("DELETE FROM drips WHERE name = ?").run(dripId(name));
-  current?.refreshFromDb();
-}
 
 // ── DripManager ─────────────────────────────────────────────
 //
-// Custom drip presets are rows in the drips table of the user-state SQLite
-// (the member library's `drip` kind, synced). The in-memory `customs` cache
+// Custom drip presets are rows in the drips table of the user-state SQLite.
+// The in-memory `customs` cache
 // keeps the synchronous `.drip` command path working; better-sqlite3 writes
 // are sync, so the command path and the Drips tab IPC share one code path.
 
@@ -126,7 +93,6 @@ export class DripManager {
     } catch (err) {
       return `failed to save drip "${rec.name}": ${err instanceof Error ? err.message : String(err)}`;
     }
-    noteLibrarySave("drip", rec.name);
     return `saved drip "${rec.name}" → ${rec.recipe}`;
   }
 
@@ -141,7 +107,6 @@ export class DripManager {
     if (!(id in this.customs)) return `no custom drip "${id}"`;
     delete this.customs[id];
     try { getLocalDb().prepare("DELETE FROM drips WHERE name = ?").run(id); } catch { /* cache already updated */ }
-    noteLibraryDelete("drip", id);
     return `deleted drip "${id}"`;
   }
 

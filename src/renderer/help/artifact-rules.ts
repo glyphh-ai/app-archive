@@ -6,35 +6,28 @@
  * comments, then to send to glyphh for editing").
  *
  * Everything the panel decides without a DOM lives here so the list, the
- * viewer, the share popover and the comment overlay read one answer and the
- * tests pin it: what an artifact IS (code / doc / image / file), the tabs,
- * newest-first grouped by month, the share labels, a drawn region as
- * FRACTIONS of the page (so it survives a resize), and the exact message
- * "Send to Glyphh" puts in the composer. artifacts-panel.ts paints exactly
- * this. The server contract is the SDK's (`client.artifacts.*`; stubbed on
- * both surfaces through `window.glyphh.artifacts*`).
+ * viewer and the comment overlay read one answer and the tests pin it: what
+ * an artifact IS (code / doc / image / file), newest-first grouped by month,
+ * a drawn region as FRACTIONS of the page (so it survives a resize), and the
+ * exact message "Send to Glyphh" puts in the composer. artifacts-panel.ts
+ * paints exactly this, through `window.glyphh.artifacts*`.
+ *
+ * LOCAL ONLY (2026-10-18): artifacts are files on this machine with one
+ * user, so there is no sharing, no access level, no owner and no
+ * "Shared with you" — one list, everything in it the user's own.
  *
  * Unit-tested in test/main/artifact-rules.test.ts.
  */
 
-export type ArtifactAccess = "private" | "org" | "public";
-
-/** The server's artifact row (GET /api/artifacts). */
+/** One artifact row (main/artifacts-ipc.ts maps the local file to it). */
 export interface ArtifactMeta {
   id: string;
   name: string;
   mime: string;
   sizeBytes: number;
-  access: ArtifactAccess;
-  ownerId: string;
-  ownerName: string;
-  /** Mine = I own it (the ⋮ menu's Rename / Share / Delete). */
-  mine: boolean;
   sessionId?: string | null;
   createdAt: string;
   updatedAt: string;
-  viewUrl: string;
-  shareUrl?: string | null;
 }
 
 export interface CommentRegion { x: number; y: number; w: number; h: number }
@@ -50,13 +43,6 @@ export interface ArtifactComment {
   /** Glyphh's own reply in the thread (posted back by this client). */
   agent?: boolean;
 }
-
-export type ArtifactTab = "all" | "mine" | "shared";
-export const ARTIFACT_TABS: ReadonlyArray<{ key: ArtifactTab; label: string }> = Object.freeze([
-  { key: "all", label: "All" },
-  { key: "mine", label: "Yours" },
-  { key: "shared", label: "Shared with you" },
-]);
 
 /** The list's type icon: a page or code, a document, an image, or a file. */
 export type ArtifactKind = "code" | "doc" | "image" | "file";
@@ -90,19 +76,12 @@ export function artifactRender(a: Pick<ArtifactMeta, "mime" | "name">): Artifact
   return "download";
 }
 
-/** THE TABS: All, Yours (mine), Shared with you (someone else's, shared to me). */
-export function filterByTab(list: ReadonlyArray<ArtifactMeta>, tab: ArtifactTab): ArtifactMeta[] {
-  if (tab === "mine") return list.filter((a) => a.mine);
-  if (tab === "shared") return list.filter((a) => !a.mine);
-  return [...list];
-}
-
-/** The search box: name, owner, type — case-insensitive, every word must hit. */
+/** The search box: name, type — case-insensitive, every word must hit. */
 export function searchArtifacts(list: ReadonlyArray<ArtifactMeta>, query: string): ArtifactMeta[] {
   const words = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [...list];
   return list.filter((a) => {
-    const hay = `${a.name} ${a.ownerName} ${a.mime} ${artifactKind(a)}`.toLowerCase();
+    const hay = `${a.name} ${a.mime} ${artifactKind(a)}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }
@@ -149,29 +128,6 @@ export function editedLabel(a: Pick<ArtifactMeta, "updatedAt" | "createdAt">, no
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
   const short = `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
   return `Edited ${sameYear ? short : `${short}, ${d.getFullYear()}`}`;
-}
-
-/** Only the owner renames, shares and deletes. */
-export function canManage(a: Pick<ArtifactMeta, "mine">): boolean {
-  return !!a.mine;
-}
-
-/** The share popover's rows, in order: Private / Organization / Public link. */
-export const SHARE_OPTIONS: ReadonlyArray<{ access: ArtifactAccess; label: string; hint: string }> = Object.freeze([
-  { access: "private", label: "Private", hint: "Only you" },
-  { access: "org", label: "Organization", hint: "Everyone in your org" },
-  { access: "public", label: "Public link", hint: "Anyone with the link" },
-]);
-export function shareLabel(access: ArtifactAccess): string {
-  return SHARE_OPTIONS.find((o) => o.access === access)?.label ?? "Private";
-}
-/** The lock glyph shows on a private row. */
-export function isLocked(a: Pick<ArtifactMeta, "access">): boolean {
-  return a.access === "private";
-}
-/** A public artifact carries a link to copy; the others do not. */
-export function shareLinkOf(a: Pick<ArtifactMeta, "access" | "shareUrl">): string | null {
-  return a.access === "public" && a.shareUrl ? a.shareUrl : null;
 }
 
 // ── THE DRAWN REGION: fractions of the frame, so it survives a resize ───────

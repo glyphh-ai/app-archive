@@ -14,10 +14,10 @@ import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
 import { officePager, officePage, biasThumbCrop } from "./wb-office-ui.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
-export type DriveKind = "slides" | "design" | "media" | "file" | "docs" | "sheets" | "music";
+export type DriveKind = "slides" | "design" | "media" | "file" | "docs" | "sheets";
 export interface DriveEntry {
   kind: DriveKind;
-  /** The stable reference: office/design = the file name; media/music/file = the uuid. */
+  /** The stable reference: office/design = the file name; media/file = the uuid. */
   ref: string;
   /** Office/design keep their file name for the editors' open-by-name APIs. */
   file?: string;
@@ -61,21 +61,16 @@ const driveApi = () => (window as unknown as { glyphh?: {
   gdriveFolderDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   gpointDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   designDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
-  musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: unknown[]; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
-  musicSongs?: () => Promise<{ ok: boolean; songs: unknown[]; error?: string }>;
-  musicArtists?: () => Promise<{ ok: boolean; artists: unknown[]; error?: string }>;
-  musicInstruments?: () => Promise<{ ok: boolean; instruments: unknown[]; error?: string }>;
 } }).glyphh ?? {};
 
-// ── per-kind card icons (media/music/file kinds reuse the app glyphs) ──
+// ── per-kind card icons (media/file kinds reuse the app glyphs) ──
 
 const KIND_ICONS: Record<string, string> = {
   image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
   video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
   audio: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-  band: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 3v10a3 3 0 1 1-2-2.83V6l-8 1.6V15a3 3 0 1 1-2-2.83V5z"/></svg>`,
   design: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.9-.5-1.4 0-1.1.9-2 2-2h2.4c3.1 0 5.6-2.5 5.6-5.6C23 5.5 18.1 2 12 2z"/></svg>`,
   file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
 };
@@ -85,8 +80,8 @@ const mediaIconFor = (subkind?: string): string =>
     : subkind === "audio" || subkind === "voice" ? KIND_ICONS.audio!
     : KIND_ICONS.image!;
 
-const openMediaBridge = (view: "gimage" | "gvideo" | "gsound" | "gband", assetId?: string, songId?: string): void => {
-  (window as unknown as { __wbOpenMedia?: (v: string, a?: string, s?: string) => void }).__wbOpenMedia?.(view, assetId, songId);
+const openMediaBridge = (view: "gimage" | "gvideo" | "gsound", assetId?: string): void => {
+  (window as unknown as { __wbOpenMedia?: (v: string, a?: string) => void }).__wbOpenMedia?.(view, assetId);
 };
 
 const mediaViewFor = (subkind?: string): "gimage" | "gvideo" | "gsound" =>
@@ -133,7 +128,7 @@ function popMenu(x: number, y: number, items: Array<{ label: string; danger?: bo
 /** What a card says under its title. */
 const kindLabel = (f: DriveEntry): string =>
   f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : f.kind === "docs" ? "Docs"
-    : f.kind === "design" ? "Design" : f.kind === "music" ? "Song"
+    : f.kind === "design" ? "Design"
     : f.kind === "media" ? (f.subkind ? f.subkind[0]!.toUpperCase() + f.subkind.slice(1) : "Media")
     : (f.mime === "application/pdf" ? "PDF" : "File");
 
@@ -393,7 +388,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         if (f.kind === "slides") host.openFile("slides", f.file || f.ref, f.title || f.ref);
         else if (f.kind === "design") w.__wbOpenDesign?.(f.file || f.ref, f.title || f.ref);
         else if (f.kind === "media") openMediaBridge(mediaViewFor(f.subkind), f.ref);
-        else if (f.kind === "music") openMediaBridge("gband", undefined, f.ref);
         else {
           // A FILE artifact (R2) opens with the RIGHT tool for its type
           // (his rule, 2026-08-19): text/code → the EDITOR as a content tab;
@@ -419,7 +413,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       };
       const iconFor = (f: DriveEntry): string =>
         f.kind === "slides" ? host.icons.slides
-          : f.kind === "design" ? KIND_ICONS.design! : f.kind === "music" ? KIND_ICONS.band!
+          : f.kind === "design" ? KIND_ICONS.design!
           : f.kind === "media" ? mediaIconFor(f.subkind) : KIND_ICONS.file!;
 
       const fileCard = (f: DriveEntry): HTMLElement => {
@@ -492,7 +486,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         // removed for the whole org, not merely unfiled.
         const del = f.kind === "slides" ? () => driveApi().gpointDelete?.(f.file || f.ref)
           : f.kind === "design" ? () => driveApi().designDelete?.(f.file || f.ref)
-          : f.kind === "music" ? () => driveApi().musicSongDelete?.(f.ref)
           : f.kind === "media" ? () => (driveApi() as { mediaDelete?: (id: string) => Promise<unknown> }).mediaDelete?.(f.ref)
           : f.kind === "file" ? () => api.filesDelete?.(f.ref)
           : null;

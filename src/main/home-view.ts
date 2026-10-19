@@ -268,9 +268,8 @@ export class HomeView {
         const u = new URL(src);
         ours = u.protocol === "file:" && u.pathname.endsWith("/renderer/home.html") && u.searchParams.get("solo") === "tool:coding";
       } catch { ours = false; }
-      webPreferences.preload = ours
-        ? path.join(__dirname, "..", "renderer", "preload.js")
-        : path.join(__dirname, "glyphh-app-preload.js");
+      if (ours) webPreferences.preload = path.join(__dirname, "..", "renderer", "preload.js");
+      else delete webPreferences.preload;
       // Whatever the tag asked for, a guest page never gets Node.
       webPreferences.nodeIntegration = false;
       webPreferences.nodeIntegrationInSubFrames = false;

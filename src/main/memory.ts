@@ -20,7 +20,6 @@
 
 import { getPreference } from "./stores/preferences-db.js";
 import { llmChunk, vectorUpsert, vectorSearch, vectorDelete, vectorItems } from "./glyphh-app-ai.js";
-import { getClient } from "./glyphh-client.js";
 import { ipcMain } from "electron";
 
 export const MEMORY_APP_SLUG = "glyphh-memory";
@@ -89,29 +88,12 @@ export function deleteMemoryPage(id: string): { deleted: number } {
 const CAPTURE_CAP = 32_000;        // chars of user/assistant text kept per turn
 const FACTS_K = 5;
 
-/** THE POLICY (his order, 2026-09-19). Nothing is remembered until the user
- *  accepts the memory policy on Settings → Memory; then each lane follows the
- *  org's rule when it forces one, else the user's own toggle. */
-type Rule = "member" | "on" | "off";
-interface MemoryPolicy { inject?: Rule; capture?: Rule; sensitive?: Rule }
-let policyCache: { at: number; policy: MemoryPolicy } | null = null;
-async function orgPolicy(): Promise<MemoryPolicy> {
-  if (policyCache && Date.now() - policyCache.at < 60_000) return policyCache.policy;
-  try {
-    const gates = await getClient().plans.gates() as unknown as { memoryPolicy?: MemoryPolicy };
-    policyCache = { at: Date.now(), policy: gates?.memoryPolicy ?? {} };
-  } catch { policyCache = policyCache ?? { at: Date.now(), policy: {} }; }
-  return policyCache.policy;
-}
+/** Each lane follows the user's own switch on Settings → Memory. Memory is
+ *  local to this machine, so there is no policy to accept and no org rule. */
 const DEFAULTS = { inject: true, capture: true, sensitive: false } as const;
 const PREF = { inject: "memoryInject", capture: "memoryCapture", sensitive: "memorySensitive" } as const;
 async function lane(key: keyof typeof PREF): Promise<boolean> {
-  if (!getPreference<string>("memoryPolicyAcceptedAt", "")) return false;
-  const rule = (await orgPolicy())[key] ?? "member";
-  if (rule === "on") return true;
-  if (rule === "off") return false;
-  const own = getPreference<boolean>(PREF[key], DEFAULTS[key]);
-  return own === true || (own !== false && DEFAULTS[key]);
+  return getPreference<boolean>(PREF[key], DEFAULTS[key]) === true;
 }
 /** Turns that touch health, faith, politics, sexuality or money stay out of
  *  memory unless the user (or the org) said they may go in. A plain word
@@ -213,8 +195,8 @@ export interface MemoryScope { folder?: string; workspace?: string }
  * block; an empty string means it adds none.
  */
 export async function memoryFacts(userText: string, _scope: MemoryScope = {}): Promise<string> {
-  // Retrieval is org-wide on purpose: a fact learned in one folder is still
-  // true in the next. The scope rides on capture so the panel can group.
+  // Retrieval spans every folder on purpose: a fact learned in one folder is
+  // still true in the next. The scope rides on capture so the panel can group.
   if (!(await lane("inject"))) return "";
   return factBlock(userText);
 }
@@ -251,7 +233,7 @@ async function captureTurn(userText: string, assistantText: string, scope: Memor
     const key = `${userText}\u0000${assistantText}`;
     if (key === lastCaptured.key && Date.now() - lastCaptured.at < 10 * 60_000) return;
     lastCaptured = { key, at: Date.now() };
-    if (!(await lane("capture"))) { console.warn("[memory] turn not captured: the capture lane is off (policy, org rule, or your switch)"); return; }
+    if (!(await lane("capture"))) { console.warn("[memory] turn not captured: the capture switch is off"); return; }
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;
     if (!(await lane("sensitive")) && SENSITIVE.test(text)) { console.warn("[memory] turn not captured: sensitive topic and the sensitive lane is off"); return; }
     const { chunks } = llmChunk({ text, maxChars: 1_200 });

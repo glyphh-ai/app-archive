@@ -5,4 +5,3 @@
 
 export { openHelp, openSettings, isHelpOpen, loadActiveSection, initHelp, gotoSection, openSettingsModal, closeSettingsModal, isSettingsModalOpen } from "./navigation.js";
 export { closeHelp } from "./shared.js";
-export { TERMS_OF_USE, PRIVACY_POLICY, REFUND_POLICY } from "./docs.js";

@@ -45,10 +45,6 @@
         <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
       </div>
       <div id="splash-status" class="splash-status"></div>
-      <div id="splash-update" class="splash-update hidden">
-        <div id="splash-update-label" class="splash-update-label">Updating…</div>
-        <div class="splash-update-bar"><div id="splash-update-fill" class="splash-update-fill"></div></div>
-      </div>
     </div>
   </div>
   <script>
@@ -176,21 +172,6 @@
     })();
   </script>
 
-  <!-- Update overlay — shown full-screen when the user triggers "Relaunch to
-       Update". The main process hides panels first (they're BrowserViews over
-       this shell) so this becomes visible right before quit + install. -->
-  <div id="updating-overlay" class="hidden">
-    <div class="splash-content">
-      <div class="splash-logo">
-        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-      </div>
-      <div id="updating-label" class="splash-status">Updating…</div>
-      <div class="splash-update">
-        <div class="splash-update-bar"><div id="updating-fill" class="splash-update-fill"></div></div>
-      </div>
-    </div>
-  </div>
 
   <!-- Onboarding gate — split shell: login (left) | hero footage (right).
        The right side matches the login column's ground and floats the video
@@ -249,27 +230,6 @@
     </script>
   </div>
 
-  <!-- Account-inactive (admin-disabled) gate -->
-  <div id="lockout-overlay" class="hidden">
-    <div id="lockout-content">
-      <div class="onboarding-title">
-        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-      </div>
-      <h2 id="lockout-title" class="lockout-title">Your account is inactive</h2>
-      <p id="lockout-message" class="lockout-message">
-        This account has been deactivated. Reactivate your plan to get back into
-        your workspace — your data is safe.
-      </p>
-      <div class="onboarding-fields">
-        <button id="lockout-upgrade" class="onboarding-signin-btn">Manage account</button>
-        <button id="lockout-recheck" class="onboarding-register-btn">Refresh</button>
-      </div>
-      <div id="lockout-status"></div>
-      <button id="lockout-signout" class="lockout-link">Sign out</button>
-    </div>
-  </div>
-
   <div id="titlebar">
     <div id="window-controls">
       <button id="btn-close" class="wc wc-close"></button>
@@ -281,15 +241,6 @@
          menu live in the Code-primary home panel's app rail now. -->
   </div>
 
-  <!-- Update notification bar -->
-  <div id="update-bar" class="update-bar hidden">
-    <span id="update-message" class="update-message">A new version is available</span>
-    <div id="update-progress" class="update-progress hidden">
-      <div id="update-progress-fill" class="update-progress-fill"></div>
-    </div>
-    <button id="update-action" class="action-btn primary update-action hidden">Restart</button>
-    <button id="update-dismiss" class="update-dismiss">&times;</button>
-  </div>
 
   <!--#include sections/tutorial.html -->
 

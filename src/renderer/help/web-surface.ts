@@ -70,10 +70,10 @@ export async function copyText(text: string): Promise<boolean> {
  *  full-screen Customize page carries those tabs, the same rows as the
  *  desktop's (surface.ts WEB_GROUP_ROWS, panels kept mounted). The rest of
  *  this set are CAPABILITY pages the
- *  browser lacks: the local MCP server, remote control, the plugins' folder.
+ *  browser lacks: the local MCP server, the plugins' folder.
  *  A deep link to any of them lands on General (navigation.ts
  *  settingsSubAlias). */
-export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", "remote", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, ...WEB_DESKTOP_ONLY_EXTRA]);
+export const DESKTOP_ONLY_SUBS: ReadonlySet<string> = new Set(["plugins", ...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, ...WEB_DESKTOP_ONLY_EXTRA]);
 
 /** Hide every desktop-only settings row + panel on web (idempotent; the
  *  settings DOM is static in home.html, so this runs once at init) — and,

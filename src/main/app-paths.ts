@@ -38,6 +38,11 @@ export function glyphhPath(...segments: string[]): string {
 // State lives here (the import root — nothing imports into app-paths) so
 // local-db / glyphh-context / user-scope can all read it without cycles.
 
+/** The one user on this machine (there is no server to sign in to): the
+ *  desktop scopes to it at boot (auth.ts) and the `glyphh` terminal agent
+ *  does the same, so both read and write ~/.glyphh/users/local. */
+export const LOCAL_USER_ID = "local";
+
 let activeUserId: string | null = null;
 
 /** State-only setter — orchestration (closing stores, cache flushes, window

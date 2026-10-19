@@ -129,9 +129,9 @@ export function launchNativeApp(
   if (!exec) return { ok: false, error: "Native app has no executable path" };
   // Guard: an HTML entry (e.g. a Glyphh app's index.html) must NEVER be
   // spawned as a program — spawn would fire an async EACCES that crashes the
-  // whole app. Those apps are opened by glyphh-app-host, not here.
+  // whole app.
   if (/\.html?$/i.test(exec)) {
-    return { ok: false, error: "not a launchable executable (Glyphh apps open in their own window)" };
+    return { ok: false, error: "not a launchable executable (an HTML page is not a program)" };
   }
   const lc = launchConfig || {};
 

@@ -17,7 +17,7 @@
  * work. Process memory only, bounded per agent.
  */
 
-import type { SubAgentRef, SubAgentWireFrame } from "./remote-run.js";
+import type { SubAgentRef, SubAgentWireFrame } from "./run-frames.js";
 
 export type SubAgentStatus = "working" | "waiting" | "done" | "failed";
 

@@ -6,41 +6,6 @@
                 <input id="settings-nav-search" type="text" class="settings-input" placeholder="Search" spellcheck="false" autocomplete="off" />
                 <div id="settings-nav-search-pop" class="hidden"></div>
               </div>
-              <!-- Org switcher (multi-org members only) — same control as the
-                   platform rail's; filled by initOrgSwitcher(). UNDER the
-                   search, aligned to it (his order, 2026-09-02). -->
-              <div id="org-switch-settings" class="org-switch hidden"></div>
-                  <button class="settings-nav-item platform-only dash-plain" data-sub="dash"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>
-              <div class="settings-nav-group platform-only">Organization</div>
-              <button id="nav-org-general" class="settings-nav-item platform-only hidden" data-sub="org-general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>General</span></button>
-              <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
-              <button id="nav-billing" class="settings-nav-item hidden" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
-              <!-- PLATFORM (his order, 2026-10-04): the org console at platform.glyphh.ai, in a new tab. An anchor, not a button: the sub-nav handler skips anchors. -->
-              <a class="settings-nav-item settings-nav-ext" href="https://platform.glyphh.ai" target="_blank" rel="noopener"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg><span>Platform</span></a>
-              <button class="settings-nav-item platform-only" data-sub="download"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Download</span></button>
-              <!-- BUILD (his order, 2026-09-12): the maker destinations — Loops (the
-                   CLI support list), Apps, Connections, and the restored library:
-                   Tasks (the former loop library), Agents, Skills. -->
-              <div class="settings-nav-group platform-only">Build</div>
-              <button class="settings-nav-item platform-only" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
-              <button id="nav-org-library" class="settings-nav-item platform-only hidden" data-sub="org-library"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Library</span></button>
-              <div class="settings-nav-group platform-only nav-admin hidden">Security</div>
-              <button class="settings-nav-item platform-only nav-admin hidden" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
-              <button class="settings-nav-item platform-only nav-admin hidden" data-sub="oauth"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9.5 12l2 2 3.5-4"/></svg><span>OAuth</span></button>
-              <button class="settings-nav-item platform-only nav-admin hidden" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
-              <!-- Gateway (his order, 2026-09-11): the GlyphhRouter surfaces —
-                   the org's model catalog + the telemetry page. -->
-              <div class="settings-nav-group platform-only nav-admin hidden">Gateway</div>
-              <button class="settings-nav-item platform-only nav-admin hidden" data-sub="gateway-keys"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-3 3l1.9-1.9L12 14l2-2 1.4 1.4L17.7 11l-2.3-2.3z"/><circle cx="7.5" cy="15.5" r="1.5"/></svg><span>API Keys</span></button>
-              <button class="settings-nav-item platform-only nav-admin hidden" data-sub="gateway"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg><span>Metrics</span></button>
-              <!-- Platform — the super-admin console (Catalog / Plans / Usage /
-                   Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
-                   super_admin role; the server enforces the role regardless. -->
-              <div class="settings-nav-group nav-super platform-only hidden">Platform</div>
-              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22.08" x2="12" y2="12"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><circle cx="12" cy="12" r="1"/></svg><span>Catalog</span></button>
-              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-plans"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Plans</span></button>
-              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
-              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-orgs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>Orgs</span></button>
               <!-- CUSTOMIZE — ONE GROUP (his report, 2026-10-07: "The Build and
                    Customize tabs are confusing. It should just be one tab"): what the
                    org's agents are made of (Skills, Agents, Apps, Connections, Plugins;
@@ -65,19 +30,10 @@
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item" data-sub="memory"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg><span>Memory</span></button>
-              <button class="settings-nav-item" data-sub="privacy"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 20 6v6c0 5-3.4 8.2-8 9.4C7.4 20.2 4 17 4 12V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacy</span></button>
-              <!-- DEVICES (his order, 2026-10-04): the member's machines attached with
-                   remote control on, with Disconnect; the ones disconnected from the
-                   web, with Allow. On the web and the desktop alike (settings-devices.ts). -->
-              <button class="settings-nav-item not-on-platform" data-sub="devices"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Devices</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="remote"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span>Remote control</span></button>
+              <button class="settings-nav-item" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg><span>Models</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span>Loops</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
-              <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
-                  <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
-              <div class="settings-nav-group">Help</div>
-              <button class="settings-nav-item" data-sub="support"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Support</span></button>
-              <button class="settings-nav-item hidden" data-sub="about"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg><span>About</span></button>
             </nav>
             <div class="settings-panels">
 
@@ -85,29 +41,8 @@
                 <h2>General</h2>
                 <p class="section-desc">App-wide preferences.</p>
 
-                <!-- THE DEFAULT MODEL a new session opens with (his ruling,
-                     2026-09-12; the loop and view pickers went with the CLI
-                     lane on 2026-09-28 — there is one loop). The list is the
-                     org's own: nothing here is free text, so you cannot
-                     default to a model you may not use. -->
-                <h3 class="settings-subheading" style="margin-top:0;">Agent</h3>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Default model</div>
-                    <div class="set-pref-desc" id="set-default-hint">What a new session runs on, from the models your organization allows.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <select id="set-default-model" class="settings-input"></select>
-                  </div>
-                </div>
+                <h3 class="settings-subheading" style="margin-top:0;">App</h3>
 
-                <h3 class="settings-subheading">App</h3>
-
-                <!-- Embeddings + memory moved to Settings → Memory (his order, 2026-09-19). -->
-                <label class="settings-toggle" style="display:none;">
-                  <input type="checkbox" id="toggle-auto-update" checked />
-                  <span class="toggle-switch"></span>
-                </label>
                 <label class="settings-toggle set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Keep running in the background</div>
@@ -149,6 +84,42 @@
                     <button type="button" class="action-btn" id="streamed-panels-cancel">Cancel</button>
                   </div>
                 </div>
+
+                <!-- THE AGENT DEFAULTS (help/settings-loops.ts loadAgentDefaults):
+                     the loop a new session opens on, the face an agent opens
+                     with, and the CLIs' route. A workspace and a session can
+                     each say otherwise. -->
+                <h3 class="settings-subheading not-on-platform" id="agent-defaults-head">Agent</h3>
+                <div class="set-pref-row not-on-platform" id="default-loop-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default loop</div>
+                    <div class="set-pref-desc">The loop a new session opens on. Turn loops on in Settings › Loops.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop" class="settings-input"></select>
+                  </div>
+                </div>
+                <div class="set-pref-row not-on-platform" id="default-view-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default view</div>
+                    <div class="set-pref-desc">Whether an agent opens as the chat panel or as its loop's terminal. &ldquo;Last used&rdquo; opens it the way you left the last one.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop-view" class="settings-input">
+                      <option value="chat">Chat</option>
+                      <option value="terminal">Terminal</option>
+                      <option value="last">Last used</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="settings-toggle set-pref-row not-on-platform" id="cli-gateway-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Route CLIs through my providers by default</div>
+                    <div class="set-pref-desc" id="cli-gateway-desc">Claude runs on your own providers through Glyphh's local router unless a workspace or a session says otherwise.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-cli-gateway" />
+                  <span class="toggle-switch"></span>
+                </label>
 
                 <!-- The row grammar (his spec, 2026-08-24): title left with its
                      description UNDER it, the value control aligned to the
@@ -215,106 +186,37 @@
                      carries the interface-sounds row alone). -->
               </div>
 
-              <!-- Developer — the M7 developer program (Settings → Developer).
-                   TWO TABS on the app's real tab strip (app-detail-tabs):
-                     • Developer — the profile form at the very top (shared with
-                       the marketplace console, Apps → New form grammar), then
-                       Earnings as usage-style dash-cards with the payout
-                       history below them, then the Stripe payout connection.
-                     • Developer Agreement — the legal page link, version info,
-                       the consent checkbox that enrolls, and program status.
-                   The program/payout SDK surface ships separately;
-                   settings-developer.ts renders a "coming online" state until
-                   it lands. -->
-              <!-- PRIVACY (his order, 2026-09-19): its own tab — how Glyphh protects
-                   and uses your data, and the memory policy you accept. -->
-              <div class="settings-panel" data-sub="privacy">
-                <h2>Privacy</h2>
-                <p class="section-desc">How Glyphh protects your data, how it uses it, and the policy you accept before it remembers anything.</p>
-                <details class="memory-disclosure">
-                  <summary>How we protect your data</summary>
-                  <ul class="docs-list">
-                    <li>Your memory is stored on this machine, in Glyphh's own app data, and nowhere else. It never leaves it except inside the prompts of your own sessions.</li>
-                    <li>Your organization's gateway meters tokens and spend. It does not store your prompts or your answers.</li>
-                    <li>You can clear your memory here at any time, and Glyphh forgets it at once.</li>
-                    <li>Glyphh does not sell your data and does not train models on it.</li>
-                  </ul>
-                </details>
-                <details class="memory-disclosure">
-                  <summary>How we use your data</summary>
-                  <ul class="docs-list">
-                    <li>With memory on, each turn is chunked and embedded through your organization's embedding model, and the relevant pieces are added to the prompt of your later sessions.</li>
-                    <li>Your organization's admin can require memory on, keep it off, or leave the choice to you. Their setting shows below.</li>
-                    <li>The AI vendors your loops run on process your prompts under their own policies, not ours.</li>
-                    <li>Facts you save with <code>.remember</code> ride along in every session until you remove them.</li>
-                  </ul>
-                </details>
-                <label class="settings-toggle set-pref-row" id="memory-policy-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">I accept the memory policy</div>
-                    <div class="set-pref-desc" id="memory-policy-desc">Memory stays off until you accept.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-memory-policy" />
-                  <span class="toggle-switch"></span>
-                </label>
 
-              </div>
 
-              <!-- DEVICES (his order, 2026-10-04): every machine of yours attached with
-                   remote control on, and the ones you disconnected from here. -->
-              <div class="settings-panel" data-sub="devices">
+
+              <!-- MODELS: the user's own providers, keys and models (help/settings-models.ts,
+                   main/models-ipc.ts). The router calls each provider directly. -->
+              <div class="settings-panel" data-sub="models">
                 <div class="set-title-row">
-                  <h2>Devices</h2>
-                  <button class="action-btn set-icon-btn" id="devices-refresh" title="Refresh" aria-label="Refresh">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-                  </button>
+                  <h2>Models</h2>
+                  <button class="action-btn" id="models-add-provider" type="button">Add provider</button>
                 </div>
-                <p class="section-desc">Your computers attached to Glyphh with remote control on. Disconnect one to close its connection now; it cannot attach again until you allow it here and turn remote control on there.</p>
-                <div class="set-pref-desc hidden" id="devices-org-off">Your organization's admin has turned remote control off — nothing attaches.</div>
-                <div class="set-pref-desc hidden" id="devices-status"></div>
-                <div id="devices-list"></div>
-                <div id="devices-blocked-section" class="hidden">
-                  <h3 class="settings-subheading">Disconnected from the web</h3>
-                  <div id="devices-blocked"></div>
-                </div>
+                <p class="section-desc">Your model providers and their keys. Glyphh calls each provider directly with your own key; keys stay on this computer.</p>
+                <div id="models-error" class="settings-error hidden"></div>
+                <h3 class="settings-subheading" style="margin-top:0;">Defaults</h3>
+                <div id="models-defaults"></div>
+                <h3 class="settings-subheading">Providers</h3>
+                <div id="models-providers"></div>
               </div>
-
-              <!-- REMOTE CONTROL (his order, 2026-09-30): this device takes turns from
-                   mobile.glyphh.ai only when switched on here, and only in the folders
-                   granted here (main/remote-control.ts). An org admin can turn it off. -->
-              <div class="settings-panel" data-sub="remote">
-                <h2>Remote control</h2>
-                <p class="section-desc">Run sessions on this computer from your phone at mobile.glyphh.ai. Turns work only in the folders you grant here, and your approvals still apply.</p>
-                <div class="set-pref-desc hidden" id="remote-org-off">Your organization's admin has turned remote control off.</div>
-                <label class="settings-toggle set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Allow remote control on this computer</div>
-                    <div class="set-pref-desc" id="remote-status">Off — this computer is not reachable from mobile.</div>
-                  </div>
-                  <input type="checkbox" id="toggle-remote-control" />
-                  <span class="toggle-switch"></span>
-                </label>
-                <h3 class="settings-subheading">Granted folders</h3>
-                <p class="set-pref-desc">A remote session can only work inside these folders and the folders under them.</p>
-                <div id="remote-folders"></div>
-                <div class="set-pref-row">
-                  <div class="set-pref-text"></div>
-                  <div class="set-pref-value"><button class="action-btn" id="remote-add-folder">Add folder…</button></div>
-                </div>
+              <!-- LOOPS: Glyphh's own loop and the vendor CLIs — on/off and how each
+                   opens (help/settings-loops.ts, main/cli-agents.ts). -->
+              <div class="settings-panel" data-sub="loops">
+                <h2>Loops</h2>
+                <p class="section-desc">The engines a session can run on: Glyphh's own loop, and the coding CLIs you have installed and signed in to. Each runs in the chat panel or in its own terminal.</p>
+                <div id="loops-error" class="settings-error hidden"></div>
+                <div id="loops-accordion"></div>
               </div>
-
-              <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the
-                   user accepts before it remembers anything, and the org's overrides. -->
-              <!-- BRIDGE MODE (his order, 2026-09-21): Claude Desktop → this app → the gateway
-                   or a headless claude on the member's own login (app/docs/BRIDGE-MODE.md). -->
-
+              <!-- MEMORY: what Glyphh remembers on this machine, and the switches. -->
               <div class="settings-panel" data-sub="memory">
                 <h2>Memory</h2>
                 <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
 
-                <p class="set-pref-desc hidden" id="memory-accept-note">Memory is off until you accept the memory policy under <strong>Privacy</strong>.</p>
                 <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
-                <p class="set-pref-desc hidden" id="memory-org-note"></p>
                 <label class="settings-toggle set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Search and reference past sessions</div>
@@ -339,15 +241,6 @@
                   <input type="checkbox" id="toggle-memory-sensitive" />
                   <span class="toggle-switch"></span>
                 </label>
-                <div class="set-pref-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Embeddings model</div>
-                    <div class="set-pref-desc" id="set-embeddings-desc">Powers memory, search and app data. Your organization's admin configures which embeddings models are available.</div>
-                  </div>
-                  <div class="set-pref-value">
-                    <select id="set-embeddings-model" class="settings-input"></select>
-                  </div>
-                </div>
 
                 <h3 class="settings-subheading">Your data</h3>
                 <div class="set-pref-row">
@@ -542,315 +435,16 @@
 
               </div>
 
-              <!-- Account -->
-              <!-- Account = WHO YOU ARE. The identity header states it once —
-                   avatar, name, sign-in email, role, org, plan — and the rows
-                   below edit only what is yours to edit. The Organization
-                   section is folded in for org admins (it is the same record
-                   the identity chip names); members never see it. -->
-              <div class="settings-panel" data-sub="account">
-                <h2>Account</h2>
-                <p class="section-desc">Who you are across Glyphh — your profile, your sign-in, and the plan you are on.</p>
-                <div class="acct-identity">
-                  <div class="acct-id-face">
-                    <!-- Initials carry the slot until an avatar resolves, so the
-                         header never opens on an empty circle. -->
-                    <div class="acct-avatar-col">
-                      <div class="acct-avatar-slot">
-                        <span id="account-initials" class="acct-initials">—</span>
-                        <img id="profile-avatar" class="acct-avatar hidden" alt="" />
-                      </div>
-                      <button id="profile-image-add" class="action-btn acct-avatar-add" type="button">Add image</button>
-                      <input id="profile-image-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" />
-                    </div>
-                    <div class="acct-id-text">
-                      <div class="acct-name" id="account-name">—</div>
-                      <div class="acct-email" id="profile-email" title="Your sign-in identity — contact support to change it">—</div>
-                      <div class="acct-chips">
-                        <span class="acct-chip" id="profile-role" title="Role — set by your organization">—</span>
-                        <span class="acct-chip" id="account-org" title="Organization">—</span>
-                        <!-- The REAL primary component (span, not button — the
-                             refresh <button> nests inside). Click → Billing. -->
-                        <span class="action-btn primary acct-chip-plan" role="button" tabindex="0" title="Plan — manage in Billing">
-                          <span id="account-tier">—</span>
-                          <button id="account-refresh-tier" class="acct-chip-refresh" title="Refresh plan status" aria-label="Refresh plan status">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-                          </button>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="acct-id-actions">
-                    <button id="account-logout-btn" class="action-btn">Sign out</button>
-                  </div>
-                </div>
-
-                <!-- No Save button anywhere in this panel: every field commits
-                     itself (text debounced, pickers and toggles at once) and
-                     the status line beside the heading reports it. -->
-                <h3 class="settings-subheading">Your profile <span id="profile-status" class="set-save-state"></span></h3>
-                <div class="acct-section set-pref-list" id="profile-form">
-                  <div id="profile-error" class="settings-error hidden"></div>
-                  <div class="set-pref-row">
-                    <div class="set-pref-text">
-                      <div class="set-pref-title">First name</div>
-                    </div>
-                    <div class="set-pref-value">
-                      <input id="profile-first" type="text" class="settings-input" autocomplete="off" />
-                    </div>
-                  </div>
-                  <div class="set-pref-row">
-                    <div class="set-pref-text">
-                      <div class="set-pref-title">Last name</div>
-                    </div>
-                    <div class="set-pref-value">
-                      <input id="profile-last" type="text" class="settings-input" autocomplete="off" />
-                    </div>
-                  </div>
-                  <div class="set-pref-row">
-                    <div class="set-pref-text">
-                      <div class="set-pref-title">Timezone</div>
-                      <div class="set-pref-desc">Times across Glyphh show in this zone.</div>
-                    </div>
-                    <div class="set-pref-value">
-                      <select id="profile-timezone" class="settings-input"></select>
-                      <button id="profile-tz-browser" class="action-btn" type="button">Use this device's</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Members — ported from the platform's configure/members page.
                    org_admin only (the nav item hides for everyone else, and the
                    server enforces every write). No modals: invite is a row, and
                    name/role edit in place and save themselves. -->
-              <div class="settings-panel" data-sub="members">
-                <h2>Members <span id="members-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Your team and what each person may do.</p>
-
-                <div id="members-admin-only" class="crud-empty hidden">Only an organization admin can manage members.</div>
-
-                <div id="members-body">
-                  <div id="members-error" class="settings-error hidden"></div>
-                  <div id="members-seat-note" class="settings-callout hidden" role="status"></div>
-
-                  <!-- The accept link is the way through when the invite email
-                       doesn't arrive, so it stays on screen after a send. -->
-                  <div id="members-invite-link-wrap" class="settings-inline hidden" style="margin-top:10px;">
-                    <input id="members-invite-link" class="settings-input" readonly onfocus="this.select()" />
-                    <span id="members-invite-link-copy" class="set-copy-btn" role="button" tabindex="0" title="Copy invite link" aria-label="Copy invite link">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    </span>
-                  </div>
-
-                  <!-- Two tabs (his spec, 2026-08-25): the roster and the
-                       still-pending invites. Invite = the standard validated
-                       MODAL, opened from the toolbar (his spec, 2026-09-01). -->
-                  <div class="app-detail-tabs" id="members-tabs" style="margin-top:12px;">
-                    <button class="app-detail-tab active" data-mtab="members" type="button">Members</button>
-                    <button class="app-detail-tab" data-mtab="invited" type="button">Invited</button>
-                  </div>
-                  <div id="members-tab-members">
-                    <div class="crud-toolbar">
-                      <div class="search-clear-wrap"><input id="members-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
-                      <button id="members-invite-btn" class="action-btn primary" type="button">+ Invite</button>
-                    </div>
-                    <div id="members-list" class="mbr-list"></div>
-                    <div id="members-pager"></div>
-                  </div>
-                  <div id="members-tab-invited" class="hidden">
-                    <div class="crud-toolbar">
-                      <div class="search-clear-wrap"><input id="members-invited-search" type="text" class="crud-search" placeholder="Search invites…" spellcheck="false" autocomplete="off" /></div>
-                      <button id="members-invite-btn2" class="action-btn primary" type="button">+ Invite</button>
-                    </div>
-                    <div id="members-invited-list"></div>
-                    <div id="members-invited-pager"></div>
-                  </div>
-                </div>
-              </div>
 
               <!--
                    top-right driving everything. settings-domains.ts paints it
                    via the shared traffic painter (apps.ts owns the shape). -->
-<div class="settings-panel" data-sub="dash">
-    <!-- The PLATFORM Dashboard — greeting header, org cards, usage chart.
-         The Usage page (plan limits) is its own panel now, identical on the
-         app and the app web (his order, 2026-08-25). -->
-    <div class="dash-head platform-only">
-      <h2 id="dash-greeting">Welcome back</h2>
-      <div class="dash-head-actions">
-        <button class="action-btn" id="dash-get-key" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2"/><path d="M15.5 7.5 19 4l1 1-3.5 3.5"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>Get API key</button>
-        <button class="action-btn primary" id="dash-discord" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.8 13.8 0 0 0-.64-1.28c-1.71.29-3.37.8-4.93 1.51A20.3 20.3 0 0 0 .1 18.06a19.9 19.9 0 0 0 6.07 3.03c.49-.66.93-1.37 1.3-2.1a12.9 12.9 0 0 1-2.05-.98c.17-.12.34-.25.5-.38a14.2 14.2 0 0 0 12.16 0c.17.13.33.26.5.38-.65.39-1.34.71-2.05.98.38.73.81 1.44 1.3 2.1a19.8 19.8 0 0 0 6.07-3.03 20.2 20.2 0 0 0-2.58-13.69ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Z"/></svg>Discord</button>
-      </div>
-    </div>
-    <div class="platform-only">
-    <div class="dash-grid">
-      <div class="dash-card">
-        <div class="dash-card-label" id="dash-budget-label">Budget</div>
-        <div class="dash-card-value" id="dash-budget-value">—</div>
-        <div class="dash-card-sub" id="dash-budget-sub">remaining this period</div>
-      </div>
 
-      <div class="dash-card">
-        <div class="dash-card-label">Spend this month</div>
-        <div class="dash-card-value" id="dash-spend-value">—</div>
-        <div class="dash-card-sub" id="dash-spend-sub">dollars, all sources</div>
-      </div>
-
-      <div class="dash-card">
-        <div class="dash-card-label">Apps deployed</div>
-        <div class="dash-card-value" id="dash-apps-value">—</div>
-        <div class="dash-card-sub" id="dash-apps-sub">hosted on this machine</div>
-      </div>
-    </div>
-    <div class="dash-card dash-card-wide">
-      <div class="dash-card-head">
-        <div>
-          <div class="dash-card-label">Usage</div>
-          <div class="dash-card-value dash-card-value-sm" id="dash-usage-total">—</div>
-          <div class="dash-card-sub" id="dash-usage-range">last 30 days</div>
-        </div>
-        <div class="dash-usage-filters">
-          <select id="dash-usage-days" class="dash-usage-select" title="Date range">
-            <option value="7">7 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-          </select>
-          <select id="dash-usage-group" class="dash-usage-select" title="Stack by">
-            <option value="model" selected>By model</option>
-            <option value="source">By source</option>
-          </select>
-          <select id="dash-usage-filter" class="dash-usage-select" title="Narrow to one">
-            <option value="">All models</option>
-          </select>
-          <!-- Org admins only (populated + revealed by the member roster call);
-               the one usage control the desktop lacked vs. the platform. -->
-          <select id="dash-usage-member" class="dash-usage-select hidden" title="Member">
-            <option value="">All members</option>
-          </select>
-          <button class="dash-refresh" id="dash-refresh" title="Refresh">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="dash-chart-wrap">
-        <canvas id="dash-usage-chart"></canvas>
-        <div class="dash-chart-empty hidden" id="dash-usage-empty">No usage yet — connect an AI and start driving your apps.</div>
-      </div>
-    </div>
-              </div>
-</div>
-
-<div class="settings-panel" data-sub="usage">
-    <!-- Platform dashboard header (his spec, 2026-08-24): time-of-day
-         greeting left; Get API key (secondary) + Add funds (primary)
-         far right on the same row. -->
-    <!-- APP view (his spec, 2026-08-24): the Claude-style plan-limits look,
-                     mapped to OUR model — the PIPEDREAM BUDGET in dollars (his
-                     ruling, 2026-09-20: credits are dead): the plan's monthly
-                     pool + added funds, a usage bar + reset date, Add funds,
-                     refresh, and the auto-reload toggle. Model calls never draw
-                     on it. The platform keeps the dashboard below. -->
-                <div id="usage-app-view">
-                  <div id="ua-main">
-                  <div class="ua-head">
-                    <span class="ua-title">Budget <span class="ua-plan" id="ua-plan">—</span></span>
-                    <span class="ua-head-aside">
-                      <button id="ua-refresh" class="action-btn" type="button">Refresh</button>
-                      <span class="ua-updated" id="ua-updated"></span>
-                    </span>
-                  </div>
-                  <div class="ua-row">
-                    <div class="ua-label">
-                      <div class="ua-name">This period</div>
-                      <div class="ua-sub" id="ua-month-reset">Resets —</div>
-                    </div>
-                    <div class="ua-bar"><div class="ua-fill" id="ua-month-fill"></div></div>
-                    <div class="ua-pct" id="ua-month-pct">—</div>
-                  </div>
-                  <div class="ua-section">Budget</div>
-                  <label class="settings-toggle set-pref-row ua-budget-toggle">
-                    <div class="set-pref-text">
-                      <div class="set-pref-title">Auto-reload when the budget runs low, so calls through Glyphh keep working.</div>
-                      <div class="set-pref-desc" id="ua-autotopup-line">Auto-reload off</div>
-                    </div>
-                    <input type="checkbox" id="ua-autotopup" />
-                    <span class="toggle-switch"></span>
-                  </label>
-                  <div class="ua-row ua-budget-row">
-                    <div class="ua-label bil-label-wide">
-                      <div class="ua-name"><span id="ua-spent">—</span> spent</div>
-                      <div class="ua-sub" id="ua-spent-reset">Resets —</div>
-                    </div>
-                  </div>
-                  <div class="ua-row ua-budget-row">
-                    <div class="ua-label bil-label-wide">
-                      <div class="ua-name" id="ua-pool">—</div>
-                      <div class="ua-sub" id="ua-pool-sub">Your budget for connector and model calls through Glyphh</div>
-                    </div>
-                  </div>
-                  <div class="ua-row ua-budget-row" id="ua-cap-row">
-                    <div class="ua-label bil-label-wide">
-                      <div class="ua-name" id="ua-cap">Unlimited</div>
-                      <div class="ua-sub">Monthly spend limit</div>
-                    </div>
-                    <div class="ua-spacer"></div>
-                    <button id="ua-adjust-limit" class="action-btn" type="button">Adjust limit</button>
-                  </div>
-                  <div class="ua-row ua-budget-row" id="ua-balance-row">
-                    <div class="ua-label bil-label-wide">
-                      <div class="ua-name"><span id="ua-balance">—</span> remaining</div>
-                      <div class="ua-sub"><span id="ua-funds">—</span> in added funds · never expire</div>
-                    </div>
-                    <div class="ua-spacer"></div>
-                    <button id="ua-buy" class="action-btn primary" type="button">Add funds</button>
-                  </div>
-                  </div>
-
-                  <!-- Set monthly spend limit — in-tab form (his spec, 2026-08-24):
-                       ← Usage back, the one field, Cancel + primary Save right. -->
-                  <div id="ua-limit-form" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="ua-limit-back">&larr; Usage</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <h3 class="settings-subheading" style="margin-top:0;">Set monthly spend limit</h3>
-                    <label class="settings-label" for="ua-limit-input">Max per 30 days (USD)</label>
-                    <input id="ua-limit-input" type="number" min="0" class="settings-input" placeholder="200" style="width:100%;" />
-                    <span class="settings-hint" style="display:block;margin-top:4px;">A local guard rail — not enforced by the server yet. Blank or 0 means unlimited.</span>
-                    <div class="settings-actions" style="margin-top:16px;">
-                      <div style="flex:1;"></div>
-                      <button id="ua-limit-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="ua-limit-save" class="action-btn primary" type="button">Save</button>
-                    </div>
-                  </div>
-
-                  <!-- Add funds — in-tab form (his spec, 2026-08-24): ← Usage,
-                       preset dollar cards + a custom amount, the summary line,
-                       Cancel + primary Pay right. Dollar for dollar into the
-                       Budget; the SAME checkout the 402 dialog uses. -->
-                  <div id="ua-buy-form" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="ua-buy-back">&larr; Usage</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <h3 class="settings-subheading" style="margin-top:0;">Add funds</h3>
-                    <!-- THE CONSOLE IS THE GUIDE (his order, 2026-09-18): the
-                         same four dollar buckets, the same amount field, the
-                         same sentence, the same Pay button naming the charge. -->
-                    <div class="billing-topup-grid" id="ua-buy-grid"></div>
-                    <label class="settings-label" for="ua-buy-custom" style="margin-top:14px;">Amount (USD)</label>
-                    <input id="ua-buy-custom" type="number" min="5" step="5" max="5000" class="settings-input" />
-                    <span class="settings-hint" id="ua-buy-custom-hint" style="display:block;margin-top:4px;"></span>
-                    <p class="settings-hint" id="ua-buy-summary" style="margin-top:10px;"></p>
-                    <div class="settings-actions" style="margin-top:16px;">
-                      <div style="flex:1;"></div>
-                      <button id="ua-buy-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="ua-buy-go" class="action-btn primary" type="button" disabled>Pay</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Developer — the M7 developer program (Settings → Developer).
                    TWO TABS on the app's real tab strip (app-detail-tabs):
@@ -868,144 +462,10 @@
      virtual keys: each key is minted against ONE role (models + vendor
      credential resolution), named, with its own expiry; the token shows once.
      Registry rows never die — telemetry outlives the key. -->
-<div class="settings-panel" data-sub="gateway-keys">
-  <h2>API Keys</h2>
-  <p class="section-desc">Keys the gateway hands out. Each key is bound to a role — it reaches that role's models through <code>https://router.glyphh.ai</code> — and the token is shown once on creation. Revoking kills the key immediately; its metrics stay.</p>
-  <div id="gwk-error" class="settings-error hidden"></div>
-  <div id="gwk-admin-only" class="crud-empty hidden">Only an org admin can manage gateway keys.</div>
-
-  <!-- MEMBER VIEW (his ruling, 2026-09-12): your own keys, mintable when the
-       plan carries the gateway AND the org admin allows it. -->
-  <div id="gwk-member-view" class="hidden">
-    <div id="gwk-member-blocked" class="crud-empty hidden"></div>
-    <div id="gwk-member-open" class="hidden">
-      <div class="crud-toolbar">
-        <div class="crud-spacer"></div>
-        <button id="gwk-member-new" class="action-btn primary" type="button">+ New key</button>
-      </div>
-      <div id="gwk-member-empty" class="crud-empty hidden">No keys yet — mint one to call the gateway from your own tools.</div>
-      <div id="gwk-member-list" class="mbr-list"></div>
-    </div>
-  </div>
-
-  <div id="gwk-list-view">
-    <div class="crud-toolbar">
-      <input id="gwk-search" type="text" class="crud-search" placeholder="Search keys…" spellcheck="false" autocomplete="off" />
-      <button id="gwk-new-btn" class="action-btn primary" type="button">+ New key</button>
-    </div>
-    <label class="settings-toggle set-pref-row">
-      <div class="set-pref-text">
-        <div class="set-pref-title">Members can mint their own keys</div>
-        <div class="set-pref-desc">Each key is scoped by the member's role — models, rate and budget — and lands in their own spend line. Off hides the door; existing keys keep working until revoked.</div>
-      </div>
-      <input type="checkbox" id="gwk-member-switch" />
-      <span class="toggle-switch"></span>
-    </label>
-    <div id="gwk-empty" class="crud-empty hidden">No keys yet.</div>
-    <div id="gwk-list" class="mbr-list"></div>
-  </div>
-
-  <div id="gwk-editor" class="crud-inline-form hidden">
-    <div class="crud-inline-header">
-      <a class="crud-breadcrumb-back" id="gwk-back-link">&larr; API keys</a>
-      <div class="crud-spacer"></div>
-    </div>
-    <div id="gwk-form-error" class="crud-form-error hidden"></div>
-    <label class="settings-label" for="gwk-name">Name</label>
-    <input id="gwk-name" type="text" class="settings-input" placeholder="e.g. CI pipeline" spellcheck="false" autocomplete="off" />
-    <label class="settings-label" for="gwk-role">Role</label>
-    <select id="gwk-role" class="settings-input"></select>
-    <label class="settings-label" for="gwk-expires">Expiration</label>
-    <select id="gwk-expires" class="settings-input">
-      <option value="">Never</option>
-      <option value="7">7 days</option>
-      <option value="30" selected>30 days</option>
-      <option value="90">90 days</option>
-      <option value="365">1 year</option>
-    </select>
-    <div id="gwk-never-warn" class="settings-warn hidden" style="margin-top:10px;">A key that never expires stays valid until you revoke it — anyone holding it keeps access indefinitely. Prefer an expiry.</div>
-    <p class="settings-hint">The key reaches the role&rsquo;s models as they stand right now, and burns the role&rsquo;s vendor keys (or the org&rsquo;s where the role has none). The token is shown once, right here, on creation.</p>
-    <div class="settings-actions" style="margin-top:8px;">
-      <button id="gwk-cancel-btn" class="action-btn" type="button">Cancel</button>
-      <button id="gwk-create-btn" class="action-btn primary" type="button">Create key</button>
-    </div>
-  </div>
-</div>
 <!-- Gateway › Metrics — the org's router telemetry (gateway-metrics.ts).
      Mirrors the Platform › Usage grammar: dash-cards, a filtered per-day
      chart, a performance chart on the SAME filters, and a by-model table.
      Metadata only — prompts/completions are never stored by the gateway. -->
-<div class="settings-panel" data-sub="gateway">
-  <h2>Metrics</h2>
-  <p class="section-desc">Gateway telemetry — requests, tokens, spend, and speed across your providers and models. The gateway records request metadata only; prompts and completions are never stored.</p>
-  <div id="gw-error" class="settings-error hidden"></div>
-  <div id="gw-admin-only" class="crud-empty hidden">Only an org admin can view gateway metrics.</div>
-  <div id="gw-body">
-    <div id="gw-unconfigured" class="crud-empty hidden">Gateway telemetry isn't configured on this server yet.</div>
-    <div class="dash-grid">
-      <div class="dash-card">
-        <div class="dash-card-label">Requests</div>
-        <div class="dash-card-value" id="gw-requests">—</div>
-        <div class="dash-card-sub" id="gw-requests-sub">last 30 days</div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-label">Tokens</div>
-        <div class="dash-card-value" id="gw-tokens">—</div>
-        <div class="dash-card-sub">in + out</div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-label">Spend</div>
-        <div class="dash-card-value" id="gw-spend">—</div>
-        <div class="dash-card-sub">provider cost, window</div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-label">Avg speed</div>
-        <div class="dash-card-value" id="gw-latency">—</div>
-        <div class="dash-card-sub" id="gw-latency-sub">per request</div>
-      </div>
-    </div>
-    <div class="dash-card dash-card-wide">
-      <div class="dash-card-head">
-        <div>
-          <div class="dash-card-label">Tokens · Spend per day</div>
-          <div class="dash-card-value dash-card-value-sm" id="gw-total">—</div>
-          <div class="dash-card-sub" id="gw-range">last 30 days</div>
-        </div>
-        <div class="dash-usage-filters">
-          <select id="gw-role" class="dash-usage-select" title="Role">
-            <option value="">All roles</option>
-          </select>
-          <select id="gw-days" class="dash-usage-select" title="Date range">
-            <option value="7">7 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-          </select>
-          <button class="dash-refresh" id="gw-refresh" title="Refresh">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="dash-chart-wrap">
-        <canvas id="gw-chart"></canvas>
-        <div class="dash-chart-empty hidden" id="gw-empty">No gateway traffic in this window.</div>
-      </div>
-    </div>
-    <div class="dash-card dash-card-wide">
-      <div class="dash-card-head">
-        <div>
-          <div class="dash-card-label">Performance</div>
-          <div class="dash-card-sub">avg + p95 response time — same role and window as above</div>
-        </div>
-      </div>
-      <div class="dash-chart-wrap">
-        <canvas id="gw-perf-chart"></canvas>
-        <div class="dash-chart-empty hidden" id="gw-perf-empty">No gateway traffic in this window.</div>
-      </div>
-    </div>
-    <h3 class="settings-subheading">By model</h3>
-    <div id="gw-models"></div>
-  </div>
-</div>
               <!-- LOOPS — the fixed set, one expandable section each, like the
                    model catalog: header carries the name and the enable
                    toggle on the far right; expanding shows that loop's
@@ -1080,8 +540,7 @@
                     <button id="conn2-add" class="action-btn primary" type="button">+ Add</button>
                   </div>
                   <div class="skills-tabs">
-                    <button class="skills-tab active" data-conn2-tab="mine" type="button">Your connections</button>
-                    <button class="skills-tab" data-conn2-tab="discover" type="button">Discover</button>
+                    <button class="skills-tab active" type="button">Your connections</button>
                     <div style="flex:1;"></div>
                     <span id="conn2-count" class="skills-count"></span>
                   </div>
@@ -1091,475 +550,40 @@
                   <button id="conn2-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Connections</span></button>
                   <div id="conn2-detail"></div>
                 </div>
-                <!-- The REAL connections section is adopted in here (its list and
-                     toolbar hidden): the catalog modal and the connect flow are the
-                     originals, driven by Add → New connection. -->
-                <div id="conncfg-legacy" class="conncfg-legacy"></div>
-              </div>
-              <div class="settings-panel" data-sub="org-library">
-                <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>
-
-                <div id="orglib-body">
-                  <div id="orglib-error" class="settings-error hidden"></div>
-
-                  <!-- LIST — the standard list-page grammar (Roles): h2 +
-                       section-desc, crud-toolbar with search + the type
-                       funnel, the lib-table below (org-library.ts). -->
-                  <h2>Library</h2>
-                  <p class="section-desc">Your organization's curated tasks, agents and skills — reviewed promotions, versioned, with per-role access. Apps are managed on their own page.</p>
-                  <div class="crud-toolbar">
-                    <div class="search-clear-wrap"><input id="orglib-search" type="text" class="crud-search" placeholder="Search the library…" spellcheck="false" autocomplete="off" /></div>
-                    <button id="orglib-filter" class="action-btn ws-filter-btn" type="button" title="Filter by type" aria-label="Filter by type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="orglib-filter-label" class="hidden"></span></button>
-                  </div>
-                  <div id="orglib-queue" class="hidden"></div>
-                  <div id="orglib-list"></div>
-                </div>
               </div>
 
               <!-- Organization › General — the org record (name, image,
                    address, seats), moved out from under Billing (his spec,
                    2026-08-24). Ids unchanged so settings-org-panel.ts binds;
                    the nav item is admin-gated in gateAdminSubs. -->
-              <div class="settings-panel" data-sub="oauth">
-                <div id="oauth-main">
-                  <div class="ua-head">
-                    <span class="ua-title">OAuth <span class="ua-plan" id="oauth-idp-status">not connected</span></span>
-                    <span class="ua-head-aside">
-                      <button id="oauth-connect-btn" class="action-btn primary" type="button">Connect identity provider</button>
-                    </span>
-                  </div>
-                  <p class="section-desc">Connect your organization's identity provider so your team signs in to Glyphh through it (SAML or OIDC, via WorkOS).</p>
-                  <div id="oauth-error" class="settings-error hidden"></div>
-                  <div class="ua-section">Access</div>
-                  <label class="settings-toggle set-pref-row">
-                    <div class="set-pref-text">
-                      <div class="set-pref-title">Require SSO for all members</div>
-                      <div class="set-pref-desc">Members must sign in through your identity provider — magic-link and social sign-in are turned off for your org.</div>
-                    </div>
-                    <input type="checkbox" id="oauth-require-toggle" />
-                    <span class="toggle-switch"></span>
-                  </label>
-                </div>
-              </div>
                                                         <!-- Workspaces — ported from the platform's configure/workspaces
                    page and its data layer (platform/app/lib/workspaces/hooks.js).
                    A workspace IS the governance layer: which models, which
                    shared and personal connections (down to single tools), a
                    rate limit and a dollar budget. org_admin only; the server
                    enforces every write and the base workspace's undeletability. -->
-              <div class="settings-panel" data-sub="domains">
-                <div id="dom-admin-only" class="crud-empty hidden">Only an organization admin can manage domains.</div>
-                <!-- The whole page is rendered by the shared list-page scaffold
-                     (settings-list-page.ts) via settings-domains.ts, so it is
-                     identical to every other Security page. -->
-                <div id="dom-body"><div id="dom-root"></div></div>
-              </div>
 
               <!-- Hosting › Metrics (his order, 2026-09-02): the edge-traffic
                    charts moved off Domains, with domain/app/timeline filters
                    top-right driving everything. settings-domains.ts paints it
                    via the shared traffic painter (apps.ts owns the shape). -->
-              <div class="settings-panel" data-sub="metrics">
-                <div id="mx-admin-only" class="crud-empty hidden">Only an organization admin can see hosting metrics.</div>
-                <div id="mx-body">
-                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <h2 style="margin:0;">Metrics</h2>
-                    <div style="flex:1;"></div>
-                    <select id="mx-domain" class="dash-usage-select" title="Domain">
-                      <option value="">All domains</option>
-                    </select>
-                    <select id="mx-app" class="dash-usage-select" title="App">
-                      <option value="">All apps</option>
-                    </select>
-                    <select id="mx-days" class="dash-usage-select" title="Date range">
-                      <option value="7">7 days</option>
-                      <option value="30" selected>30 days</option>
-                      <option value="90">90 days</option>
-                    </select>
-                  </div>
-                  <p class="section-desc" style="margin-top:6px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
-                  <div id="mx-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
-                  <!-- Engagement cards (his order, 2026-09-02): visitors,
-                       sessions, bounce, avg session — paintTelemetry fills. -->
-                  <div id="mx-cards" class="dash-grid" style="margin-bottom:12px;"></div>
-                  <p class="settings-hint" id="mx-totals" style="margin:0 0 10px;"></p>
-                  <div class="dash-chart-wrap" style="height:220px;">
-                    <canvas id="mx-chart"></canvas>
-                    <div class="dash-chart-empty hidden" id="mx-empty">No edge traffic in this window.</div>
-                  </div>
-                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">
-                    <div style="flex:1;min-width:260px;"><label class="settings-label">Top pages</label><div id="mx-pages" class="mbr-list"></div></div>
-                    <div style="flex:1;min-width:260px;"><label class="settings-label">Referrers</label><div id="mx-refs" class="mbr-list"></div></div>
-                    <div style="flex:1;min-width:260px;"><label class="settings-label">Error paths</label><div id="mx-errpaths" class="mbr-list"></div></div>
-                  </div>
-                  <div id="mx-hosts" class="mbr-list" style="margin-top:14px;"></div>
-                </div>
-              </div>
 
               <!-- Organization › Clients (his order, 2026-09-02): workspaces
                    the org creates + FUNDS for its clients — the consultancy
                    model. settings-clients.ts renders. -->
-              <div class="settings-panel" data-sub="clients">
-                <div id="cl-admin-only" class="crud-empty hidden">Only an organization admin can manage client workspaces.</div>
-                <!-- The whole page is the shared list-page scaffold
-                     (settings-list-page.ts) via settings-clients.ts — search,
-                     table, pagination, editor: identical to every admin page. -->
-                <div id="cl-body"><div id="cl-root"></div></div>
-              </div>
 
               <!-- Marketing › Links (his order, 2026-09-02): org-minted
                    campaign URLs; the edge ties clicks + sessions back to each
                    code. settings-marketing.ts renders the list + create modal
                    via the shared list-page scaffold. -->
-              <div class="settings-panel" data-sub="mkt-links">
-                <div id="mkt-admin-only" class="crud-empty hidden">Only an organization admin can manage marketing links.</div>
-                <div id="mkt-body"><div id="mkt-root"></div></div>
-              </div>
 
-              <div class="settings-panel" data-sub="workspaces">
-                <div id="ws-admin-only" class="crud-empty hidden">Only an organization admin can manage roles.</div>
 
-                <div id="ws-body">
-                  <div id="ws-error" class="settings-error hidden"></div>
-
-                  <!-- LIST — the standard list-page grammar (Skills/Loops):
-                       crud-toolbar with search left + the create action right,
-                       a lib-table of rows (rendered by settings-workspaces.ts),
-                       crud-empty + pagination. -->
-                  <div id="ws-list-view">
-                    <h2>Roles <span id="ws-status" class="set-save-state"></span></h2>
-                    <p class="section-desc">Access tiers for your members. A role narrows what the org already allows — it can never grant past it.</p>
-                    <div class="crud-toolbar">
-                      <div class="search-clear-wrap"><input id="ws-search" type="text" class="crud-search" placeholder="Search roles…" spellcheck="false" autocomplete="off" /></div>
-                      <button id="ws-new-btn" class="action-btn primary" type="button">+ New role</button>
-                    </div>
-                    <div id="ws-list"></div>
-                  </div>
-
-                  <!-- EDITOR — the inline-form standard (Skills/Loops): a
-                       breadcrumb back in a crud-inline-header; the tabbed,
-                       live-saving body below is unchanged. -->
-                  <div id="ws-edit-view" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="ws-back">&larr; Roles</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div class="app-detail-tabs" id="ws-tabs">
-                      <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
-                      <button class="app-detail-tab" data-wstab="models" type="button">Models</button>
-                      <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
-                      <button class="app-detail-tab" data-wstab="members" type="button">Members</button>
-                      <button class="app-detail-tab" data-wstab="keys" type="button">Keys</button>
-                    </div>
-
-                    <div class="ws-tab active" data-wstab="general">
-                      <div class="acct-section">
-                        <div class="acct-row">
-                          <div class="acct-field acct-field-wide">
-                            <label class="settings-label" for="ws-name">Name</label>
-                            <input id="ws-name" type="text" class="settings-input" autocomplete="off" />
-                          </div>
-                        </div>
-                        <h4 class="acct-row-head">Rate limit</h4>
-                        <p class="section-desc">Gateway calls allowed per window. Leave either blank for no limit.</p>
-                        <div class="acct-row">
-                          <div class="acct-field">
-                            <label class="settings-label" for="ws-rate-calls">Calls</label>
-                            <input id="ws-rate-calls" type="number" min="0" class="settings-input" placeholder="none" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="ws-rate-window">Per (seconds)</label>
-                            <input id="ws-rate-window" type="number" min="0" class="settings-input" placeholder="none" />
-                          </div>
-                        </div>
-                        <h4 class="acct-row-head">Budget</h4>
-                        <p class="section-desc">Gateway spend budget in USD per period. Resets on calendar boundaries — daily at midnight UTC, weekly on Mondays, monthly on the 1st. The roles list paints green under 70%, yellow to the line, red over it. Blank = untracked.</p>
-                        <div class="acct-row">
-                          <div class="acct-field">
-                            <label class="settings-label" for="ws-budget">USD</label>
-                            <input id="ws-budget" type="number" min="0" class="settings-input" placeholder="none" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="ws-budget-period">Period</label>
-                            <select id="ws-budget-period" class="settings-input">
-                              <option value="1">Daily</option>
-                              <option value="7">Weekly</option>
-                              <option value="30" selected>Monthly</option>
-                            </select>
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="ws-tpm">TPM limit</label>
-                            <input id="ws-tpm" type="number" min="0" class="settings-input" placeholder="none" />
-                          </div>
-                        </div>
-                        <label class="settings-toggle set-pref-row">
-                          <div class="set-pref-text">
-                            <div class="set-pref-title">Hard limit</div>
-                            <div class="set-pref-desc">Keys minted for this role stop working once the budget is spent — enforced at the gateway when keys are minted. Off means the color is advisory only.</div>
-                          </div>
-                          <input type="checkbox" id="ws-budget-hard" />
-                          <span class="toggle-switch"></span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <!-- Keys — READ-ONLY: the gateway keys minted against this
-                         role (minting lives under Gateway › API Keys). -->
-                    <div class="ws-tab" data-wstab="keys">
-                      <p class="section-desc" style="margin-top:12px;">Keys the gateway has handed out for this role — minted under Gateway &rsaquo; API Keys. Revoked keys stay listed; their metrics live on.</p>
-                      <div id="ws-keys-list"></div>
-                    </div>
-
-                    <div class="ws-tab" data-wstab="models">
-                      <label class="settings-toggle" style="margin-top:12px;">
-                        <input type="checkbox" id="ws-limit-models" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title">Limit this role to specific models</span>
-                          <span class="toggle-desc" id="ws-models-hint">Off — it can use every model the org supports.</span>
-                        </div>
-                      </label>
-                      <!-- Role provider keys (his order, 2026-09-11): key allocation
-                           follows the org's cost structure — the org key is the
-                           default and a key here overrides it for THIS role. -->
-                      <h3 class="settings-subheading" style="margin-top:16px;">Provider keys</h3>
-                      <p class="section-desc">Members with this role use the organization's vendor keys unless you set one here — a role key overrides the org key, so this role's usage bills to its own vendor account.</p>
-                      <div id="ws-provider-keys"></div>
-                      <h3 class="settings-subheading" style="margin-top:16px;">Models</h3>
-                      <div class="crud-toolbar" style="margin-top:12px;">
-                        <input id="ws-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
-                        <button id="ws-models-filter" class="action-btn ws-filter-btn" type="button" title="Filter by provider" aria-label="Filter by provider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="ws-models-filter-label" class="hidden"></span></button>
-                      </div>
-                      <div id="ws-models-grid"></div>
-                      <div id="ws-models-pager"></div>
-                    </div>
-
-                    <!-- MEMBERS — who holds this role. The models page's
-                         grammar: search + pagination, an add button that opens
-                         the org's members in a modal, and a per-row kebab whose
-                         Remove hands the member back to the base role. -->
-                    <div class="ws-tab" data-wstab="members">
-                      <div class="crud-toolbar" style="margin-top:12px;">
-                        <input id="ws-members-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" />
-                        <button id="ws-members-add" class="action-btn primary" type="button">+ Add member</button>
-                      </div>
-                      <div id="ws-members-grid"></div>
-                      <div id="ws-members-pager"></div>
-                    </div>
-
-                    <div class="ws-tab" data-wstab="connections">
-                      <div id="ws-conn-chrome">
-                      <div class="app-detail-tabs" id="ws-conn-tabs" style="margin-top:10px;">
-                        <button class="app-detail-tab active" data-wsconn="personal" type="button">Personal</button>
-                        <button class="app-detail-tab" data-wsconn="shared" type="button">Shared</button>
-                      </div>
-                      <p class="section-desc" id="ws-conn-blurb"></p>
-
-                      <label class="settings-toggle hidden" id="ws-mcp-row">
-                        <input type="checkbox" id="ws-allow-mcp" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title">Allow custom MCP connections</span>
-                          <span class="toggle-desc">Members may register their own MCP servers on the desktop's Connections page. Also requires the org-wide setting.</span>
-                        </div>
-                      </label>
-
-                      <label class="settings-toggle" style="margin-top:12px;">
-                        <input type="checkbox" id="ws-limit-conns" />
-                        <span class="toggle-switch"></span>
-                        <div class="toggle-info">
-                          <span class="toggle-title" id="ws-limit-conns-title">Restrict connections</span>
-                          <span class="toggle-desc" id="ws-limit-conns-hint"></span>
-                        </div>
-                      </label>
-
-                      <div id="ws-conn-list-wrap" class="hidden">
-                        <!-- The STANDARD list toolbar — search stretches, the
-                             primary action sits normal-sized at the right. -->
-                        <div class="crud-toolbar" style="margin:20px 0 16px;">
-                          <input id="ws-conn-search" type="text" class="crud-search" placeholder="Search connections…" spellcheck="false" autocomplete="off" />
-                          <button id="ws-conn-add" class="action-btn primary" type="button">Allow another</button>
-                        </div>
-                        <div id="ws-conn-grid"></div>
-                        <div id="ws-conn-pager"></div>
-                      </div>
-
-                      </div><!-- /ws-conn-chrome -->
-
-                      <!-- Tool drill-down — the STANDARD inline form: crumb
-                           back, subheading, row-grammar toggle rows. It
-                           replaces the whole tab (chrome hides with it);
-                           removal from the role is the table's toggle. -->
-                      <div id="ws-tools-view" class="crud-inline-form hidden">
-                        <div class="crud-inline-header">
-                          <a class="crud-breadcrumb-back" id="ws-tools-back">&larr; Connections</a>
-                          <div class="crud-spacer"></div>
-                        </div>
-                        <div class="ws-tools-head">
-                          <h3 class="settings-subheading" id="ws-tools-name" style="margin-top:0;">—</h3>
-                          <label class="settings-toggle ws-model-allow" title="Toggle every tool">
-                            <input type="checkbox" id="ws-tools-all" />
-                            <span class="toggle-switch"></span>
-                          </label>
-                        </div>
-                        <p class="section-desc" id="ws-tools-hint">Turn a tool off to hide it — members with this role won't see or be able to call it.</p>
-                        <div id="ws-tools-list"></div>
-                      </div>
-                    </div>
-
-                    <!-- The standard Security editor footer (his spec,
-                         2026-09-01, matching Domains): Delete bottom-left with
-                         a confirm, Cancel + Save bottom-right. General fields
-                         are STAGED — Save commits them; the Models/Connections
-                         allow-toggles keep committing live. -->
-                    <div class="crud-edit-foot">
-                      <button id="ws-del-btn" class="action-btn danger" type="button">Delete</button>
-                      <div class="crud-spacer"></div>
-                      <button id="ws-cancel-btn" class="action-btn secondary" type="button">Cancel</button>
-                      <button id="ws-save-btn" class="action-btn primary" type="button">Save</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-panel" data-sub="org-general">
-                <h2>General <span id="org-panel-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Your organization's name and image.</p>
-
-                                        <div id="org-panel-admin-only" class="crud-empty hidden">Only an organization admin can manage the organization.</div>
-                    <div id="org-panel-body">
-                      <div id="org-panel-error" class="settings-error hidden"></div>
-                      <div class="acct-section">
-                        <div class="acct-identity">
-                          <div class="acct-id-face">
-                            <div class="acct-avatar-slot">
-                              <span id="org-panel-initial" class="acct-initials">—</span>
-                              <img id="org-panel-image" class="acct-avatar hidden" alt="" />
-                            </div>
-                            <div class="acct-id-text">
-                              <div class="acct-name" id="org-panel-id-name">—</div>
-                              <div class="acct-email">Organization image — shows wherever your org identifies itself.</div>
-                            </div>
-                          </div>
-                          <div class="acct-id-actions">
-                            <button id="org-panel-image-pick" class="action-btn" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change image…</button>
-                            <input id="org-panel-image-file" type="file" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
-                          </div>
-                        </div>
-                        <div class="acct-row">
-                          <div class="acct-field acct-field-wide">
-                            <label class="settings-label" for="org-panel-name">Organization name</label>
-                            <input id="org-panel-name" type="text" class="settings-input" autocomplete="off" />
-                        <!-- (Force semantic routing left the org, 2026-09-12: it is a
-                             ROLE control now, per loop — Roles -> Loops -> force auto.
-                             One org switch could not tell a coding loop from a
-                             summarising one.) -->
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  
-              </div>
 
               <!-- Billing — the license subscription: plan, card, invoices.
                    Plans are NOT spelled out here: pricing, tiers and features
                    are the web's copy to own, so the Plan bar links out rather
                    than carrying a second pricing table that would drift. -->
-              <div class="settings-panel" data-sub="billing">
-                <div id="billing-error" class="settings-error hidden"></div>
-                <div id="billing-toast" class="settings-success hidden"></div>
-                <div id="billing-main">
-                <h2>Billing</h2>
-                <p class="section-desc">Your Glyphh license — the subscription that activates the desktop app for your organization. See the <a id="billing-pricing-link" href="https://glyphh.ai/pricing" target="_blank" rel="noopener">pricing table</a> for current rates.</p>
 
-                <!-- PLAN header (his spec, 2026-08-24: the Claude billing look
-                     on what Stripe gives us): mark + plan name + allowance line
-                     + seat line, Adjust plan (the plan-grid fold) on the right. -->
-                <div class="bil-plan-head">
-                  <img class="bil-plan-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
-                  <div class="bil-plan-text">
-                    <div class="bil-plan-name"><span id="billing-plan-name">—</span></div>
-                    <div class="bil-plan-sub" id="billing-plan-sub">—</div>
-                    <div class="bil-plan-seats">
-                      <span class="billing-seats-bar hidden"><span class="billing-seats-fill" id="billing-seats-fill"></span></span>
-                      <span id="billing-seats-count">—</span>
-                    </div>
-                  </div>
-                  <button type="button" id="billing-plans-toggle" class="action-btn">Adjust plan</button>
-                </div>
-
-                <div class="ua-section">Payment</div>
-                <div class="ua-row">
-                  <div class="ua-label bil-label-wide">
-                    <div class="ua-name" id="billing-card-line">Card on file</div>
-                    <div class="ua-sub" id="billing-card-sub">Managed securely by Stripe.</div>
-                  </div>
-                  <div class="ua-spacer"></div>
-                  <span id="billing-portal-status" class="set-save-state"></span>
-                  <button id="billing-portal-btn" class="action-btn" type="button">Update</button>
-                </div>
-
-                <div class="ua-section">Invoices</div>
-                <div class="ua-sub" id="billing-inv-summary" style="margin:6px 0 12px;"></div>
-                <button type="button" id="billing-inv-toggle" class="hidden" aria-expanded="true" aria-controls="billing-invoices-wrap"></button>
-                <div id="billing-invoices-wrap">
-                  <div class="crud-empty" id="billing-invoices-empty">Loading…</div>
-                  <table class="lib-table billing-invoices hidden" id="billing-invoices-table">
-                    <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-                    <tbody id="billing-invoices-body"></tbody>
-                  </table>
-                  <div id="billing-inv-pager"></div>
-                </div>
-
-                
-                </div><!-- /billing-main -->
-
-                <!-- Adjust plan — in-tab form (his spec, 2026-08-24): same
-                     shape as Add funds; the cards carry their own actions,
-                     so the footer is just Cancel. -->
-                <div id="billing-plans-form" class="crud-inline-form hidden">
-                  <div class="crud-inline-header">
-                    <a class="crud-breadcrumb-back" id="billing-plans-back">&larr; Billing</a>
-                    <div class="crud-spacer"></div>
-                  </div>
-                  <h3 class="settings-subheading" style="margin-top:0;">Adjust plan</h3>
-                  <div id="billing-plans-note" class="crud-empty hidden">Only an organization admin can change the plan.</div>
-                  <div id="billing-plans-error" class="settings-error hidden"></div>
-                  <div class="billing-plan-grid" id="billing-plan-grid"></div>
-                  <div class="settings-actions" style="margin-top:16px;">
-                    <div style="flex:1;"></div>
-                    <button id="billing-plans-cancel" class="action-btn" type="button">Cancel</button>
-                  </div>
-                </div>
-
-              </div>
-
-              <div class="settings-panel" data-sub="about">
-                <h2>About</h2>
-          <div class="about-header">
-            <div class="about-logo">
-              <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
-              <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
-            </div>
-            <div class="about-version" id="about-version">Version 2.1.3</div>
-            <div class="about-copyright">&copy; 2026 Glyphh AI LLC. All rights reserved.</div>
-            <button class="action-btn about-check-update" id="about-check-update">Check for Updates</button>
-            <div class="about-progress hidden" id="about-progress">
-              <div class="about-progress-bar"><div class="about-progress-fill" id="about-progress-fill"></div></div>
-              <span class="about-progress-text" id="about-progress-text">Downloading...</span>
-            </div>
-          </div>
-
-          <!-- Bottom-right prompt — appears when the feed offers a newer
-               version. "Download" pulls it in the background; once on disk the
-               prompt offers "Restart now" (it also installs on the next
-               restart regardless). See docs.ts loadAbout(). -->
-          <div class="about-update-prompt hidden" id="about-update-prompt">
-            <span class="about-update-prompt-text" id="about-update-prompt-text">A new release is available</span>
-            <button class="action-btn primary" id="about-update-download">Download</button>
-            <button class="action-btn primary hidden" id="about-update-relaunch">Restart now</button>
-          </div>
-              </div>
 
               <!-- MCP Server — THE PURGE: the cloud endpoint (api.glyphh.ai/mcp)
                    is gone; what remains is the LOCAL 127.0.0.1 MCP server this
@@ -1641,72 +665,6 @@
                 </div>
               </div>
 
-              <div class="settings-panel" data-sub="download">
-                <h2>Download</h2>
-                <p class="section-desc">The Glyphh desktop app — macOS, Windows, and Linux. Installs update themselves.</p>
-                <div id="dl-error" class="settings-error hidden"></div>
-                <div id="dl-latest"></div>
-                <h3 class="dl-prev-title">Previous releases</h3>
-                <div class="crud-toolbar">
-                  <input id="dl-search" type="text" class="crud-search" placeholder="Search releases…" spellcheck="false" autocomplete="off" />
-                </div>
-                <div id="dl-list" class="mbr-list"></div>
-              </div>
-              <!-- Support — the stored, threaded ticketing system (list / thread
-                   / new). Three views toggle inside one panel. -->
-              <div class="settings-panel" data-sub="support">
-                <div id="support-error" class="settings-error hidden"></div>
-
-                <!-- LIST — the standard list-page grammar (Skills/Loops). The
-                     title/description belong to the LIST view; the forms open
-                     on ← Support alone. -->
-                <div id="support-list-view">
-                  <h2>Support</h2>
-                  <p class="section-desc">Open a request and we'll get back to you. Your conversation lives here.</p>
-                  <div class="crud-toolbar">
-                    <input id="support-search" type="text" class="crud-search" placeholder="Search requests…" spellcheck="false" autocomplete="off" />
-                    <button id="support-new-btn" class="action-btn primary" type="button">+ New request</button>
-                  </div>
-                  <div id="support-empty" class="crud-empty hidden">No requests yet. Open one and we'll get back to you.</div>
-                  <div id="support-tickets"></div>
-                </div>
-
-                <!-- NEW — the inline-form standard: breadcrumb back up top,
-                     stacked label-above-input, Cancel + primary submit in a
-                     bottom .settings-actions footer. -->
-                <div id="support-new-view" class="crud-inline-form hidden">
-                  <div class="crud-inline-header">
-                    <a class="crud-breadcrumb-back" id="support-new-back">&larr; Support</a>
-                    <div class="crud-spacer"></div>
-                  </div>
-                  <label class="settings-label" for="support-subject">Subject</label>
-                  <input id="support-subject" type="text" class="settings-input" placeholder="What do you need help with?" spellcheck="false" autocomplete="off" />
-                  <label class="settings-label" for="support-message">Message</label>
-                  <textarea id="support-message" class="settings-input" rows="6" placeholder="Describe the issue…" spellcheck="false"></textarea>
-                  <div class="settings-actions" style="margin-top:12px;">
-                    <button id="support-new-cancel" class="action-btn" type="button">Cancel</button>
-                    <button id="support-submit-btn" class="action-btn primary" type="button">Submit request</button>
-                  </div>
-                </div>
-
-                <!-- THREAD — same inline-form header grammar; the set-bar
-                     names the request, the reply composer sits at the bottom. -->
-                <div id="support-thread-view" class="crud-inline-form hidden">
-                  <div class="crud-inline-header">
-                    <a class="crud-breadcrumb-back" id="support-thread-back">&larr; Support</a>
-                    <div class="crud-spacer"></div>
-                  </div>
-                  <div class="set-bar" style="margin-bottom:12px;">
-                    <span class="set-bar-main"><span class="set-fold-title" id="support-thread-subject">—</span></span>
-                    <span class="set-fold-aside"><span id="support-thread-status" class="acct-chip">—</span></span>
-                  </div>
-                  <div id="support-thread-msgs" class="support-msgs"></div>
-                  <div class="settings-inline" style="margin-top:12px;">
-                    <input id="support-reply" type="text" class="settings-input" placeholder="Reply…" spellcheck="false" autocomplete="off" />
-                    <button id="support-reply-btn" class="action-btn primary" type="button">Send</button>
-                  </div>
-                </div>
-              </div>
 
               <!-- (Runtime and Guardrails moved onto the General tab — the
                    Sessions group and the folded Guardrails group. Their loaders
@@ -1723,375 +681,13 @@
               <!-- Catalog — the GLOBAL model catalog (admin/models). -->
               <!-- Plans — global tier pricing + the Stripe price HISTORY
                    (plan_prices: append + promote, never mutate). -->
-              <div class="settings-panel" data-sub="padmin-models">
-                <h2>Model Catalog</h2>
-                <p class="section-desc">The global catalog every organization draws from — display names, context windows, availability. Changes apply platform-wide.</p>
-                <div id="pa-models-gate" class="crud-empty hidden">Only a platform super admin can manage the catalog.</div>
-                <div id="pa-models-body">
-                  <div id="pa-models-error" class="settings-error hidden"></div>
-
-                  <div id="pa-models-list-view">
-                    <div class="crud-toolbar">
-                      <input id="pa-models-search" type="text" class="crud-search" placeholder="Search providers and models…" spellcheck="false" autocomplete="off" />
-                      <button id="pa-provider-add-btn" class="action-btn primary" type="button">+ New provider</button>
-                    </div>
-                    <div id="pa-catalog-list"></div>
-                    <div id="pa-catalog-pager"></div>
-                  </div>
-
-                  <!-- Provider editor — the SAME full-panel standard as the
-                       model/plan editors: only the form shows, breadcrumb back. -->
-                  <div id="pa-provider-create" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="pa-provider-back">&larr; Providers</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div class="crud-form-error hidden" id="pa-provider-create-error"></div>
-                    <h3 class="settings-subheading" id="pa-provider-title">New provider</h3>
-                    <label class="settings-label">Slug</label>
-                    <input id="pa-pc-slug" class="settings-input settings-input-md" placeholder="mistral" spellcheck="false" />
-                    <label class="settings-label">Name</label>
-                    <input id="pa-pc-name" class="settings-input settings-input-md" placeholder="Mistral" />
-                    <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
-                    <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
-                    <!-- PLATFORM API KEYS — several per provider (rotation:
-                         append + activate/deactivate). Encrypted in the DB;
-                         write-only: rows show label + last-4, never the key. -->
-                    <div id="pa-pc-keys-group" class="hidden">
-                      <h4 class="acct-row-head">API keys</h4>
-                      <p class="section-desc">The platform keys the gateway calls this vendor with — several allowed; each call picks a random active key, so rotation is add-the-new, deactivate-the-old. Stored encrypted, never shown again.</p>
-                      <div id="pa-pc-keys-list"></div>
-                      <div class="settings-inline" style="margin-top:8px">
-                        <input id="pa-pc-key-new" type="password" class="settings-input" placeholder="paste the API key…" spellcheck="false" autocomplete="off" />
-                        <input id="pa-pc-key-label" type="text" class="settings-input settings-input-md" placeholder="label (optional)" spellcheck="false" autocomplete="off" />
-                        <button id="pa-pc-key-add" class="action-btn primary" type="button">Add key</button>
-                      </div>
-                    </div>
-                    <div class="settings-actions" style="margin-top:28px;">
-                      <div style="flex:1;"></div>
-                      <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>
-                    </div>
-                  </div>
-
-                  <!-- Model editor — the app form standard: breadcrumb back,
-                       stacked label-above-input, Cancel + primary Save in a
-                       bottom .settings-actions. -->
-                  <div id="pa-model-editor" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="pa-model-back">&larr; Catalog</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div id="pa-model-form-error" class="crud-form-error hidden"></div>
-                    <h3 class="settings-subheading" id="pa-model-title">—</h3>
-                    <div id="pa-model-identity" class="hidden">
-                      <label class="settings-label">Provider</label>
-                      <input id="pa-model-provider" class="settings-input settings-input-md" readonly />
-                      <label class="settings-label">Model id</label>
-                      <input id="pa-model-id" class="settings-input" placeholder="claude-fable-5" spellcheck="false" autocomplete="off" />
-                    </div>
-                    <label class="settings-label" for="pa-model-name">Display name</label>
-                    <input id="pa-model-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label" for="pa-model-alias">Alias <span class="mdl-hint">(short @-mention; blank = none)</span></label>
-                    <input id="pa-model-alias" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
-                    <div class="settings-inline">
-                      <span>
-                        <label class="settings-label" for="pa-model-modality">Modality</label>
-                        <select id="pa-model-modality" class="settings-input settings-input-md">
-                          <option value="chat">Chat</option>
-                          <option value="image">Image</option>
-                          <option value="video">Video</option>
-                          <option value="speech">Speech (TTS)</option>
-                          <option value="transcription">Transcription (STT)</option>
-                        </select>
-                      </span>
-                      <span>
-                        <label class="settings-label" for="pa-model-rate-unit">Rate unit</label>
-                        <select id="pa-model-rate-unit" class="settings-input settings-input-md">
-                          <option value="mtok">per 1M tokens</option>
-                          <option value="image">per image</option>
-                          <option value="second">per second</option>
-                          <option value="mchar">per 1M chars</option>
-                          <option value="minute">per minute</option>
-                        </select>
-                      </span>
-                    </div>
-                    <label class="settings-label" for="pa-model-ctx">Context window <span class="mdl-hint">(tokens; what the gateway fits requests to)</span></label>
-                    <input id="pa-model-ctx" type="number" min="0" class="settings-input" placeholder="—" />
-                    <label class="settings-label" for="pa-model-max">Max output tokens</label>
-                    <input id="pa-model-max" type="number" min="0" class="settings-input" placeholder="—" />
-                    <!-- Long-context tier: the vendor bills the WHOLE request at the
-                         multipliers once the prompt crosses the threshold (Gemini Pro's
-                         >200K shape). All three blank = flat pricing. -->
-                    <label class="settings-label" for="pa-model-lc-threshold">Long-context threshold <span class="mdl-hint">(prompt tokens; blank = flat pricing)</span></label>
-                    <input id="pa-model-lc-threshold" type="number" min="0" class="settings-input" placeholder="e.g. 200000" />
-                    <div style="display:flex;gap:10px;">
-                      <div style="flex:1;">
-                        <label class="settings-label" for="pa-model-lc-in">Input ×</label>
-                        <input id="pa-model-lc-in" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 2" />
-                      </div>
-                      <div style="flex:1;">
-                        <label class="settings-label" for="pa-model-lc-out">Output ×</label>
-                        <input id="pa-model-lc-out" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 1.5" />
-                      </div>
-                    </div>
-                    <label class="settings-toggle" style="margin-top:12px;">
-                      <input type="checkbox" id="pa-model-active" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Active</span>
-                        <span class="toggle-desc">Inactive models disappear from every org's catalog until reactivated.</span>
-                      </div>
-                    </label>
-                    <label class="settings-toggle" style="margin-top:12px;">
-                      <input type="checkbox" id="pa-model-default-on" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Default on</span>
-                        <span class="toggle-desc">Orgs with no explicit override support this model automatically; off leaves it opt-in per org.</span>
-                      </div>
-                    </label>
-                    <div class="settings-actions" style="margin-top:16px;">
-                      <button id="pa-model-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="pa-model-save" class="action-btn primary" type="button">Save</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Plans — global tier pricing + the Stripe price HISTORY
                    (plan_prices: append + promote, never mutate). -->
-                            <div class="settings-panel" data-sub="padmin-usage">
-                <h2>Platform Usage</h2>
-                <p class="section-desc">What the whole platform spent and where — every organization, every runtime.</p>
-                <div id="pa-usage-gate" class="crud-empty hidden">Only a platform super admin can see platform usage.</div>
-                <div id="pa-usage-body">
-                  <div id="pa-usage-error" class="settings-error hidden"></div>
-                  <!-- Three tabs, one per section (his order, 2026-09-02). -->
-                  <div class="app-detail-tabs" id="pa-usage-tabs" style="margin:4px 0 14px;">
-                    <button class="app-detail-tab active" data-utab="daily" type="button">Per day</button>
-                    <button class="app-detail-tab" data-utab="spenders" type="button">Top spenders</button>
-                    <button class="app-detail-tab" data-utab="runtime" type="button">By runtime</button>
-                  </div>
-                  <div id="pa-usage-tab-daily">
-                  <div class="dash-grid">
-                    <div class="dash-card">
-                      <div class="dash-card-label">Spend</div>
-                      <div class="dash-card-value" id="pa-usage-usd">—</div>
-                      <div class="dash-card-sub">dollars, in the window</div>
-                    </div>
-                    <div class="dash-card">
-                      <div class="dash-card-label">Requests</div>
-                      <div class="dash-card-value" id="pa-usage-requests">—</div>
-                      <div class="dash-card-sub">billable calls</div>
-                    </div>
-                    <div class="dash-card">
-                      <div class="dash-card-label">Active users</div>
-                      <div class="dash-card-value" id="pa-usage-active">—</div>
-                      <div class="dash-card-sub">with usage</div>
-                    </div>
-                    <div class="dash-card">
-                      <div class="dash-card-label">Revenue</div>
-                      <div class="dash-card-value" id="pa-usage-revenue">—</div>
-                      <div class="dash-card-sub">collected via Stripe</div>
-                    </div>
-                  </div>
-                  <div class="dash-card dash-card-wide">
-                    <div class="dash-card-head">
-                      <div>
-                        <div class="dash-card-label">Per day</div>
-                        <div class="dash-card-value dash-card-value-sm" id="pa-usage-total">—</div>
-                        <div class="dash-card-sub" id="pa-usage-range">last 30 days</div>
-                      </div>
-                      <div class="dash-usage-filters">
-                        <select id="pa-usage-org" class="dash-usage-select" title="Organization">
-                          <option value="">All orgs</option>
-                        </select>
-                        <select id="pa-usage-days" class="dash-usage-select" title="Date range">
-                          <option value="7">7 days</option>
-                          <option value="30" selected>30 days</option>
-                          <option value="90">90 days</option>
-                        </select>
-                        <button class="dash-refresh" id="pa-usage-refresh" title="Refresh">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div class="dash-chart-wrap">
-                      <canvas id="pa-usage-chart"></canvas>
-                      <div class="dash-chart-empty hidden" id="pa-usage-empty">No usage in this window.</div>
-                    </div>
-                  </div>
-                  <!-- Financials (his order, 2026-09-02): token spend, revenue,
-                       cost as lines — the SAME window + org the bar chart uses. -->
-                  <div class="dash-card dash-card-wide">
-                    <div class="dash-card-head">
-                      <div>
-                        <div class="dash-card-label">Tokens · Revenue · Spend</div>
-                        <div class="dash-card-sub" id="pa-usage-fin-range">same window as above</div>
-                      </div>
-                    </div>
-                    <div class="dash-chart-wrap">
-                      <canvas id="pa-usage-fin-chart"></canvas>
-                      <div class="dash-chart-empty hidden" id="pa-usage-fin-empty">No usage in this window.</div>
-                    </div>
-                  </div>
-                  </div>
-
-                  <div id="pa-usage-tab-spenders" class="hidden">
-                    <div class="crud-toolbar">
-                      <div class="search-clear-wrap"><input id="pa-usage-users-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
-                      <select id="pa-usage-days-spenders" class="dash-usage-select" title="Date range">
-                        <option value="7">7 days</option>
-                        <option value="30" selected>30 days</option>
-                        <option value="90">90 days</option>
-                      </select>
-                    </div>
-                    <div id="pa-usage-users"></div>
-                  </div>
-
-                  <div id="pa-usage-tab-runtime" class="hidden">
-                    <div class="crud-toolbar">
-                      <div class="search-clear-wrap"><input id="pa-usage-runtimes-search" type="text" class="crud-search" placeholder="Search region, mode, tier…" spellcheck="false" autocomplete="off" /></div>
-                      <select id="pa-usage-days-runtime" class="dash-usage-select" title="Date range">
-                        <option value="7">7 days</option>
-                        <option value="30" selected>30 days</option>
-                        <option value="90">90 days</option>
-                      </select>
-                    </div>
-                    <p class="section-desc">Where it ran — region × shared or dedicated × plan tier.</p>
-                    <div id="pa-usage-runtimes"></div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Orgs — the org list + admin fund grants. -->
-                            <div class="settings-panel" data-sub="padmin-plans">
-                <h2>Plans</h2>
-                <p class="section-desc">The global plan tiers — per-seat price (which is also the plan's monthly budget, dollar for dollar), seat caps, availability — and each tier's Stripe price history.</p>
-                <div id="pa-plans-gate" class="crud-empty hidden">Only a platform super admin can manage plans.</div>
-                <div id="pa-plans-body">
-                  <div id="pa-plans-error" class="settings-error hidden"></div>
-
-                  <div id="pa-plans-list-view">
-                    <div class="crud-toolbar">
-                      <input id="pa-plans-search" type="text" class="crud-search" placeholder="Search plans..." spellcheck="false" autocomplete="off" />
-                      <button id="pa-plan-add-btn" class="action-btn primary" type="button">+ Plan</button>
-                    </div>
-                    <div id="pa-plans-list"></div>
-                    <h3 id="pa-orgplans-head" class="acct-row-head hidden">Bespoke org plans</h3>
-                    <div id="pa-orgplans-list" class="hidden"></div>
-                  </div>
-
-                  <div id="pa-plan-editor" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="pa-plan-back">&larr; Plans</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div id="pa-plan-form-error" class="crud-form-error hidden"></div>
-                    <h3 class="settings-subheading" id="pa-plan-title">—</h3>
-                    <div id="pa-plan-tier-row" class="hidden">
-                      <label class="settings-label" for="pa-plan-tier">Tier key <span class="mdl-hint">(lowercase, digits, dashes &mdash; permanent)</span></label>
-                      <input id="pa-plan-tier" type="text" class="settings-input settings-input-md" placeholder="team" spellcheck="false" autocomplete="off" />
-                    </div>
-                    <label class="settings-label" for="pa-plan-name">Display name</label>
-                    <input id="pa-plan-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label" for="pa-plan-price">Price (USD / seat / month) <span class="mdl-hint">(also the monthly budget, dollar for dollar)</span></label>
-                    <input id="pa-plan-price" type="number" min="0" class="settings-input" />
-                    <span class="settings-hint" id="pa-plan-pool-hint" style="display:block;margin-top:4px;"></span>
-                    <label class="settings-label" for="pa-plan-seats">Max seats</label>
-                    <input id="pa-plan-seats" type="number" min="1" class="settings-input" />
-                    <label class="settings-label" for="pa-plan-rpm">Rate limit <span class="mdl-hint">(gateway requests / minute per org &mdash; empty = unlimited)</span></label>
-                    <input id="pa-plan-rpm" type="number" min="0" class="settings-input" placeholder="unlimited" />
-                    <label class="settings-label" for="pa-plan-trial">Gateway trial <span class="mdl-hint">(days from org creation &mdash; empty = full gateway)</span></label>
-                    <input id="pa-plan-trial" type="number" min="0" class="settings-input" placeholder="full gateway" />
-                    <label class="settings-toggle" style="margin-top:12px;">
-                      <input type="checkbox" id="pa-plan-governance" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Role governance</span>
-                        <span class="toggle-desc">Create and shape roles &mdash; limits, budgets, role vendor keys. Off = the base role only.</span>
-                      </div>
-                    </label>
-                    <label class="settings-toggle" style="margin-top:12px;">
-                      <input type="checkbox" id="pa-plan-active" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Active</span>
-                        <span class="toggle-desc">Inactive plans are hidden and can no longer be subscribed to.</span>
-                      </div>
-                    </label>
-
-                    <!-- The plan_prices HISTORY contract: a price is appended,
-                         then promoted to active — never mutated in place. Every
-                         historical price still provisions its tier, so legacy
-                         subscriptions keep working. Self-serve tiers only. -->
-                    <div id="pa-prices-group" class="hidden">
-                      <h4 class="acct-row-head">Stripe price history</h4>
-                      <p class="section-desc">Every historical price still provisions its tier — legacy subscriptions on an old price keep working. Only the active price is used for new checkouts.</p>
-                      <div id="pa-prices-list"></div>
-                      <div class="settings-inline" style="margin-top:10px;">
-                        <input id="pa-price-new" type="text" class="settings-input" placeholder="price_…" spellcheck="false" autocomplete="off" />
-                        <button id="pa-price-add" class="action-btn" type="button">Add price</button>
-                      </div>
-                    </div>
-
-                    <div class="settings-actions" style="margin-top:16px;">
-                      <button id="pa-plan-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="pa-plan-save" class="action-btn primary" type="button">Save</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Orgs — the org list + plan/member management. -->
-              <div class="settings-panel" data-sub="padmin-orgs">
-                <h2>Organizations</h2>
-                <p class="section-desc">Every organization on the platform. Open one to manage its plan and members.</p>
-                <div id="pa-orgs-gate" class="crud-empty hidden">Only a platform super admin can manage organizations.</div>
-                <div id="pa-orgs-body">
-                  <div id="pa-orgs-error" class="settings-error hidden"></div>
-
-                  <div id="pa-orgs-list-view">
-                    <div class="crud-toolbar">
-                      <input id="pa-orgs-search" type="text" class="crud-search" placeholder="Search organizations…" spellcheck="false" autocomplete="off" />
-                      <button id="pa-org-new-btn" class="action-btn primary" type="button">+ New Org</button>
-                    </div>
-                    <div id="pa-orgs-list"></div>
-                    <p class="settings-hint" id="pa-orgs-total"></p>
-                  </div>
-
-                  <!-- + New Org (the roles-page create grammar, 2026-09-02): a
-                       standalone org — base workspace seeded. -->
-                  <div id="pa-org-create" class="crud-inline-form lp-edit hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="pa-org-create-back">&larr; Organizations</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div id="pa-org-create-error" class="crud-form-error hidden"></div>
-                    <label class="settings-label">Name</label>
-                    <input id="pa-org-create-name" type="text" class="settings-input" placeholder="e.g. Acme Inc" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">Plan</label>
-                    <select id="pa-org-create-tier" class="settings-input" style="max-width:240px;"></select>
-                    <div class="settings-actions" style="margin-top:16px;">
-                      <button id="pa-org-create-cancel" class="action-btn" type="button">Cancel</button>
-                      <button id="pa-org-create-save" class="action-btn primary" type="button">Create organization</button>
-                    </div>
-                  </div>
-
-                  <!-- Full org management view — rendered dynamically (info,
-                       admin, plan, members + controls). -->
-                  <div id="pa-org-detail" class="crud-inline-form lp-edit hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="pa-org-detail-back">&larr; Organizations</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div id="pa-org-detail-error" class="crud-form-error hidden"></div>
-                    <div id="pa-org-detail-body"></div>
-                  </div>
-
-                </div>
-              </div>
 
 
               <div class="settings-panel settings-panel-section" data-sub="artifacts">
@@ -2111,7 +707,6 @@
                   </div>
                   <div class="skills-tabs">
                     <button class="skills-tab active" data-tab="mine" type="button">Your skills</button>
-                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
                     <div style="flex:1;"></div>
                     <span id="skills-count" class="skills-count"></span>
                     <button id="skills-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -2128,7 +723,6 @@
                       <div id="skill-detail-sub" class="skill-detail-sub"></div>
                     </div>
                     <div style="flex:1;"></div>
-                    <button id="skill-share" class="action-btn" type="button">Share</button>
                     <label class="skills-switch" title="Enabled"><input id="skill-enabled" type="checkbox" /><span></span></label>
                     <button id="skill-kebab" class="skills-kebab" type="button" title="More">⋮</button>
                   </div>
@@ -2160,17 +754,10 @@
                       <div class="skill-overview-label">Created by</div>
                       <div id="skill-author" class="skill-author"></div>
                       <div id="skill-author-meta" class="skill-author-meta"></div>
-                      <!-- The shelves this sits on once it is shared. Promote
-                           guesses them; this is where the guess is corrected. -->
-                      <div id="skill-cats-block" class="skill-cats-block hidden">
-                        <div class="skill-overview-label">Categories</div>
-                        <div id="skill-cats" class="skill-cats"></div>
-                      </div>
                     </aside>
                   </div>
                   <div id="skill-contents" class="skill-contents hidden">
                     <div class="skill-contents-bar">
-                      <select id="skill-version" class="skill-version"></select>
                       <div style="flex:1;"></div>
                       <button id="skill-reveal" class="action-btn" type="button">Show in folder</button>
                       <button id="skill-edit" class="action-btn" type="button">Edit</button>
@@ -2199,12 +786,7 @@
                   </div>
                   <div class="skills-tabs">
                     <button class="skills-tab active" data-tab="mine" type="button">Your apps</button>
-                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
-                    <!-- APPS CARRY A VERSION (his order, 2026-10-07): the iTunes look —
-                         an Updates tab with a red count, Update All beside it. -->
-                    <button class="skills-tab" data-tab="updates" type="button">Updates<span id="gapps-updates-badge" class="skills-badge hidden"></span></button>
                     <div style="flex:1;"></div>
-                    <button id="gapps-update-all" class="action-btn skill-update-btn hidden" type="button">Update All</button>
                     <span id="gapps-count" class="skills-count"></span>
                     <button id="gapps-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
                     <button id="gapps-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -2221,7 +803,6 @@
                       <div id="gapp-detail-sub" class="skill-detail-sub"></div>
                     </div>
                     <div style="flex:1;"></div>
-                    <button id="gapp-share" class="action-btn" type="button">Share</button>
                     <label class="skills-switch" title="Enabled"><input id="gapp-enabled" type="checkbox" /><span></span></label>
                     <button id="gapp-kebab" class="skills-kebab" type="button" title="More">⋮</button>
                   </div>
@@ -2234,7 +815,7 @@
                   </div>
                   <div id="gapp-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="gapp-skills-list" class="app-bundle-list"></div></div></div>
                   <div id="gapp-tools" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Choose when your AI is allowed to use these tools.</div><div id="gapp-tools-list" class="conn2-groups"></div></div></div>
-                  <div id="gapp-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this app works through. Connect the ones it needs before opening it.</div><div id="gapp-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="gapp-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this app works through. Connect the ones it needs.</div><div id="gapp-connections-list" class="app-bundle-list"></div></div></div>
                   <div id="gapp-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>
@@ -2247,15 +828,10 @@
                       <div class="skill-overview-label">Created by</div>
                       <div id="gapp-author" class="skill-author"></div>
                       <div id="gapp-author-meta" class="skill-author-meta"></div>
-                      <div id="gapp-cats-block" class="skill-cats-block hidden">
-                        <div class="skill-overview-label">Categories</div>
-                        <div id="gapp-cats" class="skill-cats"></div>
-                      </div>
                     </aside>
                   </div>
                   <div id="gapp-contents" class="skill-contents hidden">
                     <div class="skill-contents-bar">
-                      <select id="gapp-version" class="skill-version"></select>
                       <div style="flex:1;"></div>
                       <button id="gapp-reveal" class="action-btn" type="button">Show in folder</button>
                       <button id="gapp-edit" class="action-btn" type="button">Edit</button>
@@ -2284,7 +860,6 @@
                   </div>
                   <div class="skills-tabs">
                     <button class="skills-tab active" data-tab="mine" type="button">Your tasks</button>
-                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
                     <div style="flex:1;"></div>
                     <span id="gtasks-count" class="skills-count"></span>
                     <button id="gtasks-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -2302,7 +877,6 @@
                       <div id="gtask-detail-sub" class="skill-detail-sub"></div>
                     </div>
                     <div style="flex:1;"></div>
-                    <button id="gtask-share" class="action-btn" type="button">Share</button>
                     <label class="skills-switch" title="Enabled"><input id="gtask-enabled" type="checkbox" /><span></span></label>
                     <button id="gtask-kebab" class="skills-kebab" type="button" title="More">⋮</button>
                   </div>
@@ -2328,15 +902,10 @@
                       <div class="skill-overview-label">Created by</div>
                       <div id="gtask-author" class="skill-author"></div>
                       <div id="gtask-author-meta" class="skill-author-meta"></div>
-                      <div id="gtask-cats-block" class="skill-cats-block hidden">
-                        <div class="skill-overview-label">Categories</div>
-                        <div id="gtask-cats" class="skill-cats"></div>
-                      </div>
                     </aside>
                   </div>
                   <div id="gtask-contents" class="skill-contents hidden">
                     <div class="skill-contents-bar">
-                      <select id="gtask-version" class="skill-version"></select>
                       <div style="flex:1;"></div>
                       <button id="gtask-reveal" class="action-btn" type="button">Show in folder</button>
                       <button id="gtask-edit" class="action-btn" type="button">Edit</button>
@@ -2365,7 +934,6 @@
                   </div>
                   <div class="skills-tabs">
                     <button class="skills-tab active" data-tab="mine" type="button">Your plugins</button>
-                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
                     <div style="flex:1;"></div>
                     <span id="gplugs-count" class="skills-count"></span>
                     <button id="gplugs-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -2383,7 +951,6 @@
                       <div id="gplug-detail-sub" class="skill-detail-sub"></div>
                     </div>
                     <div style="flex:1;"></div>
-                    <button id="gplug-share" class="action-btn" type="button">Share</button>
                     <label class="skills-switch" title="Enabled"><input id="gplug-enabled" type="checkbox" /><span></span></label>
                     <button id="gplug-kebab" class="skills-kebab" type="button" title="More">⋮</button>
                   </div>
@@ -2403,15 +970,10 @@
                       <div class="skill-overview-label">Created by</div>
                       <div id="gplug-author" class="skill-author"></div>
                       <div id="gplug-author-meta" class="skill-author-meta"></div>
-                      <div id="gplug-cats-block" class="skill-cats-block hidden">
-                        <div class="skill-overview-label">Categories</div>
-                        <div id="gplug-cats" class="skill-cats"></div>
-                      </div>
                     </aside>
                   </div>
                   <div id="gplug-contents" class="skill-contents hidden">
                     <div class="skill-contents-bar">
-                      <select id="gplug-version" class="skill-version"></select>
                       <div style="flex:1;"></div>
                       <button id="gplug-reveal" class="action-btn" type="button">Show in folder</button>
                       <button id="gplug-edit" class="action-btn" type="button">Edit</button>

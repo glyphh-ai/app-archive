@@ -18,8 +18,6 @@ import path from "path";
 import { app } from "electron";
 import { GLYPHH_DIR, getActiveUserId, setActiveUserIdState, userScopedDir } from "./app-paths";
 import { initLocalDb, closeLocalDb } from "./local-db";
-import { appCache } from "./glyphh-client";
-import { installDefaultHubItems } from "./hub-ipc.js";
 import { provisionUserDefaults } from "./user-defaults.js";
 
 // main.ts registers how to reload the UI (it owns the BrowserWindow).
@@ -91,11 +89,10 @@ export function setActiveUser(userId: string | null): void {
 
   // Reopen stores under the new scope and drop every cross-user cache.
   fs.mkdirSync(userScopedDir(), { recursive: true });
-  // A NEW account is never empty: workspaces are local, so the desktop
-  // provisions its own defaults here — the first moment the scope is known.
-  if (userId) { void provisionUserDefaults(); void installDefaultHubItems(); }
+  // A NEW account is never empty: the desktop provisions its own default
+  // workspaces here — the first moment the scope is known.
+  if (userId) void provisionUserDefaults();
   initLocalDb();
-  appCache.invalidate();
 
   // Reset every main-process singleton holding per-user state in memory.
   for (const reset of userChangeResets) {

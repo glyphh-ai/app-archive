@@ -10,12 +10,6 @@
  *                                    override).
  *   ~/.glyphh/skills/<slug>.json   — a skill: manifest + prompt + code.
  *   user-state.sqlite              — loop_schedules + loop_runs (migration 9).
- *                                    A loop_schedules row is the member
- *                                    library's `schedule` record on this
- *                                    machine (2026-10-04): saves stamp
- *                                    updated_ms + tell the sync, deletes
- *                                    tombstone; schedule-store.ts is the
- *                                    sync's side of the table.
  *
  * NAMING (2026-09-11): this file's `LoopRow`/`loop_*` identifiers are the
  * MAIN-ERA sense of "loop" — a program with role slots — which the Tasks
@@ -39,7 +33,6 @@ import { getLocalDb } from "./local-db.js";
 import { userZone } from "./user-zone.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
-import { noteLibraryDelete, noteLibrarySave } from "./library-events.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
 const SKILLS_DIR = (): string => userScopedPath("skills");
@@ -156,12 +149,9 @@ export interface ScheduleRow {
   updated_ms?: number | null;
 }
 
-/** A SCHEDULE IS A LIBRARY RECORD (his rule, 2026-10-04): every local write
- *  stamps the row with this machine's clock and tells the sync, which pushes
- *  it; the web's writes come back through schedule-store.ts. */
+/** Every write stamps the row with this machine's clock (updated_ms). */
 export function touchSchedule(id: string, at: number = Date.now()): void {
   getLocalDb().prepare("UPDATE loop_schedules SET updated_ms = ? WHERE id = ?").run(at, String(id));
-  noteLibrarySave("schedule", String(id));
 }
 
 /** What an AGENT contributes to a run: which CLI loop actually runs it, the
@@ -281,7 +271,6 @@ export function saveSchedule(input: { id?: string; name?: string; kind?: string;
     .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}), Date.now());
   const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(id) as ScheduleRow;
   armSchedule(row);
-  noteLibrarySave("schedule", id);
   return { id };
 }
 
@@ -327,7 +316,6 @@ export function deleteSchedule(id: string): { deleted: boolean } {
   liveJobs.get(String(id))?.stop();
   liveJobs.delete(String(id));
   getLocalDb().prepare("DELETE FROM loop_schedules WHERE id = ?").run(String(id));
-  noteLibraryDelete("schedule", String(id));
   return { deleted: true };
 }
 
@@ -605,5 +593,5 @@ export function registerLocalLibraryIpc(): void {
   }));
   ipcMain.handle("schedule-recent-runs", () => env(() =>
     (getLocalDb().prepare(`SELECT r.*, s.name AS schedule_name FROM loop_runs r LEFT JOIN loop_schedules s ON s.id = r.schedule_id ORDER BY r.started_at DESC LIMIT 60`).all() as Array<RunRow & { schedule_name: string | null; task_slug?: string | null; trigger?: string | null }>)
-      .map((r) => ({ id: r.id, scheduleId: r.schedule_id || null, scheduleName: r.schedule_name, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error }))));
+      .map((r) => ({ id: r.id, scheduleId: r.schedule_id || null, scheduleName: r.schedule_name, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output }))));
 }

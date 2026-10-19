@@ -1,9 +1,7 @@
 /**
- * attach-handlers — the machine capabilities beyond panels, fs and pty that
- * the local MCP server exposes today and the attach socket exposes again
- * (RELAY-RESEARCH.md §4). Everything runs on-machine via the shared registry
- * (registerRelayHandler), so loopback MCP and the attach socket offer one
- * surface.
+ * attach-handlers — the machine capabilities beyond panels that the local MCP
+ * server exposes. Everything runs on-machine via the shared registry
+ * (registerRelayHandler).
  *
  *   fs.list     {path?}        → the web folder picker's home-capped browse
  *   fs.gitInfo  {path?}        → is git enabled on that folder, on what branch
@@ -15,17 +13,6 @@
  *                                cli-sessions-list IPC lists, read-only, each with its resume handle —
  *                                the ONE read that rides the relay (his order, 2026-10-07): a CLI's
  *                                sessions live on this machine and nowhere else
- *   apps.install {path | url | bundleBase64} → a .glyphh bundle becomes a CLOUD INSTANCE
- *                                (glyphh-app-host.ts installGlyphhAppBundle): the local MCP's
- *                                app_install (docs/GLYPHH-APP-SPEC.md §3). Loopback only — the
- *                                server never lists it for remote control, and an app's tools
- *                                are the gateway's (app_list_tools / app_call_tool), never a
- *                                machine's.
- *
- * NO RECORD RIDES THE RELAY (his order, 2026-10-06): the threads, the
- * workspaces and the app tabs are the server's — this machine publishes and
- * syncs them there and every surface reads them there. The relay drives a
- * session on this machine; the CLIs' own sessions are the one read it carries.
  *
  * loops.run / skills.run / agents.run are gone with the scheduler they ran on
  * (2026-09-21); tasks are programs the desktop runs, and the MCP tools that
@@ -38,7 +25,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node
 import { dirname, join } from "node:path";
 import { registerRelayHandler } from "./relay-client.js";
 import { findInstalledApp, launchInstalledApp, listInstalledApps } from "./installed-apps.js";
-import { installGlyphhAppBundle, installGlyphhAppBundleFromBase64, type InstallAnswer } from "./glyphh-app-host.js";
 
 function str(params: unknown, key: string): string {
   const v = (params as Record<string, unknown> | null)?.[key];
@@ -63,46 +49,6 @@ export function gitStateOf(dir: string): { isRepo: boolean; branch?: string } {
 }
 
 export function installAttachHandlers(): void {
-  // INSTALL A BUNDLE IN THE CLOUD — the local MCP's app_install. A .glyphh
-  // ({ path } on this machine, { url }, or { bundleBase64 }) is validated here
-  // and becomes (or updates) the member's instance; its tab names it.
-  registerRelayHandler("apps.install", async (params) => {
-    const p = params as { bundleBase64?: string; path?: string; url?: string } | null;
-    let r: InstallAnswer;
-    if (p?.path) {
-      // Preferred: the bundle is already on this machine — read it directly
-      // instead of round-tripping megabytes of base64 through the LLM.
-      const filePath = p.path.replace(/^~(?=$|\/)/, homedir());
-      if (!existsSync(filePath)) throw new Error(`bundle not found: ${filePath}`);
-      r = await installGlyphhAppBundle(filePath);
-    } else if (p?.url) {
-      const res = await fetch(p.url);
-      if (!res.ok) throw new Error(`bundle download failed: HTTP ${res.status}`);
-      r = await installGlyphhAppBundleFromBase64(Buffer.from(await res.arrayBuffer()).toString("base64"));
-    } else if (p?.bundleBase64) {
-      r = await installGlyphhAppBundleFromBase64(String(p.bundleBase64));
-    } else {
-      throw new Error("apps.install requires { path } (a .glyphh on this machine), { url }, or { bundleBase64 }");
-    }
-    if (!r.ok) throw new Error(r.error || "install failed");
-    // The connections the app declared ride the answer: the caller tells the
-    // user to connect them in Glyphh → Connections before the tools will work.
-    return { installed: r.name, instance: r.instance, updated: !!r.updated, requiredConnections: r.connectors ?? [], tools: r.tools ?? [] };
-  });
-
-  // INSTALL A FOLDER ON THIS MACHINE as the member's cloud app (the gateway's
-  // device_app_install; his order, 2026-10-07): a folder door like fs.write —
-  // the server checks it against the grants and the turn's own folder, this
-  // machine packs and uploads it itself. A build answers its job at once.
-  registerRelayHandler("fs.installApp", async (params) => {
-    const p = params as { dir?: string; note?: string } | null;
-    const dir = String(p?.dir || "").replace(/^~(?=$|\/)/, homedir());
-    // Loaded here, not at the top: the instances module pulls the signed-in client in; this registry must load without it.
-    const { installFolderAsInstance } = await import("./app-instances.js");
-    const out = await installFolderAsInstance(dir, { ...(p?.note ? { note: String(p.note) } : {}), wait: false });
-    return { installed: out.key.split("~")[0], instance: out.key, mode: out.mode, release: out.release, job: out.job ? { id: out.job.id, status: out.job.status } : null, url: out.url, tools: out.tools, next: out.release ? "its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" } on the desktop, or wait and list again` };
-  });
-
   registerRelayHandler("fs.list", async (params) => {
     const home = homedir();
     let path = str(params, "path") || home;

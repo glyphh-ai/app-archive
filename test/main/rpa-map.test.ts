@@ -35,7 +35,6 @@ vi.mock("../../src/main/relay-client.js", () => ({
   },
 }));
 vi.mock("../../src/main/rpa.js", () => ({ panelIsLive: (slug: string) => live.has(slug) }));
-vi.mock("../../src/main/org-apps.js", () => ({ invalidateOrgApps: () => undefined }));
 vi.mock("../../src/main/apps-store.js", () => ({
   readRow: (slug: string) => rows.get(slug) ?? null,
   updateEntry: async (slug: string, patch: { config?: Record<string, unknown> }) => {

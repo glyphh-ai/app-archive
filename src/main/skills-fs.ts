@@ -23,8 +23,6 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { getPreference } from "./stores/preferences-db.js";
-import { deleteInstance, instanceCards, instanceDetail, instanceTab, isInstanceCardId, instanceKeyOfCardId, appInstancePinHandler, updateInstance, updateAllInstances, installFolderAsInstance, readBuildJob, listInstanceReleases } from "./app-instances.js";
-import { noteLibraryDelete, noteLibrarySave, type MemberLibraryKind } from "./library-events.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
@@ -75,9 +73,9 @@ export interface SkillDetail extends SkillSummary {
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".DS_Store"]);
 
-// THE APP HOME IS GONE (his order, 2026-10-07): an app is a cloud instance;
-// nothing of one lives on this disk. The source name stays for the bundle
-// TYPE a folder can declare; it lists nothing and adopts nothing.
+// THE APP HOME IS GONE (his order, 2026-10-07): nothing lives in it. The
+// source name stays for the bundle TYPE a folder can declare; it lists
+// nothing and adopts nothing.
 const NO_HOME = (): string => userScopedPath(".no-app-home");
 const ROOTS: Record<SkillSource, () => string> = {
   glyphh: () => userScopedPath("skills"),
@@ -89,21 +87,6 @@ const ROOTS: Record<SkillSource, () => string> = {
   gemini: () => path.join(homedir(), ".gemini", "skills"),
 };
 const DISABLED_ROOT = (): string => userScopedPath("skills-disabled");
-
-/** THE MEMBER LIBRARY holds two of these homes (his rule, 2026-10-04): the
- *  Glyphh skills home rides as kind `skill`, the tasks home as kind `task`.
- *  Apps and plugins are machine bundles; a CLI's own folders are the CLI's. */
-function syncKindOf(source: SkillSource): MemberLibraryKind | null {
-  return source === "glyphh" ? "skill" : source === "task" ? "task" : null;
-}
-function announceBundle(source: SkillSource, name: string): void {
-  const kind = syncKindOf(source);
-  if (kind) noteLibrarySave(kind, name);
-}
-function announceBundleGone(source: SkillSource, name: string): void {
-  const kind = syncKindOf(source);
-  if (kind) noteLibraryDelete(kind, name);
-}
 
 const idOf = (source: SkillSource, name: string): string => `${source}:${name}`;
 function parseId(id: string): { source: SkillSource; name: string } {
@@ -390,8 +373,6 @@ export function readSkillImage(id: string, rel: string): string {
 }
 
 function dirOf(id: string): { source: SkillSource; name: string; dir: string; enabled: boolean } {
-  // A cloud app's card stands for an instance, not a folder (app-instances.ts).
-  if (isInstanceCardId(id)) throw new Error(`${instanceKeyOfCardId(id)} runs in the cloud — it has no folder on this machine`);
   const { source, name } = parseId(id);
   const live = path.join(ROOTS[source](), name);
   if (markerOf(live)) return { source, name, dir: live, enabled: true };
@@ -431,11 +412,10 @@ export function readSkillFile(id: string, rel: string): { text: string; binary: 
 }
 
 export function writeSkillFile(id: string, rel: string, text: string): void {
-  const { source, name, dir } = dirOf(id);
+  const { dir } = dirOf(id);
   const full = safeJoin(dir, rel);
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, text, "utf-8");
-  announceBundle(source, name);
 }
 
 /** Disable = move the folder out of the CLI's directory; enable = move it back. */
@@ -446,89 +426,13 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
   syncLinks();
-  announceBundle(source, name);
   return summarize(source, name, dest, on)!;
 }
 
-/** The hub side of a delete (hub-ipc registers it): a folder that came from the
- *  catalog tells it so when it goes. Late-bound, since hub-ipc reads this file. */
-let forgetInstall: ((id: string) => void) | null = null;
-export function setInstallForgetter(fn: (id: string) => void): void { forgetInstall = fn; }
-
 export function deleteSkill(id: string): void {
-  const { source, name, dir } = dirOf(id);
+  const { dir } = dirOf(id);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
-  forgetInstall?.(id);
-  announceBundleGone(source, name);
-}
-
-// ── THE MEMBER LIBRARY'S SIDE (library-sync.ts) ─────────────────────────────
-// A skill or task is a FOLDER; the server holds its record (SKILL.md's
-// frontmatter and body, task.json) and its files in R2. The sync lists the
-// folders here, writes a pulled folder here, and removes a tombstoned one.
-
-export interface SyncableBundle { id: string; dir: string; enabled: boolean }
-
-/** Every bundle of a synced kind on this machine, enabled or parked. */
-export function listSyncableBundles(kind: "skill" | "task"): SyncableBundle[] {
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
-  const out: SyncableBundle[] = [];
-  for (const [root, enabled] of [[ROOTS[source](), true], [path.join(DISABLED_ROOT(), source), false]] as const) {
-    let ents: fs.Dirent[] = [];
-    try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
-    for (const e of ents) {
-      if (e.name.startsWith(".") || !(e.isDirectory() || e.isSymbolicLink())) continue;
-      const dir = path.join(root, e.name);
-      if (!fs.existsSync(path.join(dir, "SKILL.md"))) continue;
-      out.push({ id: e.name, dir, enabled });
-    }
-  }
-  return out;
-}
-
-/** A pulled bundle lands as the folder the server describes: the files are
- *  written (each stamped with the manifest's mtime so the folder's clock is
- *  the server's), files the manifest no longer names go, and the folder sits
- *  in the enabled or parked root by the record's `enabled`. Never announced —
- *  it came FROM the sync. */
-export function applyRemoteBundle(kind: "skill" | "task", id: string, enabled: boolean, files: Array<{ path: string; bytes: Uint8Array | null; mtime: number }>): string {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) throw new Error(`bad bundle id: ${id}`);
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
-  const live = path.join(ROOTS[source](), id);
-  const parked = path.join(DISABLED_ROOT(), source, id);
-  const dest = enabled ? live : parked;
-  const other = enabled ? parked : live;
-  // The folder follows the record's enabled flag — moved, never duplicated.
-  if (fs.existsSync(other) && !fs.existsSync(dest)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(other, dest); }
-  else if (fs.existsSync(other)) fs.rmSync(other, { recursive: true, force: true });
-  fs.mkdirSync(dest, { recursive: true });
-  const keep = new Set(files.map((f) => f.path));
-  for (const f of walk(dest)) if (!keep.has(f.path)) { try { fs.rmSync(safeJoin(dest, f.path), { force: true }); } catch { /* fine */ } }
-  for (const f of files) {
-    const full = safeJoin(dest, f.path);
-    // `bytes: null` = the local copy already holds these bytes (same sha256).
-    if (f.bytes) { fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, f.bytes); }
-    else if (!fs.existsSync(full)) continue;
-    if (f.mtime > 0) { try { fs.utimesSync(full, new Date(f.mtime), new Date(f.mtime)); } catch { /* fine */ } }
-  }
-  if (!markerOf(dest)) throw new Error(`"${id}" arrived without a SKILL.md, so nothing would list it`);
-  if (kind === "task") { try { fs.rmSync(path.join(dest, "app.json"), { force: true }); } catch { /* fine */ } }
-  syncLinks();
-  return dest;
-}
-
-/** The server tombstoned this bundle: the folder goes (live or parked), quietly. */
-export function removeBundleLocal(kind: "skill" | "task", id: string): boolean {
-  const source: SkillSource = kind === "task" ? "task" : "glyphh";
-  let gone = false;
-  for (const dir of [path.join(ROOTS[source](), id), path.join(DISABLED_ROOT(), source, id)]) {
-    if (!fs.existsSync(dir)) continue;
-    fs.rmSync(dir, { recursive: true, force: true });
-    gone = true;
-  }
-  if (gone) { syncLinks(); forgetInstall?.(idOf(source, id)); }
-  return gone;
 }
 
 /**
@@ -663,7 +567,6 @@ export function adoptSkill(id: string): SkillSummary {
   fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.renameSync(dir, home);
   syncLinks();
-  announceBundle(target, name);
   return summarize(target, name, home, true)!;
 }
 
@@ -674,7 +577,6 @@ export function replaceSkill(id: string, fromDir: string): SkillSummary {
   if (!fs.existsSync(path.join(fromDir, "SKILL.md"))) throw new Error("that folder has no SKILL.md");
   for (const e of fs.readdirSync(dir)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
   fs.cpSync(fromDir, dir, { recursive: true, filter: (src) => !SKIP_DIRS.has(path.basename(src)) });
-  announceBundle(source, name);
   return summarize(source, name, dir, true)!;
 }
 
@@ -718,7 +620,6 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   // the two writers verify their own work rather than trust it.
   if (!markerOf(dir)) throw new Error(`"${name}" was written without a SKILL.md, so nothing would list it`);
   syncLinks();
-  announceBundle(source, name);
   return summarize(source, name, dir, true)!;
 }
 
@@ -785,29 +686,7 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
   }
   setFrontmatterType(path.join(dest, "SKILL.md"), to === "skill" ? null : to);
   syncLinks();
-  if (to === "app" && enabled) {
-  }
-  // A retype is a delete in one library kind and a save in another.
-  announceBundleGone(source, name);
-  announceBundle(target, name);
   return summarize(target, name, dest, enabled)!;
-}
-
-/** The hub payload shape today ({manifest, prompt, code}) as folder files. */
-export function filesFromHubPayload(name: string, description: string, p: Record<string, unknown>): Record<string, string> {
-  const files = (p.files && typeof p.files === "object" ? p.files : null) as Record<string, string> | null;
-  // WHATEVER THE PAYLOAD CARRIES, INSTALL IT (his report, 2026-09-17: "a
-  // plugin needs .claude-plugin/plugin.json" when adding one from Discover).
-  // This only recognised a root SKILL.md, so a PLUGIN's real files — its
-  // manifest, its README, its skills/ — were thrown away and replaced with a
-  // synthesized SKILL.md, and the install then refused the result for missing
-  // the manifest it had just discarded.
-  if (files && Object.keys(files).length) return files;
-  const body = typeof p.prompt === "string" ? p.prompt : "";
-  const fm = `---\nname: ${name}\ndescription: ${description.replace(/\n/g, " ")}\n---\n\n`;
-  const out: Record<string, string> = { "SKILL.md": fm + body };
-  if (typeof p.code === "string" && p.code.trim()) out["scripts/program.js"] = p.code;
-  return out;
 }
 
 /** A fresh skill folder from a template — the standard shape from the first byte. */
@@ -864,7 +743,6 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
   fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   syncLinks();
-  announceBundle(target, name);
   return summarize(target, name, dest, true)!;
 }
 
@@ -892,61 +770,17 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skills-list", async (_e, kind?: string | string[]) => {
     try {
       const kinds = kindsOf(kind);
-      const rows: SkillSummary[] = listSkills(kinds);
-      // THE APPS ARE THE INSTANCES (2026-10-04; cloud is the one home,
-      // 2026-10-06): the cloud apps this member may open join the page as
-      // their own cards. An app FOLDER here is source — a scaffold, an import,
-      // an adopted bundle — and lists as such; it runs only once installed.
-      if (kinds.includes("app")) rows.push(...await instanceCards());
-      return { ok: true, data: rows };
+      return { ok: true, data: listSkills(kinds) };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("skill-tab", async (_e, id: string, opts?: { name?: string; slug?: string }) => {
-    try {
-      if (isInstanceCardId(String(id))) return { ok: true, data: await instanceTab(String(id)) };
-      const { dir } = dirOf(String(id));
-      // The TYPE opens the tab, not the home it sits in: an app is an app
-      // wherever its app.json is (his ruling, 2026-09-17). A folder is the
-      // app's SOURCE; it opens once it is installed in the cloud.
-      if (bundleType(dir) !== "app") return { ok: false, error: "only an app opens as a tab" };
-      void opts;
-      return { ok: false, error: "this app is a folder on this machine — an app runs in the cloud. Add it from Settings → Build → Discover, or install its bundle (app_install), and open it from there" };
-    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("skill-get", async (_e, id: string) => {
-    if (isInstanceCardId(String(id))) {
-      try { return { ok: true, data: await instanceDetail(String(id)) }; }
-      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-    }
-    return env(() => getSkill(String(id)));
-  });
+  ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));
   ipcMain.handle("skill-agents", (_e, id: string) => env(() => listBundleAgents(String(id))));
   ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string; kind?: "glyphh" | "cli" | ""; cli?: string }) =>
     env(() => setBundleAgent(String(id), String(ref), patch ?? {})));
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
-  ipcMain.handle("skill-delete", async (_e, id: string, opts?: { purge?: boolean }) => {
-    if (isInstanceCardId(String(id))) {
-      try { await deleteInstance(instanceKeyOfCardId(String(id)), { purge: !!opts?.purge }); return { ok: true, data: true }; }
-      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-    }
-    return env(() => { deleteSkill(String(id)); return true; });
-  });
-  // Settings → Apps → Rollback: pin a release of a cloud instance (the card
-  // id or the key). The web answers the same name (member-library-web.js).
-  ipcMain.handle("app-instance-pin", (_e: unknown, id: string, n: number) => appInstancePinHandler(String(id), Number(n)));
-  // APPS CARRY A VERSION (his order, 2026-10-07): Update one, Update all, and
-  // the defaults the manifest names — the web answers the same names.
-  ipcMain.handle("app-instance-update", (_e: unknown, id: string) => env(() => updateInstance(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
-  ipcMain.handle("app-instances-update-all", () => env(() => updateAllInstances()));
-  // THE APP CARD'S Build and run (2026-10-07): the folder is on this machine;
-  // a source build answers its job at once and the card follows it.
-  ipcMain.handle("app-install-folder", (_e: unknown, dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) =>
-    env(() => installFolderAsInstance(String(dir || ""), { ...(opts?.slug ? { slug: opts.slug } : {}), ...(opts?.kind ? { kind: opts.kind } : {}), ...(opts?.note ? { note: opts.note } : {}), wait: false })));
-  ipcMain.handle("app-build-status", (_e: unknown, job: string) => env(() => readBuildJob(String(job || ""))));
-  // THE RELEASES TAB (2026-10-07): every release of the instance a card names.
-  ipcMain.handle("app-instance-releases", (_e: unknown, id: string) => env(() => listInstanceReleases(isInstanceCardId(String(id)) ? instanceKeyOfCardId(String(id)) : String(id))));
+  ipcMain.handle("skill-delete", (_e, id: string) => env(() => { deleteSkill(String(id)); return true; }));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
   ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
   ipcMain.handle("skill-replace", async (e, id: string) => {

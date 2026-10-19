@@ -27,27 +27,13 @@ const ALLOWED = {
     gitInfo: 'window.wb.gitInfo — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
     listDir: 'window.wb.listDir — the workbench bridge is REAL on web (wb-relay.js / wb-pod.js)',
   },
-  // apps.ts: glyphhAppPreviewOpen is SERVED on web since 2026-10-04 (apps
-  // live in the cloud — member-library-web.js answers the instance's panel
-  // path through this origin's /app-host proxy).
   'src/renderer/help/files.ts': {
     filesRename: 'the Rename row is offered only when hostHas("filesRename")',
   },
-  // schedules.ts, drips.ts and settings-skills.ts: every name they read is
-  // SERVED on web since 2026-10-04 (member-library-web.js — the library from
-  // the server, the machine actions answering NEEDS_DESKTOP, the runs honest
-  // empties); drips.ts keeps its Stop/Play behind hostHas.
   'src/renderer/help/settings.ts': {
     localMcpSetEnabled: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
-  },
-  'src/renderer/help/code.ts': {
-    appInstallFolder: 'buildAndRunApp sends the agent a turn instead unless hostHas("appInstallFolder") — the folder is on the worker on the web (the app card, 2026-10-07)',
-    appBuildStatus: 'followAppJob returns before the read unless hostHas("appBuildStatus") (the app card, 2026-10-07)',
-  },
-  'src/renderer/help/remote-run.ts': {
-    remoteControlGet: 'foldersForTurn returns before the read unless surfaceHere() is "desktop" AND hostHas("remoteControlGet") (the turn\'s own folder, 2026-10-07)',
   },
   'src/renderer/onboarding.ts': {
     startDeviceLogin: "the desktop's device-login overlay; the web signs in through web/src/web-login.js",

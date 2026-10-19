@@ -163,7 +163,6 @@ export async function runLocalAppSweep(): Promise<void> {
     log: (line) => console.info(line),
   });
   if (!result.swept.length && !result.payloads.length) return;
-  const [{ invalidateOrgApps }, { broadcast }] = await Promise.all([import("./org-apps.js"), import("./broadcast.js")]);
-  invalidateOrgApps();
+  const { broadcast } = await import("./broadcast.js");
   broadcast("panel-apps-changed");
 }

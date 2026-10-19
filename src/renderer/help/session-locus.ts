@@ -57,14 +57,20 @@ export function sessionIsBlank(c: { messages?: unknown[]; messageCount?: number 
 
 // ── THE ONE RECENTS FILTER ───────────────────────────────────────────────
 
-/** What a recents row must say about itself to be filtered. */
+/** What a recents row must say about itself to be filtered. `loopKey` is the
+ *  loop the row ran on ("glyphh", "claude", "codex", …). */
 export interface RecentsRowLike {
   title: string;
   cwd: string;
+  loopKey: string;
   locus?: Locus;
 }
 
 export interface RecentsFilter {
+  /** The loops picked in the funnel; empty = every loop. */
+  loops: readonly string[];
+  /** The loops THIS list can hold — a filter naming none of them is no filter here. */
+  among?: ReadonlySet<string>;
   /** The place picked in the funnel; "" = every place. */
   locus: LocusFilter;
   /** The search box, matched against title and folder. */
@@ -73,6 +79,8 @@ export interface RecentsFilter {
 
 /** Does the filter keep this row? One rule for the rail and the dropdown. */
 export function recentsKeeps(row: RecentsRowLike, f: RecentsFilter): boolean {
+  const loops = f.among ? f.loops.filter((k) => f.among!.has(k)) : f.loops;
+  if (loops.length && !loops.includes(row.loopKey)) return false;
   if (f.locus && (row.locus ?? "local") !== f.locus) return false;
   const q = (f.query ?? "").trim().toLowerCase();
   if (q && !`${row.title} ${row.cwd}`.toLowerCase().includes(q)) return false;
@@ -84,8 +92,19 @@ export function filterRecents<T extends RecentsRowLike>(rows: readonly T[], f: R
 }
 
 /** Is the funnel narrowing anything the list can hold? Lights the button. */
-export function recentsFilterActive(f: Pick<RecentsFilter, "locus">): boolean {
-  return !!f.locus;
+export function recentsFilterActive(f: Pick<RecentsFilter, "loops" | "among" | "locus">): boolean {
+  const loops = f.among ? f.loops.filter((k) => f.among!.has(k)) : f.loops;
+  return loops.length > 0 || !!f.locus;
+}
+
+/** The loop half of the funnel, kept as a preference beside the place. */
+export const LOOP_FILTER_PREF = "recentsLoopFilter";
+
+/** Coerce the stored loop pick: a list of loop ids, deduplicated, anything
+ *  else (an older scalar, junk) is "every loop". */
+export function loopFilterOf(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()))];
 }
 
 // ── THE GRANT ────────────────────────────────────────────────────────────

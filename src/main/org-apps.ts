@@ -13,10 +13,8 @@ import * as path from "node:path";
 import * as appsStore from "./apps-store.js";
 import { type LocalAppRow } from "./apps-store.js";
 import { faviconUrlFor, iconDataUrlForDirs } from "./app-icon-file.js";
-import { appCache } from "./glyphh-client.js";
 import { tabRowOf } from "../shared/member-library.js";
 import { mergeAppRows } from "../shared/app-instances.js";
-import { listInstances } from "./app-instances.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
 export interface OrgAppRow {
@@ -62,8 +60,6 @@ export interface OrgAppRow {
   createdAt: string;
   updatedAt: string;
 }
-
-const CACHE_KEY = "org-apps";
 
 /** The built-in "Glyphh" app — Glyphh itself, always present and always first.
  *  Not a server record: synthesized here so every consumer (rail, command
@@ -137,34 +133,22 @@ function toRow(app: LocalAppRow, row: OrgAppRow = tabRowOf(app) as OrgAppRow): O
   return { ...(iconDataUrl ? { iconDataUrl } : {}), ...(faviconUrl ? { faviconUrl } : {}), ...row };
 }
 
-/** The org's apps in the renderer's shape, short-TTL cached so the palette
- *  render and the click that follows share one request. */
-export function fetchOrgApps(): Promise<OrgAppRow[]> {
-  return appCache.cached(CACHE_KEY, async () => {
-    // THE LIST = INSTANCES (his decision, 2026-10-04): the member's tab rows
-    // and every cloud instance they may open that no row names yet
-    // (shared/app-instances.ts mergeAppRows). A row's local icon still rides
-    // from this machine when it has one. The house apps (Images, Drive, …)
-    // are instances like any other (his law, 2026-10-06): nothing here
-    // synthesizes a row for them; their tab's `tool` names the built-in panel.
-    const [tabs, instances] = await Promise.all([appsStore.mine(), listInstances()]);
-    const local = new Map(tabs.map((t) => [t.slug.toLowerCase(), t] as const));
-    const rows = mergeAppRows(instances, tabs).map((row) => {
-      const tab = local.get(row.slug.toLowerCase());
-      return tab ? toRow(tab, row as OrgAppRow) : (row as OrgAppRow);
-    });
-    // A user row that took the "glyphh" slug IS the built-in: keep its real
-    // id (layouts/recents reference it), normalize its archetype, pin first.
-    const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
-    if (selfIdx >= 0) {
-      const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };
-      return [self, ...NAV_ROWS, ...rows.filter((_, i) => i !== selfIdx)];
-    }
-    return [GLYPHH_SELF_ROW, ...NAV_ROWS, ...rows];
+/** The member's apps in the renderer's shape: the built-in rows, then the
+ *  tab rows (shared/app-instances.ts mergeAppRows drops a Glyphh tab with
+ *  nothing behind it). A row's local icon rides from this machine. */
+export async function fetchOrgApps(): Promise<OrgAppRow[]> {
+  const tabs = await appsStore.mine();
+  const local = new Map(tabs.map((t) => [t.slug.toLowerCase(), t] as const));
+  const rows = mergeAppRows([], tabs).map((row) => {
+    const tab = local.get(row.slug.toLowerCase());
+    return tab ? toRow(tab, row as OrgAppRow) : (row as OrgAppRow);
   });
-}
-
-/** Drop the cached list — call after any app mutation. */
-export function invalidateOrgApps(): void {
-  appCache.invalidate(CACHE_KEY);
+  // A user row that took the "glyphh" slug IS the built-in: keep its real
+  // id (layouts/recents reference it), normalize its archetype, pin first.
+  const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
+  if (selfIdx >= 0) {
+    const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };
+    return [self, ...NAV_ROWS, ...rows.filter((_, i) => i !== selfIdx)];
+  }
+  return [GLYPHH_SELF_ROW, ...NAV_ROWS, ...rows];
 }

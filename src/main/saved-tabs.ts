@@ -7,7 +7,7 @@
  * twenty-five trips through the form.
  */
 import * as appsStore from "./apps-store";
-import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
+import { fetchOrgApps } from "./org-apps";
 import { refreshForceWebSlugs } from "./force-web";
 import { broadcast } from "./broadcast";
 
@@ -19,10 +19,9 @@ export const WORKPANEL_REFUSAL = "work panels are built in — they cannot be al
 export const tabSlugOf = (s: string): string =>
   String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-/** After any tab change: the org-apps cache, the force-web guard set, and every
- *  renderer (the wall and the Tabs page hear panel-apps-changed). */
+/** After any tab change: the force-web guard set, and every renderer (the
+ *  wall and the Tabs page hear panel-apps-changed). */
 function tabsChanged(): void {
-  invalidateOrgApps();
   setTimeout(() => { void refreshForceWebSlugs(); }, 500);
   broadcast("panel-apps-changed");
 }

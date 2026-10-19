@@ -21,7 +21,6 @@ import path from "path";
 import os from "os";
 import http from "http";
 import { ipcMain, shell } from "electron";
-import { getClient } from "./glyphh-client.js";
 import { userScopedPath } from "./app-paths.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -71,34 +70,6 @@ function writeSecrets(slug: string, sec: ConnSecrets): void {
   fs.mkdirSync(CONN_DIR(), { recursive: true });
   fs.writeFileSync(secretsFile(slug), JSON.stringify(sec, null, 2), { encoding: "utf-8", mode: 0o600 });
 }
-/**
- * THE SERVER IS THE SOURCE OF TRUTH (his ruling, 2026-09-12: "loops and
- * connections are server side only. Nothing local").
- *
- * Every custom-MCP read and write goes through the SDK to
- * /api/connections/personal/mcp. The files under ~/.glyphh/connections are a
- * CACHE for dialing while offline, plus the home of OAuth token state, which
- * is per-machine by nature. Nothing is authored locally.
- */
-async function syncFromServer(): Promise<McpConnRow[]> {
-  const remote = await getClient().connections.personalMcpList();
-  const rows: McpConnRow[] = remote.map((c) => ({
-    slug: c.slug,
-    name: c.name,
-    url: c.url,
-    headerKeys: c.headerKeys ?? [],
-    enabled: c.enabled !== false,
-    // The wire row carries neither of these: tool caps are the caller's own
-    // (connections.personalToolCaps) and createdAt is cache-local ordering.
-    hiddenTools: readRow(c.slug)?.hiddenTools ?? [],
-    createdAt: readRow(c.slug)?.createdAt ?? new Date().toISOString(),
-    kind: "personal",
-    iconUrl: null,
-  }));
-  for (const r of rows) writeRow(r);
-  return rows;
-}
-
 export function listConnRows(): McpConnRow[] {
   let names: string[] = [];
   try { names = fs.readdirSync(CONN_DIR()).filter((n) => n.endsWith(".json") && !n.endsWith(".secrets.json")); }
@@ -108,7 +79,15 @@ export function listConnRows(): McpConnRow[] {
     const row = readRow(n.slice(0, -5));
     if (row) out.push(row);
   }
-  return out;
+  return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** A slug no other connection holds: the name's, then `-2`, `-3`, … */
+function freeSlug(name: string): string {
+  const base = slugify(name);
+  let slug = base;
+  for (let n = 2; readRow(slug); n++) slug = `${base}-${n}`;
+  return slug;
 }
 
 // ── OAuth 2.1 (the SDK drives discovery/registration/PKCE; we hold state,
@@ -298,18 +277,7 @@ export function registerMcpConnectionsIpc(): void {
   // Local machine, user's own servers — always allowed.
   ipcMain.handle("mcp-custom-allowed", () => ({ allowed: true }));
 
-  ipcMain.handle("mcp-connections-list", async () => {
-    try { return { ok: true, connections: await syncFromServer() }; }
-    catch (err) {
-      // Offline (or signed out): serve the cache rather than an empty page.
-      console.warn("[mcp] server list failed, using cache:", err instanceof Error ? err.message : err);
-      return { ok: true, connections: listConnRows() };
-    }
-  });
-
-  // The org catalog died with the server — an honest empty list.
-  ipcMain.handle("mcp-connections-catalog", () => ({ ok: true, connections: [] }));
-  ipcMain.handle("mcp-connections-install", () => ({ ok: false, error: "the org catalog is retired — add servers directly with + Custom MCP" }));
+  ipcMain.handle("mcp-connections-list", () => ({ ok: true, connections: listConnRows() }));
 
   ipcMain.handle("mcp-connections-create", async (_e, fields: { name: string; url: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret?: string } }) => {
     try {
@@ -317,13 +285,7 @@ export function registerMcpConnectionsIpc(): void {
       const url = String(fields?.url ?? "").trim();
       if (!name || !url) return { ok: false, error: "name and server URL (or command) are required" };
       const headers = fields.headers && typeof fields.headers === "object" ? fields.headers : {};
-      // THE SERVER mints the row (and probes the endpoint). The local copy is
-      // only the offline cache written from its answer.
-      const wanted = slugify(name);
-      const created = await getClient().connections.personalMcpCreate({
-        slug: wanted, name, url, ...(Object.keys(headers).length ? { headers } : {}),
-      });
-      const slug = (created as { connection?: { slug?: string } }).connection?.slug ?? wanted;
+      const slug = freeSlug(name);
       const row: McpConnRow = {
         slug, name, url,
         headerKeys: Object.keys(headers),
@@ -350,22 +312,17 @@ export function registerMcpConnectionsIpc(): void {
     try {
       const row = readRow(String(slug));
       if (!row) return { ok: false, error: "connection not found" };
-      // THE SERVER takes the edit; the cache follows its answer.
-      const patch: Record<string, unknown> = {};
-      if (fields.name !== undefined) { row.name = String(fields.name); patch.name = row.name; }
-      if (fields.url !== undefined && String(fields.url).trim()) { row.url = String(fields.url).trim(); patch.url = row.url; }
-      if (fields.enabled !== undefined) { row.enabled = fields.enabled !== false; patch.enabled = row.enabled; }
-      if (Array.isArray(fields.hiddenTools)) { row.hiddenTools = fields.hiddenTools.map(String); patch.hiddenTools = row.hiddenTools; }
+      if (fields.name !== undefined) row.name = String(fields.name);
+      if (fields.url !== undefined && String(fields.url).trim()) row.url = String(fields.url).trim();
+      if (fields.enabled !== undefined) row.enabled = fields.enabled !== false;
+      if (Array.isArray(fields.hiddenTools)) row.hiddenTools = fields.hiddenTools.map(String);
       if (fields.headers && typeof fields.headers === "object" && Object.keys(fields.headers as object).length) {
-        // Secrets stay sealed on the server; the local copy is what dials
-        // while offline, so both are written.
+        // Header values are write-only: they live in the 0600 secrets file.
         const sec = readSecrets(row.slug);
         sec.headers = fields.headers as Record<string, string>;
         writeSecrets(row.slug, sec);
         row.headerKeys = Object.keys(fields.headers as object);
-        patch.headers = fields.headers;
       }
-      await getClient().connections.personalMcpUpdate(row.slug, patch as never);
       writeRow(row);
       await dropLive(row.slug);   // config changed — the next call re-dials
       return { ok: true, connection: row };
@@ -376,7 +333,6 @@ export function registerMcpConnectionsIpc(): void {
 
   ipcMain.handle("mcp-connections-delete", async (_e, slug: string) => {
     try {
-      await getClient().connections.personalMcpRemove(String(slug));
       await dropLive(String(slug));
       fs.rmSync(rowFile(String(slug)), { force: true });
       fs.rmSync(secretsFile(String(slug)), { force: true });

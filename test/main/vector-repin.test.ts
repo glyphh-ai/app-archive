@@ -37,7 +37,7 @@ vi.mock("../../src/main/embeddings-config.js", () => ({
   orgEmbedModels: async () => published,
   offers: (models: Array<{ id: string }>, model: string) => models.some((m) => m.id === model || m.id.split("::").pop() === model),
   resolveEmbedModel: async () => (published === null ? pick : !published.length ? "" : published.some((m) => m.id === pick) ? pick : (pick = published[0].id)),
-  gatewayEmbed: async (texts: string[], model: string) => {
+  localEmbed: async (texts: string[], model: string) => {
     embedded.push({ model, texts });
     const dim = DIM[model];
     if (!dim) throw new Error(`the gateway refused the embedding (403): team not allowed to access model ${model}`);

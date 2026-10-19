@@ -31,7 +31,7 @@ export function sessionDisplayTitle(t: string | undefined): string {
 // Our rows read as the first 42 characters of the first prompt plus an
 // ellipsis; Claude's read as a short generated name ("Ada test rerun"). The
 // truncated prompt stays the INSTANT placeholder; once the first assistant
-// reply lands, ONE small side request through the Router asks the utility
+// reply lands, ONE small side request through the router asks the utility
 // model for a title and it replaces the placeholder — on every surface, since
 // the title rides the thread record. Every rule below is pure; code.ts owns
 // the fetch and the store write.
@@ -104,17 +104,14 @@ export function mayGenerateTitle(c: TitleableThread): TitleDecision {
   return { ok: true, prompt: prompt.trim().slice(0, TITLE_PROMPT_CHARS), reply: reply.slice(0, TITLE_REPLY_CHARS) };
 }
 
-/** The OpenAI-shaped body the Router's chat door takes
- *  (POST /api/gateway/v1/chat/completions, the SDK's `gateway.complete`). */
+/** The Messages body the router takes (main/session-title.ts carries it). */
 export function titleRequestBody(model: string, prompt: string, reply: string): {
-  model: string; messages: Array<{ role: "system" | "user"; content: string }>; max_tokens: number; temperature: number;
+  model: string; system: string; messages: Array<{ role: "user"; content: string }>; max_tokens: number; temperature: number;
 } {
   return {
     model,
-    messages: [
-      { role: "system", content: TITLE_SYSTEM_PROMPT },
-      { role: "user", content: `User:\n${prompt}\n\nAssistant:\n${reply}` },
-    ],
+    system: TITLE_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: `User:\n${prompt}\n\nAssistant:\n${reply}` }],
     max_tokens: TITLE_MAX_TOKENS,
     temperature: 0,
   };
@@ -138,42 +135,13 @@ export function sanitizeTitle(raw: string | null | undefined): string | null {
   return s || null;
 }
 
-/** The side request itself: the Router's chat door with the member's SESSION
- *  bearer — an ordinary metered call, billed to their plan like any turn (his
- *  rule, 2026-10-05: "we still bill the usage"). `x-glyphh-service` is the
- *  SDK's own attribution line for background work (gateway.complete) — a
- *  ledger label, never a billing exemption. Resolves the sanitized title or
- *  null; NEVER throws (a title is not worth an error in the UI), never
- *  streams, times out on its own. */
+/** The side request itself, through `ask` (the desktop's session-title-generate
+ *  door: the router on the user's own keys). Resolves the sanitized title or
+ *  null; NEVER throws — a title is not worth an error in the UI. */
 export async function fetchSessionTitle(opts: {
-  apiUrl: string;
-  token: string;
   body: ReturnType<typeof titleRequestBody>;
-  fetchImpl?: typeof fetch;
-  timeoutMs?: number;
+  ask: (body: ReturnType<typeof titleRequestBody>) => Promise<string | null>;
 }): Promise<string | null> {
-  const doFetch = opts.fetchImpl ?? ((u: RequestInfo | URL, i?: RequestInit) => fetch(u, i));
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), opts.timeoutMs ?? 20_000);
-  try {
-    const res = await doFetch(`${opts.apiUrl.replace(/\/+$/, "")}/api/gateway/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${opts.token}`,
-        "content-type": "application/json",
-        "x-glyphh-service": "session-title",
-      },
-      body: JSON.stringify(opts.body),
-      signal: ctl.signal,
-    });
-    if (!res.ok) return null;
-    // The gateway answers the OpenAI body verbatim (no `{ data }` envelope).
-    const j = (await res.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
-    const content = j?.choices?.[0]?.message?.content;
-    return sanitizeTitle(typeof content === "string" ? content : null);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  try { return sanitizeTitle(await opts.ask(opts.body)); }
+  catch { return null; }
 }

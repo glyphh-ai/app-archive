@@ -21,7 +21,7 @@
 import { app } from "electron";
 import { broadcast } from "./broadcast.js";
 import { listLoopModels, onLoopModelsFetched, type LoopModelsResult } from "./loop-models.js";
-import { orgModelState, refreshOrgModels } from "./org-models.js";
+import { orgModelState } from "./org-models.js";
 
 const TICK_MS = 45_000;
 const FOCUS_THROTTLE_MS = 8_000;
@@ -53,20 +53,20 @@ function announceIfChanged(m: LoopModelsResult): void {
   if (first) return;   // the first read after sign-in is the baseline, not a change
   const s = orgModelState();
   const payload: ModelsChanged = { models: m, defaultModel: s.defaultModel, gatewayOn: s.gatewayOn, connectionsOn: s.connectionsOn, hasPlan: s.hasPlan };
-  console.warn("[models] changed on the server — told every surface", JSON.stringify({ count: m.models.length, defaultModel: s.defaultModel, connectionsOn: s.connectionsOn }));
+  console.warn("[models] changed — told every surface", JSON.stringify({ count: m.models.length, defaultModel: s.defaultModel, connectionsOn: s.connectionsOn }));
   broadcast("models:changed", payload);
   for (const cb of mainListeners) {
     try { cb(payload); } catch (err) { console.warn("[models] listener failed:", err instanceof Error ? err.message : err); }
   }
 }
 
-/** Re-read the defaults AND the list, fresh from the server. */
+/** Re-read the list and the defaults and tell every surface if they moved —
+ *  what Settings › Models calls after a save. */
 export function refreshModelState(): Promise<void> {
   if (inflight) return inflight;
   inflight = (async () => {
     ticking = true;
     try {
-      await refreshOrgModels();
       await listLoopModels(true);   // the fetch listener compares and announces
     } catch { /* offline — next tick */ } finally { ticking = false; }
   })().finally(() => { inflight = null; });
@@ -81,7 +81,7 @@ export function startModelWatch(): void {
     // defaults too, then everyone is told; a plain TTL refetch just compares.
     onLoopModelsFetched((m, forced) => {
       if (ticking || !forced) { announceIfChanged(m); return; }
-      void refreshOrgModels().then(() => announceIfChanged(m)).catch(() => undefined);
+      announceIfChanged(m);
     });
     app.on("browser-window-focus", () => {
       if (!timer || Date.now() - lastFocus < FOCUS_THROTTLE_MS) return;

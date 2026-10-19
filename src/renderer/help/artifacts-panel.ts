@@ -1,14 +1,17 @@
 /**
  * artifacts-panel.ts — THE ARTIFACTS PANEL (his order, 2026-10-05): the
- * list (All / Yours / Shared with you, a search, rows with a type icon, a
- * lock when private, "Edited <date>", a ⋮ with Rename / Share… / Delete for
- * the owner, newest first grouped by month), the VIEWER (the title, Start
- * chat, Share; the content in a SANDBOXED frame — scripts run, no
+ * list (a search, rows with a type icon, "Edited <date>", a ⋮ with Rename /
+ * Delete, newest first grouped by month), the VIEWER (the title, Comment,
+ * Start chat; the content in a SANDBOXED frame — scripts run, no
  * allow-same-origin — an image as <img>, markdown and text as text) and the
  * COMMENTS OVERLAY (a Comment mode where the pointer draws a dashed region
  * over the frame, a numbered pin with the thread, replies, Resolve, Delete,
  * and "Send to Glyphh" which puts the thread into the agent's composer and
  * sends it).
+ *
+ * LOCAL ONLY (2026-10-18): the artifacts are this machine's files and the
+ * one user's, so there is no Share, no access level and no Yours / Shared
+ * split — one list.
  *
  * One body for both surfaces: on the desktop it is an ordinary work panel
  * (code-workbench.ts mounts it into a card; the viewer swaps in with a back
@@ -26,30 +29,29 @@
  */
 
 import {
-  ARTIFACT_TABS, artifactKind, artifactRender, canManage, commentAge, editPrompt, editedLabel, filterByTab, groupByMonth,
-  initialOf, isLocked, orderThreads, pinNumbers, pinPoint, regionFromDrag, regionIsReal, regionToRect, searchArtifacts,
-  SHARE_OPTIONS, shareLabel, shareLinkOf, startChatLine, threadText,
-  type ArtifactAccess, type ArtifactComment, type ArtifactMeta, type ArtifactTab, type CommentRegion,
+  artifactKind, artifactRender, commentAge, editPrompt, editedLabel, groupByMonth, initialOf, orderThreads, pinNumbers,
+  pinPoint, regionFromDrag, regionIsReal, regionToRect, searchArtifacts, startChatLine, threadText,
+  type ArtifactComment, type ArtifactMeta, type CommentRegion,
 } from "./artifact-rules.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { highlight } from "../highlight.js";
 import { confirmAction, promptAction } from "./shared.js";
 import { toast } from "./toast.js";
-import { copyText, onWeb } from "./web-surface.js";
+import { onWeb } from "./web-surface.js";
 import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
 type Env<T> = { ok: true; data: T } | { ok: false; error?: string };
 
 /** The transport, both surfaces (preload.ts / web-contract.js). */
 export interface ArtifactsBridge {
-  artifactsList?: (scope: ArtifactTab) => Promise<Env<ArtifactMeta[]>>;
+  artifactsList?: () => Promise<Env<ArtifactMeta[]>>;
   artifactsGet?: (id: string) => Promise<Env<ArtifactMeta>>;
-  /** DESKTOP: the bytes, base64, with their mime (main fetched them with the bearer). */
+  /** DESKTOP: the bytes, base64, with their mime (main read the file). */
   artifactsContent?: (id: string) => Promise<Env<{ base64: string; mime: string }>>;
-  artifactsUpdate?: (id: string, patch: { name?: string; access?: ArtifactAccess }) => Promise<Env<ArtifactMeta>>;
+  /** A rename; the answer is the row under its new id (the id is the filename). */
+  artifactsUpdate?: (id: string, patch: { name: string }) => Promise<Env<ArtifactMeta>>;
   artifactsDelete?: (id: string) => Promise<Env<unknown>>;
-  artifactsShare?: (id: string, access: ArtifactAccess) => Promise<Env<{ access: ArtifactAccess; shareUrl: string | null }>>;
   artifactsCommentsList?: (id: string) => Promise<Env<ArtifactComment[]>>;
   artifactsCommentAdd?: (id: string, input: { text: string; region?: CommentRegion | null; parentId?: string; agent?: boolean }) => Promise<Env<ArtifactComment>>;
   artifactsCommentPatch?: (id: string, cid: string, patch: { resolved: boolean }) => Promise<Env<ArtifactComment>>;
@@ -89,8 +91,6 @@ const KIND_ICON: Record<string, string> = {
   image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M3 17l5.5-5 4 3.5 3-2.5L21 17"/></svg>`,
   file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/></svg>`,
 };
-const LOCK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
-const SHARE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
 const KEBAB_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>`;
 const CLOSE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
 const BACK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>`;
@@ -147,70 +147,6 @@ async function loadContent(meta: ArtifactMeta): Promise<{ url: string; text: () 
   return { url, text: async () => new TextDecoder().decode(bytes), revoke: () => URL.revokeObjectURL(url) };
 }
 
-/** THE SHARE POPOVER: Private / Organization / Public link (with Copy). */
-function openSharePopover(anchor: HTMLElement, meta: ArtifactMeta, onChange: (m: ArtifactMeta) => void): void {
-  document.querySelector(".artp-share-pop")?.remove();
-  const pop = el("div", "artp-share-pop");
-  pop.setAttribute("role", "dialog");
-  pop.appendChild(el("div", "artp-share-title", "Share"));
-  const rows = el("div", "artp-share-rows");
-  const paint = (): void => {
-    rows.innerHTML = "";
-    for (const o of SHARE_OPTIONS) {
-      const b = btn(`artp-share-row${meta.access === o.access ? " active" : ""}`, "");
-      b.dataset.access = o.access;
-      b.appendChild(el("span", "artp-share-check", meta.access === o.access ? CHECK_SVG : ""));
-      const text = el("span", "artp-share-text");
-      text.appendChild(el("strong", "", "")).textContent = o.label;
-      text.appendChild(el("small", "", "")).textContent = o.hint;
-      b.appendChild(text);
-      b.addEventListener("click", async () => {
-        const share = bridge().artifactsShare;
-        if (!share) { toast("Sharing needs the server.", { kind: "error" }); return; }
-        if (o.access === meta.access) return;
-        // PUBLIC ASKS FIRST (his order, 2026-10-05): anyone with the link can
-        // view it, signed in or not.
-        if (o.access === "public") {
-          const ok = await confirmAction({
-            title: "Share with anyone who has the link?",
-            body: "Anyone with this link can view this artifact, even without a Glyphh account or sign-in.",
-            confirmLabel: "Share publicly",
-          });
-          if (!ok) return;
-        }
-        const r = await share(meta.id, o.access);
-        if (!r.ok) { toast("Couldn't change who can see this", { kind: "error", detail: err(r, "") }); return; }
-        meta = { ...meta, access: r.data.access, shareUrl: r.data.shareUrl };
-        onChange(meta);
-        paint();
-      });
-      rows.appendChild(b);
-    }
-    link.classList.toggle("hidden", !shareLinkOf(meta));
-    linkInput.value = shareLinkOf(meta) ?? "";
-  };
-  pop.appendChild(rows);
-  const link = el("div", "artp-share-link hidden");
-  const linkInput = document.createElement("input");
-  linkInput.className = "crud-input artp-share-url";
-  linkInput.readOnly = true;
-  const copy = btn("btn btn-secondary artp-share-copy", "Copy");
-  copy.addEventListener("click", async () => {
-    const ok = await copyText(linkInput.value);
-    copy.textContent = ok ? "Copied" : "Copy";
-    setTimeout(() => { copy.textContent = "Copy"; }, 1400);
-  });
-  link.append(linkInput, copy);
-  pop.appendChild(link);
-  paint();
-  document.body.appendChild(pop);
-  const r = anchor.getBoundingClientRect();
-  pop.style.top = `${Math.min(r.bottom + 6, window.innerHeight - pop.offsetHeight - 8)}px`;
-  pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, window.innerWidth - pop.offsetWidth - 8))}px`;
-  const away = (ev: MouseEvent): void => { if (!pop.contains(ev.target as Node) && ev.target !== anchor) { pop.remove(); document.removeEventListener("mousedown", away, true); } };
-  setTimeout(() => document.addEventListener("mousedown", away, true), 0);
-}
-
 export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptions = {}): ArtifactsPanelHandle {
   const web = onWeb();
   host.classList.add("artp-host");
@@ -221,7 +157,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   // THE SAME HEADER AS CUSTOMIZE (his order, 2026-10-09: "same with
   // artifacts... doesn't need two headers and it should match customize"):
   // the title row (46px, the rule, the ✕ when full screen), then one row —
-  // the tabs, and the search at its right end — right above the list.
+  // the count, and the search at its right end — right above the list.
   const list = el("div", "artp-list");
   const closeBtn = (): HTMLButtonElement => {
     const x = btn("ws-icon-btn settings-group-close artp-close", CLOSE_SVG, "Close");
@@ -243,19 +179,8 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   q.addEventListener("input", () => paintList());
   search.appendChild(q);
   tools.appendChild(search);
-  const tabs = el("div", "skills-tabs settings-group-tabs");
-  tabs.setAttribute("role", "tablist");
-  let tab: ArtifactTab = "all";
-  for (const t of ARTIFACT_TABS) {
-    const b = btn("skills-tab", "");
-    b.textContent = t.label;
-    b.dataset.tab = t.key;
-    b.setAttribute("role", "tab");
-    b.addEventListener("click", () => { tab = t.key; paintList(); });
-    tabs.appendChild(b);
-  }
   const count = el("span", "skills-count artp-count", "");
-  head.append(tabs, count, tools);
+  head.append(count, tools);
   list.appendChild(head);
   const groups = el("div", "artp-groups");
   list.appendChild(groups);
@@ -265,10 +190,9 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   let loadError = "";
 
   function paintList(): void {
-    tabs.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     groups.innerHTML = "";
     if (loadError) { count.textContent = ""; groups.appendChild(el("div", "crud-empty", "")).textContent = loadError; return; }
-    const shown = searchArtifacts(filterByTab(rows, tab), q.value);
+    const shown = searchArtifacts(rows, q.value);
     count.textContent = `${shown.length} ${shown.length === 1 ? "artifact" : "artifacts"}`;
     if (!shown.length) {
       groups.appendChild(el("div", "crud-empty", "")).textContent = rows.length ? "Nothing matches." : "No artifacts yet. Ask Glyphh to make one.";
@@ -294,38 +218,35 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     const main = el("div", "skill-row-main");
     const name = el("div", "skill-row-name");
     name.textContent = a.name;
-    if (isLocked(a)) { const lock = el("span", "artp-row-lock", LOCK_SVG); lock.title = "Private"; name.appendChild(lock); }
     main.appendChild(name);
     const sub = el("div", "skill-row-sub");
     const desc = el("span", "skill-row-desc");
-    desc.textContent = `${a.mine ? "by you" : `by ${a.ownerName || "a member"}`} · ${editedLabel(a)}`;
+    desc.textContent = editedLabel(a);
     sub.appendChild(desc);
     main.appendChild(sub);
     row.appendChild(main);
     const ed = el("span", "skill-row-date");
     ed.textContent = editedLabel(a).replace(/^Edited\s+/i, "");
     row.appendChild(ed);
-    if (canManage(a)) {
-      const k = btn("skills-kebab artp-row-kebab", KEBAB_SVG, "More");
-      k.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        openRowMenu(k, [
-          { icon: ROW_MENU_ICONS.edit, label: "Rename", onClick: () => void rename(a) },
-          { icon: SHARE_SVG, label: "Share…", onClick: () => openSharePopover(k, a, (m) => replaceRow(m)) },
-          { icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => void remove(a) },
-        ]);
-      });
-      row.appendChild(k);
-    }
+    const k = btn("skills-kebab artp-row-kebab", KEBAB_SVG, "More");
+    k.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openRowMenu(k, [
+        { icon: ROW_MENU_ICONS.edit, label: "Rename", onClick: () => void rename(a) },
+        { icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => void remove(a) },
+      ]);
+    });
+    row.appendChild(k);
     const open = (): void => { void openViewer(a); };
     row.addEventListener("click", open);
     row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
     return row;
   }
 
-  function replaceRow(m: ArtifactMeta): void {
-    rows = rows.map((r) => (r.id === m.id ? m : r));
-    if (current?.id === m.id) { current = m; paintViewerHead(); }
+  /** A row changed under `id` — a rename moves it to a new id (the filename). */
+  function replaceRow(id: string, m: ArtifactMeta): void {
+    rows = rows.map((r) => (r.id === id ? m : r));
+    if (current?.id === id) { current = m; paintViewerHead(); }
     paintList();
   }
 
@@ -336,11 +257,11 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     if (!update) return;
     const r = await update(a.id, { name: name.trim() });
     if (!r.ok) { toast("Couldn't rename", { kind: "error", detail: err(r, "") }); return; }
-    replaceRow(r.data);
+    replaceRow(a.id, r.data);
   }
 
   async function remove(a: ArtifactMeta): Promise<void> {
-    const ok = await confirmAction({ title: `Delete "${a.name}"?`, body: "It disappears for everyone it was shared with.", confirmLabel: "Delete", danger: true });
+    const ok = await confirmAction({ title: `Delete "${a.name}"?`, body: "It is deleted from this machine, with its comments.", confirmLabel: "Delete", danger: true });
     if (!ok) return;
     const del = bridge().artifactsDelete;
     if (!del) return;
@@ -353,9 +274,9 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
 
   async function refresh(): Promise<void> {
     const listDoor = bridge().artifactsList;
-    if (!listDoor) { loadError = "Artifacts need the server."; paintList(); return; }
+    if (!listDoor) { loadError = "This surface can't list artifacts."; paintList(); return; }
     if (!rows.length) groups.innerHTML = `<div class="crud-empty">Loading…</div>`;
-    const r = await listDoor("all");
+    const r = await listDoor();
     if (!r.ok) { loadError = err(r, "Couldn't load your artifacts."); paintList(); return; }
     loadError = "";
     rows = r.data;
@@ -376,8 +297,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
   const commentBtn = btn("btn btn-secondary artp-comment-btn", `${COMMENT_SVG}<span>Comment</span>`, "Comment on an area");
   commentBtn.setAttribute("aria-pressed", "false");
   const chatBtn = btn("btn btn-secondary artp-chat-btn", `${CHAT_SVG}<span>Start chat</span>`, "Start a session from this artifact");
-  const shareBtn = btn("btn btn-primary artp-share-btn", `${SHARE_SVG}<span>Share</span>`);
-  vactions.append(commentBtn, chatBtn, shareBtn);
+  vactions.append(commentBtn, chatBtn);
   vhead.appendChild(vactions);
   if (opts.onClose) vhead.appendChild(closeBtn());
   viewer.appendChild(vhead);
@@ -446,8 +366,6 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     if (!current) return;
     vtitle.textContent = current.name;
     vtitle.title = current.name;
-    shareBtn.querySelector("span")!.textContent = current.access === "private" ? "Share" : shareLabel(current.access);
-    shareBtn.classList.toggle("hidden", !canManage(current));
   }
 
   function showList(): void {
@@ -782,7 +700,7 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
       const text = ta.value.trim();
       if (!text) { ta.focus(); return; }
       const add = bridge().artifactsCommentAdd;
-      if (!add) { toast("Comments need the server.", { kind: "error" }); return; }
+      if (!add) { toast("This surface can't save comments.", { kind: "error" }); return; }
       const r = await add(a.id, { text, region });
       if (!r.ok) { toast("Couldn't post the comment", { kind: "error", detail: err(r, "") }); return; }
       threads = [...threads, r.data];
@@ -858,7 +776,6 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
     send(startChatLine(current), { newSession: true, artifact: { id: current.id, name: current.name } });
     opts.onSentToAgent?.();
   });
-  shareBtn.addEventListener("click", () => { if (current) openSharePopover(shareBtn, current, (m) => replaceRow(m)); });
 
   // A resize moves the pins and regions with the page.
   const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => { if (current) paintPins(); }) : null;
@@ -885,7 +802,6 @@ export function mountArtifactsPanel(host: HTMLElement, opts: ArtifactsPanelOptio
       dropPaneSpinner();
       ro?.disconnect();
       revoke?.();
-      document.querySelector(".artp-share-pop")?.remove();
       root.remove();
       host.classList.remove("artp-host");
     },

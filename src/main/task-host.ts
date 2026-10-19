@@ -71,8 +71,6 @@ function makeCtx(start: StartMsg): Record<string, unknown> {
     connections,
     data,
     rpa,
-    decide: (state: unknown, questions: unknown, opts?: { model?: string }) => call("decide", state, questions, opts ?? {}),
-    route: (state: unknown, branches: unknown, opts?: { instructions?: unknown; minConfidence?: number; fallback?: string; model?: string }) => call("route", state, branches, opts ?? {}),
     log: (message: unknown, detail?: unknown) => { void call("log", typeof message === "string" ? message : JSON.stringify(message), detail ?? null); },
     checkpoint: async (key: string, fn: () => unknown | Promise<unknown>): Promise<unknown> => {
       const have = (await call("checkpoint-get", key)) as { hit: boolean; value?: unknown };

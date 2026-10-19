@@ -10,14 +10,11 @@
  *                              and drag-drop stay as shortcuts)
  *   Skills ›                   the member's skills, a check toggles each
  *                              (skillSetEnabled); Manage skills → Build › Skills
- *   Connectors ›               the member's connected accounts — a custom MCP
- *                              server's check toggles its enabled flag
+ *   Connectors ›               the member's custom MCP servers — a check
+ *                              toggles a server's enabled flag
  *                              (mcpConnectionsUpdate, the Connections page's
- *                              own switch); a Pipedream account opens its
- *                              page (it has no on/off, only Disconnect);
- *                              Add connector / Manage connectors → Connections
- *   Devices ›                  the attached machines (attachDevicesList, the
- *                              Devices page's read) + Manage devices → Devices
+ *                              own switch); Add connector / Manage
+ *                              connectors → Connections
  *   Memory ✓                   the member's memory preference (the Settings →
  *                              Memory switches `memoryInject` + `memoryCapture`
  *                              — there is no per-session memory flag, so this
@@ -30,12 +27,11 @@
  * runs it bare; mountComposerPlus paints it into the composer's drop-up.
  */
 
-import { appIconInner, primeConnectedIcons } from "./app-icon.js";
-import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
+import { appIconInner } from "./app-icon.js";
 
 export type PlusSurface = "desktop" | "web";
 export type PlusSpace = "code";
-export type PlusRowId = "attach" | "skills" | "connectors" | "devices" | "memory" | "add-folder" | "working-folder" | "choose-folder";
+export type PlusRowId = "attach" | "skills" | "connectors" | "memory" | "add-folder" | "working-folder" | "choose-folder";
 export type PlusRowKind = "action" | "submenu" | "check";
 
 export interface PlusRow {
@@ -61,7 +57,6 @@ export interface PlusCaps {
   folder: boolean;
   skills: boolean;
   connectors: boolean;
-  devices: boolean;
   memory: boolean;
 }
 
@@ -72,8 +67,7 @@ export function plusCapsOf(has: (name: string) => boolean): PlusCaps {
     attach: has("glyphhPickAttachments"),
     folder: has("pickWorkingDir"),
     skills: has("skillsList") && has("skillSetEnabled"),
-    connectors: has("connectionsList") || has("mcpConnectionsList"),
-    devices: has("attachDevicesList"),
+    connectors: has("mcpConnectionsList"),
     memory: has("getPreference") && has("setPreference"),
   };
 }
@@ -84,7 +78,6 @@ export const PLUS_ICONS = {
   attach: `<svg viewBox="0 0 24 24" ${S}><path d="M21.4 11.1l-8.5 8.5a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>`,
   skills: `<svg viewBox="0 0 24 24" ${S}><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`,
   connectors: `<svg viewBox="0 0 24 24" ${S}><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`,
-  devices: `<svg viewBox="0 0 24 24" ${S}><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   memory: `<svg viewBox="0 0 24 24" ${S}><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg>`,
   folder: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
   folderPlus: `<svg viewBox="0 0 24 24" ${S}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v6M9 14h6"/></svg>`,
@@ -100,7 +93,6 @@ export const ATTACH_LABEL = "Add files or photos";
 export const MANAGE_SKILLS_LABEL = "Manage skills";
 export const ADD_CONNECTOR_LABEL = "Add connector";
 export const MANAGE_CONNECTORS_LABEL = "Manage connectors";
-export const MANAGE_DEVICES_LABEL = "Manage devices";
 
 export interface PlusState {
   surface: PlusSurface;
@@ -118,7 +110,6 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.attach) rows.push({ id: "attach", label: ATTACH_LABEL, icon: PLUS_ICONS.attach, kind: "action", shortcut: ATTACH_SHORTCUT, hint: "Images and documents ride the next message" });
   if (caps.skills) rows.push({ id: "skills", label: "Skills", icon: PLUS_ICONS.skills, kind: "submenu", sepBefore: rows.length > 0 });
   if (caps.connectors) rows.push({ id: "connectors", label: "Connectors", icon: PLUS_ICONS.connectors, kind: "submenu" });
-  if (caps.devices) rows.push({ id: "devices", label: "Devices", icon: PLUS_ICONS.devices, kind: "submenu" });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
   // The folder family is the DESKTOP's (the OS pickers), where a session has
   // a folder to walk.
@@ -136,15 +127,12 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
 // ── The doors (the host's API, as the menu calls it) ─────────────────────
 type Env<T> = { ok: boolean; data?: T; error?: string };
 export interface PlusSkill { id: string; name: string; enabled: boolean; type?: string }
-export interface PlusConnection { id: string; appSlug: string; appName: string; label?: string; connected?: boolean; org?: boolean; accountId?: string }
-export interface PlusMcp { slug: string; name: string; enabled: boolean; kind?: string; iconUrl?: string | null }
+export interface PlusMcp { slug: string; name: string; enabled: boolean; iconUrl?: string | null }
 export interface PlusApi {
   skillsList?: (kinds: string[]) => Promise<Env<PlusSkill[]>>;
   skillSetEnabled?: (id: string, on: boolean) => Promise<Env<PlusSkill>>;
-  connectionsList?: () => Promise<{ ok: boolean; connections: PlusConnection[] }>;
   mcpConnectionsList?: () => Promise<{ ok: boolean; connections: PlusMcp[] }>;
   mcpConnectionsUpdate?: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
-  attachDevicesList?: () => Promise<DevicesAnswer>;
   getPreference?: (key: string, defaultVal?: unknown) => Promise<unknown>;
   setPreference?: (key: string, value: unknown) => unknown;
 }
@@ -165,71 +153,34 @@ export async function toggleSkill(api: PlusApi, id: string, on: boolean): Promis
   catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
 }
 
-/** One connector row of the submenu, from either lane (the Connections page's
- *  own two reads): a custom MCP server toggles; an account opens. */
+/** One connector row of the submenu: a custom MCP server and its switch. */
 export interface PlusConnectorRow {
   key: string;
   name: string;
-  /** "mcp" rows carry an enabled flag the page toggles; "account" rows are connected or not. */
-  kind: "mcp" | "account";
   on: boolean;
-  /** The slug the Connections page deep-links on (openConnectionOnLoad). */
   slug: string;
-  org: boolean;
-  /** The connector's own logo, built exactly as the Connections page builds
-   *  it (app-icon.ts appIconInner: the account's logo once the icon cache
-   *  warms, a custom server's iconUrl, else the initial). His order,
+  /** The server's logo, built exactly as the Connections page builds it
+   *  (app-icon.ts appIconInner: its iconUrl, else the monogram). His order,
    *  2026-10-06: "pulled from the same place they are pulled from on the
    *  connections page". */
   icon: string;
-  /** What primes the logo cache for an account row (primeConnectedIcons). */
-  prime?: { accountId?: string; pipedreamSlug: string };
 }
 export async function readConnectorRows(api: PlusApi): Promise<PlusConnectorRow[]> {
-  const [res, custom] = await Promise.all([
-    api.connectionsList?.().catch(() => ({ ok: false, connections: [] as PlusConnection[] })) ?? Promise.resolve({ ok: false, connections: [] as PlusConnection[] }),
-    api.mcpConnectionsList?.().catch(() => ({ ok: false, connections: [] as PlusMcp[] })) ?? Promise.resolve({ ok: false, connections: [] as PlusMcp[] }),
-  ]);
-  const mcps = custom?.connections ?? [];
-  const mcpSlugs = new Set(mcps.map((m) => m.slug));
-  const conns = (res?.connections ?? []).filter((c) => !mcpSlugs.has(c.appSlug) && !mcpSlugs.has(c.id));
-  return [
-    ...conns.map((c): PlusConnectorRow => {
-      const name = c.label || c.appName;
-      const prime = { accountId: c.accountId, pipedreamSlug: c.appSlug };
-      return { key: `pd:${c.id}`, name, kind: "account", on: c.connected !== false, slug: c.appSlug, org: !!c.org, icon: connectorIcon({ iconUrl: null, connection: prime }, name), prime };
-    }),
-    ...mcps.map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, kind: "mcp", on: !!m.enabled, slug: m.slug, org: m.kind === "org", icon: connectorIcon({ iconUrl: m.iconUrl ?? null }, m.name) })),
-  ].sort((a, b) => a.name.localeCompare(b.name));
+  const custom = await (api.mcpConnectionsList?.().catch(() => ({ ok: false, connections: [] as PlusMcp[] })) ?? Promise.resolve({ ok: false, connections: [] as PlusMcp[] }));
+  return (custom?.connections ?? [])
+    .map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, on: !!m.enabled, slug: m.slug, icon: connectorIcon({ iconUrl: m.iconUrl ?? null }, m.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 /** One connector's icon markup — the Connections page's own builder. */
-export function connectorIcon(app: { iconUrl: string | null; connection?: { accountId?: string; pipedreamSlug: string } }, name: string): string {
+export function connectorIcon(app: { iconUrl: string | null }, name: string): string {
   return appIconInner(app, name, "drop-icon-initial");
 }
 
-/** A custom MCP server's switch — the same door the Connections page's
- *  "Turn on/off" calls. An account row has no switch: the caller opens it. */
+/** A server's switch — the same door the Connections page's "Turn on/off" calls. */
 export async function toggleConnector(api: PlusApi, row: PlusConnectorRow, on: boolean): Promise<{ ok: boolean; error?: string }> {
-  if (row.kind !== "mcp") return { ok: false, error: "An account has no switch — open it to disconnect." };
-  if (row.org) return { ok: false, error: "An organization server is the admin's to switch." };
   if (!api.mcpConnectionsUpdate) return { ok: false, error: "This host cannot switch a server." };
   try { return await api.mcpConnectionsUpdate(row.slug, { enabled: on }); }
   catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
-}
-
-export interface PlusDeviceRow { machineId: string; name: string; app: string; state: "attached" | "disconnected" }
-/** The member's machines — attached ones first, then the ones disconnected
- *  from the web (the Devices page's one row shape). */
-export async function readDeviceRows(api: PlusApi): Promise<PlusDeviceRow[]> {
-  try {
-    const a = await api.attachDevicesList?.();
-    if (!a) return [];
-    const { devices, blocked } = deviceRowsOf(a);
-    return [
-      ...devices.map((d): PlusDeviceRow => ({ machineId: d.machineId, name: d.name || d.app || "This machine", app: d.app, state: "attached" })),
-      ...blocked.map((b): PlusDeviceRow => ({ machineId: b.device, name: b.name || b.app || "A machine", app: b.app, state: "disconnected" })),
-    ];
-  } catch { return []; }
 }
 
 // ── Memory: the member's preference (there is no per-session flag) ───────
@@ -256,16 +207,16 @@ export function toggleMemory(api: PlusApi, st: MemoryState): "on" | "off" | "nee
 }
 
 // ── Where "Manage …" goes, per surface ───────────────────────────────────
-export type ManageKind = "skills" | "connectors" | "devices" | "memory";
+export type ManageKind = "skills" | "connectors" | "memory";
 export type ManageTarget = { kind: "settings"; sub: string } | { kind: "group"; group: "customize"; sub: string };
 /** Skills + Connectors are the Customize page's tabs on BOTH surfaces (his
  *  order, 2026-10-07: the desktop renders the group page too, and the
  *  Settings modal no longer lists them; his report the same day: "The Build
- *  and Customize tabs are confusing. It should just be one tab"). Devices and
- *  Memory are plain settings pages on both. `surface` stays in the signature
+ *  and Customize tabs are confusing. It should just be one tab"). Memory is
+ *  a plain settings page on both. `surface` stays in the signature
  *  for the rows that do differ by host. */
 export function manageTargetOf(_surface: PlusSurface, kind: ManageKind): ManageTarget {
-  const sub = kind === "skills" ? "skills" : kind === "connectors" ? "connections-cfg" : kind === "devices" ? "devices" : "memory";
+  const sub = kind === "skills" ? "skills" : kind === "connectors" ? "connections-cfg" : "memory";
   if (kind === "skills" || kind === "connectors") return { kind: "group", group: "customize", sub };
   return { kind: "settings", sub };
 }
@@ -282,17 +233,11 @@ export interface PlusDoors {
   pickWorkingFolder: () => void;
   /** Opens a Manage target (navigation.ts on the live renderer). */
   openTarget: (t: ManageTarget) => void;
-  /** Opens one account's page in Connections. */
-  openConnector: (slug: string) => void;
-  /** Opens Connections at the directory (Add connector). */
+  /** Opens Connections, where + Add takes a server of your own. */
   addConnector: () => void;
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
-  /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): an attached
-   *  desktop is on by default; a click flips it for this session. */
-  deviceOn?: (machineId: string) => boolean;
-  toggleDevice?: (machineId: string, attached: string[]) => void;
 }
 
 export interface PlusController {
@@ -403,7 +348,6 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
           case "working-folder": case "choose-folder": close(); doors.pickWorkingFolder(); break;
           case "skills": void openSkills(); break;
           case "connectors": void openConnectors(); break;
-          case "devices": void openDevices(); break;
           case "memory": {
             const verdict = toggleMemory(doors.api, memory);
             if (verdict === "needs-policy") { close(); doors.openTarget(manageTargetOf(doors.surface, "memory")); doors.toast("Accept the memory policy first — Settings › Memory."); break; }
@@ -512,26 +456,14 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     loading.remove();
     if (!pane.isConnected) return;
     if (!rows.length) emptyRow(pane, "Nothing connected yet.");
-    // The accounts' logos land once the icon cache warms (the Connections
-    // page does the same): repaint each row's icon then.
-    void primeConnectedIcons(rows.filter((r) => r.prime).map((r) => ({ connection: r.prime! })), () => {
-      if (!pane.isConnected) return;
-      for (const r of rows) {
-        const ic = pane.querySelector<HTMLElement>(`[data-conn-key="${CSS.escape(r.key)}"] .drop-icon`);
-        if (ic && r.prime) ic.innerHTML = connectorIcon({ iconUrl: null, connection: r.prime }, r.name);
-      }
-    });
     for (const r of rows) {
-      const switchable = r.kind === "mcp" && !r.org;
       const b = rowEl({
-        label: r.name, icon: r.icon, kind: "check", checked: r.on,
-        sub: r.kind === "mcp" ? (r.org ? "Org server" : "MCP server") : (r.org ? "Org account" : undefined),
-        hint: switchable ? (r.on ? "On — click to turn off" : "Off — click to turn on") : (r.on ? "Connected — click to open" : "Not connected — click to open"),
+        label: r.name, icon: r.icon, kind: "check", checked: r.on, sub: "MCP server",
+        hint: r.on ? "On — click to turn off" : "Off — click to turn on",
       });
       b.dataset.connKey = r.key;
       b.addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (!switchable) { close(); doors.openConnector(r.slug); return; }
         const on = b.getAttribute("aria-checked") !== "true";
         const res = await toggleConnector(doors.api, r, on);
         if (!res.ok) { doors.toast(res.error || "Couldn't change that."); return; }
@@ -548,40 +480,6 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     const manage = rowEl({ label: MANAGE_CONNECTORS_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
     manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "connectors")); });
     pane.append(add, manage);
-    doors.place(menu);
-    focusFirst(pane);
-  };
-
-  const openDevices = async (): Promise<void> => {
-    const pane = subPane("Devices");
-    const loading = loadingRow(pane, "Reading your devices…");
-    const rows = await readDeviceRows(doors.api);
-    loading.remove();
-    if (!pane.isConnected) return;
-    if (!rows.length) emptyRow(pane, "No machine is attached.");
-    const attachedIds = rows.filter((d) => d.state === "attached").map((d) => d.machineId);
-    for (const d of rows) {
-      const attached = d.state === "attached";
-      // Nothing is on by itself (his report, 2026-10-07): the session's own check decides.
-      const on = attached && (doors.deviceOn?.(d.machineId) ?? false);
-      const b = rowEl({ label: d.name, icon: PLUS_ICONS.devices, kind: "check", checked: on, sub: attached ? (on ? "Attached — this session can reach its granted folders" : "Attached — off for this session") : "Disconnected", muted: !attached, hint: attached ? "Click to turn this device on or off for this session" : "Manage devices to disconnect or allow" });
-      b.dataset.machineId = d.machineId;
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!attached || !doors.toggleDevice) { close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); return; }
-        doors.toggleDevice(d.machineId, attachedIds);
-        const now = doors.deviceOn?.(d.machineId) ?? false;
-        b.classList.toggle("selected", now);
-        b.setAttribute("aria-checked", now ? "true" : "false");
-        const sub = b.querySelector<HTMLElement>(".drop-sub");
-        if (sub) sub.textContent = now ? "Attached — this session can reach its granted folders" : "Attached — off for this session";
-      });
-      pane.appendChild(b);
-    }
-    pane.appendChild(sepEl());
-    const manage = rowEl({ label: MANAGE_DEVICES_LABEL, icon: PLUS_ICONS.gear, kind: "action" });
-    manage.addEventListener("click", (e) => { e.stopPropagation(); close(); doors.openTarget(manageTargetOf(doors.surface, "devices")); });
-    pane.appendChild(manage);
     doors.place(menu);
     focusFirst(pane);
   };

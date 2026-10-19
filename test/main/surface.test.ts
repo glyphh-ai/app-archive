@@ -17,7 +17,7 @@ import {
   webFullScreenPanels, webPanelOpensFullScreen, panelOpensFullScreen, GROUP_PAGES, groupOfSub, webFullScreenTitle, WEB_FULL_SCREEN_TITLES, WEB_GROUP_ROWS, WEB_CUT_ROW_CLASS, webGroupPanelKept, webNewClosesEverything, 
   WEB_RAIL_WORDMARK, webRailWordmark, webCloseAllOpensNew,
   workspaceOpenClosesHosts,
-  CUSTOMIZE_TAB_ORDER, DISCOVER_SUBS, subHasDiscover, GROUP_PAGE_ALIASES, groupPageKey } from "../../src/renderer/help/surface.js";
+  CUSTOMIZE_TAB_ORDER, GROUP_PAGE_ALIASES, groupPageKey } from "../../src/renderer/help/surface.js";
 import { DESKTOP_ONLY_SUBS } from "../../src/renderer/help/web-surface.js";
 
 describe("THE CAPABILITY MODEL (his order, 2026-10-06: one list, capability checks, never two worlds)", () => {
@@ -120,6 +120,13 @@ describe("WORKSPACE CELLS: the same capability rule per cell (surfaceLayoutCells
       'the app "Notes" (needs a native window)',
     ]);
   });
+  it("a loop's own cell (agent:<cli>) is an agent cell on every surface, never an app missing from the library", () => {
+    for (const caps of [DESKTOP_CAPS, BROWSER_CAPS]) {
+      const plan = surfaceLayoutCells([cell("agent:codex"), cell("AGENT:claude")], [], caps);
+      expect(plan.keep).toEqual([{ kind: "agent" }, { kind: "agent" }]);
+      expect(plan.skipped).toEqual([]);
+    }
+  });
   it("a saved cell may name a view by its older alias; an unnamed tool cell is named", () => {
     expect(surfaceLayoutCells([cell("tool:editor")], [], BROWSER_CAPS).keep).toEqual([{ kind: "tool", view: "monaco" }]);
     expect(surfaceLayoutCells([cell("tool:browser")], [], BROWSER_CAPS).skipped[0]).toContain("preview");
@@ -174,12 +181,6 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect([...CUSTOMIZE_TAB_ORDER].sort()).toEqual([...WEB_GROUP_ROWS].sort());   // every row of the page, once
     expect(Object.isFrozen(CUSTOMIZE_TAB_ORDER)).toBe(true);
   });
-  it("the one Yours | Discover switch spans every tab: the library tabs and Connections have a Discover half, the rest show an empty state", () => {
-    expect([...DISCOVER_SUBS]).toEqual(["skills", "apps", "plugins", "tasks", "connections-cfg"]);
-    for (const sub of DISCOVER_SUBS) expect(subHasDiscover(sub)).toBe(true);
-    for (const sub of ["agents", "tabs", "layouts", "drips", "schedules", "general", ""]) expect(subHasDiscover(sub)).toBe(false);
-    for (const sub of DISCOVER_SUBS) expect(WEB_GROUP_ROWS).toContain(sub);
-  });
   it("every Customize tab is a group row on both surfaces — panel mounted, never `.hidden`", () => {
     expect([...WEB_GROUP_ROWS]).toEqual([...WEB_BUILD_SUBS, "connections-cfg", ...WEB_CUSTOMIZE_SUBS]);
     for (const sub of WEB_GROUP_ROWS) expect(webGroupPanelKept(sub)).toBe(true);
@@ -187,12 +188,12 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect(WEB_CUT_ROW_CLASS).toBe("web-cut-row");
     expect(WEB_CUT_ROW_CLASS).not.toBe("hidden");
   });
-  it("DESKTOP_ONLY_SUBS carries the group rows (CSS-hidden in the modal's nav only) plus the desktop's capability pages: plugins, remote control, the local MCP server", () => {
-    for (const sub of [...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, "plugins", "remote", "mcp"]) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(true);
+  it("DESKTOP_ONLY_SUBS carries the group rows (CSS-hidden in the modal's nav only) plus the desktop's capability pages: plugins, the local MCP server", () => {
+    for (const sub of [...WEB_BUILD_SUBS, ...WEB_CUSTOMIZE_SUBS, "plugins", "mcp", "loops"]) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(true);
   });
   it("what the modal keeps is never also hidden", () => {
     for (const sub of WEB_KEPT_SUBS) expect(DESKTOP_ONLY_SUBS.has(sub)).toBe(false);
-    for (const sub of ["general", "appearance", "memory", "privacy", "devices", "artifacts", "usage", "billing", "support", "connections-cfg"]) {
+    for (const sub of ["general", "appearance", "memory", "artifacts", "billing", "connections-cfg"]) {
       expect(WEB_KEPT_SUBS).toContain(sub);
     }
     expect(WEB_KEPT_SUBS).not.toContain("mcp");
@@ -201,13 +202,13 @@ describe("settings — the one Customize page is the same on both surfaces; only
     expect(WEB_RAIL_LINKS.map((l) => l.label)).toEqual(["Artifacts", "Customize", "Schedules"]);
     expect(WEB_RAIL_LINKS.map((l) => l.sub)).toEqual(["artifacts", "customize", "schedules"]);
     expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain("build");
-    for (const sub of ["connections-cfg", "devices"]) {
+    for (const sub of ["connections-cfg"]) {
       expect(WEB_RAIL_LINKS.map((l) => l.sub)).not.toContain(sub);
       expect(WEB_KEPT_SUBS).toContain(sub);   // still a Settings page
     }
   });
   it("the hidden settings rows are ONLY a capability the browser lacks (streamed panels); the dock's rows show; the rail hides only More", () => {
-    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row", "#rail-layouts-row"]);
+    expect([...WEB_HIDDEN_SETTINGS_ROWS]).toEqual(["#streamed-panels-row", "#rail-layouts-row", "#agent-defaults-head", "#default-loop-row", "#default-view-row", "#cli-gateway-row"]);
     expect([...WEB_HIDDEN_NAV_GROUPS]).toEqual(["nav-group-customize"]);
     expect([...WEB_HIDDEN_RAIL]).toEqual(["#rail-more-toggle", "#rail-layouts-vsplit", "#rail-layouts-head", "#rail-layouts-body"]);
     expect(WEB_HIDDEN_RAIL).not.toContain(WEB_RAIL_WORDMARK);

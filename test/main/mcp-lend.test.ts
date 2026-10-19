@@ -1,18 +1,14 @@
 /**
  * mcp-lend.test.ts — who answers which tool name when the desktop's loop lends
  * its local MCP beside the gateway's /mcp (his order, 2026-10-04: the local
- * server wins the window tools, the gateway the rest), and the remote-control
- * door carrying the gateway's window methods to the same registry handlers
- * the local tools use.
+ * server wins the window tools, the gateway the rest).
  */
 import { describe, expect, it, vi } from "vitest";
 import { CLOUD_TOOLS, LOOP_HIDDEN, MACHINE_TOOLS, WINDOW_TOOLS, lendSplit } from "../../src/main/mcp-lend.js";
 
 vi.mock("electron", () => ({ BrowserWindow: class {}, dialog: {}, ipcMain: { handle: () => undefined } }));
 vi.mock("../../src/main/relay-client.js", () => ({ dispatchRelayMethod: async () => undefined }));
-vi.mock("../../src/main/relay-pty.js", () => ({ killAllRelayPtys: () => undefined }));
 vi.mock("../../src/main/attach-handlers.js", () => ({ gitStateOf: () => ({ isRepo: false }) }));
-vi.mock("../../src/main/glyphh-client.js", () => ({ getClient: () => ({}) }));
 vi.mock("../../src/main/broadcast.js", () => ({ broadcast: () => undefined }));
 vi.mock("../../src/main/stores/preferences-db.js", () => ({ getPreference: () => undefined, loadPreferences: async () => undefined, setPreference: () => undefined }));
 
@@ -100,17 +96,3 @@ describe("lendSplit", () => {
   });
 });
 
-describe("the remote-control door", () => {
-  it("passes the gateway's window methods to the shared registry untouched", async () => {
-    const { remoteTable } = await import("../../src/main/remote-control.js");
-    const seen: Array<[string, unknown]> = [];
-    const table = remoteTable(() => ["/tmp/granted"], async (m, p) => { seen.push([m, p]); return { ok: m }; });
-    for (const m of ["panels.open", "panels.list", "panels.switch", "panels.close", "layouts.open", "settings.open"]) {
-      expect(await table[m]({ app: "crm", page: "skills" }), m).toEqual({ ok: m });
-    }
-    expect(seen.map(([m]) => m)).toEqual(["panels.open", "panels.list", "panels.switch", "panels.close", "layouts.open", "settings.open"]);
-    expect(seen[0][1]).toEqual({ app: "crm", page: "skills" });
-    expect(table["panels.add"]).toBeUndefined();
-    expect(table["rpa.click"]).toBeUndefined();
-  });
-});

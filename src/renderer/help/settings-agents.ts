@@ -25,7 +25,6 @@ interface Envelope { ok: boolean; data?: unknown; error?: string }
 interface LoopModel { id: string; name: string; providerSlug: string }
 
 interface Api {
-  onLibrarySynced?: (cb: (info: { kind: string }) => void) => void;
   libraryAgentsList?: () => Promise<Envelope>;
   libraryAgentCreate?: (input: unknown) => Promise<Envelope>;
   libraryAgentUpdate?: (ref: string, patch: unknown) => Promise<Envelope>;
@@ -323,12 +322,6 @@ export async function loadAgentsSettings(): Promise<void> {
       models = c.models.models;
       const model = el<HTMLSelectElement>("agents2-model");
       if (model) fillModels(model, model.value);
-    });
-    // THE LIBRARY SYNCED (main/library-sync.ts): an agent made or deleted on
-    // the web is on this list without a reload. An open editor is left alone.
-    api().onLibrarySynced?.((info) => {
-      if (info.kind !== "agent") return;
-      if (el("agents2-editor")?.classList.contains("hidden") !== false) void refresh().then(renderList);
     });
   }
   await refresh();

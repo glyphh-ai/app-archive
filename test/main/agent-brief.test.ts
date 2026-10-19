@@ -1,20 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// The generator's seams: the gateway credential, the member's prefs, their
-// team's models, and the one gateway call.
+// The generator's seams: the router credential, the member's prefs, their
+// models, and the one model call.
 vi.mock("electron", () => ({ ipcMain: { handle: () => {} } }));
 let creds: { baseUrl: string; token: string } | null = { baseUrl: "https://gw", token: "k" };
-vi.mock("../../src/main/gateway-token", () => ({ gatewayCreds: async () => creds }));
-let teamDefault = "claude-opus-5";
-vi.mock("../../src/main/org-models", () => ({
-  bareModel: (m: string) => m.replace(/^[a-z0-9_-]+::/i, "").trim(),
-  orgRequiredModel: () => teamDefault,
-}));
-let prefDefault = "";
-vi.mock("../../src/main/stores/preferences-db", () => ({ getPreference: (k: string, d: unknown) => (k === "defaultModel" ? prefDefault : d) }));
-vi.mock("../../src/main/loop-models", () => ({
-  listLoopModels: async () => ({ ok: true, models: [{ id: "claude-opus-5" }, { id: "gemini-3.8-flash" }] }),
-}));
+vi.mock("../../src/main/providers", () => ({ routerCreds: async () => creds, routerConfig: () => ({ providers: [], models: [] }) }));
+vi.mock("@glyphh/sdk/router", () => ({ createRouterFetch: () => fetch }));
+let teamDefault = "anthropic::claude-opus-5";
+vi.mock("../../src/main/org-models", () => ({ defaultChatModel: () => teamDefault, modelRef: (m: string) => m.replace(/"/g, "").trim() }));
 const sent: Array<{ model: string; content: string }> = [];
 vi.mock("@glyphh/sdk/loop", () => ({
   streamMessage: async (o: { body: { model: string; messages: Array<{ content: string }> } }) => {
@@ -26,7 +19,7 @@ vi.mock("@glyphh/sdk/loop", () => ({
 const { generateAgentBrief } = await import("../../src/main/agent-brief");
 
 describe("generateAgentBrief — the wand (his order, 2026-09-29)", () => {
-  beforeEach(() => { sent.length = 0; creds = { baseUrl: "https://gw", token: "k" }; teamDefault = "claude-opus-5"; prefDefault = ""; });
+  beforeEach(() => { sent.length = 0; creds = { baseUrl: "https://gw", token: "k" }; teamDefault = "anthropic::claude-opus-5"; });
 
   it("asks for information first, and spends nothing without it", async () => {
     const r = await generateAgentBrief({ name: " ", description: "" });
@@ -35,30 +28,26 @@ describe("generateAgentBrief — the wand (his order, 2026-09-29)", () => {
     expect(sent).toEqual([]);
   });
 
-  it("writes on the member's OWN default model when their team still carries it", async () => {
-    prefDefault = "google::gemini-3.8-flash";
-    const r = await generateAgentBrief({ name: "Researcher", description: "Cites sources", model: "claude-opus-5", draft: "be terse" });
-    expect(r).toEqual({ ok: true, brief: "You research one question at a time.", model: "gemini-3.8-flash" });
-    expect(sent[0]!.model).toBe("gemini-3.8-flash");
+  it("writes on the default chat model, with everything the person typed", async () => {
+    teamDefault = "google::gemini-3.8-flash";
+    const r = await generateAgentBrief({ name: "Researcher", description: "Cites sources", model: "anthropic::claude-opus-5", draft: "be terse" });
+    expect(r).toEqual({ ok: true, brief: "You research one question at a time.", model: "google::gemini-3.8-flash" });
+    expect(sent[0]!.model).toBe("google::gemini-3.8-flash");
     // Everything the person typed goes in — the draft is improved, not dropped.
     expect(sent[0]!.content).toContain("Name: Researcher");
     expect(sent[0]!.content).toContain("Cites sources");
     expect(sent[0]!.content).toContain("be terse");
   });
 
-  it("falls back to the team's default when the member's pick is gone, and says so when there is none", async () => {
-    prefDefault = "retired-model";
-    await generateAgentBrief({ name: "X" });
-    expect(sent[0]!.model).toBe("claude-opus-5");
+  it("says so when there is no default chat model", async () => {
     teamDefault = "";
-    prefDefault = "";
     const r = await generateAgentBrief({ name: "X" });
-    expect((r as { error: string }).error).toMatch(/Pick a default model in Settings/);
+    expect((r as { error: string }).error).toMatch(/Pick a default chat model in Settings › Models/);
   });
 
-  it("the gateway off is a sentence, not a crash", async () => {
+  it("no provider set up is a sentence, not a crash", async () => {
     creds = null;
     const r = await generateAgentBrief({ name: "X" });
-    expect((r as { error: string }).error).toMatch(/gateway isn't available/);
+    expect((r as { error: string }).error).toMatch(/Add a model provider in Settings › Models/);
   });
 });

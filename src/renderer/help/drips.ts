@@ -290,12 +290,6 @@ export function initDripsEvents() {
       void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
     });
   }
-  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web saved, or
-  // dropped what it deleted): the list re-reads. An open editor is left alone.
-  window.glyphh.onLibrarySynced?.((info) => {
-    if (info.kind !== "drip") return;
-    if (dripEditor.classList.contains("hidden")) void loadDrips();
-  });
   dripModeSelect.addEventListener("change", () => {
     dripCountInput.classList.toggle("hidden", dripModeSelect.value !== "counted");
     updateDripRecipePreview();

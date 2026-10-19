@@ -1,18 +1,14 @@
 /**
- * apps-store.ts — THE TAB ROWS, read from the server and held in memory.
- *
- * Until 2026-10-07 a tab was a folder on this machine
- * (~/.glyphh/<user>/apps/<slug>/tab.json) that the library sync kept level
- * with the server. His order that day ("why would we replicate down to the
- * local machine?"): the server is the only truth; the desktop keeps a RUNNING
- * COPY in memory for its synchronous readers (library-remote.ts primes it at
- * sign-in and refreshes it) and writes straight back. Nothing on disk.
+ * apps-store.ts — THE TAB ROWS: the local member library's `tab` records
+ * (member-library-local.ts), with a running copy in memory for the
+ * synchronous readers, loaded on first read and written through on every
+ * change.
  *
  * The API keeps the slice the desktop used (mine / readRow / createEntry /
  * updateEntry / removeEntry), so no call site moves.
  */
 import { isTabRow } from "../shared/member-library.js";
-import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
+import { libraryDelete, libraryRows, libraryWrite } from "./member-library-local.js";
 
 /** The stored row — the fields org-apps' toRow() projection reads. */
 export interface LocalAppRow {
@@ -51,39 +47,37 @@ export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug" | "url" | "
 
 // ── The running copy ─────────────────────────────────────────────────────────
 const rows = new Map<string, LocalAppRow>();
-let primed = false;
+let loaded = false;
 
-/** Load (or reload) every tab row the server holds for this member. */
-export async function primeTabs(): Promise<void> {
-  const fresh = await remoteList<LocalAppRow>("tab");
-  rows.clear();
-  for (const r of fresh) {
+/** The copy, read from the library the first time anything asks. */
+function tabs(): Map<string, LocalAppRow> {
+  if (loaded) return rows;
+  for (const r of libraryRows<LocalAppRow>("tab")) {
     if (!isTabRow(r.data)) continue;
     const slug = r.id.toLowerCase();
     rows.set(slug, { ...r.data, slug, id: r.data.id || slug, updatedAt: new Date(r.updatedAt).toISOString() });
   }
-  primed = true;
+  loaded = true;
+  return rows;
 }
 
 /** Announce a change the way main's own writes always did. */
 async function announce(): Promise<void> {
-  const [{ invalidateOrgApps }, { broadcast }] = await Promise.all([import("./org-apps.js"), import("./broadcast.js")]);
-  invalidateOrgApps();
+  const { broadcast } = await import("./broadcast.js");
   broadcast("panel-apps-changed");
 }
 
 export function readRow(slug: string): LocalAppRow | null {
-  return rows.get(slug.toLowerCase().trim()) ?? null;
+  return tabs().get(slug.toLowerCase().trim()) ?? null;
 }
 
 /** Every tab row, from the running copy. */
 export function mineSync(): LocalAppRow[] {
-  return Array.from(rows.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(tabs().values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Every tab row; the first call primes the copy from the server. */
+/** Every tab row (the async face the IPC and the resolver await). */
 export async function mine(): Promise<LocalAppRow[]> {
-  if (!primed) { try { await primeTabs(); } catch { /* offline: the copy stands */ } }
   return mineSync();
 }
 
@@ -111,8 +105,8 @@ export async function createEntry(input: CreateEntryInput): Promise<LocalAppRow>
     createdAt: now,
     updatedAt: now,
   };
-  await remotePut("tab", slug, row);
-  rows.set(slug, row);
+  libraryWrite("tab", slug, row);
+  tabs().set(slug, row);
   void announce();
   return row;
 }
@@ -130,16 +124,16 @@ export async function updateEntry(slug: string, patch: UpdateEntryInput): Promis
   if (patch.kind !== undefined) next.kind = patch.kind;
   if (patch.secretNames !== undefined) next.secretNames = patch.secretNames.map(String);
   next.updatedAt = new Date().toISOString();
-  await remotePut("tab", next.slug, next);
-  rows.set(next.slug, next);
+  libraryWrite("tab", next.slug, next);
+  tabs().set(next.slug, next);
   void announce();
   return next;
 }
 
-/** Delete the tab row on the server; the running copy drops it. */
+/** Delete the tab row; the running copy drops it. */
 export async function removeEntry(slug: string): Promise<void> {
   const key = slug.toLowerCase().trim();
-  await remoteRemove("tab", key);
-  rows.delete(key);
+  libraryDelete("tab", key);
+  tabs().delete(key);
   void announce();
 }

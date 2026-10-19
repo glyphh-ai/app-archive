@@ -1,12 +1,9 @@
 /**
- * home-ipc — IPC for the Settings / home panel: the usage dashboard, the
- * MCP server manager, app connectors, exposed-MCP tokens, and the prompt log.
- *
- * (Formerly bundled into drop-ipc; the Drop is gone, these handlers are not.)
+ * home-ipc — IPC for the Settings / home panel: section steering and the
+ * loopback MCP server (its switch, port and tokens).
  */
 
 import { ipcMain } from "electron";
-import type { ConnectorManager } from "./connectors";
 import {
   syncLocalMcpServer,
   stopLocalMcpServer,
@@ -17,148 +14,13 @@ import {
 } from "./local-mcp-server";
 import { sendToHomeShell } from "./broadcast";
 import { setPreference } from "./stores/preferences-db";
-import { getAccountInfo, getAuthStatus } from "./auth";
-import { getClient } from "./glyphh-client";
-import { ForbiddenError } from "@glyphh/sdk";
 
-interface HomeIpcDeps {
-  /** Pipedream Connect surface (catalog, OAuth connect, accounts) — null pre-init. */
-  connectorManager: ConnectorManager | null;
-}
-
-export function registerHomeIpc(deps: HomeIpcDeps): void {
-
-  // ── Home dashboard ──────────────────────────────────────────────────────
-  // The budget, month spend, apps deployed, and a per-day usage
-  // series (dollars + calls). Money is dollars end to end — GlyphhRouter's spend
-  // log is the ledger. Each call degrades to null so one failure doesn't
-  // blank the whole card set.
+export function registerHomeIpc(): void {
   // The SHELL (boot gate / tutorial) steering the home panel's section —
   // e.g. "land on Home after the first-run walkthrough".
   ipcMain.handle("home-goto-section", (_e, section: string) => {
     sendToHomeShell("home:goto-section", String(section));
     return { ok: true };
-  });
-
-  // Every RUN across every agent's tasks — the dashboard's recent-runs list.
-  // Newest first, capped: the dashboard shows a page of 5, so 60 is plenty.
-  ipcMain.handle("dashboard-runs", async () => {
-    try {
-      const client = getClient();
-      const agents = await client.agents.list();
-      const perAgent = await Promise.all(agents.map(async (agent) => {
-        const tasks = await client.agents.tasks(agent.id).catch(() => []);
-        const perTask = await Promise.all(tasks.map(async (task) => {
-          const runs = await client.agents.taskRuns(agent.id, task.id).catch(() => []);
-          return runs.map((run) => ({
-            runId: run.id,
-            agentId: agent.id,
-            agentName: agent.name,
-            taskName: task.name,
-            target: task.target,
-            startedAt: run.startedAt,
-            durationMs: run.durationMs,
-            status: run.status,
-            error: run.error,
-            output: run.output,
-          }));
-        }));
-        return perTask.flat();
-      }));
-      const all = perAgent.flat().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
-      return { ok: true, data: all.slice(0, 60) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
-  // The stacked usage chart's feed: day × (model | source) cells over the last
-  // N days, in dollars.
-  ipcMain.handle("usage-series", async (_e, days: number, groupBy: string, userId?: string) => {
-    try {
-      const ymd = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const now = new Date();
-      const win = Math.max(1, Math.min(Number(days) || 30, 365));
-      const start = new Date(now); start.setDate(now.getDate() - (win - 1));
-      const gb = groupBy === "source" ? "source" as const : "model" as const;
-      // A member narrowing is org_admin-only server-side; pass it only when set
-      // so a member's request stays exactly what it was.
-      const member = typeof userId === "string" && userId ? { userId } : {};
-      const { points } = await getClient().usage.series({
-        from: ymd(start), to: ymd(now), groupBy: gb,
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        ...member,
-      });
-      return { ok: true, data: { from: ymd(start), to: ymd(now), points } };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
-  ipcMain.handle("dashboard-data", async () => {
-    const ymd = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const now = new Date();
-
-    const client = getClient();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [balance, usage, apps, plans, sub, mine] = await Promise.all([
-      // The org's budget — admins only; a member's 403 → null and
-      // the card reads as pooled.
-      client.billing.balance().catch(() => null),
-      // The caller's month-to-date spend; the SERVER owns the month boundary
-      // math so this matches what an org admin sees for the same user.
-      // NO upper bound: `to` is EXCLUSIVE and a bare date parses as UTC
-      // midnight — passing today would chop off everything spent today
-      // (which zeroed this card). Omitted = "through now".
-      client.usage.summary({ from: ymd(monthStart) }).catch(() => null),
-      // The apps this member may open: the cloud instances (app-platform.md).
-      client.appInstances.list().catch(() => null),
-      // The PLAN CATALOG is the authority on the plan's name + monthly pool
-      // (his law, 2026-08-25) — never a tier string.
-      client.billing.plans().catch(() => []),
-      client.billing.status().catch(() => null),
-      // The caller's own budget: the org's limit on them plus Glyphh's Glyphh dollars.
-      client.billing.myBudget().catch(() => null),
-    ]);
-
-    const acct = getAccountInfo();
-    const tier = sub?.tier || getAuthStatus().tier || "";
-    const plan = (plans || []).find((x) => x.tier === tier) ?? null;
-    return {
-      name: (acct?.firstName || "").trim(),
-      plan: plan?.displayName || tier,
-      // null balance = the budget is admin-only for this account — the
-      // renderer paints the member's pooled card instead.
-      orgBudget: balance != null,
-      // The budget, in dollars: what is left this period, what the
-      // plan funds each month, what was added on top, what was spent.
-      remainingUsd: balance?.remainingUsd ?? 0,
-      poolUsdPerMonth: plan?.poolUsdPerMonth ?? balance?.planUsd ?? 0,
-      fundsUsd: balance?.fundsUsd ?? 0,
-      budgetSpentUsd: balance?.spentUsd ?? 0,
-      periodEnd: balance?.periodEnd ?? mine?.periodEnd ?? null,
-      // What THIS member may spend (his play-out, 2026-09-20): the org's limit
-      // on them (null = none set) plus the connector pool; spent counts both.
-      limitUsd: mine?.limitUsd ?? null,
-      limitSource: mine?.limitSource ?? null,
-      mySpentUsd: mine?.spentUsd ?? 0,
-      poolUsd: mine?.poolUsd ?? ((plan?.poolUsdPerMonth ?? 0) + (balance?.fundsUsd ?? 0)),
-      poolSpentUsd: mine?.poolSpentUsd ?? balance?.spentUsd ?? 0,
-      poolRemainingUsd: mine?.poolRemainingUsd ?? balance?.remainingUsd ?? 0,
-      poolSource: mine?.poolSource ?? "org",
-      planUsd: mine?.planUsd ?? balance?.planUsd ?? plan?.poolUsdPerMonth ?? 0,
-      // Month-to-date spend in dollars, by source (Pipedream vs provider).
-      spendUsd: usage?.usd || 0,
-      spendPipedreamUsd: usage?.bySource?.pipedream || 0,
-      spendProviderUsd: usage?.bySource?.provider || 0,
-      // The summary counts spend-log events — one per metered request.
-      requests: usage?.events || 0,
-      // Count live deployments only, exactly like the Apps tab: the seeded
-      // system app (system:true) is not a deployed app.
-      appsCount: Array.isArray(apps) ? apps.length : 0,
-    };
   });
 
   // ── Local MCP server (127.0.0.1) — the loopback MCP surface ──
@@ -178,36 +40,4 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   ipcMain.handle("local-mcp-tokens-list", () => localMcpListTokens());
   ipcMain.handle("local-mcp-tokens-create", (_e, label: string) => localMcpGenToken(label));
   ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
-
-
-
-
-  // ── Connectors (Pipedream Connect) — RESTORED 2026-09-11 ────────────────
-  const cm = () => deps.connectorManager;
-  ipcMain.handle("connectors-get-apps", async (_e, search?: string, after?: string, category?: string) => {
-    if (!cm()) return { apps: [], hasMore: false };
-    return cm()!.getApps(search, typeof after === "string" ? after : undefined, typeof category === "string" ? category : undefined);
-  });
-  ipcMain.handle("connectors-get-categories", async () => (cm() ? cm()!.getCategories() : []));
-  ipcMain.handle("connectors-get-popular", async () => (cm() ? cm()!.getPopular() : []));
-  ipcMain.handle("connectors-get-accounts", async () => {
-    if (!cm()) return [];
-    return cm()!.getAccounts();
-  });
-  ipcMain.handle("connectors-connect", async (_e, appSlug: string) => {
-    if (!cm()) return { ok: false, error: "Not initialized" };
-    return cm()!.connectApp(appSlug);
-  });
-  ipcMain.handle("connectors-disconnect", async (_e, accountId: string) => {
-    if (!cm()) return false;
-    return cm()!.disconnectAccount(accountId);
-  });
-  ipcMain.handle("connectors-refresh-mcp", async () => {
-    if (!cm()) return { ok: false, error: "Not initialized", toolCount: 0 };
-    return cm()!.refreshMcp();
-  });
-  ipcMain.handle("connectors-list-tools", async () => {
-    if (!cm()) return [];
-    return cm()!.listTools();
-  });
 }

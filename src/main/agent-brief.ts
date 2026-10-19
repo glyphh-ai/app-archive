@@ -5,8 +5,8 @@
  * brief").
  *
  * One call, on the member's DEFAULT model (Settings → General → Default model,
- * else the team's flagged default), through the gateway on their own key — the
- * same lane and the same bill as a turn. What goes in is what the person typed:
+ * else the default chat model), through the router on the user's own
+ * provider keys — the same lane a turn takes. What goes in is what the person typed:
  * the agent's name, when to use it, the model it will run on, and any draft
  * brief (which the call improves rather than discards).
  *
@@ -16,10 +16,9 @@
 
 import { ipcMain } from "electron";
 import { streamMessage } from "@glyphh/sdk/loop";
-import { gatewayCreds } from "./gateway-token.js";
-import { bareModel, orgRequiredModel } from "./org-models.js";
-import { listLoopModels } from "./loop-models.js";
-import { getPreference } from "./stores/preferences-db.js";
+import { createRouterFetch } from "@glyphh/sdk/router";
+import { routerConfig, routerCreds } from "./providers.js";
+import { defaultChatModel, modelRef } from "./org-models.js";
 
 export interface BriefInput { name?: string; description?: string; model?: string; draft?: string }
 export type BriefResult = { ok: true; brief: string; model: string } | { ok: false; error: string };
@@ -33,17 +32,7 @@ const SYSTEM = [
   "Output ONLY the brief: no title, no preamble, no quotes. Aim for 120–260 words; short paragraphs or a few bullets are fine.",
 ].join("\n");
 
-/** The model the member chose as their default, if their team still carries
- *  it; else the team/org default; else "". A pick the team dropped would be
- *  refused by the gateway, so it is never used. */
-async function defaultModel(): Promise<string> {
-  const picked = bareModel(String(getPreference<string>("defaultModel", "") || ""));
-  if (picked) {
-    const list = await listLoopModels().catch(() => null);
-    if (list?.ok && list.models.some((m) => m.id === picked)) return picked;
-  }
-  return orgRequiredModel();
-}
+const routerFetch = createRouterFetch(routerConfig);
 
 export async function generateAgentBrief(input: BriefInput): Promise<BriefResult> {
   const name = String(input.name ?? "").trim();
@@ -52,21 +41,21 @@ export async function generateAgentBrief(input: BriefInput): Promise<BriefResult
   if (!name && !description && !draft) {
     return { ok: false, error: "Say what the agent is for first — a name and when to use it — so there is something to write a brief from." };
   }
-  const creds = await gatewayCreds().catch(() => null);
-  if (!creds) return { ok: false, error: "Your organization's gateway isn't available, so nothing can be generated right now." };
-  const model = await defaultModel();
-  if (!model) return { ok: false, error: "Pick a default model in Settings → General first — that's the model that writes the brief." };
+  const creds = await routerCreds().catch(() => null);
+  if (!creds) return { ok: false, error: "Add a model provider in Settings › Models first — it is what writes the brief." };
+  const model = defaultChatModel();
+  if (!model) return { ok: false, error: "Pick a default chat model in Settings › Models first — that's the model that writes the brief." };
 
   const facts = [
     name ? `Name: ${name}` : "",
     description ? `When the main agent should use it: ${description}` : "",
-    input.model ? `It runs on: ${bareModel(input.model)}` : "It runs on the main agent's model.",
+    input.model ? `It runs on: ${modelRef(input.model)}` : "It runs on the main agent's model.",
     draft ? `Draft brief to improve:\n${draft}` : "",
   ].filter(Boolean).join("\n\n");
 
   try {
     const res = await streamMessage({
-      baseUrl: creds.baseUrl, token: creds.token, timeoutMs: 90_000,
+      baseUrl: creds.baseUrl, token: creds.token, timeoutMs: 90_000, fetch: routerFetch,
       body: { model, max_tokens: 1200, system: SYSTEM, messages: [{ role: "user", content: facts }] },
     });
     const brief = res.content

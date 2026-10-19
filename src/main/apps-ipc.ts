@@ -1,29 +1,21 @@
-import { app, ipcMain, dialog, BrowserWindow, screen, net } from "electron";
-import { getClient } from "./glyphh-client";
+import { app, ipcMain, dialog, BrowserWindow, net } from "electron";
 import { refreshForceWebSlugs } from "./force-web";
 import fs from "fs";
-import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
-import { exportServerApp } from "./glyphh-app-package";
-import { pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder";
-import { getExplicitWorkingDirectory } from "./working-directory";
-import { hasMcpAccess, AUTH_SERVER } from "./auth";
+import { hasMcpAccess } from "./auth";
 import * as appsStore from "./apps-store";
 import { dispatchRelayMethod } from "./relay-client";
-import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
+import { fetchOrgApps } from "./org-apps";
 import { BUILTIN_WORKPANELS, WORKPANEL_REFUSAL } from "./saved-tabs";
 import { scanChromeProfiles, importFromChrome } from "./chrome-import";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
-import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { BUILTIN_EFFECT_LIST } from "../shared/drip-effects";
 import { getDripManagerInstance } from "./drip-manager";
 
-/** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
- *  list is no longer a local object; every read/write goes straight to
- *  yo-server's /api/panel-apps (see saved-app-routes.ts). Errors surface as
- *  { ok: false, error } rather than throwing, so the renderer can show a
- *  message instead of crashing on a network hiccup. */
+/** The panel apps (the tab rows, apps-store.ts) as the Apps tab reads them.
+ *  Errors surface as { ok: false, error } rather than throwing, so the
+ *  renderer can show a message instead of crashing. */
 function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // Launch an app — every path opens a workbench panel beside the agent
   // (openAppByRef sends wb:app-cmd). OS windows and real-browser launches
@@ -122,7 +114,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
 
 }
 
-import { desktopLayouts, toLayoutRow, type LayoutManager } from "./layout-manager";
+import { desktopLayouts, toLayoutRow, type GridCell, type LayoutManager } from "./layout-manager";
 
 interface AppsIpcDeps {
   layoutManager: LayoutManager;
@@ -177,19 +169,21 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
+  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: GridCell[]; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; view?: "glyphh" | "cli" | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);
       if (!gate.allowed) return { error: gate.reason };
     }
-    const { loop, modelSelections, sessionMode, type, gateway, folder, space, ...rest } = grid;
+    const { loop, view, modelSelections, sessionMode, type, gateway, folder, space, ...rest } = grid;
     await layoutManager.saveLayout({
       ...rest,
       version: 2,
       folderMode: grid.folderMode ?? "single",
       target: grid.target ?? "glyphh",
       ...(loop ? { loop } : {}),
+      // The face its agents open with (chat or terminal); absent leaves the app default.
+      ...(view === "glyphh" || view === "cli" ? { view } : {}),
       ...(type === "work" || type === "code" ? { type } : {}),
       ...(gateway === "on" || gateway === "off" ? { gateway } : {}),
       ...(modelSelections && Object.keys(modelSelections).length ? { modelSelections } : {}),
@@ -267,7 +261,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
         name: String(input.name || slug),
         ...entryFields(input),
       });
-      invalidateOrgApps();
       return { ok: true, app };
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -296,7 +289,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
         ...fields,
         ...(kind === "web" || kind === "native" ? { kind } : {}),
       });
-      invalidateOrgApps();
       return { ok: true, app };
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -314,7 +306,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       const slug = await appSlug(id);
       if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
       await appsStore.removeEntry(slug);
-      invalidateOrgApps();
       return { ok: true };
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -329,233 +320,5 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("chrome-import-run", async (_e, opts: { profile?: string; cookies?: boolean }) => {
     try { return await importFromChrome(opts ?? {}); }
     catch (err) { return { ok: false, tabsAdded: 0, tabsSkipped: 0, cookiesImported: 0, cookiesFailed: 0, error: err instanceof Error ? err.message : String(err) }; }
-  });
-
-  // ── yo app package (import / export) ──────────────────────
-  // Export an app to a .glyphh bundle. Resolves the app from the org's SERVER
-  // library (fetchOrgApps) — the old path read the legacy local appConnector,
-  // which no real app lives in, so Export silently failed. A hosted app carries
-  // its built code (downloaded via apps.source()); a launcher exports its
-  // manifest only.
-  ipcMain.handle("app-export", async (_e, appId: string) => {
-    const apps = await fetchOrgApps().catch(() => []);
-    const app = apps.find((a) => a.id === appId || a.slug === appId);
-    if (!app) return { ok: false, error: `App "${appId}" not found` };
-    const win = getMainWindow();
-    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
-    const safeName = (app.name || app.slug || app.id).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || app.slug || app.id;
-    const result = await dialog.showSaveDialog(win, {
-      title: "Export app",
-      defaultPath: `${safeName}.glyphh`,
-      filters: [{ name: "Glyphh app", extensions: ["glyphh"] }],
-    });
-    if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
-    const dest = result.filePath.endsWith(".glyphh") ? result.filePath : `${result.filePath}.glyphh`;
-    // LOCAL source (THE PURGE): a built glyphh app's bytes live beside its
-    // entry — zip that folder. A launcher exports manifest-only.
-    let sourceZip: Buffer | undefined;
-    try {
-      if (app.execPath && fs.existsSync(app.execPath)) {
-        const AdmZip = (await import("adm-zip")).default;
-        const zip = new AdmZip();
-        zip.addLocalFolder(path.dirname(app.execPath));
-        sourceZip = zip.toBuffer();
-      }
-    } catch { /* no build — manifest-only export */ }
-
-    // The bundle carries its RELEASE identity from the local row.
-    let release: Parameters<typeof exportServerApp>[0]["release"];
-    if (app.latestVersion) {
-      release = { version: app.latestVersion, notes: "", channel: "live", releasedAt: app.updatedAt };
-    }
-
-    return exportServerApp(
-      { id: app.id, slug: app.slug, name: app.name, url: app.url, ...(release ? { release } : {}) },
-      dest, sourceZip,
-    );
-  });
-
-  // Update an installed app to its newest published version. The bundle a
-  // marketplace glyphh app installs from is not yet downloadable — a deployed
-  // app's stored source has its worker stripped, so re-installing that would
-  // break the app. Until a bundle-distribution endpoint exists, say so plainly
-  // rather than shipping a broken update.
-  ipcMain.handle("app-update-installed", async (_e, _slug: string) => {
-    return {
-      ok: false,
-      error: "In-place update isn't available yet — reinstall the app from the marketplace or its .glyphh file to get the newest version.",
-    };
-  });
-
-  // ── Production tab: graduate to a standalone Supabase repo (download zip) ────
-  ipcMain.handle("app-graduate", async (_e, slug: string) => {
-    const win = getMainWindow();
-    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
-    const safe = slug.replace(/[^a-zA-Z0-9_-]+/g, "-") || "app";
-    const result = await dialog.showSaveDialog(win, {
-      title: "Export standalone repo",
-      defaultPath: `${safe}.zip`,
-      filters: [{ name: "Zip archive", extensions: ["zip"] }],
-    });
-    if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
-    const dest = result.filePath.endsWith(".zip") ? result.filePath : `${result.filePath}.zip`;
-    try {
-      // LOCAL (THE PURGE): the standalone-repo builder died with the control
-      // plane — export the working project source as the zip instead.
-      const wd = getExplicitWorkingDirectory();
-      if (!wd) return { ok: false, error: "no working folder is set — open the app's project folder first" };
-      const dir = appDirInWorkdir(wd);
-      const AdmZip = (await import("adm-zip")).default;
-      const zip = new AdmZip();
-      zip.addLocalFolder(dir, undefined, (p) => !/(^|\/)(node_modules|dist|\.git)(\/|$)/.test(p));
-      fs.writeFileSync(dest, zip.toBuffer());
-      return { ok: true, path: dest };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
-  // Import a .glyphh bundle — the glyphh-app (marketplace unit) format installs
-  // as a server saved-app. The legacy local-connector format died with the
-  // local app registry.
-  ipcMain.handle("app-import", async () => {
-    const win = getMainWindow();
-    if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
-    const result = await dialog.showOpenDialog(win, {
-      title: "Install app",
-      properties: ["openFile"],
-      filters: [{ name: "Glyphh app", extensions: ["glyphh"] }],
-    });
-    if (result.canceled || result.filePaths.length === 0) return { ok: false, error: "Canceled" };
-    const file = result.filePaths[0];
-
-    // glyphh-app bundle? → install as a server app (appears on the Apps page).
-    if (isGlyphhAppBundle(file)) {
-      return installGlyphhAppBundle(file);
-    }
-
-    return { ok: false, error: "This bundle uses the legacy local-app format, which is no longer supported." };
-  });
-
-  // ── Connections (first-class connected accounts) ─────────────
-  // Desktop is a MEMBER surface: the list is the caller's own (personal)
-  // connections plus the org-shared ones (read-only); every mutation acts on
-  // a PERSONAL connection.
-  //
-  // The renderer's Connection contract predates the SDK and is keyed by `id`
-  // with Pipedream-flavoured fields, while the SDK addresses connections by
-  // `slug`. Adapt here — the IPC shape is the stable boundary — and keep an
-  // id→slug index so the per-connection handlers can resolve either.
-  interface ConnRef { slug: string; org: boolean }
-  const connIndex = new Map<string, ConnRef>();
-
-  ipcMain.handle("connections-list", async () => {
-    try {
-      const client = getClient();
-      // Personal rows carry the rich fields (id, label, health); the resolved
-      // list contributes the org-shared ones the member may use but not edit.
-      const [personal, resolved, live] = await Promise.all([
-        client.connections.personalList(),
-        client.connections.list().catch(() => []),
-        // Governance truth: what the caller's agents can ACTUALLY call.
-        // Null on failure → badges stay off rather than false-accusing.
-        client.connections.resolvedTools().then((r) => r.connections).catch(() => null),
-      ]);
-      // A connection that's connected but absent from the resolved catalog is
-      // BLOCKED by policy; present with zero tools = all its tools are blocked.
-      const governance = (slug: string): { agentAllowed?: boolean; agentTools?: number; agentAvailable?: number } => {
-        if (!live) return {};
-        const conn = live.find((x) => x.slug === slug);
-        if (!conn) return { agentAllowed: false, agentTools: 0, agentAvailable: 0 };
-        return { agentAllowed: true, agentTools: conn.tools.length, agentAvailable: conn.availableTools.length };
-      };
-      connIndex.clear();
-      // The member's OWN connected accounts, and nothing else (his ruling,
-      // 2026-09-14): what the org admin installs on the console is a whitelist
-      // for the New-connection picker under governance, and invisible here
-      // otherwise. Governance badges come from the resolved catalog by app.
-      // The server's list carries the org's connections too (his ruling,
-      // 2026-09-16): a shared one arrives connected, a per-member one connects
-      // once this member authorizes their own account.
-      const connections = personal.map((c) => {
-        connIndex.set(c.id, { slug: c.appSlug, org: !!c.org });
-        return {
-          id: c.id,
-          accountId: c.id,
-          appSlug: c.appSlug,
-          appName: c.appName || c.name || c.appSlug,
-          label: c.label,
-          healthy: c.healthy,
-          connected: c.connected ?? true,
-          hiddenTools: [] as string[],
-          createdAt: "",
-          org: !!c.org,
-          shared: !!c.shared,
-          ...governance(c.appSlug),
-        };
-      });
-      return { ok: true, connections };
-    }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
-  });
-
-  /** Resolve a renderer connection id (or a bare slug) to its SDK slug. */
-  const connSlug = (id: string): string => connIndex.get(id)?.slug ?? id;
-
-  ipcMain.handle("connection-rename", async (_e, id: string, label: string) => {
-    try { return { ok: true, connection: await getClient().connections.renamePersonalConnection(id, label) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("connection-tools-list", async (_e, id: string) => {
-    try {
-      const slug = connSlug(id);
-      const { connections } = await getClient().connections.resolvedTools();
-      const conn = connections.find((c) => c.slug === slug);
-      if (!conn) return { ok: true, tools: [] };
-      // The server stores what's ALLOWED; the renderer speaks hides.
-      const allowed = new Set(conn.tools.map((t) => t.key));
-      return {
-        ok: true,
-        tools: conn.availableTools.map((t) => ({
-          name: t.key,
-          description: t.description ?? t.name,
-          hidden: !allowed.has(t.key),
-        })),
-      };
-    }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
-  });
-  ipcMain.handle("connection-tools-set", async (_e, id: string, hiddenTools: string[]) => {
-    try {
-      const slug = connSlug(id);
-      const { connections } = await getClient().connections.resolvedTools();
-      const conn = connections.find((c) => c.slug === slug);
-      const hidden = new Set(hiddenTools);
-      const allowed = (conn?.availableTools ?? []).map((t) => t.key).filter((k) => !hidden.has(k));
-      await getClient().connections.setPersonalConnectionTools(slug, allowed);
-      return { ok: true, connection: conn ?? null };
-    }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("connection-disconnect", async (_e, id: string) => {
-    try { const r = await getClient().connections.personalDisconnect(id); return { ok: r?.ok !== false }; }
-    catch {
-      try { const r = await getClient().connections.pipedreamDisconnect(id); return { ok: r?.ok !== false }; }
-      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-    }
-  });
-  ipcMain.handle("connection-set-enabled", async (_e, id: string, enabled: boolean, isOrg?: boolean) => {
-    try {
-      const conns = getClient().connections;
-      const row = isOrg
-        ? await conns.setOrgConnectionEnabled(id, !!enabled)
-        : await conns.setPersonalConnectionEnabled(id, !!enabled).catch(() => conns.setOrgConnectionEnabled(id, !!enabled));
-      return { ok: true, connection: row };
-    }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("connection-set-scope", async (_e, id: string, scope: "org" | "personal") => {
-    try { return { ok: true, connection: await getClient().connections.setOrgConnectionScope(id, scope) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 }

@@ -2,9 +2,7 @@
  * Code — the Glyphh agent surface: agent | workbench rails (sessions live
  * in the Coding Agent panel's history dropdown).
  *
- * Sessions persist on the SERVER THREADS SURFACE via help/thread-store.ts
- * (LWW sync; the surface's local persistence is the offline cache) — one set
- * across desktop, web, and every other surface. Replies stream from the local Glyphh model (llama-server,
+ * Sessions persist in main's chat file via help/thread-store.ts. Replies stream from the local Glyphh model (llama-server,
  * glyphh-agent.ts bridge) — prompt → thinking spinner → streamed response. The right side is the REAL old
  * workbench (code-workbench-bundle.js — Files / Terminal / Diff / Preview /
  * Plan rails with insert/drag/maximize + per-folder layout persistence); the
@@ -12,63 +10,51 @@
  */
 
 import { threadLocus } from "./thread-locus.js";
-import { refreshBuildBadge } from "./app-updates.js";
 import {
   LOCUS_FILTER_PREF, LOCUS_OPTIONS, LOCUS_SVG, LOCUS_TITLE, LOCK_SVG, GRANT_CARD,
-  locusFilterOf, recentsKeeps, recentsFilterActive, sessionLocked, sourceLocus, defaultLocus,
+  locusFilterOf, recentsKeeps, recentsFilterActive, sourceLocus, LOOP_FILTER_PREF, loopFilterOf,
   type Locus, type LocusFilter, type RecentsFilter, type RecentsRowLike, newSessionSource,
-  defaultWebFolder, folderAfterPick, type GrantedMachine, sessionIsBlank,
+  folderAfterPick, sessionIsBlank,
 } from "./session-locus.js";
 import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
-import { planGates } from "./plan-gate.js";
-import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
+import { appIconInner, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
 import { openBotsPanel } from "./bots-events.js";
 import { visibleAppRows } from "./app-list.js";
-import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab, setGroupScope } from "./navigation.js";
-import { bannerKey, spendBanner, type SpendState } from "./spend-banner.js";
-import { memberLine, turnError } from "./turn-errors.js";
+import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab } from "./navigation.js";
+import { turnError } from "./turn-errors.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
-import { appCardFace, buildAndRunPrompt, buildLogOf, cardFromInstallAnswer, cardFromManifestWrite, logLines, mergeAppCard, parseInstallAnswer, type AppCard } from "./app-card.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
-import { usageView, ringOffset } from "./usage-meter.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 // The chat ⇄ CLI-session binding rules — pure, shared, and under test.
+import { applyCliBinding, chatForCliSession, cliSidFor, forgetCliSession, sessionCliOf, type CliBound } from "./cli-session-binding.js";
+import {
+  CLI_DEFAULT_MODEL_LABEL, CLI_GATEWAY_PREF, DEFAULT_LOOP_PREF, LOOP_BLURBS, LOOP_IDS, LOOP_NAMES, ROUTE_HINTS, ROUTE_LABELS, cliModelChoices, coerceMode,
+  defaultLoopOf, gatewayBlockedWhy, isVendorLoop, modelLaneOf, modelSlotOf, modesOf, resolveRoute, settle, type ModelLane, type RouteLoop,
+} from "./cli-loops.js";
+import type { CliAgentRow, CliRoute, CliRouteHints } from "./cli-types.js";
+import { CLI_MARK_URLS } from "./cli-marks.js";
 import { sessionDisplayTitle, placeholderTitle, mayGenerateTitle, titleRequestBody, fetchSessionTitle } from "./session-title.js";
 import { pickUtilityModel } from "./utility-model.js";
-import { harnessApiUrl, harnessToken } from "./harness-api.js";
-import { toastOk } from "./toast.js";
+import { toastOk, toastError } from "./toast.js";
 import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown, RAIL_LAYOUTS_H_PREF, RAIL_LAYOUTS_MIN_H, clampRailLayoutsH } from "./wall-prefs.js";
-import { openCreateWorkspaceModal } from "./workspace-create.js";
+import { openCreateWorkspaceModal, openEditWorkspaceModal } from "./workspace-create.js";
 import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
-import { openConnectionOnLoad } from "./settings-connections.js";
-import { createSourceChip, type Source, createGitChip, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
-import { panelFsRoute } from "./panel-fs-route.js";
-// THE WEB'S TWO CLOUD CHIPS (his report, 2026-10-05): environment + repo above
-// the composer, the phone's pair at desktop width; the rules are shared.
-import { createCloudChips, type CloudChips } from "./cloud-chips.js";
-import { composerChipSet, picksOf, webCloudSendBlock, pendingLinkInUrl, stripPendingLink, environmentIdOf, sourceForPicks } from "./cloud-source.js";
-import { deviceChecked, toggleDeviceIn, folderSteerLine, selfMachineId } from "./devices-pick.js";
-import { deviceRowsOf, type DevicesAnswer } from "./devices-rows.js";
-import { appBuildSteerFor, armAppBuildDoor } from "./app-build-steer.js";
+import { createSourceChip, type Source, openFolderLocusPicker, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources, drillItem, CHECK } from "./code-source-chip.js";
+import { picksOf, environmentIdOf } from "./cloud-source.js";
 import { groupByDate } from "./recents-groups.js";
-import { routeKey, WB_LOCUS_EVENT } from "./wb-cloud.js";
-import {
-  canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
-  APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
-  type RemoteChat, type AttachHandle, stopRunById, parseOpenRef,
-} from "./remote-run.js";
+import { APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS, parseOpenRef } from "./run-frames.js";
 import * as threadStore from "./thread-store.js";
 import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
@@ -78,8 +64,9 @@ import { pickGreeting, firstNameOf } from "./landing-greeting.js";
 import { artifactStandingLine } from "./artifact-rules.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
-interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app"; attachments?: AttachRef[]; /** THE APP CARD (2026-10-07): Build and run / Open / Share to publish for an app the turn wrote or installed. */ app?: AppCard; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
+/** `kind` "connect" and "app" are rows an older build stored (an account to
+ *  connect, a cloud app card); they hold nothing to draw and are skipped. */
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; /** The turn's timing line (ready · first token · tok/s · total), kept with the answer. */ timing?: string; kind?: "tool" | "decline" | "connect" | "artifact" | "app"; attachments?: AttachRef[]; /** The model's thinking before this answer, folded above it. */ thinking?: string; decline?: { kind: string; url: string; cli?: string; command?: string }; artifact?: ArtifactRef; /** A step's own record — what it did, drawn by tool-view.ts. */ tool?: ToolRec }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -116,12 +103,9 @@ interface CodeChat {
    *  (last-used, `defaultMode`). Cached locally per session; a live change also
    *  rides the run-stream so observers repaint the chip. */
   permission?: (typeof MODES)[number]["id"];
-  /** LWW clock for the server threads surface — stamped by thread-store on
-   *  every content change (epoch ms). */
+  /** The merge clock of main's chat file — stamped by thread-store on every
+   *  content change (epoch ms). */
   updatedAt?: number;
-  /** Server-side message count for a lazily-adopted thread whose bodies
-   *  haven't been fetched yet (thread-store.ensureMessages fills them). */
-  messageCount?: number;
   /** THIS session's model bindings (slot name → model id) — stamped by the
    *  layout that opened it or by a pick made while it was current. Sessions
    *  run their bindings independently: changing the model here never touches
@@ -131,15 +115,23 @@ interface CodeChat {
    *  `models`: the workspace that opened it (or a pick made while current)
    *  binds it; other sessions run their own loops untouched. */
   loop?: string;
+  /** The CLI's own session for each CLI lane this chat ran on — what a turn
+   *  resumes and the >_ hop opens (help/cli-session-binding.ts). */
+  cliSessionIds?: Record<string, string>;
+  /** Legacy single slot, the claude lane only. */
+  cliSessionId?: string;
+  /** THIS session's route pick on a CLI loop (the composer's route chip);
+   *  absent leaves it to the workspace, then the member's default. */
+  route?: CliRoute;
+  /** The route the workspace that opened this session asked for: its agent
+   *  cell's, then its own; null = no opinion at that level. */
+  routeHints?: { cell?: boolean | null; layout?: boolean | null };
   /** GENERATED TITLES (his order, 2026-10-05: do the same as Claude's titles).
    *  `titleLocked`: the member renamed it by hand — never overwritten.
    *  `titleGenerated`: the one side request was made (in flight or done).
-   *  Both local-only (thread-store caches them, never pushes them). */
+   *  Both kept with the session in main's chat file. */
   titleLocked?: boolean;
   titleGenerated?: boolean;
-  /** THE DEVICES THIS SESSION REACHES (his order, 2026-10-07): the + menu's
-   *  Devices picks, by machine id; absent = every attached desktop. */
-  devices?: string[];
   /** THE ARTIFACT IN HAND (his order, 2026-10-05): set by the artifact
    *  viewer's "Start chat" / "Send to Glyphh"; its id rides the hidden steer
    *  (artifact-rules.ts artifactStandingLine), never the visible message. */
@@ -148,25 +140,6 @@ interface CodeChat {
 
 /** The head's session glyph — one type, one mark. */
 const SESSION_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 4 12 9 18"/><polyline points="15 6 20 12 15 18"/></svg>`;
-/** This desktop's host name and whether it is attached (remote control on) —
- *  what a cloud turn's folder steer says (folderSteerLine). Read at boot and
- *  whenever remote control changes; empty on the web. */
-let selfHostname = "";
-let selfAttached = false;
-/** This desktop's machine id among the attached devices (null until read, or
- *  when it is not attached) — whether the session has it ON decides the steer. */
-let selfDeviceId: string | null = null;
-async function readSelfDevice(): Promise<void> {
-  if (onWebTarget()) return;
-  const g = window.glyphh as unknown as { remoteControlGet?: () => Promise<{ device?: string; attached?: boolean }>; attachDevicesList?: () => Promise<DevicesAnswer> };
-  try {
-    const v = await g.remoteControlGet?.();
-    selfHostname = String(v?.device || "");
-    selfAttached = !!v?.attached;
-    const list = selfAttached && selfHostname ? await g.attachDevicesList?.().catch(() => null) : null;
-    selfDeviceId = list ? selfMachineId(deviceRowsOf(list).devices, selfHostname) : null;
-  } catch { /* the steer then names no host */ }
-}
 /** ONE TYPE (his order, 2026-10-08: "just code that is it"): every thread
  *  carries the one toolbelt; the stored `mode` is written "code" for the
  *  thread contract and never read for a decision. */
@@ -230,7 +203,11 @@ function setEffort(id: EffortId): void {
 function chipModel(): AvailModel | null { return selectedModel() ?? rowForPick(resolvedDefaultModel()); }
 /** Does that model take an effort? The server flags it; an older server (no
  *  flag) is read as yes, so the dial is never hidden by a missing field. */
-function modelTakesEffort(): boolean { return chipModel()?.reasoning !== false; }
+function modelTakesEffort(): boolean {
+  // On its own login a CLI takes the dial only where it has one (claude --effort, codex model_reasoning_effort).
+  if (activeLane() === "cli") return activeCli() === "claude" || activeCli() === "codex";
+  return chipModel()?.reasoning !== false;
+}
 function paintLevelChip(): void {
   const chip = el("code-level-chip");
   if (!chip) return;
@@ -323,6 +300,122 @@ function renderLevelPop(): void {
 // chip to change it. There is one loop now — ours — so the id is a constant and
 // the chip is gone; a stored `loop` on an old chat is simply ignored.
 const GLYPHH_LOOP = "glyphh";
+
+// ── The loop: which engine runs the session ──────────────────────────────
+// Glyphh's own loop, or a vendor CLI the user signed in to (main's
+// cli-agents.ts serves the roster). A session is bound to its loop for life:
+// a CLI's context cannot move to another CLI, so picking another loop on a
+// session with turns opens a new session instead (setLoop).
+
+/** The loops as `cli-agents-list` serves them; Glyphh alone until it answers. */
+let loopRows: CliAgentRow[] = [];
+/** A chat model the local router can call exists — the gateway route can run. */
+let gatewayReady = false;
+/** Settings › General: route the CLIs through the user's providers by default. */
+let gatewayDefault = false;
+/** Settings › General: the loop a new session opens on ("" = Glyphh). */
+let defaultLoopPref = "";
+/** A loop, route or workspace route asked for while no session existed (a
+ *  workspace open, a pick on the landing): the session the next send creates
+ *  is born with them. */
+let pendingLoop = "";
+let pendingRoute: CliRoute | null = null;
+let pendingRouteHints: { cell?: boolean | null; layout?: boolean | null } | null = null;
+
+/** The loops the member has on; Glyphh is always one of them. */
+function enabledLoopIds(): string[] {
+  const on = loopRows.filter((r) => r.enabled).map((r) => r.id as string);
+  return on.length ? on : [GLYPHH_LOOP];
+}
+/** The loop a session with none of its own opens on. */
+function ambientLoop(): string { return defaultLoopOf(defaultLoopPref, enabledLoopIds()); }
+/** The loop THIS session runs: its own binding, then a pending ask, then the default. */
+function activeLoop(): string { return current()?.loop || pendingLoop || ambientLoop(); }
+function loopRowOf(id: string): CliAgentRow | undefined { return loopRows.find((r) => r.id === id); }
+function loopName(id: string): string { return loopRowOf(id)?.name || LOOP_NAMES[id as keyof typeof LOOP_NAMES] || id; }
+/** The CLI a loop runs (the binding's lane key, the model list's vocabulary). */
+function cliOfLoop(id: string): string { return sessionCliOf(id, loopRows); }
+/** The CLI of the session on screen. */
+function activeCli(): string { return cliOfLoop(activeLoop()); }
+/** A loop as the route rules read it; before the roster loads, Claude is the one the router carries. */
+function routeLoopOf(id: string): RouteLoop | undefined {
+  const r = loopRowOf(id);
+  if (r) return { cli: r.cli, name: r.name, gatewayCapable: r.gatewayCapable };
+  const cli = cliOfLoop(id);
+  return isVendorLoop(cli) ? { cli, name: loopName(id), gatewayCapable: cli === "claude" } : undefined;
+}
+/** Where a session's route was chosen: its own pick, then its workspace's. */
+function routeHintsOf(c: CodeChat | null | undefined): CliRouteHints {
+  const own = c ? c.route : pendingRoute;
+  const ws = c ? c.routeHints : pendingRouteHints;
+  return { session: own ? own === "gateway" : null, cell: ws?.cell ?? null, layout: ws?.layout ?? null };
+}
+/** The route a turn of this chat takes — the same rule main applies at launch. */
+function routeOf(c: CodeChat | null | undefined): CliRoute {
+  const loop = c?.loop || (c ? GLYPHH_LOOP : activeLoop());
+  return resolveRoute(routeLoopOf(loop), routeHintsOf(c), gatewayDefault, gatewayReady);
+}
+/** Whose model names the picker lists for this chat: the router's, or the CLI's own. */
+function laneOf(c: CodeChat | null | undefined): ModelLane {
+  const loop = c?.loop || (c ? GLYPHH_LOOP : activeLoop());
+  return modelLaneOf(cliOfLoop(loop), routeOf(c));
+}
+function activeLane(): ModelLane { return laneOf(current()); }
+
+/** The roster, the gateway's readiness and the member's defaults, re-read. */
+async function refreshLoops(): Promise<void> {
+  try {
+    const [r, pref] = await Promise.all([
+      settle(window.glyphh.cliAgentsList?.(), null),
+      settle(window.glyphh.getPreference?.(DEFAULT_LOOP_PREF, ""), ""),
+    ]);
+    defaultLoopPref = typeof pref === "string" ? pref : "";
+    if (r?.ok) {
+      loopRows = r.agents;
+      gatewayReady = !!r.gatewayReady;
+      gatewayDefault = !!r.gatewayDefault;
+    }
+  } catch { /* offline: Glyphh alone stands */ }
+  paintChips();
+  paintModelChip();
+}
+
+/** Another loop on a session that already has turns is a new session — the
+ *  old one stays in recents on its own loop. */
+function loopSwitchStartsNewSession(id: string): boolean {
+  const c = current();
+  return !!c && c.messages.length > 0 && (c.loop || GLYPHH_LOOP) !== id;
+}
+
+function setLoop(id: string): void {
+  if (loopSwitchStartsNewSession(id)) {
+    // The new session is born on the next send, on this loop; the panel and
+    // every panel around it stay as they are.
+    currentId = "";
+    lastSession = "";
+    void window.glyphh.setPreference?.(LAST_SESSION_PREF, "");
+    void saveStore();
+    syncSpaceAttrs();
+    renderHistory();
+    renderThread();
+    pendingLoop = id;
+  } else {
+    const c = current();
+    if (c) { c.loop = id; void saveStore(); } else pendingLoop = id;
+  }
+  // A loop declares its own modes, route and model vocabulary: every chip follows.
+  paintChips();
+  renderModeMenu();
+  void refreshModelList();
+}
+
+/** The session's own route pick on a CLI loop. */
+function setRoute(route: CliRoute): void {
+  const c = current();
+  if (c) { c.route = route; void saveStore(); } else pendingRoute = route;
+  paintChips();
+  void refreshModelList();
+}
 // The DEVICE default mode — the last mode the user picked, seeded onto a NEW
 // session so a fresh chat opens in the mode they habitually use. Persisted as the
 // `glyphhMode` preference (kept for back-compat with older builds). The EFFECTIVE
@@ -371,10 +464,129 @@ function paintChips(): void {
     // Mirror the on-screen mode to the current session before painting, so the
     // chip always reflects the session in view (not the last one touched).
     glyphhMode = currentMode();
+    // A mode this loop cannot honor is not a mode: the session moves to the
+    // nearest one it can, so the chip never says one thing while the turn
+    // sends another.
+    const fixed = coerceMode(glyphhMode, modesOf(loopRowOf(activeLoop())));
+    if (fixed !== glyphhMode) {
+      glyphhMode = fixed;
+      const c = current();
+      if (c && c.permission !== fixed) { c.permission = fixed; void saveStore(); }
+    }
     const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
+  }
+  paintLoopChip();
+  paintRouteChip();
+}
+
+/** The loop chip: the loop's name; its menu picks another. */
+function paintLoopChip(): void {
+  const lc = el("code-loop-chip");
+  if (!lc) return;
+  // The CLIs are this machine's: the web runs Glyphh's own loop alone.
+  el("code-loop-wrap")?.classList.toggle("hidden", onWebTarget());
+  const id = activeLoop();
+  lc.textContent = loopName(id);
+  lc.title = `${LOOP_BLURBS[id as keyof typeof LOOP_BLURBS] ?? "The loop that runs this session"} — click to change`;
+  lc.className = `code-chip code-loop-chip loop-${cliOfLoop(id)}`;
+}
+
+/** The route chip: only on a CLI loop — Direct (its own login) or Gateway
+ *  (the user's providers through the local router). */
+function paintRouteChip(): void {
+  const wrap = el("code-route-wrap");
+  const rc = el("code-route-chip");
+  if (!wrap || !rc) return;
+  const cli = activeCli();
+  const onCli = isVendorLoop(cli);
+  wrap.classList.toggle("hidden", !onCli);
+  if (!onCli) { el("code-route-menu")?.classList.add("hidden"); return; }
+  const route = routeOf(current());
+  const why = gatewayBlockedWhy(routeLoopOf(activeLoop()), gatewayReady);
+  rc.textContent = ROUTE_LABELS[route];
+  rc.title = why ? `${ROUTE_HINTS[route]} Gateway: ${why}` : `${ROUTE_HINTS[route]} — click to change`;
+  rc.className = `code-chip code-route-chip route-${route}`;
+}
+
+const DROP_CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+/** The loop drop-up: every loop the member has on, its one line under the
+ *  name, and on a session with turns, the note that another loop starts a
+ *  new session. */
+function renderLoopMenu(): void {
+  const menu = el("code-loop-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  head.textContent = "Loop";
+  menu.appendChild(head);
+  const ids = enabledLoopIds();
+  for (const id of LOOP_IDS.filter((x) => ids.includes(x))) {
+    const item = document.createElement("button");
+    item.type = "button";
+    const on = id === activeLoop();
+    item.className = "code-drop-item drop-item-2line loop-drop-item" + (on ? " selected" : "");
+    const main = document.createElement("div");
+    main.className = "drop-main";
+    main.appendChild(loopMarkEl(cliOfLoop(id)));
+    const name = document.createElement("span");
+    name.textContent = loopName(id);
+    main.appendChild(name);
+    if (on) appendMarkup(main, DROP_CHECK);
+    const sub = document.createElement("span");
+    sub.className = "drop-sub loop-drop-sub";
+    const boundary = !on && loopSwitchStartsNewSession(id);
+    sub.textContent = boundary ? "Starts a new session — this one stays in Recents" : LOOP_BLURBS[id];
+    if (boundary) item.classList.add("loop-drop-boundary");
+    item.append(main, sub);
+    item.addEventListener("click", () => {
+      menu.classList.add("hidden");
+      if (!on) setLoop(id);
+    });
+    menu.appendChild(item);
+  }
+  const manage = document.createElement("button");
+  manage.type = "button";
+  manage.className = "code-drop-item loop-drop-manage";
+  manage.textContent = "Manage loops…";
+  manage.addEventListener("click", () => { menu.classList.add("hidden"); openSettingsModal("loops"); });
+  menu.appendChild(manage);
+}
+
+/** The route drop-up: Direct and Gateway, the gateway greyed with the reason
+ *  when the loop or the setup cannot take it. */
+function renderRouteMenu(): void {
+  const menu = el("code-route-menu");
+  if (!menu) return;
+  menu.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  head.textContent = "Route";
+  menu.appendChild(head);
+  const now = routeOf(current());
+  const why = gatewayBlockedWhy(routeLoopOf(activeLoop()), gatewayReady);
+  for (const r of ["direct", "gateway"] as const) {
+    const blocked = r === "gateway" && !!why;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "code-drop-item drop-item-2line" + (r === now ? " selected" : "") + (blocked ? " disabled" : "");
+    item.disabled = blocked;
+    const main = document.createElement("div");
+    main.className = "drop-main";
+    const name = document.createElement("span");
+    name.textContent = ROUTE_LABELS[r];
+    main.appendChild(name);
+    if (r === now) appendMarkup(main, DROP_CHECK);
+    const sub = document.createElement("span");
+    sub.className = "drop-sub";
+    sub.textContent = blocked ? why! : ROUTE_HINTS[r];
+    item.append(main, sub);
+    if (!blocked) item.addEventListener("click", () => { menu.classList.add("hidden"); setRoute(r); });
+    menu.appendChild(item);
   }
 }
 
@@ -418,20 +630,16 @@ function setMode(id: (typeof MODES)[number]["id"]): void {
   renderModeMenu();
 }
 
-/** Push a mid-run mode change to whatever is executing this chat's turn. A
- *  DESKTOP-LOCAL run goes over IPC (main resolves the runId + pushes to its pod);
- *  a REMOTE run (this surface driving the cloud/desktop) goes through the live
- *  SDK handle held in remote-run. Best-effort and idempotent. */
+/** Push a mid-run mode change to the run executing this chat's turn: main
+ *  maps the chat to its live runId. Best-effort and idempotent. */
 function pushPermissionToRun(chatId: string, mode: (typeof MODES)[number]["id"]): void {
-  // Remote turn started FROM here (launchRemote holds the handle) — reach it first.
-  if (remoteAborters.has(chatId)) { void setRemotePermission(chatId, mode); return; }
-  // Otherwise a desktop-local run: main maps the chat to its live runId.
   void window.glyphh.glyphhSetPermission?.(chatId, mode).catch(() => { /* no live run */ });
 }
 
 function cycleMode(): void {
-  const i = MODES.findIndex((m) => m.id === currentMode());
-  setMode(MODES[(i + 1) % MODES.length].id);
+  const modes = modesForLoop();
+  const i = modes.findIndex((m) => m.id === currentMode());
+  setMode(modes[(i + 1) % modes.length].id);
 }
 
 /** Adopt a mode change that ORIGINATED ELSEWHERE (a run frame from another surface,
@@ -502,6 +710,19 @@ function pickedRawId(): string | null {
   const raw = current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref;
   return raw ? String(raw) : null;
 }
+/** A CLI's own model pick for this session ("" = the CLI's default, or the loop's model from Settings). */
+function cliPick(c: CodeChat | null | undefined, cli: string): string {
+  const slot = modelSlotOf("cli", cli);
+  return String((c ? c.models?.[slot] : pendingModels?.[slot]) ?? "");
+}
+/** Write one lane's pick, leaving the other lanes' picks alone. */
+function setModelPick(slot: string, id: string | null): void {
+  const c = current();
+  const next = { ...((c ? c.models : pendingModels) ?? {}) };
+  if (id) next[slot] = id; else delete next[slot];
+  if (c) { c.models = next; void saveStore(); }
+  else pendingModels = Object.keys(next).length ? next : null;
+}
 /** The row a pick names, by its bare name. */
 function rowForPick(raw: string | null): AvailModel | null {
   const bare = bareModelId(raw);
@@ -542,6 +763,19 @@ function resolvedDefaultModel(): string {
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
+  if (activeLane() === "cli") {
+    // A CLI on its own login: its own model names, its own default.
+    const cli = activeCli();
+    const pick = cliPick(current(), cli);
+    const own = loopRowOf(activeLoop())?.model || "";
+    const hit = cliModelChoices(cli).find((m) => m.id === pick);
+    mc.textContent = pick ? (hit?.name ?? pick) : own ? `Default · ${own}` : "Default";
+    mc.title = pick ? `${hit?.name ?? pick} on your ${loopName(activeLoop())} login` : own ? `The loop's model from Settings › Loops` : CLI_DEFAULT_MODEL_LABEL;
+    mc.className = "code-chip";
+    paintComposerGate();
+    paintLevelChip();
+    return;
+  }
   const sel = selectedModel();
   // NO MODELS IS ITS OWN ANSWER (his order, 2026-09-18): an org that allows
   // none leaves nothing to run, and naming some leftover pick would invite a
@@ -584,6 +818,7 @@ function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
   menu.textContent = "";
+  if (activeLane() === "cli") { renderCliModelMenu(menu); return; }
   const pane = document.createElement("div");
   pane.className = "drop-pane";
   const search = document.createElement("input");
@@ -615,8 +850,7 @@ function renderModelMenu(): void {
       });
       if (!ok) return;
     }
-    if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
-    else pendingModels = id ? { default: id } : null;
+    setModelPick("default", id);
     paintModelChip();
   };
   const paint = (): void => {
@@ -682,9 +916,50 @@ function renderModelMenu(): void {
   requestAnimationFrame(() => search.focus());
 }
 
+/** The model drop-up for a CLI on its own login: the names that CLI's
+ *  --model takes, its own default first. The pick is kept in the CLI's own
+ *  slot, so the router's pick is still there when the route flips back. */
+function renderCliModelMenu(menu: HTMLElement): void {
+  const cli = activeCli();
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  head.textContent = `${loopName(activeLoop())} models`;
+  menu.appendChild(head);
+  const pick = cliPick(current(), cli);
+  const own = loopRowOf(activeLoop())?.model || "";
+  for (const m of cliModelChoices(cli)) {
+    const on = m.id === pick;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "code-drop-item drop-item-2line" + (on ? " selected" : "");
+    const main = document.createElement("div");
+    main.className = "drop-main";
+    const name = document.createElement("span");
+    name.textContent = m.id ? m.name : own ? `Default · ${own}` : m.name;
+    main.appendChild(name);
+    if (on) appendMarkup(main, DROP_CHECK);
+    item.appendChild(main);
+    if (m.id) {
+      const sub = document.createElement("div");
+      sub.className = "drop-sub";
+      sub.textContent = m.id;
+      item.appendChild(sub);
+    }
+    item.addEventListener("click", () => {
+      menu.classList.add("hidden");
+      setModelPick(modelSlotOf("cli", cli), m.id || null);
+      paintModelChip();
+    });
+    menu.appendChild(item);
+  }
+}
+
 // ── Mode drop-up ──
-/** The modes the loop can run — all of them (a CLI used to declare its own). */
-function modesForLoop(): typeof MODES[number][] { return [...MODES]; }
+/** The modes this loop can honor (its roster row's `modes`): a CLI that cannot ask mid-turn offers no Ask. */
+function modesForLoop(): typeof MODES[number][] {
+  const ids = modesOf(loopRowOf(activeLoop()));
+  return MODES.filter((m) => ids.includes(m.id));
+}
 
 function renderModeMenu(): void {
   const menu = el("code-mode-menu");
@@ -844,6 +1119,36 @@ function initComposerControls(): void {
     });
     void refreshModelList();
   }
+  // The loop and route chips, left of the model: each its own drop-up.
+  const loopWrap = el("code-loop-wrap");
+  const routeWrap = el("code-route-wrap");
+  const chipDrop = (wrap: HTMLElement | null, chipId: string, menuId: string, render: () => void, onOpen?: () => void): void => {
+    if (!wrap) return;
+    const menu = document.createElement("div");
+    menu.id = menuId;
+    menu.className = "code-drop-up hidden";
+    wrap.appendChild(menu);
+    menu.addEventListener("click", (e) => e.stopPropagation());
+    menu.addEventListener("keydown", (e) => chipMenuKeys(menu, chipId, e));
+    el(chipId)?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      for (const id of ["code-mode-menu", "code-model-menu", "code-level-pop", "code-ctx-pop", "code-loop-menu", "code-route-menu"]) {
+        if (id !== menuId) el(id)?.classList.add("hidden");
+      }
+      const opening = menu.classList.contains("hidden");
+      if (!opening) { menu.classList.add("hidden"); return; }
+      render();
+      menu.classList.remove("hidden");
+      openChipDropUp(menu);
+      onOpen?.();
+    });
+  };
+  // The roster is re-read behind an open menu: a loop turned on in Settings shows at once.
+  chipDrop(loopWrap, "code-loop-chip", "code-loop-menu", renderLoopMenu, () => {
+    void refreshLoops().then(() => { if (!el("code-loop-menu")?.classList.contains("hidden")) renderLoopMenu(); });
+  });
+  chipDrop(routeWrap, "code-route-chip", "code-route-menu", renderRouteMenu);
+  void refreshLoops();
   // The effort dial, right of the model chip: a drop-up with the track.
   const levelWrap = el("code-level-wrap");
   if (levelWrap) {
@@ -913,23 +1218,6 @@ function initComposerControls(): void {
   el("code-voice-accept")?.addEventListener("click", (e) => { e.stopPropagation(); acceptRecording(); });
   onVoiceState(() => paintComposerSlot());
   paintComposerSlot();
-  // THE USAGE RING's popover (Code only — the stylesheet hides the ring in Work).
-  const usageWrap = el("code-usage-wrap");
-  if (usageWrap) {
-    const upop = document.createElement("div");
-    upop.id = "code-usage-pop";
-    upop.className = "code-drop-up code-usage-pop hidden";
-    usageWrap.appendChild(upop);
-    el("code-usage-chip")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const opening = upop.classList.contains("hidden");
-      if (!opening) { upop.classList.add("hidden"); return; }
-      renderUsagePop(upop);
-      upop.classList.remove("hidden");
-      openChipDropUp(upop);
-      void Promise.all([refreshSpend(true), refreshContextUsage()]).then(() => { if (!upop.classList.contains("hidden")) renderUsagePop(upop); });
-    });
-  }
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
@@ -940,7 +1228,8 @@ function initComposerControls(): void {
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
-    if (usageWrap && !usageWrap.contains(t)) el("code-usage-pop")?.classList.add("hidden");
+    if (loopWrap && !loopWrap.contains(t)) el("code-loop-menu")?.classList.add("hidden");
+    if (routeWrap && !routeWrap.contains(t)) el("code-route-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -979,9 +1268,9 @@ const landingSeed = `landing-${Date.now().toString(36)}`;
 let ghostTimer: ReturnType<typeof setInterval> | null = null;
 
 // The new-session landing's title mirrors the HOME hero greeting exactly:
-// the same time-of-day bucket + the same user name. The name is fetched the
-// same way the home gets it (dashboard-data) and cached here; the FIRST paint
-// uses whatever's cached (possibly empty → "Welcome back"), then this backfills
+// the same time-of-day bucket + the same user name. The name is the local
+// account's first name, fetched once and cached here; the FIRST paint uses
+// whatever's cached (possibly empty → "Welcome back"), then this backfills
 // the on-screen title once the name resolves. `greeting()` is re-evaluated on
 // every landing paint so the morning/afternoon/evening bucket stays current.
 let ghostName = "";
@@ -989,8 +1278,8 @@ let ghostNameFetched = false;
 function ensureGhostName(): void {
   if (ghostNameFetched) return;
   ghostNameFetched = true;
-  void window.glyphh.dashboardData?.().then((d) => {
-    const n = (d?.name || "").trim();
+  void window.glyphh.getAccountInfo().then((d) => {
+    const n = (d?.firstName || "").trim();
     if (!n) return;
     ghostName = n;
     // Backfill the title in place if the landing is still on screen.
@@ -1042,7 +1331,7 @@ interface LiveRun {
   firstAt?: number;            // the first text delta
   inTok: number;
   outTok: number;
-  usd: number;                 // running Pipedream spend for the turn, in dollars
+  usd: number;                 // the turn's running spend as the loop reports it, in dollars
   steps: string[];             // timeline breadcrumbs for the Plan rail
   setupMeta: string;           // first-run model-download status
   /** Open steps by tool key → their indexes in `steps`, oldest first. Tools
@@ -1118,117 +1407,6 @@ function noteArtifact(chat: CodeChat, art: ArtifactRef): void {
   chat.messages.push({ role: "assistant", kind: "artifact", text: "", artifact: art, at: Date.now() });
 }
 
-/** ONE APP CARD PER FOLDER in the thread (his decisions, 2026-10-07): a later
- *  event for the same app folds into its card (mergeAppCard); the card moves
- *  to the end of the thread so the next step is the last thing in view. */
-function noteAppCard(chat: CodeChat, next: AppCard): CodeMsg {
-  const i = chat.messages.findIndex((m) => m.kind === "app" && m.app?.folder === next.folder);
-  if (i >= 0) {
-    const [m] = chat.messages.splice(i, 1);
-    m!.app = mergeAppCard(m!.app!, next);
-    m!.at = Date.now();
-    chat.messages.push(m!);
-    return m!;
-  }
-  const msg: CodeMsg = { role: "assistant", kind: "app", text: "", app: next, at: Date.now() };
-  chat.messages.push(msg);
-  return msg;
-}
-
-/** The build jobs the cards follow, by job id — one poller each. */
-const appJobPolls = new Map<string, number>();
-const APP_JOB_POLL_MS = 3000;
-function followAppJob(chat: CodeChat, msg: CodeMsg): void {
-  const job = msg.app?.job;
-  if (!job || appJobPolls.has(job) || !hostHas("appBuildStatus")) return;
-  const tick = async (): Promise<void> => {
-    const r = await window.glyphh.appBuildStatus(job).catch(() => null) as { ok: boolean; data?: { status?: string; release?: { n?: number } | null; error?: string | null; log?: string } ; error?: string } | null;
-    const j = r?.ok ? r.data : null;
-    if (!msg.app || msg.app.job !== job) { appJobPolls.delete(job); return; }
-    if (!j || j.status === "queued" || j.status === "building") {
-      // THE BUILD LOG IN THE THREAD: the card shows the log as it grows.
-      if (j?.log && j.log !== msg.app.log) { msg.app.log = j.log; if (currentId === chat.id) scheduleRenderThread(); }
-      appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS)); return;
-    }
-    appJobPolls.delete(job);
-    if (j.status === "ready") {
-      noteAppCard(chat, cardFromInstallAnswer(msg.app.folder, { key: msg.app.key ?? undefined, url: msg.app.url ?? undefined, release: j.release ?? null, tools: msg.app.tools }, false));
-      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-    } else {
-      noteAppCard(chat, { folder: msg.app.folder, state: "failed", error: j.error || "the build failed", log: String(j.log ?? "") });
-    }
-    void saveStore();
-    if (currentId === chat.id) scheduleRenderThread();
-  };
-  appJobPolls.set(job, window.setTimeout(() => void tick(), APP_JOB_POLL_MS));
-}
-
-/** BUILD AND RUN from the card: on the desktop the folder is here, so main
- *  installs it (app_install { dir }'s own body; a source build is a job the
- *  card follows); on the web the folder lives on the worker, so the agent is
- *  asked to call app_install { dir } — one turn, the path, never base64. */
-async function buildAndRunApp(chat: CodeChat, msg: CodeMsg): Promise<void> {
-  const card = msg.app;
-  if (!card) return;
-  if (!hostHas("appInstallFolder")) {
-    const ta = input();
-    if (!ta) return;
-    ta.value = buildAndRunPrompt(card.folder);
-    send();
-    return;
-  }
-  noteAppCard(chat, { folder: card.folder, state: "installing" });
-  if (currentId === chat.id) scheduleRenderThread();
-  const r = await window.glyphh.appInstallFolder(card.folder, {}).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) })) as { ok: boolean; data?: unknown; error?: string };
-  const next = r.ok
-    ? cardFromInstallAnswer(card.folder, (r.data ?? null) as Parameters<typeof cardFromInstallAnswer>[1], false)
-    : cardFromInstallAnswer(card.folder, null, true, r.error || "the install didn't answer");
-  const m = noteAppCard(chat, next);
-  if (next.state === "installed") document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-  if (next.state === "building") followAppJob(chat, m);
-  void saveStore();
-  if (currentId === chat.id) scheduleRenderThread();
-}
-
-/** The card: the connect card's grammar (icon · name · one line · actions). */
-function appCardEl(chat: CodeChat, msg: CodeMsg): HTMLElement {
-  const card = msg.app!;
-  const face = appCardFace(card);
-  const wrap = document.createElement("div");
-  wrap.className = "code-connect-card code-app-card";
-  wrap.dataset.state = card.state;
-  wrap.innerHTML = `<span class="ccx-initial"></span>
-    <div class="ccx-info"><div class="ccx-name"></div><div class="ccx-sub"></div></div>
-    <div class="cax-actions"><button type="button" class="ccx-btn cax-run"></button><button type="button" class="action-btn cax-open hidden">Open</button><button type="button" class="action-btn cax-share hidden">Share to publish</button></div>`;
-  (wrap.querySelector(".ccx-initial") as HTMLElement).textContent = (face.title || "?").charAt(0).toUpperCase();
-  (wrap.querySelector(".ccx-name") as HTMLElement).textContent = face.title;
-  (wrap.querySelector(".ccx-sub") as HTMLElement).textContent = face.sub;
-  if ((card.state === "building" || card.state === "failed") && card.log) {
-    const pre = document.createElement("pre");
-    pre.className = "cax-log";
-    pre.textContent = logLines(card.log);
-    (wrap.querySelector(".ccx-info") as HTMLElement).appendChild(pre);
-  }
-  const run = wrap.querySelector(".cax-run") as HTMLButtonElement;
-  run.textContent = face.primary;
-  run.disabled = !face.primaryOn;
-  run.addEventListener("click", () => void buildAndRunApp(chat, msg));
-  const open = wrap.querySelector(".cax-open") as HTMLButtonElement;
-  open.classList.toggle("hidden", !face.canOpen);
-  open.addEventListener("click", () => {
-    const w = window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean; cloud?: boolean }) => void };
-    w.__wbOpenApp?.({ slug: card.slug || card.key || face.title, name: card.name || face.title, url: card.url || "", glyphh: true, cloud: true });
-  });
-  const share = wrap.querySelector(".cax-share") as HTMLButtonElement;
-  share.classList.toggle("hidden", !face.canShare);
-  share.addEventListener("click", () => {
-    openGroupTab("customize", "apps");   // one page (his report, 2026-10-07)
-    document.dispatchEvent(new CustomEvent("glyphh:open-app-detail", { detail: { slug: card.slug || card.key || "", tab: "publish" } }));
-  });
-  if (card.state === "building") followAppJob(chat, msg);
-  return wrap;
-}
-
 /** A frame a SUB-AGENT sent: it carries the child's ref (see subagent-ledger.ts). */
 const isChildFrame = (d: unknown): boolean => !!(d as { agent?: unknown } | null)?.agent;
 function pushToolRow(chat: CodeChat, name: string, label: string, title?: string): CodeMsg {
@@ -1252,160 +1430,6 @@ function settleToolRow(chat: CodeChat, name: string, label: string, title?: stri
 }
 function clearToolRows(chatId: string): void {
   for (const k of [...pendingToolRows.keys()]) if (k.startsWith(`${chatId}:`)) pendingToolRows.delete(k);
-}
-
-// ── Observe a run happening ELSEWHERE (run-stream broker consumer) ─────────────
-// "Open a thread anywhere, see the live turn." When the thread on screen has a run
-// executing on ANOTHER surface (this user's desktop, or a cloud pod), we subscribe
-// to that run's frame stream and drive the SAME liveRuns entry a local turn does —
-// so it renders identically. Read-only: the surface that OWNS the run answers its
-// approvals/asks; we only watch. One observer at a time (the thread in view).
-let observedChatId: string | null = null;
-const observers = new Map<string, AttachHandle>();
-
-function stopObserving(chatId: string): void {
-  const h = observers.get(chatId);
-  if (!h) return;
-  h.stop(); observers.delete(chatId);
-  // The record the observer seeded goes with it (a run WE drive sits in
-  // remoteAborters and stays): a stale "working" entry blocked the re-attach on
-  // return, so the thread sat frozen with a spinner and no frames.
-  if (liveRuns.has(chatId) && !remoteAborters.has(chatId)) {
-    liveRuns.delete(chatId);
-    stopRunTickerIfIdle();
-  }
-}
-
-/** Reconcile the observer to the thread on screen: detach the old one, attach the
- *  new (unless WE are driving that thread locally). Cheap + idempotent — guarded on
- *  an actual thread change, so it's safe to call from every renderThread. */
-function syncActiveRunAttach(): void {
-  const id = currentId || null;
-  if (observedChatId === id) return;              // same thread — nothing to do
-  if (observedChatId) stopObserving(observedChatId);
-  observedChatId = id;
-  if (!id) return;
-  if (liveRuns.has(id) || remoteAborters.has(id)) return; // our own run drives this
-  const chat = chats.find((c) => c.id === id);
-  if (chat) observeIfRunning(chat);
-}
-
-function observeIfRunning(chat: CodeChat): void {
-  const chatId = chat.id;
-  if (resolveLocalMachine(chat.source)) void saveStore();
-  const handle = attachToActiveRun(
-    chat as unknown as RemoteChat,
-    {
-      // Same grammar as launchRemote's live-run callbacks, minus approval/ask
-      // (the executing surface owns those). Every hop drives THIS chat's liveRuns.
-      onUserPrompt: (text) => {
-        const ch = chats.find((c) => c.id === chatId);
-        if (!ch) return;
-        // The observed turn's user message (first run frame) — render it like a local send.
-        // A re-attach replays from the first frame: the prompt already in the thread stays one.
-        const lastUser = [...ch.messages].reverse().find((m) => m.role === "user");
-        if (lastUser && lastUser.text === text) return;
-        ch.messages.push({ role: "user", text, at: Date.now() });
-        void saveStore();
-        if (chatId === currentId) renderThread();
-      },
-      // The agent asked to SHOW something. EVERY watching surface renders its
-      // own view: web always (its panels are its own, streamed/iframe); the
-      // DESKTOP renderer only for cloud runs — a machine-executed run's panel
-      // was already opened by main (glyphh-harness-run), never twice.
-      onOpenApp: ({ ref, url }) => {
-        const ch = chats.find((c) => c.id === chatId);
-        if (!ch || chatId !== currentId) return;
-        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-        const cloudRun = !!ch.source && String((ch.source as { kind?: string }).kind || "").startsWith("cloud");
-        if (!onWeb && !cloudRun) return;
-        openRunRef({ ...(ref ? { ref } : {}), ...(url ? { url } : {}) });
-      },
-      // Rich per-tool breadcrumbs: the start row shows the WORK (`⚙ Run: <cmd>`,
-      // `⚙ Write /path` — the frame's title carries the tool's key input) and the
-      // done frame rewrites that same row into the settled ✓/✕ card the local
-      // path renders (toolLineEl), instead of leaving bare "⚙ Bash" rows behind.
-      onTool: (t) => {
-        const r = liveRuns.get(chatId);
-        const ch = chats.find((c) => c.id === chatId);
-        if (!r || !ch) return;
-        if (t.phase === "start") {
-          if (r.text.trim()) { ch.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
-          const label = toolStartLabel(t);
-          r.steps.push(label);
-          pushToolRow(ch, t.name, label);
-        } else {
-          const bad = t.status === "denied" || t.status === "failed";
-          const label = toolDoneLabel({
-            name: t.name,
-            ...(t.title ? { title: t.title } : {}),
-            bad,
-            ...(t.status === "denied" ? { reason: "denied" } : t.error ? { reason: t.error } : {}),
-            ...(!bad && t.diff ? { diff: t.diff } : {}),
-          });
-          if (r.steps.length) r.steps[r.steps.length - 1] = label;
-          else r.steps.push(label);
-          settleToolRow(ch, t.name, label);
-        }
-        void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
-      },
-      // The observer omits onApproval/onAsk (the OWNING surface answers those),
-      // so a parked run surfaces as an honest breadcrumb here instead.
-      onStep: (step) => {
-        if (step.type !== "approval" && step.type !== "question") return; // tools ride onTool above
-        const r = liveRuns.get(chatId);
-        const ch = chats.find((c) => c.id === chatId);
-        if (!r || !ch) return;
-        const label = `⚙ ${step.type}${step.status ? ` — ${step.status}` : ""}`;
-        r.steps.push(label);
-        ch.messages.push({ role: "assistant", kind: "tool", text: label, at: Date.now() });
-        void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
-      },
-      onToken: (delta) => {
-        const r = liveRuns.get(chatId);
-        if (!r) return;
-        r.text += delta;
-        // Hands-free voice: the FIRST line speaks as soon as it completes —
-        // "I'm working" — the rest waits for the settled turn. No-op outside
-        // an awaiting hands-free session; fires at most once per turn.
-        if (chatId === currentId) maybeSpeakFirstLine(r.text);
-        queueStreamPaint(chatId);
-      },
-      // The owning surface flipped the mode mid-run — adopt it so our chip agrees.
-      // The model's thinking rides the relay too: the fold above the answer.
-      onThinking: (text) => {
-        const r = liveRuns.get(chatId);
-        if (!r) return;
-        r.thinking = (r.thinking ?? "") + text;
-        queueStreamPaint(chatId);
-      },
-      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
-      // Agents panel's rows here, never this thread's bubble.
-      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
-      onPermission: (mode) => adoptSessionMode(chatId, mode),
-      // The run settled — land it, but KEEP the observer: the watcher keeps polling and
-      // will pick up the next run started on this thread (onRun re-seeds a fresh turn).
-      onDone: (text) => { finishRun(chatId, text); },
-      onError: (detail) => {
-        const r = liveRuns.get(chatId);
-        const prefix = r?.text ? `${r.text}\n\n` : "";
-        finishRun(chatId, `${prefix}⚠ ${detail}`);
-      },
-    },
-    // Per run (fires before its first frame): seed a fresh working state so the spinner +
-    // rail dot paint and the streamed block has somewhere to land.
-    (runId) => {
-      liveRuns.set(chatId, {
-        runId, text: "", bubble: null, startAt: Date.now(),
-        inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "",
-      });
-      ensureRunTicker();
-      if (chatId === currentId) { broadcastTimeline(true); setThinking(true); renderHistory(); renderThread(); }
-    },
-  );
-  observers.set(chatId, handle);
 }
 
 // Streamed tokens re-render the CURRENT chat's live block as MARKDOWN, throttled
@@ -1631,11 +1655,9 @@ const input = () => el<HTMLTextAreaElement>("code-input");
 // ── Session store ────────────────────────────────────────────────────────
 let storeLoaded = false;
 let storeLoading: Promise<void> | null = null;
-/** Sessions live on the SERVER THREADS SURFACE (thread-store.ts), with the
- *  surface's local persistence as the offline cache — hydrate reconciles the
- *  two by LWW at boot (the cache's pre-cutover history migrates up once).
- *  First load also migrates any legacy localStorage sessions, then clears
- *  them. Single-flight: both boot paths (loadCode + initCode) land here. */
+/** Sessions live in main's chat file (thread-store.ts). First load also
+ *  migrates any legacy localStorage sessions, then clears them.
+ *  Single-flight: both boot paths (loadCode + initCode) land here. */
 async function loadStore(): Promise<void> {
   if (storeLoaded) return;
   if (storeLoading) return storeLoading;
@@ -1670,36 +1692,12 @@ async function loadStore(): Promise<void> {
         }
       } catch { /* no legacy sessions */ }
     }
-    // A background reconcile (poll timer / focus / another surface's write)
-    // changed the shared array — repaint the lists (never the live thread
-    // mid-run). If the session ON SCREEN was deleted elsewhere, land on
-    // + New Session exactly like a local delete would.
-    threadStore.onRemoteChange(() => {
-      if (currentId && !chats.some((c) => c.id === currentId)) {
-        currentId = "";
-        renderHistory();
-        renderThread();
-        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-        return;
-      }
-      renderHistory();
-    });
     storeLoaded = true;
   })();
   return storeLoading;
 }
 function saveStore(): Promise<void> {
   return threadStore.persist(chats, currentId);
-}
-/** A thread adopted from the server carries only metadata until opened —
- *  fetch its messages, then repaint whatever is showing it. */
-function hydrateMessagesIfNeeded(id: string): void {
-  if (!id) return;
-  void threadStore.ensureMessages(id).then((loaded) => {
-    if (!loaded) return;
-    renderHistory();
-    if (currentId === id) { renderThread(); }
-  });
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
 
@@ -1792,9 +1790,23 @@ function ensureCodeSection(): void {
     if (weak && c.workdir) return;
     setThreadFolder(dir);
   },
-  /** A LAYOUT used to bind its own loop here; there is one loop now, so the
-   *  stamp is accepted and ignored (the contract stays — layouts still call it). */
-  stampLoop: (_loop: string): void => { /* one loop, nothing to bind */ },
+  /** A WORKSPACE's loop binds to the session it opens with — this session
+   *  only, and only a loop the member has on. With turns on another loop the
+   *  workspace gets a new session on its loop (setLoop's rule). */
+  stampLoop: (loop: string): void => {
+    // Before the roster answers, any loop the app knows is taken; main refuses one that is off.
+    const known = loopRows.length ? enabledLoopIds().includes(loop) : (LOOP_IDS as readonly string[]).includes(loop);
+    if (!loop || !known || loop === activeLoop()) return;
+    setLoop(loop);
+  },
+  /** A WORKSPACE's route for its CLI agents: its agent cell's, then its own.
+   *  The session's own pick, when it made one, still wins. */
+  stampRoute: (hints: { cell?: boolean | null; layout?: boolean | null }): void => {
+    const c = current();
+    if (c) { c.routeHints = { ...hints }; void saveStore(); } else pendingRouteHints = { ...hints };
+    paintChips();
+    void refreshModelList();
+  },
   /** A LAYOUT's model slots bind to the session it opens with — this session
    *  only; other sessions keep running their own casts untouched. */
   stampModels: (models: Record<string, string>): void => {
@@ -1812,9 +1824,7 @@ function ensureCodeSection(): void {
 (window as unknown as { __agentUseModel?: (modelId: string) => Promise<boolean> }).__agentUseModel =
   async (modelId: string): Promise<boolean> => {
     try {
-      const c = current();
-      if (c) { c.models = { default: modelId }; void saveStore(); }
-      else pendingModels = { default: modelId };
+      setModelPick("default", modelId);
       await refreshModelList(true);
       return true;
     } catch { return false; }
@@ -1868,10 +1878,6 @@ function localFileUrl(p: string): string {
 function threadFolder(c: CodeChat | null | undefined = current()): string {
   if (c) return c.workdir || (c.source?.kind === "local" ? c.source.path || "" : "");
   return pendingWorkdir || (pendingSource.kind === "local" ? pendingSource.path || "" : "");
-}
-/** Does this source run without a folder of its own? Every non-local source. */
-function sourceNeedsNoFolder(src: Source | undefined): boolean {
-  return !!src && src.kind !== "local";
 }
 /** THE SHELL FOLLOWS THE THREAD'S FOLDER (his report, 2026-10-08: "the
  *  folder selector isn't triggering the re-render on the files, diff, etc
@@ -1929,26 +1935,10 @@ function syncSpaceAttrs(): void {
   document.body.dataset.railSpace = SESSION_MODE;
   sourceChip?.setSource(activeSource());
   paintSourceDependents();
-  announceWbLocus();
   // The composer's chips take the seats this type gives them (seatMic).
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic?.();
 }
 (window as unknown as { __syncSpaceAttrs?: () => void }).__syncSpaceAttrs = syncSpaceAttrs;
-/** THE PANELS FOLLOW THE SESSION (his report, 2026-10-04): the workbench's
- *  Files / Diff / Editor route by the current session's locus (help/
- *  panel-fs-route.ts, help/wb-cloud.ts). On the desktop nothing else tells
- *  the workbench a session switched a cloud thread in or out — a local
- *  session's folder rides setCwd, a cloud one has no folder here — so every
- *  switch announces its route once, on a real change. The web's selector is
- *  fed the same event by web-contract.js on its own session-store path. */
-let lastWbLocusKey = "";
-function announceWbLocus(): void {
-  if (onWebTarget()) return;
-  const key = routeKey(panelFsRoute({ surface: "desktop", source: activeSource(), chatId: currentId }));
-  if (key === lastWbLocusKey) return;
-  lastWbLocusKey = key;
-  try { window.dispatchEvent(new CustomEvent(WB_LOCUS_EVENT, { detail: { key } })); } catch { /* bare stubs */ }
-}
 // The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
 // pod yet — quiet empty state) apart from a desktop source that's offline.
 (window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
@@ -1969,6 +1959,66 @@ function announceWbLocus(): void {
  *  `glyphh --resume <id>` and the run ledger both key off it. */
 (window as unknown as { __glyphhHasSession?: (id: string) => boolean }).__glyphhHasSession = (id) => chats.some((c) => c.id === id);
 (window as unknown as { __glyphhOpenLocalSession?: (id: string) => void }).__glyphhOpenLocalSession = (id) => openLocalSession(id);
+// The loop the session on screen rides — what the >_ hop opens a terminal on.
+(window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop = () => activeLoop();
+// A panel opened FOR a loop (a workspace cell, a recent, "New agent panel"):
+// the session takes it — or, with turns on another loop, a new session does.
+(window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop = (id) => { if (id && id !== activeLoop()) setLoop(id); };
+// The chat's persisted CLI session for ONE CLI — the hop's fallback when
+// main's resume map has not been primed yet (a fresh boot).
+(window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId =
+  (cli?: string) => { const c = current(); return c ? cliSidFor(c as CliBound, cli || sessionCliOf(c.loop, loopRows)) : null; };
+(window as unknown as { __glyphhAdoptCliSession?: (a: AdoptCliSession) => void }).__glyphhAdoptCliSession = (a) => { void adoptCliSession(a); };
+
+/** ONE WRITER for a chat's CLI binding — the row (per CLI, the legacy slot for
+ *  claude) and main's resume map — so no surface holds half a binding.
+ *  True when the row changed and a save is owed. */
+function bindCliSession(c: CodeChat, cli: string, sid: string): boolean {
+  const changed = applyCliBinding(c as CliBound, cli, sid);
+  if (sid && cli !== GLYPHH_LOOP) void window.glyphh.glyphhBindCliSession?.(c.id, sid, cli);
+  return changed;
+}
+
+interface AdoptCliSession { sessionId: string; cli: string; agentId?: string; agentName?: string; chatId?: string }
+/**
+ * A CLI SESSION BECOMES A CHAT: its transcript is the thread, and the chat
+ * binds to it, so the next turn resumes that exact conversation on its own
+ * CLI. The chat the >_ hop came from takes it; otherwise the chat already
+ * bound to it on any lane; otherwise a new chat. The transcript is the truth
+ * every time — except while a turn streams into the chat, which owns the
+ * thread until it lands.
+ */
+async function adoptCliSession(a: AdoptCliSession): Promise<void> {
+  const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+  if (!t?.ok) {
+    console.warn("[agent] adopt: transcript unavailable", JSON.stringify({ sessionId: a.sessionId, error: t?.error ?? "no bridge" }));
+    toastError("That session could not be opened.");
+    return;
+  }
+  await loadStore().catch(() => { /* the cache answers */ });
+  const name = a.agentName || loopName(a.agentId || a.cli);
+  let c: CodeChat | undefined = (a.chatId ? chats.find((x) => x.id === a.chatId) : undefined) ?? chatForCliSession(chats, a.sessionId);
+  const fresh = !c;
+  if (!c) {
+    c = { id: `c${Date.now().toString(36)}`, title: t.title || name, createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
+    if (t.cwd) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
+    chats.unshift(c);
+  }
+  if (!liveRuns.has(c.id)) {
+    // Cursor keeps its turns in a database we do not read: its chat starts
+    // from the title, and the CLI still holds the whole conversation.
+    if (t.turns.length || fresh) c.messages = t.turns.map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
+    if (fresh || c.title === "New session") c.title = t.title || c.title || name;
+    if (t.cwd && !c.workdir) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
+  }
+  // The adopted session RUNS ON ITS OWN CLI: the loop is stamped, or the
+  // next turn would name none and run on Glyphh.
+  c.loop = a.agentId || a.cli;
+  bindCliSession(c, a.cli, a.sessionId);
+  selectChat(c);
+  paintChips();
+  void refreshModelList();
+}
   // Space labels: the source chip's "Your spaces" list names a workspace by
   // the session that made it, when that session still exists here.
   (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor = (id: string) =>
@@ -1982,7 +2032,12 @@ function newChat(): void {
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: SESSION_MODE, permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
   if (pendingModels) { c.models = pendingModels; pendingModels = null; }
-  if (pendingDevices) { c.devices = pendingDevices; pendingDevices = undefined; }
+  // BORN ON ITS LOOP: a workspace's or the picker's ask, else the member's
+  // default. The loop never changes afterwards (setLoop opens a new session).
+  c.loop = pendingLoop || ambientLoop();
+  pendingLoop = "";
+  if (pendingRoute) { c.route = pendingRoute; pendingRoute = null; }
+  if (pendingRouteHints) { c.routeHints = pendingRouteHints; pendingRouteHints = null; }
   if (pendingArtifactRef) { c.artifactRef = pendingArtifactRef; pendingArtifactRef = null; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
@@ -2010,8 +2065,8 @@ function newChat(): void {
   renderThread();
   input()?.focus();  void checkWorkdirGate();
   // A NEW SESSION SEES TODAY'S LIST (his report, 2026-09-29): the models and
-  // the defaults are re-read from the server, never the last cached answer.
-  void Promise.all([loadOrgDefaultModel(), loadDefaultModelPref()]).then(() => refreshModelList(true));
+  // the default are re-read, never the last cached answer.
+  void loadDefaultModelPref().then(() => refreshModelList(true));
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────
@@ -2268,6 +2323,7 @@ function renderHistory(): void {
   cwPaint?.();
   const q = recentsQuery.trim().toLowerCase();
   const visible = chats
+    .filter((c) => !loopFilter.length || loopFilter.includes(c.loop || GLYPHH_LOOP))
     .filter((c) => !q || c.title.toLowerCase().includes(q));
   // All sessions, not just rows surviving the filter — a search that matches
   // nothing must keep its own box on screen to be cleared.
@@ -2401,6 +2457,10 @@ function selectChat(c: CodeChat): void {
   // 2026-10-05). The workbench owns the panels; code-workbench.ts binds the
   // door and it is a no-op on the desktop.
   (window as unknown as { __wbWebShowAgentOnly?: () => void }).__wbWebShowAgentOnly?.();
+  // A loop or route picked on the landing belonged to the session that was
+  // not born; an opened session runs on its own.
+  pendingLoop = "";
+  pendingRoute = null;
   currentId = c.id;
   lastSession = c.id;
   void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
@@ -2434,75 +2494,10 @@ function selectChat(c: CodeChat): void {
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
-/** The inline CONNECT card — the agent's connect_account tool offers an
- *  account connection right in the thread; the button runs the SAME in-app
- *  OAuth the Connections page uses (connectorsConnect), and the waiting tool
- *  is answered when it finishes. The user never leaves the chat. */
-function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.className = "code-connect-card";
-  const initial = (card.name || "?").charAt(0).toUpperCase();
-  wrap.innerHTML = `
-    ${card.icon ? `<img class="ccx-icon" src="${card.icon}" />` : `<span class="ccx-initial">${initial}</span>`}
-    <div class="ccx-info">
-      <div class="ccx-name"></div>
-      <div class="ccx-sub"></div>
-    </div>
-    <button type="button" class="ccx-btn"></button>`;
-  (wrap.querySelector(".ccx-name") as HTMLElement).textContent = card.name;
-  const sub = wrap.querySelector(".ccx-sub") as HTMLElement;
-  const btn = wrap.querySelector(".ccx-btn") as HTMLButtonElement;
-  const paint = (): void => {
-    wrap.dataset.status = card.status;
-    if (card.status === "connected") {
-      sub.textContent = "Connected — the agent can use this account now.";
-      btn.textContent = "Connected ✓";
-      btn.disabled = true;
-    } else if (card.status === "connecting") {
-      sub.textContent = "Finishing the authorization…";
-      btn.textContent = "Connecting…";
-      btn.disabled = true;
-    } else if (card.status === "failed") {
-      sub.textContent = card.error || "The connection didn't complete.";
-      btn.textContent = "Retry";
-      btn.disabled = false;
-    } else {
-      sub.textContent = "The agent needs this account — authorize it right here.";
-      btn.textContent = "Connect";
-      btn.disabled = false;
-    }
-  };
-  paint();
-  btn.addEventListener("click", () => {
-    card.status = "connecting";
-    paint();
-    void saveStore();
-    void window.glyphh.connectorsConnect?.(card.appId).then((res) => {
-      card.status = res?.ok ? "connected" : "failed";
-      if (!res?.ok) card.error = res?.error || "Authorization failed.";
-      paint();
-      void saveStore();
-      // answer the WAITING tool (retries after a failure answer again — the
-      // respond handler ignores unknown ids, so that's harmless)
-      void window.glyphh.glyphhAgentConnectRespond?.({ id: card.id, connected: res.ok, ...(res.ok ? {} : { reason: card.error }) });
-      spinner?.resume();   // answered — the run is working again
-    });
-  });
-  return wrap;
-}
-
-/** A styled card for a gateway decline (budget used up / role / rate) — replaces
- *  the raw "API Error: 400 …" text with a title, explanation, and one-click
- *  actions (add funds / manage plan). */
+/** The sign-in card: a CLI whose login ran out says which CLI and what
+ *  command fixes it (main's glyphh-agent:error `fix`), instead of the raw
+ *  error echo. */
 function declineCardEl(d: { kind: string; url: string; cli?: string; command?: string }): HTMLElement {
-  const COPY: Record<string, { title: string; body: string; cta: string }> = {
-    credits: { title: "Budget used up", body: "This turn's calls through Glyphh need budget to run. Add funds to your org's budget to keep going.", cta: "Add funds" },
-    role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
-    rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
-    signin: { title: "Sign in to continue", body: "Glyphh needs you to sign in again before a turn can run. Then send this message once more.", cta: "Sign in" },
-    generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or pick a different one.", cta: "Open account" },
-  };
-  const c = COPY[d.kind] || COPY.generic;
   const card = document.createElement("div");
   card.className = `decline-card decline-card--${d.kind}`;
   card.innerHTML = `
@@ -2511,24 +2506,22 @@ function declineCardEl(d: { kind: string; url: string; cli?: string; command?: s
       <div class="decline-card-title"></div>
       <div class="decline-card-body"></div>
       <div class="decline-card-actions">
-        ${d.url || d.kind === "signin" ? `<button class="decline-card-cta" type="button"></button>` : ""}
-        ${d.kind === "signin" ? "" : `<button class="decline-card-alt" type="button">Pick another model</button>`}
+        <button class="decline-card-cta" type="button"></button>
       </div>
     </div>`;
-  (card.querySelector(".decline-card-title") as HTMLElement).textContent = c.title;
-  (card.querySelector(".decline-card-body") as HTMLElement).textContent = c.body;
-  const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta");
-  if (cta) {
-    cta.textContent = c.cta;
-    cta.addEventListener("click", () => {
-      // Budget → the in-app Add-funds dialog (embedded Stripe checkout +
-      // auto-reload). Everything else → the in-app account browser.
-      if (d.kind === "signin") (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
-      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openOutOfBudget(""));
-      else openUrlInWorkbench("Account", d.url);
-    });
-  }
-  card.querySelector<HTMLButtonElement>(".decline-card-alt")?.addEventListener("click", () => el("code-model-chip")?.click());
+  const name = d.cli ? LOOP_NAMES[d.cli as keyof typeof LOOP_NAMES] ?? d.cli : "";
+  (card.querySelector(".decline-card-title") as HTMLElement).textContent = "Sign in to continue";
+  (card.querySelector(".decline-card-body") as HTMLElement).textContent = d.command
+    ? `${name || "The CLI"} needs you to sign in again — run \`${d.command}\` in a terminal, then send this message once more.`
+    : "The agent needs you to sign in again before a turn can run. Then send this message once more.";
+  const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta")!;
+  // A CLI's login runs in the system terminal (main's cli-login); anything else is Settings' business.
+  const cli = d.cli && isVendorLoop(d.cli) ? d.cli : "";
+  cta.textContent = cli ? `Sign in to ${name}` : "Open settings";
+  cta.addEventListener("click", () => {
+    if (cli) { void window.glyphh.cliLogin?.(cli).then((r) => { if (r && !r.ok) toastError(r.error || "The terminal could not be opened."); }); return; }
+    (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
+  });
   return card;
 }
 
@@ -2632,7 +2625,6 @@ function renderThread(): void {
   // switch lands here, so recompute (a background session keeps running;
   // this one's send must not wear its stop state).
   syncThinking();
-  syncActiveRunAttach();   // attach to / detach from a run happening on another surface
   paintAskDock();          // re-bind the approval dock to the session now on screen
   paintChips();            // the mode chip reflects the SESSION on screen (per-session mode)
   // The one-line status is CURRENT-SESSION state: without this, switching
@@ -2649,8 +2641,6 @@ function renderThread(): void {
   thread.appendChild(inner);
   stopGhostRotation();
   const c = current();
-  // A server-adopted thread paints as soon as its lazily-fetched messages land.
-  if (c) hydrateMessagesIfNeeded(c.id);
   document.querySelector(".code-agent")?.classList.remove("work-landing");
   // EVERY agent's empty thread is the SAME: the mascot + a line. Code used to
   // render its own two-column landing here, so the coding agent looked like a
@@ -2712,21 +2702,15 @@ function renderThread(): void {
           inner.appendChild(atts);
           return;
         }
+      } else if (b.msg.kind === "connect" || b.msg.kind === "app") {
+        return;
       } else if (b.msg.kind === "decline" && b.msg.decline) {
         el.className = "code-decline-wrap";
         el.appendChild(declineCardEl(b.msg.decline));
-      } else if (b.msg.kind === "connect" && b.msg.connect) {
-        el.className = "code-connect-wrap";
-        el.appendChild(connectCardEl(c, b.msg.connect));
       } else if (b.msg.kind === "artifact" && b.msg.artifact) {
         // WHAT THE TURN MADE (his order, 2026-09-29): a card with a look at it.
         el.className = "code-artifact-wrap";
         el.appendChild(artifactCardEl(b.msg.artifact, openImageLightbox));
-      } else if (b.msg.kind === "app" && b.msg.app) {
-        // THE APP THE TURN BUILT (his decisions, 2026-10-07): Build and run,
-        // Open, Share to publish — the next step, in the thread.
-        el.className = "code-connect-wrap";
-        el.appendChild(appCardEl(c, b.msg));
       } else if (b.msg.role === "assistant" && turnError(b.msg.text)) {
         // A REFUSAL IS A CARD, NOT A SENTENCE (his reports, 2026-09-29: "still
         // no fucking card i asked for"): no plan, out of budget, no model, a
@@ -2792,53 +2776,6 @@ function renderThread(): void {
   if (threadPinned) { thread.scrollTop = thread.scrollHeight; repinThreadSoon(); }
 }
 
-/** Settings → Billing, in the shell (a panel routes up through main). */
-function openBilling(): void {
-  const open = (window as unknown as { glyphh?: { agentPanelOpenSettings?: (sub: string) => Promise<boolean> } }).glyphh?.agentPanelOpenSettings;
-  if (open) void open("billing");
-  else openSettingsModal("billing");
-}
-
-/** A card with a title, a line, and the door (or, for a member, who to ask). */
-function moneyCardEl(kind: "plan" | "out" | "warn", title: string, body: string, canManage: boolean | null, action: string, ask: string): HTMLElement {
-  const card = document.createElement("div");
-  card.className = `code-money-card ${kind}`;
-  card.setAttribute("role", kind === "warn" ? "status" : "alert");
-  const text = document.createElement("div");
-  text.className = "code-money-text";
-  const t = document.createElement("div");
-  t.className = "code-money-title";
-  t.textContent = title;
-  const d = document.createElement("div");
-  d.className = "code-money-body";
-  d.textContent = body;
-  text.append(t, d);
-  card.appendChild(text);
-  const door = (): void => {
-    const go = document.createElement("button");
-    go.type = "button";
-    go.className = "action-btn primary";
-    go.textContent = action;
-    go.addEventListener("click", openBilling);
-    card.appendChild(go);
-  };
-  if (canManage === false) {
-    d.textContent = memberLine(body, ask);
-  } else if (canManage === true) {
-    door();
-  } else {
-    // Not known yet: Billing is org_admin's door (navigation.ts gateAdminSubs).
-    door();
-    void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
-      if (info?.role && !["org_admin", "super_admin"].includes(info.role)) {
-        card.querySelector("button")?.remove();
-        d.textContent = memberLine(body, ask);
-      }
-    }).catch(() => { /* offline: the door stays */ });
-  }
-  return card;
-}
-
 /** The model picker, opened from a card. */
 function openModelPicker(): void {
   const chip = el("code-model-chip");
@@ -2846,23 +2783,30 @@ function openModelPicker(): void {
   if (chip && menu?.classList.contains("hidden")) chip.click();
 }
 
-/** A failed turn as a card (help/turn-errors.ts reads which kind). */
+/** A failed turn as a card (help/turn-errors.ts reads which kind): a title,
+ *  a line, the model picker when a model is the fix, and the raw words folded. */
 function turnErrorCardEl(text: string): HTMLElement {
   const e = turnError(text)!;
-  if (e.kind === "plan") return planCardEl(spend?.canManage ?? null);
-  const kind = e.kind === "budget" ? "out" : "warn";
-  const card = e.action === "billing"
-    ? moneyCardEl(kind, e.title, e.body, spend?.canManage ?? null, "Open Billing", "Contact your organization admin.")
-    : moneyCardEl(kind, e.title, e.body, true, e.action === "models" ? "Pick a model" : "", "");
+  const card = document.createElement("div");
+  card.className = "code-money-card warn";
+  card.setAttribute("role", "alert");
+  const body = document.createElement("div");
+  body.className = "code-money-text";
+  const t = document.createElement("div");
+  t.className = "code-money-title";
+  t.textContent = e.title;
+  const d = document.createElement("div");
+  d.className = "code-money-body";
+  d.textContent = e.body;
+  body.append(t, d);
+  card.appendChild(body);
   if (e.action === "models") {
-    const btn = card.querySelector("button");
-    if (btn) {
-      const fresh = btn.cloneNode(true) as HTMLButtonElement;
-      fresh.addEventListener("click", openModelPicker);
-      btn.replaceWith(fresh);
-    }
-  } else if (!e.action) {
-    card.querySelector("button")?.remove();
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "action-btn primary";
+    go.textContent = "Pick a model";
+    go.addEventListener("click", openModelPicker);
+    card.appendChild(go);
   }
   if (e.raw && e.kind !== "no-model") {
     const more = document.createElement("details");
@@ -2872,67 +2816,10 @@ function turnErrorCardEl(text: string): HTMLElement {
     const pre = document.createElement("pre");
     pre.textContent = e.raw;
     more.append(sum, pre);
-    card.querySelector(".code-money-text")?.appendChild(more);
+    body.appendChild(more);
   }
   return card;
 }
-
-/** THE GATEWAY'S 402 ON FREE (his order, 2026-10-04): a Free org runs the
- *  free-plan models, so this card only shows when a turn named one that is
- *  not on the Free plan. */
-function planCardEl(canManage: boolean | null = null): HTMLElement {
-  return moneyCardEl("plan", "That model isn't on the Free plan",
-    "Free runs the free-plan models. Every paid plan runs every model; Solo is $20 a month.",
-    canManage, "Choose a plan", "Contact your organization admin to choose a plan.");
-}
-
-// ── THE MONEY BANNER, above the composer (his order, 2026-09-29: "anytime the
-// user is out of money or as they approach their team or org limit there
-// should be a message that shows above the input that suggests they are within
-// 75% of their limit"). main/spend-state.ts asks the server; this draws it.
-let spend: SpendState | null = null;
-let lastSpendRead = 0;
-/** The banner the person closed, this run of the app (never stored). */
-let dismissedBanner: string | null = null;
-/** The budget a request was just refused on (scope and limit): it reads as out
- *  until the limit changes, the month turns, or the scope does. */
-let budgetRefusedKey: string | null = null;
-const spendKey = (s: SpendState | null): string | null => (s?.tightest ? `${s.tightest.scope}:${s.tightest.limitUsd}` : null);
-
-function paintSpendBanner(): void {
-  const host = el("code-spend-banner");
-  if (!host) return;
-  host.textContent = "";
-  if (budgetRefusedKey === "*" && spendKey(spend)) budgetRefusedKey = spendKey(spend);
-  else if (budgetRefusedKey && budgetRefusedKey !== "*" && budgetRefusedKey !== spendKey(spend)) budgetRefusedKey = null;
-  const b = spendBanner(spend, budgetRefusedKey !== null);
-  const key = b ? bannerKey(b.kind, spend) : null;
-  host.hidden = !b || key === dismissedBanner;
-  if (!b || !spend || host.hidden) return;
-  const orgScope = !spend.tightest || spend.tightest.scope === "org";
-  const card = moneyCardEl(b.kind, b.title, b.body, orgScope ? spend.canManage : false, "Open Billing",
-    "Contact your organization admin.");
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "code-money-close";
-  close.setAttribute("aria-label", "Dismiss");
-  close.title = "Dismiss";
-  close.textContent = "×";
-  close.addEventListener("click", () => { dismissedBanner = key; paintSpendBanner(); });
-  card.appendChild(close);
-  host.appendChild(card);
-}
-
-async function refreshSpend(force = false): Promise<void> {
-  if (!force && Date.now() - lastSpendRead < 15_000) return;
-  lastSpendRead = Date.now();
-  const read = (window.glyphh as unknown as { spendState?: () => Promise<SpendState> }).spendState;
-  if (!read) return;
-  spend = await read().catch(() => null);
-  paintSpendBanner();
-  paintUsageRing();
-}
-window.addEventListener("focus", () => void refreshSpend());
 
 const MSG_COPY_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`;
 const MSG_CHECK_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
@@ -3176,72 +3063,17 @@ const LAST_SESSION_PREF = "lastSessionCode";
  *  called on session switches. */
 let cwPaint: (() => void) | null = null;
 // ── Workspace SOURCE (the location chip on the composer) ──────────────────
-// Where the next session runs + what it works on (cloud project / repo / local
-// folder). One pending pick now (spaces are gone), stamped onto the record the
-// first send creates.
-const DEFAULT_SOURCE: Source = { kind: "cloud-new" };
-/** The RESOLVED default for this surface — LOCAL on the desktop (and on web
- *  with a desktop attached), cloud-new otherwise. Computed once at boot by the
- *  SOURCE_PREF restore below; closing a session falls back to THIS, not the
- *  raw cloud constant, so the desktop's default stays the user's machine. */
+// Where the next session runs: a folder on this machine. One pending pick
+// (spaces are gone), stamped onto the record the first send creates.
+const DEFAULT_SOURCE: Source = { kind: "local", path: "" };
+/** The RESOLVED default — this machine's last-used working folder. Computed
+ *  once at boot by the SOURCE_PREF restore below; closing a session falls
+ *  back to THIS. */
 let resolvedDefaultSource: Source = { ...DEFAULT_SOURCE };
 let pendingSource: Source = { ...DEFAULT_SOURCE };
-/** The Devices picks made before a session is born (newChat stamps them). */
-let pendingDevices: string[] | undefined;
 
-/** The folders this member's DESKTOP sessions ran in, newest first — the
- *  recents the folder picker lists on the web ("the last 5") and the second
- *  rung of the web's default folder (session-locus.ts defaultWebFolder). */
-function recentDesktopFolders(): string[] {
-  const out: string[] = [];
-  for (const s of railSessions) {
-    if ((s.locus ?? "local") !== "local" || !s.cwd) continue;
-    if (!out.includes(s.cwd)) out.push(s.cwd);
-  }
-  return out;
-}
-
-/**
- * WEB: the default folder follows the desktop. A desktop that attaches or
- * grants a folder AFTER boot, or a thread list that lands after the source
- * resolved, re-resolves it here — on every rail refresh, and only while the
- * DEFAULT is in play (the user has not picked a source of their own).
- */
-function reconcileWebDefaultFolder(): void {
-  if (!onWebTarget()) return;
-  const machines = threadStore.attachedMachines();
-  if (!machines.length) return;
-  const folder = defaultWebFolder({ machines, recents: recentDesktopFolders() });
-  if (!folder) return;
-  const next: Source = { kind: "local", path: folder };
-  const inPlay = sameSource(pendingSource, resolvedDefaultSource);
-  resolvedDefaultSource = { ...next };
-  if (!inPlay || sameSource(pendingSource, next)) return;
-  pendingSource = { ...next };
-  repaintSourceUi();
-}
 const SOURCE_PREF = "workspaceSourceCode";
 let sourceChip: ReturnType<typeof createSourceChip> | null = null;
-let gitChip: ReturnType<typeof createGitChip> | null = null;
-/** WEB ONLY: the environment + repo chips (help/cloud-chips.ts). */
-let cloudChips: CloudChips | null = null;
-
-/** The open session's locus once it has a turn; null = nothing is born (the
- *  composer on Home never counts as a born session). */
-function bornLocus(): Locus | null {
-  const c = current();
-  const onHome = document.body.classList.contains("composer-on-home");
-  return c && c.messages.length > 0 && !onHome ? sourceLocus(c.source ?? pendingSource) : null;
-}
-
-/** Why the composer cannot send yet on the WEB's cloud session — '' when it
- *  can (help/cloud-source.ts: GitHub linked + one repo, unborn only). */
-function cloudSendBlockNow(): string {
-  if (!onWebTarget()) return "";
-  const src = activeSource();
-  const c = current();
-  return webCloudSendBlock({ surface: "web", locus: sourceLocus(src), born: bornLocus() !== null, connected: !!cloudChips?.gitConnected(), picks: picksOf(src) });
-}
 
 /** The source for the ACTIVE surface — the current session's stamped source,
  *  else the pending pick. */
@@ -3293,34 +3125,9 @@ function repaintSourceUi(): void {
  *     source change actually take effect (it used to hit the guard and no-op).
  * Persisted either way.
  */
-/** The machine a local source names, re-resolved against the desktops
- *  attached NOW. The attach socket's id is minted anew on every reconnect
- *  (sleep, a network blip, a restart), so a session bound by id alone went
- *  "no machine" (412) after the first one — nothing streamed, nothing ran
- *  (his report, 2026-10-08). The machine's NAME is the stable key: a stale
- *  id is swapped for the id that name has now; a source with no name takes
- *  the only attached desktop. Returns true when the source changed. */
-function resolveLocalMachine(src: Source | null | undefined): boolean {
-  if (!src || src.kind !== "local" || !onWebTarget()) return false;
-  const known = threadStore.attachedMachines();
-  if (!known.length) return false;
-  if (src.machineId && known.some((m) => m.id === src.machineId)) {
-    const name = known.find((m) => m.id === src.machineId)?.name;
-    if (name && src.machine !== name) { src.machine = name; return true; }
-    return false;
-  }
-  const byName = src.machine ? known.find((m) => m.name === src.machine) : undefined;
-  const pick = byName ?? (known.length === 1 ? known[0] : undefined);
-  if (!pick || pick.id === src.machineId) return false;
-  src.machineId = pick.id;
-  if (pick.name) src.machine = pick.name;
-  return true;
-}
-
 function pickSource(next: Source): void {
   const cur = current();
   const onHome = document.body.classList.contains("composer-on-home");
-  resolveLocalMachine(next);   // a pick by id carries the machine's name from here on
 
   // A BORN session's source is IMMUTABLE — but a DIFFERENT pick on a born
   // session means "work on THIS now", so it starts a NEW session lazily (the
@@ -3330,11 +3137,8 @@ function pickSource(next: Source): void {
   // carrying the pick — layout panels stay up, same seat.
   if (cur && cur.messages.length > 0 && !onHome) {
     if (sameSource(cur.source ?? pendingSource, next)) { repaintSourceUi(); return; }
-    // Leaving the born session RE-ROOTS the web's transports (wb-pod.js
-    // onLocusChanged → getCwd → cwd-changed): a programmatic re-root, not a
-    // pick — unsuppressed, the desktop's own cwd landed in pendingWorkdir
-    // right after the pick and the chip went back to the old folder (his
-    // report, 2026-10-05). Same window applySessionFolder arms for an open.
+    // Leaving the born session re-roots the shell: a programmatic re-root,
+    // not a pick — the same window applySessionFolder arms for an open.
     cwdStampSuppressedUntil = Date.now() + 1500;
     currentId = "";
     lastSession = "";
@@ -3362,39 +3166,7 @@ function pickSource(next: Source): void {
   paintSourceDependents();
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
   sourceChip?.setSource(next);
-  // A local↔cloud flip re-resolves the loop's slots so the chip and menu
-  // match the source this session actually runs on.
   void refreshModelList();
-}
-
-/** The source pill is GONE (his order, 2026-09-11): there is no remote —
- *  every session runs on this machine. The source machinery stays internal
- *  (folder/branch resolution rides it); nothing mounts. */
-function mountSourceChip(): void {
-  // The source pill stays gone. THE WEB mounts its two cloud chips instead
-  // (his report, 2026-10-05): the environment and the repositories, placed
-  // into whichever chips row is on screen by homeChips.
-  if (!onWebTarget() || cloudChips) return;
-  cloudChips = createCloudChips({
-    getSource: activeSource,
-    onPick: pickSource,
-    bornLocus,
-    machines: () => threadStore.attachedMachines(),
-    // A desktop pick is the locus picker's own local pick: the folder the
-    // desktop granted, the last used one first (session-locus.ts).
-    onPickDesktop: (m) => pickSource({ kind: "local", path: defaultWebFolder({ machines: threadStore.attachedMachines(), recents: recentDesktopFolders() }), ...(m.id ? { machineId: m.id } : {}) }),
-    sessionCount: () => chats.filter((c) => sourceLocus(c.source) === "local").length,
-    onChange: () => { paintComposerGate(); },
-  });
-  homeChips();
-  // THE RETURN FROM GITHUB lands here with `?github=pending&link=<nonce>`
-  // (contract/git.ts): finish the link as this member, strip the query so a
-  // reload never completes it twice, and open the repositories.
-  const link = pendingLinkInUrl(window.location.search);
-  if (link !== null) {
-    try { window.history.replaceState({}, "", stripPendingLink(window.location.href)); } catch { /* a bare stub */ }
-    cloudChips.completePendingLink(link);
-  }
 }
 
 /** The composer's resting prompt. */
@@ -3409,26 +3181,23 @@ function readyPlaceholder(): string {
  *  narrow on purpose — a login or BYOK loop asks its own endpoint and an empty
  *  answer there means offline, not forbidden. */
 function noModelAllowed(): boolean {
-  return modelSource === "gateway" && availModels.length === 0;
+  // A CLI on its own login brings its own models; only the router's lane can run out.
+  return activeLane() === "router" && modelSource === "gateway" && availModels.length === 0;
 }
 
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
   const open = workdirReady && !noModelAllowed();
-  // THE WEB'S CLOUD GATE (his rule, 2026-10-05): GitHub linked + a repo
-  // picked before a cloud session is born. The box stays typeable — only
-  // the send is refused, and the line says what to do (the phone's words).
-  const cloudBlock = cloudSendBlockNow();
   ta.disabled = !open;
   ta.placeholder = open
-    ? (cloudBlock || readyPlaceholder())
+    ? readyPlaceholder()
     : noModelAllowed()
       ? "Your organization hasn't allowed any model yet"
       : "Pick a working folder to start — click here to choose";
   const sendBtn = el("code-send");
-  sendBtn?.toggleAttribute("disabled", !open || !!cloudBlock);
-  if (sendBtn) sendBtn.title = cloudBlock || (thinking ? "Stop" : "Send");
+  sendBtn?.toggleAttribute("disabled", !open);
+  if (sendBtn) sendBtn.title = thinking ? "Stop" : "Send";
   const wrap = document.querySelector(".code-input-wrap");
   wrap?.classList.toggle("gated", !open);
   // With TEXT in the composer (a seeded prompt) the placeholder is
@@ -3488,12 +3257,12 @@ const CHIP_TITLES: Record<string, string> = {
 };
 
 /**
- * Move the source + repo chips into whichever composer row is on screen.
+ * Move the source chip into whichever composer row is on screen.
  *
- * There is ONE of each, and they used to be appended to whichever row existed
- * when prefs finished loading — so the AGENT view could come up with no source
- * chip and no repo chip at all while the landing held both. The composer moves
- * between Home and the thread; its chips have to move with it.
+ * There is ONE, and it used to be appended to whichever row existed when
+ * prefs finished loading — so the AGENT view could come up with no source
+ * chip while the landing held it. The composer moves between Home and the
+ * thread; its chip has to move with it.
  */
 function homeChips(): void {
   const onHome = document.body.classList.contains("composer-on-home");
@@ -3502,24 +3271,6 @@ function homeChips(): void {
   // the parent left it wherever it was appended, which put the source chip
   // last in the agent row.
   if (host && sourceChip && host.firstElementChild !== sourceChip.el) host.prepend(sourceChip.el);
-  // THE WEB'S CLOUD CHIPS lead the row: on Home before the folder chip in
-  // the dash row itself (its source slot is `display: contents` — no box for
-  // a drop to hang off), in the agent at the head of the source slot.
-  if (cloudChips) {
-    const [envEl, repoEl] = cloudChips.els;
-    const row = onHome ? document.getElementById("dash-wd-chips") : host;
-    const before = onHome ? document.getElementById("dash-wd-btn") : (host?.firstElementChild ?? null);
-    if (row && (envEl.parentElement !== row || envEl.nextElementSibling !== repoEl)) {
-      row.insertBefore(envEl, before && before !== envEl && before !== repoEl ? before : row.firstChild);
-      envEl.insertAdjacentElement("afterend", repoEl);
-    }
-  }
-  // The repo chip sits AFTER the folder, so it anchors off that row's branch
-  // mirror rather than the slot itself.
-  const mirror = document.getElementById(onHome ? "dash-wd-branch-wrap" : "code-workdir-branch-wrap");
-  if (mirror && gitChip && gitChip.el.previousElementSibling !== mirror) {
-    mirror.insertAdjacentElement("afterend", gitChip.el);
-  }
 }
 
 
@@ -3551,20 +3302,6 @@ function paintGitState(): void {
       ? `Git repository${git.branch ? ` on ${git.branch}` : ""}`
       : "No git repository in this folder yet");
   };
-  // A CLOUD session's git state is its WORKER workspace's (his report,
-  // 2026-10-04) — asked over the cloud lane, scoped to the session; this
-  // disk's folder is never the answer. The web's wb (wb-pod.js) is already
-  // that lane; the desktop reaches main's. Nothing to ask → hidden, as before.
-  const route = panelFsRoute({ surface: onWebTarget() ? "web" : "desktop", source: src, chatId: currentId });
-  if (route.route === "cloud") {
-    const g = (window as unknown as { glyphh?: { cloudGitInfo?: (scope: string) => Promise<{ isRepo: boolean; branch?: string }> } }).glyphh;
-    const ask = onWebTarget()
-      ? (wb() as unknown as { gitInfo?: (root: string) => Promise<{ isRepo: boolean; branch?: string }> })?.gitInfo?.("")
-      : g?.cloudGitInfo?.(route.scope);
-    if (!ask) { hide(); return; }
-    void ask.then((r) => paint(r && r.isRepo ? { isRepo: true, ...(r.branch ? { branch: r.branch } : {}) } : null), () => paint(null));
-    return;
-  }
   if (src.kind !== "local") { hide(); return; }
   // The DESKTOP's local source carries no path — the machine's own working
   // directory is the folder in play there, so fall back to it.
@@ -3589,9 +3326,6 @@ function paintComposerReach(state: "connecting" | "live" | "down", src: Source):
   // is being reached. A source that cannot be reached resolves by falling back
   // (below), never by leaving a dead box behind.
   const blocked = state === "connecting";
-  // The web's cloud gate (his rule, 2026-10-05) outlives the reach paint: a
-  // live cloud source still waits for GitHub + a repo before it can send.
-  const cloudBlock = state === "live" ? cloudSendBlockNow() : "";
   if (ta) {
     ta.disabled = blocked;
     ta.placeholder = state === "connecting"
@@ -3600,10 +3334,9 @@ function paintComposerReach(state: "connecting" | "live" | "down", src: Source):
         ? (src.kind === "local"
             ? "Machine unavailable — pick another source to start"
             : "Cloud unavailable — pick another source to start")
-        : (cloudBlock || readyPlaceholder());
+        : readyPlaceholder();
   }
-  send?.toggleAttribute("disabled", blocked || !!cloudBlock);
-  if (send && cloudBlock) send.title = cloudBlock;
+  send?.toggleAttribute("disabled", blocked);
   wrap?.classList.toggle("gated", blocked);
 }
 
@@ -3726,32 +3459,6 @@ function paintSourceDependents(): void {
     sourceChip?.el.classList.toggle("cl-chip-static", bornLocked);
   }
   paintGitState();
-  // GIT position: local → the passive branch mirror; cloud → the repo chip.
-  const mirror = document.getElementById("dash-wd-branch-wrap");
-  if (mirror && cloud) (mirror as HTMLElement).style.display = "none";
-  gitChip?.refresh();
-  // The repo picker chooses what a CLOUD workspace checks out — on a local
-  // folder there is nothing for it to pick, and the folder's real git state
-  // (branch, or none) is already on the branch chip via paintGitState.
-  if (gitChip) gitChip.el.style.display = cloud ? "" : "none";
-  // THE CHIP SET IS ONE RULE, RE-APPLIED ON EVERY PAINT (his report,
-  // 2026-10-05: switching Work → Code and starting a new session left the
-  // folder options hidden) — help/cloud-source.ts composerChipSet from the
-  // surface, the type in view, the locus and whether a desktop is attached.
-  if (onWebTarget() && cloudChips) {
-    const c3 = current();
-    const set = composerChipSet({ surface: "web", locus: sourceLocus(activeSource()), attached: threadStore.attachedMachines().length > 0 });
-    cloudChips.refresh();
-    const [envEl, repoEl] = cloudChips.els;
-    envEl.classList.toggle("hidden", !set.environment);
-    if (!set.repo) repoEl.classList.add("hidden");
-    // A menu anchored to a chip that just hid would paint as a stray
-    // scrollbar capsule (his report, 2026-10-05): it closes with the chip.
-    if (!set.environment || !set.repo) cloudChips.closeMenus();
-    for (const id of ["dash-wd-btn", "code-workdir-btn", "dash-wd-branch-wrap", "code-workdir-branch-wrap"]) {
-      document.getElementById(id)?.classList.toggle("hidden", !set.folder);
-    }
-  }
   // WEB: the folder chip shows the SESSION source's folder (the machine's cwd
   // concept doesn't reach a browser) — Home until a pick lands.
   // The folder chip names the folder the session is IN — the last segment of
@@ -3858,7 +3565,6 @@ function initFolderLocusChips(): void {
         bornLocus,
         cloudScope: cloudBrowseScope(),
         onPickCloudDir: (rel) => setCloudDir(rel),
-        recentFolders: recentDesktopFolders,
       });
     }, true);
   }
@@ -4230,18 +3936,9 @@ function wireComposerAttachments(): void {
       workingFolder: async () => { const d = await wb()?.getCwdExplicit?.(); return d ? String(d) : null; },
       pickWorkingFolder: () => { void wb()?.pickCwd?.({ nullOnCancel: true }).then(() => checkWorkdirGate()); },
       openTarget: toTarget,
-      openConnector: (slug) => { openConnectionOnLoad(slug); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
-      // ADD CONNECTOR LANDS ON DISCOVER (his report, 2026-10-07): the page's
-      // one Yours | Discover switch flips to Discover before the tab opens.
-      addConnector: () => { setGroupScope("discover"); toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
+      addConnector: () => { toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
-      deviceOn: (id) => deviceChecked(current()?.devices ?? pendingDevices, id),
-      toggleDevice: (id, attached) => {
-        const c = current();
-        const next = toggleDeviceIn(c?.devices ?? pendingDevices, id, attached);
-        if (c) { c.devices = next; void saveStore(); } else pendingDevices = next;
-      },
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
@@ -4337,7 +4034,6 @@ function setThinking(on: boolean): void {
   send?.classList.toggle("thinking", on);
   if (send) send.title = on ? "Stop" : "Send";
   paintComposerSlot();
-  if (!on) void refreshContextUsage();
   renderHistory(); // the panel header tracks the loop state
 }
 
@@ -4358,66 +4054,6 @@ function paintComposerSlot(): void {
   else if (listeningPainted) { listeningPainted = false; paintComposerGate(); }
 }
 
-// ── THE USAGE RING (his order, 2026-10-07, Code only): the budget nearest
-// its line fills the arc; the popover lists the plan, that budget and the
-// session's context window when the desktop can say (glyphhContextUsage).
-let ctxUsage: { tokens: number; budget: number } | null = null;
-function paintUsageRing(): void {
-  const chip = el("code-usage-chip");
-  if (!chip) return;
-  const v = usageView(spend, ctxUsage);
-  const fill = chip.querySelector<SVGCircleElement>(".ring-fill");
-  if (fill) fill.style.strokeDashoffset = String(ringOffset(v.pct));
-  chip.classList.toggle("hot", v.hot);
-  chip.title = v.rows[0] ? `${v.rows[0].label}: ${v.rows[0].detail}` : (v.plan || "Usage");
-}
-async function refreshContextUsage(): Promise<void> {
-  const c = current();
-  const read = (window.glyphh as unknown as { glyphhContextUsage?: (id: string) => Promise<{ tokens: number; budget: number }> }).glyphhContextUsage;
-  if (!c || !read) { ctxUsage = null; paintUsageRing(); return; }
-  ctxUsage = await read(c.id).then((r) => (r && r.budget > 0 ? { tokens: r.tokens, budget: r.budget } : null)).catch(() => null);
-  paintUsageRing();
-}
-function renderUsagePop(pop: HTMLElement): void {
-  const v = usageView(spend, ctxUsage);
-  pop.textContent = "";
-  const head = document.createElement("div");
-  head.className = "usage-plan";
-  head.textContent = v.plan || "Usage";
-  pop.appendChild(head);
-  if (!v.rows.length) {
-    const empty = document.createElement("div");
-    empty.className = "usage-empty";
-    empty.textContent = spend ? "No budget nears its line." : "Usage is not available right now.";
-    pop.appendChild(empty);
-  }
-  for (const r of v.rows) {
-    const row = document.createElement("div");
-    row.className = "usage-row";
-    const h = document.createElement("div");
-    h.className = "usage-row-head";
-    const l = document.createElement("span"); l.textContent = r.label;
-    const d = document.createElement("span"); d.textContent = r.detail;
-    h.append(l, d);
-    const bar = document.createElement("div");
-    bar.className = "usage-bar";
-    const fill = document.createElement("div");
-    fill.className = "usage-fill" + (r.hot ? " hot" : "");
-    fill.style.width = `${r.pct}%`;
-    bar.appendChild(fill);
-    row.append(h, bar);
-    pop.appendChild(row);
-  }
-  if (spend?.canManage) {
-    const go = document.createElement("button");
-    go.type = "button";
-    go.className = "action-btn usage-billing";
-    go.textContent = "Open Billing";
-    go.addEventListener("click", (e) => { e.stopPropagation(); pop.classList.add("hidden"); (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("billing"); });
-    pop.appendChild(go);
-  }
-}
-
 /** `thinking` is VIEW state: whether the CURRENT chat is running. Re-derive
  *  on session switches so each session shows its own spinner and composer. */
 function syncThinking(): void {
@@ -4430,24 +4066,22 @@ function syncThinking(): void {
  *  chose one still opens on the configured default rather than "whatever
  *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
+  const loop = c?.loop || GLYPHH_LOOP;
+  const cli = cliOfLoop(loop);
+  // A CLI on its own login takes its own names; none = the loop's model, else the CLI's default (main decides).
+  if (laneOf(c) === "cli") return cliPick(c, cli) || null;
   const raw = c?.models?.["default"] ?? defaultModelPref;
   if (autoPins(raw)) return autoModel()!.id;
+  // A CLI on the gateway sends the router's id whole: main checks it against the user's chat models.
+  if (isVendorLoop(cli)) return raw ? String(raw) : null;
   return bareModelId(raw);
 }
 
 /** Settings → General's default model, memoised for the session. Empty
  *  string means "inherit" — the loop's own, or the role's default for it. */
 let defaultModelPref: string | null = null;
-/** The org's default model with the gateway on ("" = the loop decides). */
+/** The default model main's model-watch reports ("" = the loop decides). */
 let orgDefaultModel = "";
-async function loadOrgDefaultModel(): Promise<void> {
-  try {
-    const g = await (window.glyphh as unknown as { planGates?: () => Promise<{ gatewayAllowed?: boolean; defaultModel?: string }> }).planGates?.();
-    orgDefaultModel = g?.gatewayAllowed ? String(g.defaultModel || "") : "";
-  } catch { orgDefaultModel = ""; }
-}
-void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* not mounted yet */ } });
-window.addEventListener("glyphh:plan-gates-changed", () => void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* */ } }));
 /** THE SERVER MOVED THE LIST (main's model-watch.ts, his report 2026-09-29:
  *  "server side changes to the model list are not automatically updating").
  *  Every open panel repaints its chip, and an open picker its rows. */
@@ -4455,7 +4089,6 @@ window.addEventListener("glyphh:plan-gates-changed", () => void loadOrgDefaultMo
   .onModelsChanged?.((c) => {
     if (c.models?.ok) { availModels = c.models.models; modelSource = c.models.source === "gateway" ? "gateway" : "none"; }
     orgDefaultModel = c.gatewayOn ? String(c.defaultModel || "") : "";
-    void refreshSpend(true);   // a plan bought, funds added, a limit moved
     try {
       paintModelChip();
       const menu = el("code-model-menu");
@@ -4476,21 +4109,9 @@ function stopThinking(): void {
   // Abort the CURRENT chat's stream — main answers with glyphh-agent:done
   // { stopped: true } for that run; other sessions keep working.
   void window.glyphh.glyphhStop?.(currentId);
-  // A REMOTE (web/cloud) turn has no main-side run — abort its own signal, which
-  // fires runRemoteTurn's onStopped → finishRun(stopped) for this chat.
-  remoteAborters.get(currentId)?.abort();
-  // OBSERVED run (his report, 2026-08-20: "stop is not stopping"): after a
-  // refresh — or on any surface that didn't launch the turn — this page holds
-  // no aborter, only the broker observer. Stop must still reach the executing
-  // pod: fire the cross-surface stop at the observed run's id. The pod's
-  // done{stopped} frame then settles the thread through the same stream.
-  if (!remoteAborters.has(currentId)) {
-    const observedRunId = observers.get(currentId)?.runId || liveRuns.get(currentId)?.runId;
-    if (observedRunId && !observedRunId.startsWith("r-remote-")) void stopRunById(observedRunId);
-  }
   // STOP MUST STOP (his report, 2026-08-30: "the user cannot stop the agent").
   // A run whose backend already died — an auth failure at turn start, a
-  // crashed subprocess, a retry burst — answers NONE of the aborts above, and
+  // crashed subprocess, a retry burst — never answers the stop above, and
   // the view spun forever with Stop wired to a corpse. Watchdog: if THIS run
   // is still live shortly after a stop was asked, settle it locally as
   // stopped. The real done{stopped} arriving first deletes the run, so the
@@ -4696,10 +4317,6 @@ function send(): void {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text && !pendingAttach.length) return;
-  // A gated cloud session opens the repositories instead of sending (the
-  // phone's move, 2026-10-05) — the send button is already disabled; Enter
-  // lands here too.
-  if (cloudSendBlockNow()) { cloudChips?.openRepos(); return; }
   const fromHome = document.body.classList.contains("composer-on-home");
   const instanced = !!(window as unknown as { __wbAgentInstanced?: () => boolean }).__wbAgentInstanced?.();
   // Sending from the HOME-adopted composer: the footer goes back to the
@@ -4771,6 +4388,19 @@ function send(): void {
       .__wbOpenAgentInstanceWith?.(GLYPHH_LOOP, { type: "prompt", text, attach, ...(folder ? { cwd: folder } : {}), send: true });
     return;
   }
+  // `/compact [focus]` compacts THIS session's conversation. A CLI compacts
+  // its own (main answers with where to do it); the answer is said in the thread.
+  const compact = /^\/compact(?:\s+([\s\S]*))?$/i.exec(text);
+  if (compact && current()?.messages.length) {
+    const cc = current()!;
+    ta.value = "";
+    autoGrow(ta);
+    void window.glyphh.glyphhCompact?.(cc.id, (compact[1] || "").trim(), cc.loop || GLYPHH_LOOP)
+      .then((r) => cc.messages.push({ role: "assistant", text: r?.ok ? "Compacted — the conversation so far is summarized for the next turn." : `⚠ ${r?.reason || "The conversation could not be compacted."}`, at: Date.now() }))
+      .catch((err) => cc.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() }))
+      .then(() => { void saveStore(); renderThread(); });
+    return;
+  }
   if (!current()) newChat();
   const c = current()!;
   const attachments = pendingAttach.slice();
@@ -4789,9 +4419,6 @@ function send(): void {
   // Sending re-engages following: the user's own turn always comes into view.
   pinThreadToBottom();
   // Working state first so the spinner row + rail dot paint immediately.
-  // If we were merely OBSERVING this thread's run from another surface, this send
-  // takes it over locally — drop the observer so the two don't drive one liveRun.
-  stopObserving(c.id);
   liveRuns.set(c.id, {
     runId: null, text: "", bubble: null, startAt: Date.now(),
     inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "",
@@ -4801,60 +4428,22 @@ function send(): void {
   setThinking(true);
   renderHistory();
   renderThread();
-  // THE SESSION IS BORN with this send: its place is fixed from here, so the
-  // web's cloud chips go read-only now (his report, 2026-10-05), not on the
-  // next paint that happens by.
-  cloudChips?.refresh();
   paintComposerGate();
   // Main assembles the prompt from the store — the save must land first.
   // A session must run inside a folder the user chose: the first send on a
-  // fresh setup pops the OS folder picker, then the run proceeds.
-  // The workspace SOURCE rides the run: a LOCAL source targets its folder (also
-  // the workdir); a CLOUD source (new project / repo) tells main to provision a
-  // remote runtime. main reads what it supports and ignores the rest (older
-  // builds just run local, as before).
+  // fresh setup pops the OS folder picker, then the run proceeds. The
+  // session's SOURCE (its folder) rides the run and is also the workdir.
   const src = c.source ?? pendingSource;
-  // A REMOTE source on WEB (cloud-new / cloud-repo, window.glyphhSdk present) can't
-  // ride the local harness (main's glyphhRun) — it PROVISIONS + STREAMS a Fly
-  // runtime through the SDK. Desktop-local and the honest-state fallback keep the
-  // glyphhRun path below.
-  // WEB = the SHARED CLOUD ROTOR, period (Chris, convergence pass): every
-  // tool-bearing web turn rides the remote transport — a machine-sourced
-  // session on web previously fell into the local runner, whose web stub
-  // resolves undefined ("Cannot read properties of undefined (reading
-  // 'runId')"). Driving the attached machine from web is deferred.
-  // WEB = the shared cloud rotor for EVERY space, chat included. Excluding chat
-  // sent those turns to window.glyphh.glyphhRun — a method the web bridge does
-  // not implement — so a Chat turn spun forever with no answer and no error
-  // (Work and Code worked, which is exactly why it hid). The pod runs chat as a
-  // tool-less completion, the same shape the desktop's chatRun produced.
   // Speech mode (Settings › Voice): a hidden preamble steering the agent to a
-  // short, spoken-style answer. Prepended to the model prompt only — never to
-  // the message shown in the thread (already pushed clean above).
-  // THE OUTPUT PICK (his order, 2026-10-05): an Artifact pick adds its one
-  // standing line beside the brief — the same hidden preamble both run paths
-  // carry (main's glyphhRun `steer`, the remote prompt's prefix), never the
-  // message shown in the thread. Auto adds nothing.
-  // A DESKTOP-BORN CLOUD TURN WITH A LOCAL FOLDER (his report, 2026-10-07):
-  // the steer names the folder and the device tools that reach it, or says
-  // remote control is off here — never a Terminal to work around it.
-  const localFolder = !onWebTarget() && src && src.kind !== "local" ? threadFolder(c) : "";
-  // THE APP CONTRACT RIDES THE TURN (2026-10-07): an app prompt, or the New app door.
-  const steer = [briefSteer(), artifactStandingLine(c.artifactRef), localFolder ? folderSteerLine(localFolder, selfHostname, selfAttached, !selfDeviceId || deviceChecked(c.devices, selfDeviceId)) : "", appBuildSteerFor(text, threadFolder(c) || null, { viaDevice: !!localFolder })].filter(Boolean).join("\n\n");
-  // WEB = EVERY turn is remote (his order, 2026-10-04: a cloud worker through
-  // the server's /api/harness, or the member's own desktop over the relay —
-  // the SDK's one `run()` routes on the source). The gate is the SDK handle's
-  // `run`, which remote-run needs; nothing else on web may fall into
-  // window.glyphh.glyphhRun (a method the web bridge does not implement).
-  const webAlwaysRemote = onWebTarget() && typeof (window as unknown as { glyphhSdk?: { run?: unknown } }).glyphhSdk?.run === "function";
-  if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
+  // short, spoken-style answer. THE OUTPUT PICK (his order, 2026-10-05): an
+  // Artifact pick adds its one standing line beside it. Both ride main's
+  // glyphhRun `steer`, never the message shown in the thread (already pushed
+  // clean above). Auto adds nothing.
+  const steer = [briefSteer(), artifactStandingLine(c.artifactRef)].filter(Boolean).join("\n\n");
   // THE TURN RUNS IN THE THREAD'S FOLDER, and says so every time (his rule,
   // 2026-09-29: "sandboxed to that folder"). A thread born before its folder
-  // resolved asks main for this panel's folder once and keeps it. DESKTOP
-  // ONLY from here: this is main's local run, and its NO_WORKDIR gate is the
-  // machine's — a cloud source (sourceNeedsNoFolder) left above.
+  // resolved asks main for this panel's folder once and keeps it.
   const withFolder = async (): Promise<string> => {
-    if (sourceNeedsNoFolder(src)) return "";   // the worker's workspace is the folder
     const have = threadFolder(c);
     if (have) { if (!c.workdir) { c.workdir = have; void saveStore(); } return have; }
     const live = await (window as unknown as { wb?: { getCwd?: () => Promise<string | null> } }).wb?.getCwd?.().catch(() => null);
@@ -4865,7 +4454,13 @@ function send(): void {
   const launch = async (retried: boolean): Promise<void> => {
     const folder = await withFolder();
     // The dial rides every turn on a model that takes one (his order, 2026-10-04).
-    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: SESSION_MODE, permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(modelTakesEffort() ? { effort: currentEffort() } : {}) })
+    // THE LOOP RIDES EVERY TURN, with the CLI session to resume (per CLI lane)
+    // and where the route was chosen; main resolves the route again at launch.
+    const loop = c.loop || GLYPHH_LOOP;
+    const cli = cliOfLoop(loop);
+    const sid = isVendorLoop(cli) ? cliSidFor(c as CliBound, cli) : null;
+    const permission = coerceMode(c.permission ?? defaultMode, modesOf(loopRowOf(loop)));
+    return window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(folder ? { workdir: folder } : {}), mode: SESSION_MODE, permission, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(modelTakesEffort() ? { effort: currentEffort() } : {}), loop, ...(sid ? { cliSessionId: sid } : {}), ...(isVendorLoop(cli) ? { route: routeHintsOf(c) } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -4886,226 +4481,6 @@ function send(): void {
   void saveStore().then(() => launch(false));
 }
 
-// ── Remote (web/cloud) run path ───────────────────────────────────────────────
-// One AbortController per live remote run, keyed by chat id — stopThinking()
-// aborts the CURRENT chat's turn (the turn's own AbortSignal), other sessions
-// keep streaming. The runtime binding lives on the chat record (remote-run.ts
-// provisions once, reuses it for later turns), persisted via saveStore.
-const remoteAborters = new Map<string, AbortController>();
-
-/** The model a turn runs on: the session's bound pick, else the loop's own
- *  default (null — the CLI decides). Rover/slot machinery left with the
- *  picker (his spec, 2026-09-11: one model list from the server). */
-function resolveRemoteTurnModel(): string | null {
-  return sessionModel(current());
-}
-
-/** Provision (or reuse) a Fly runtime for this chat's remote source and stream
- *  the turn through it, driving the SAME liveRuns entry the local path uses so
- *  the thread renders identically. Any unavailable stage lands the app's honest
- *  "runtime not connected" state — never a fake reply. */
-function launchRemote(c: CodeChat, prompt: string, src: Source): void {
-  const chatId = c.id;
-  const ac = new AbortController();
-  remoteAborters.set(chatId, ac);
-  const bindSave = (): void => { void saveStore(); };
-  // A synthetic run id so runEntry()/liveRuns bookkeeping stays consistent with
-  // the local path (there's no main-side ack to stamp one here).
-  const run = liveRuns.get(chatId);
-  if (run && !run.runId) run.runId = `r-remote-${chatId}`;
-  // Resolved ONCE per turn (a rover loop advances its pool here).
-  const remoteModel = resolveRemoteTurnModel();
-  if (resolveLocalMachine(c.source)) { void saveStore(); repaintSourceUi(); }
-
-  void runRemoteTurn(
-    c as unknown as RemoteChat,
-    prompt,
-    bindSave,
-    {
-      // The agent asked to SHOW something mid-run. EVERY watching surface
-      // renders its own view: web always; the desktop renderer only for cloud
-      // runs (a machine-executed run's panel was opened by main, never twice).
-      onOpenApp: ({ ref, url }) => {
-        if (chatId !== currentId) return;
-        const onWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-        const cloudRun = String((src as { kind?: string }).kind || "").startsWith("cloud");
-        if (!onWeb && !cloudRun) return;
-        openRunRef({ ...(ref ? { ref } : {}), ...(url ? { url } : {}) });
-      },
-      // THE BUILD LOG IN THE THREAD (2026-10-07): the worker's app_install
-      // streams the job's log as log frames; the app card shows it growing.
-      onLog: (l) => {
-        const chat = chats.find((ch) => ch.id === chatId);
-        const b = buildLogOf(l.detail);
-        if (!chat || !b) return;
-        const card = [...chat.messages].reverse().find((m) => m.kind === "app" && m.app && (m.app.job === b.job || m.app.state === "building" || m.app.state === "installing"))?.app
-          ?? [...chat.messages].reverse().find((m) => m.kind === "app" && m.app)?.app;
-        const folder = card?.folder || threadFolder(chat) || "";
-        if (!folder) return;
-        const done = b.status === "ready" || b.status === "failed";
-        noteAppCard(chat, done ? { folder, state: b.status === "ready" ? "installed" : "failed", log: b.log, ...(b.status === "failed" ? { error: "the build failed" } : {}) } : { folder, state: "building", job: b.job, log: b.log });
-        void saveStore();
-        if (chatId === currentId) scheduleRenderThread();
-      },
-      // Rich per-tool breadcrumbs, LOCAL-path grammar: the start row carries the
-      // tool's key input (`⚙ Run: <cmd>` — the frame's title), and the done frame
-      // rewrites that row in place into the ✓/✕ card toolLineEl renders.
-      onTool: (t) => {
-        const chat = chats.find((ch) => ch.id === chatId);
-        const r = liveRuns.get(chatId);
-        if (!chat || !r) return;
-        if (t.phase === "start") {
-          // Commit streamed text before the breadcrumb (text → step → text
-          // flows DOWN the page, same order the local path keeps).
-          if (r.text.trim()) { chat.messages.push({ role: "assistant", text: r.text, at: Date.now() }); r.text = ""; r.bubble = null; }
-          const label = toolStartLabel(t);
-          r.steps.push(label);
-          pushToolRow(chat, t.name, label);
-        } else {
-          const bad = t.status === "denied" || t.status === "failed";
-          const label = toolDoneLabel({
-            name: t.name,
-            ...(t.title ? { title: t.title } : {}),
-            bad,
-            ...(t.status === "denied" ? { reason: "denied" } : t.error ? { reason: t.error } : {}),
-            ...(!bad && t.diff ? { diff: t.diff } : {}),
-          });
-          if (r.steps.length) r.steps[r.steps.length - 1] = label;
-          else r.steps.push(label);
-          settleToolRow(chat, t.name, label);
-          // THE APP CARD on the worker's lane (2026-10-07): the frame carries no
-          // output, so the card says what it knows — built, or installed.
-          const wd = threadFolder(chat);
-          const built = cardFromManifestWrite(t.name, t.title, wd || undefined, bad);
-          if (built) noteAppCard(chat, built);
-          if (t.name === "app_install" || t.name === "app_deploy") {
-            const have = chat.messages.find((m) => m.kind === "app")?.app;
-            const dir = have?.folder || wd || "";
-            if (dir) noteAppCard(chat, bad ? { folder: dir, state: "failed", ...(t.error ? { error: t.error } : {}) } : { folder: dir, state: "installed", key: have?.key ?? null, url: have?.url ?? null, release: have?.release ?? null });
-            if (!bad) document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-          }
-        }
-        void saveStore();
-        if (chatId === currentId) { broadcastTimeline(true); scheduleRenderThread(); }
-      },
-      onToken: (delta) => {
-        const r = liveRuns.get(chatId);
-        if (!r) return;
-        r.text += delta;
-        // Hands-free voice: the FIRST line speaks as soon as it completes —
-        // "I'm working" — the rest waits for the settled turn. No-op outside
-        // an awaiting hands-free session; fires at most once per turn.
-        if (chatId === currentId) maybeSpeakFirstLine(r.text);
-        queueStreamPaint(chatId);
-      },
-      // A parked pod frame lands in the SAME ask dock a local run uses — the
-      // card is answered through respondToDock, which routes back to this run's
-      // handle via remote-run's pending registry. runId is the SYNTHETIC one
-      // liveRuns carries, so finishRun clears this run's cards (and only those).
-      onApproval: (a) => {
-        askQueue.push({ type: "approval", id: a.id, kind: a.kind, title: a.title, detail: a.detail, runId: liveRuns.get(chatId)?.runId ?? undefined, chatId, deadline: a.deadline });
-        paintAskDock();
-      },
-      onAsk: (a) => {
-        askQueue.push({ type: "ask", id: a.id, questions: a.questions, answers: [], step: 0, runId: liveRuns.get(chatId)?.runId ?? undefined, chatId, deadline: a.deadline });
-        paintAskDock();
-      },
-      // A mode change from another surface viewing this same session — adopt it.
-      // The model's thinking rides the relay too: the fold above the answer.
-      onThinking: (text) => {
-        const r = liveRuns.get(chatId);
-        if (!r) return;
-        r.thinking = (r.thinking ?? "") + text;
-        queueStreamPaint(chatId);
-      },
-      // THE SWARM (his report, 2026-10-05): a sub-agent's frames build the
-      // Agents panel's rows here, never this thread's bubble.
-      onAgentFrame: (f) => subAgentFeed.apply(chatId, f),
-      onPermission: (mode) => adoptSessionMode(chatId, mode),
-      onDone: (text) => { finishRun(chatId, text); },
-      onStopped: () => { finishRun(chatId, liveRuns.get(chatId)?.text || "", true); },
-      onError: (detail) => {
-        const r = liveRuns.get(chatId);
-        const prefix = r?.text ? `${r.text}\n\n` : "";
-        finishRun(chatId, `${prefix}⚠ ${detail}`);
-      },
-    },
-    // The MODEL rides the turn: the pod does NOT resolve loop roles (its
-    // cfg.model comes only from the body — absent meant the harness default,
-    // so the picker painted a choice the cloud run silently ignored). The
-    // picker's resolved primary slot is governance-filtered server-side
-    // already; a rover loop hops the pool per turn, same as desktop main.
-    // The permission mode is the SESSION's mode (per-session), so the pod's
-    // own default (`auto`) never overrides a session left in Ask; a mid-run
-    // flip is pushed separately via setRemotePermission.
-    // The effort dial rides every turn on a model that takes one (his order,
-    // 2026-10-04) — cloud turns included (SDK RunTurnOptions.effort).
-    { rotor: GLYPHH_LOOP, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, ...(modelTakesEffort() ? { effort: currentEffort() } : {}), signal: ac.signal },
-  ).then((outcome) => {
-    remoteAborters.delete(chatId);
-    // An UNAVAILABLE stage is the honest "runtime not connected" state: the
-    // runtime for the org's region isn't deployed/routed yet. Render the
-    // designed message, never a fake reply. onError already committed for the
-    // { error } case; only unavailable needs its own copy here.
-    if ("unavailable" in outcome && outcome.unavailable && !liveRuns.get(chatId)?.text) {
-      // SELF-DIAGNOSE: probe the runtime we just failed to reach and say WHICH
-      // layer broke — reachable/unreachable, and whether it's a CORS block (a
-      // browser reports those as an opaque network error, which is why "POST
-      // /run failed" told nobody anything).
-      const rtUrl = (c as { runtime?: { url?: string } }).runtime?.url;
-      void probeRuntime(rtUrl).then((probe) => {
-        finishRun(chatId, remoteUnavailableMessage(outcome.stage, outcome.detail, rtUrl, probe));
-      });
-    } else if (liveRuns.has(chatId)) {
-      // A callback path we didn't already finish (defensive) — land whatever text exists.
-      finishRun(chatId, liveRuns.get(chatId)?.text || "");
-    }
-  }).catch((err) => {
-    remoteAborters.delete(chatId);
-    if (liveRuns.has(chatId)) finishRun(chatId, `⚠ ${err instanceof Error ? err.message : String(err)}`);
-  });
-}
-
-/** The app's honest not-connected copy for a remote turn that couldn't reach a
- *  live runtime. The session EXISTS server-side (remote-run bound its id); a
- *  runtime just isn't deployed + routed for the org's region yet. */
-/** Probe the runtime the turn couldn't use: reachable? CORS-blocked? down?
- *  Runs only on the failure path, bounded, never throws. */
-async function probeRuntime(url?: string): Promise<string> {
-  if (!url) return "";
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 4000);
-    try {
-      const res = await fetch(`${url.replace(/\/$/, "")}/health/liveliness`, { signal: ctl.signal });
-      return res.ok ? "the runtime IS reachable from this browser — the failure is auth or capacity, not the network"
-        : `the runtime answered ${res.status} on /health/liveliness`;
-    } finally { clearTimeout(t); }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return /abort/i.test(msg)
-      ? "the runtime did not answer within 4s (down, or blocked before it could reply)"
-      : `this browser could not reach the runtime at all (${msg}) — a blocked cross-origin request or nothing listening`;
-  }
-}
-
-function remoteUnavailableMessage(stage: string, detail: string, runtimeUrl?: string, probe?: string): string {
-  const why =
-    stage === "provision" || stage === "provision-poll" ? "the cloud runtime couldn't be provisioned"
-    : stage === "not-ready" ? "the cloud runtime didn't come up in time"
-    : stage === "open" || stage === "stream" ? "the cloud runtime is unreachable from here"
-    : "the cloud runtime isn't connected";
-  // NAME THE ENDPOINT. The old copy blamed "your org's region" for every
-  // failure, which is useless when the real cause is which SERVER this build
-  // talks to (a control plane without the harness routes provisions a runtime
-  // nothing can run on). Stage + address turns a mystery into a diagnosis.
-  const api = (window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { serverUrl?: string } });
-  const server = api.__GLYPHH_API_URL__ || api.glyphh?.serverUrl || "";
-  const where = [server && `control plane ${server}`, runtimeUrl && `runtime ${runtimeUrl}`]
-    .filter(Boolean).join(" · ");
-  return `⚠ Cloud runtime not connected — ${why} (at ${stage}).${where ? ` ${where}.` : ""}${probe ? ` Diagnosis: ${probe}.` : ""} (${detail})`;
-}
-
 // Stopping isn't failure — it's a choice. All peace, no violence.
 const STOP_LINES = [
   "You paused the vibe — Glyphh set its tools down gently.",
@@ -5116,47 +4491,25 @@ const STOP_LINES = [
   "Stillness. The trail so far is saved.",
 ];
 
-/** Land a run's outcome in ITS chat (the user may be looking at another
- *  session) and reset only that run's state — other sessions keep working. */
-/** The 402 "budget used up" often comes back as raw tool/turn error TEXT (a
- *  connector call, media generation, etc.), not the styled decline card. When
- *  we see it on the visible session, pop the Add-funds dialog so the user can
- *  fund the budget on the spot. */
-function maybeBudgetPrompt(chatId: string, text: string): void {
-  if (chatId !== currentId || !text) return;
-  if (/\b402\b/.test(text) && /budget|add funds|upgrade your plan/i.test(text)) {
-    // The banner reads the budget as out from here on, not "94% used".
-    budgetRefusedKey = spendKey(spend) ?? "*";   // "*": adopt the next read's budget
-    void refreshSpend(true);
-    void import("./settings-billing.js").then((m) => m.openOutOfBudget(text)).catch(() => { /* billing module unavailable */ });
-  }
-}
-
 /** THE GENERATED TITLE (his order, 2026-10-05: do the same as Claude's
  *  titles). After the FIRST reply of a thread lands, ONE small side request
- *  through the Router asks the utility model (help/utility-model.ts: the
- *  console's flagged model, else the cheapest chat row — never the session's
- *  own) for a 3–6 word title, and it replaces the truncated-prompt placeholder
- *  on the thread record — so the rail, the recents and the phone all show it
- *  (saveStore pushes the title; renderHistory repaints). Every rule is pure
- *  (session-title.ts); this is the one impure seam. It never throws, never
- *  touches the transcript or the run ledger, and is billed as an ordinary
- *  member call. */
+ *  through the router asks the utility model (help/utility-model.ts: the
+ *  cheapest chat row — never the session's own) for a 3–6 word title, and it
+ *  replaces the truncated-prompt placeholder on the thread record, so the
+ *  rail and the recents show it (saveStore writes the title; renderHistory
+ *  repaints). Every rule is pure (session-title.ts); this is the one impure
+ *  seam. It never throws and never touches the transcript or the run ledger. */
 async function generateSessionTitle(chat: CodeChat): Promise<void> {
   try {
     const may = mayGenerateTitle(chat);
     if (!may.ok) return;
-    // The server's resolved utility model first (the gates are already loaded
-    // for the composer); the same rule over the composer's own rows otherwise.
-    const gates = await planGates().catch(() => null);
-    const model = (gates?.utilityModel && String(gates.utilityModel)) || pickUtilityModel(availModels);
-    if (!model) return;   // nothing configured → the placeholder stands
+    const model = pickUtilityModel(availModels);
+    const ask = window.glyphh.sessionTitleGenerate;
+    if (!model || !ask) return;   // nothing configured → the placeholder stands
     chat.titleGenerated = true;   // once per thread, in flight or done
     const before = chat.title;
-    const token = await harnessToken();
-    if (!token) return;
-    const title = await fetchSessionTitle({ apiUrl: harnessApiUrl(), token, body: titleRequestBody(model, may.prompt, may.reply) });
-    // Still the placeholder? A rename (here or on another surface) wins.
+    const title = await fetchSessionTitle({ body: titleRequestBody(model, may.prompt, may.reply), ask });
+    // Still the placeholder? A rename wins.
     if (!title || chat.titleLocked || chat.title !== before) return;
     chat.title = title;
     void saveStore();
@@ -5167,13 +4520,11 @@ async function generateSessionTitle(chat: CodeChat): Promise<void> {
 }
 
 function finishRun(chatId: string, text: string, stopped = false): void {
-  void refreshSpend(true);   // a turn spent money: the banner re-reads where it stands
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
   const timing = run ? turnTiming(run) : "";
   if (timing) console.info(`[turn] ${chatId} ${timing}`);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now(), ...(run?.thinking ? { thinking: run.thinking } : {}), ...(timing ? { timing } : {}) });
-  maybeBudgetPrompt(chatId, text);
   if (chat && stopped) {
     chat.messages.push({
       role: "assistant",
@@ -5225,40 +4576,10 @@ function askDockShift(): void {
   paintAskDock();
 }
 
-/**
- * Answer the dock's card — the ONE call both sources go through.
- *
- * remote-run holds the parked ids it streamed, so it answers a REMOTE card on
- * its own run handle; an id it doesn't know is a LOCAL card and goes over the
- * desktop IPC exactly as before. The dock's buttons never branch on source.
- *
- * A `late` routing means the runtime's own deadline beat the click — the pod
- * already denied/answered and there is nothing left to resolve. That is not an
- * error: it's swallowed and noted in the session so the transcript stays honest.
- */
+/** Answer the dock's card: main's loop holds the parked id. */
 function respondToDock(item: AskDockItem, reply: { allow?: boolean; answers?: string[] }): void {
-  void answerPending(item.id, reply).then((routing) => {
-    if (routing === "unknown") {
-      if (reply.answers) void window.glyphh.glyphhAskRespond?.(item.id, reply.answers);
-      else void window.glyphh.glyphhApprovalRespond?.(item.id, !!reply.allow);
-      return;
-    }
-    if (routing === "late") {
-      pushDockNote(item.chatId, item.type === "approval"
-        ? "⏳ That answer arrived after the runtime's deadline — it had already denied the action."
-        : "⏳ That answer arrived after the runtime's deadline — Glyphh had already carried on without one.");
-    }
-  });
-}
-
-/** Land a quiet breadcrumb in a session's transcript (used for late answers and
- *  gate timeouts). Falls back to the session in view when the card carried none. */
-function pushDockNote(chatId: string | undefined, text: string): void {
-  const chat = chats.find((c) => c.id === chatId) ?? chats.find((c) => c.id === currentId);
-  if (!chat) return;
-  chat.messages.push({ role: "assistant", kind: "tool", text, at: Date.now() });
-  void saveStore();
-  if (chat.id === currentId) renderThread();
+  if (reply.answers) void window.glyphh.glyphhAskRespond?.(item.id, reply.answers);
+  else void window.glyphh.glyphhApprovalRespond?.(item.id, !!reply.allow);
 }
 
 // The dock's countdown ticks once a second while a card with a deadline is up.
@@ -5512,6 +4833,15 @@ function paintAskDock(): void {
  *  accumulate when another session is in view). */
 function initGlyphhAgentEvents(): void {
   window.glyphh.onGlyphhAgentSetup?.((d) => {
+    // The CLI's session id PERSISTS on the chat row, per CLI: main's resume
+    // map forgets on restart, and the row is what the next turn and the >_
+    // hop read back. The frame names its chat; an older main's does not, and
+    // then the one chat running here is the one it means.
+    if (d.cliSessionId && d.cli && d.cli !== GLYPHH_LOOP) {
+      const live = chats.filter((ch) => liveRuns.has(ch.id));
+      const chat = (d.chatId ? chats.find((ch) => ch.id === d.chatId) : undefined) ?? (live.length === 1 ? live[0] : undefined);
+      if (chat && bindCliSession(chat, d.cli, d.cliSessionId)) void saveStore();
+    }
     if (d.phase === "downloading") {
       for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
@@ -5650,42 +4980,9 @@ function initGlyphhAgentEvents(): void {
       const folder = chat.workdir || (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() || undefined;
       const art = artifactFromTool(name, d.title, folder, bad);
       if (art) noteArtifact(chat, art);
-      // THE APP CARD (2026-10-07): a manifest.json written → Build and run;
-      // app_install answered → installed (or a build job the card follows).
-      const built = cardFromManifestWrite(name, d.title, folder, bad);
-      if (built) noteAppCard(chat, built);
-      if (name === "app_install" || name === "app_deploy") {
-        const dir = (extra.input && /"dir"\s*:\s*"([^"]+)"/.exec(extra.input)?.[1]) || chat.workdir || folder || "";
-        const m = noteAppCard(chat, cardFromInstallAnswer(dir, bad ? null : parseInstallAnswer(extra.output), bad, bad ? reason : undefined));
-        if (m.app?.state === "building") followAppJob(chat, m);
-        if (m.app?.state === "installed") document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-      }
     }
     void saveStore();
     if (currentId === runChatId) scheduleRenderThread();
-  });
-  window.glyphh.onGlyphhAgentConnect?.((p) => {
-    // the card belongs to the session whose run asked — with parallel runs
-    // that's the single live one, else the current session
-    const liveIds = [...liveRuns.keys()];
-    const targetId = liveIds.length === 1 ? liveIds[0]! : currentId;
-    const chat = chats.find((ch) => ch.id === targetId) ?? current();
-    if (!chat) { void window.glyphh.glyphhAgentConnectRespond?.({ id: p.id, connected: false, reason: "no session" }); return; }
-    chat.messages.push({
-      role: "assistant",
-      kind: "connect",
-      text: "",
-      connect: { id: p.id, appId: p.app.appId, name: p.app.name, icon: p.app.icon, status: "offer" },
-      at: Date.now(),
-    });
-    void saveStore();
-    if (chat.id === currentId) {
-      renderThread();
-      pinThreadToBottom();
-      // The run is PARKED on the user now — an honest waiting line instead of
-      // the busy rotation ("Painting with logic…" while blocked read as hung).
-      spinner?.wait(`Waiting for you to connect ${p.app.name}…`);
-    }
   });
   window.glyphh.onGlyphhAgentDelta?.((d) => {
     // A sub-agent's words ride the parent's run tagged with the child. Spliced
@@ -5725,16 +5022,6 @@ function initGlyphhAgentEvents(): void {
     const e = runEntry(d.runId);
     if (!e) return;
     const [runChatId, run] = e;
-    // A picked-frontier decline (budget used up / role / rate) arrives with a
-    // %%GLYPHHERR:<kind>:<url>%% marker — render a styled card, not the raw
-    // "API Error: 400 …" echo. Look in both the stream buffer and the error.
-    const marker = /%%GLYPHHERR:([a-z]+):([^%]*)%%/.exec(`${run.text}\n${d.error}`);
-    if (marker) {
-      const chat = chats.find((ch) => ch.id === runChatId);
-      if (chat) chat.messages.push({ role: "assistant", kind: "decline", text: "", decline: { kind: marker[1], url: marker[2].trim() }, at: Date.now() });
-      finishRun(runChatId, "");
-      return;
-    }
     // A LOGIN THAT RAN OUT IS NOT A CHAT MESSAGE (his report, 2026-09-17): the
     // bridge says which CLI and what command fixes it, and the card runs it.
     if (d.fix?.kind === "signin") {
@@ -5901,26 +5188,64 @@ const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 // vendor CLIs wear their public marks, fetched once through main on the
 // desktop and through the front door's /webicon proxy on the web (the ONE
 // table in help/cli-marks.ts is also that proxy's allowlist).
+const vendorMarks: Record<string, string> = {};
+function primeVendorMarks(): void {
+  for (const [cli, url] of Object.entries(CLI_MARK_URLS)) {
+    if (vendorMarks[cli] !== undefined) continue;
+    vendorMarks[cli] = "";
+    // On the web the bridge makes every name a function; a desktop-only one
+    // answers undefined, so the call is wrapped before `.then`.
+    const fetchIcon = (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> | undefined }).webIconFetch;
+    void Promise.resolve(fetchIcon?.(url)).then((d) => {
+      if (!d) return;
+      vendorMarks[cli] = d;
+      renderRailSessions();
+      paintLoopChip();
+    }).catch(() => {});
+  }
+}
+/** A loop's mark: the brand mascot for Glyphh, the vendor's own for a CLI
+ *  (its first letter until the mark has loaded, or when it cannot). */
+function loopMarkEl(cli: string): HTMLSpanElement {
+  const mark = document.createElement("span");
+  mark.className = `loop-mark cli-mark-${cli}`;
+  const src = cli === GLYPHH_LOOP ? railCliMarks[GLYPHH_LOOP] : vendorMarks[cli];
+  if (src) {
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    mark.appendChild(img);
+  } else {
+    mark.classList.add("loop-mark-letter");
+    mark.textContent = (LOOP_NAMES[cli as keyof typeof LOOP_NAMES] ?? cli).slice(0, 1);
+  }
+  if (cli !== GLYPHH_LOOP) primeVendorMarks();
+  return mark;
+}
+/** THE LOOP FILTER: the loops picked in the funnel (empty = every loop),
+ *  kept on its own pref beside the place. */
+let loopFilter: string[] = [];
 /** THE PLACE FILTER (his order, 2026-10-04): the same funnel gains a second
  *  group — All places / This desktop / Cloud — persisted on its own pref and
  *  applied by the ONE filter function below, in the rail and the dropdown. */
 let locusFilter: LocusFilter = "";
-/** The rail's and the dropdown's one filter. `among` is the loops the list
- *  can hold: a loop filter naming none of them is no filter there; `tab`
- *  absent = every type (the CLI window's own pool). */
+const filterActive = (): boolean => recentsFilterActive({ loops: loopFilter, locus: locusFilter });
+/** The rail's and the dropdown's one filter. */
 function sessFilter(opts: { query?: string }): RecentsFilter {
-  return { locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
+  return { loops: loopFilter, locus: locusFilter, ...(opts.query ? { query: opts.query } : {}) };
 }
 function sessFilterRow(sess: RailSession): RecentsRowLike {
-  return { title: sess.title, cwd: sess.cwd, locus: sess.locus ?? "local" };
+  return { title: sess.title, cwd: sess.cwd, loopKey: sess.loop || sess.cli || GLYPHH_LOOP, locus: sess.locus ?? "local" };
 }
 function sessFilterKeeps(sess: RailSession, f: RecentsFilter): boolean {
   return recentsKeeps(sessFilterRow(sess), f);
 }
-/** Both lists re-render on either change: the rail here, the dropdown off the event. */
+/** Every list re-renders on either change: the rail and the panel's own list
+ *  here, the dropdown off the event. */
 function filtersChanged(): void {
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  el("recent-sessions-filter")?.classList.toggle("active", filterActive());
   renderRailSessions();
+  renderHistory();
   document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
 }
 function setLocusFilter(place: LocusFilter): void {
@@ -5928,11 +5253,16 @@ function setLocusFilter(place: LocusFilter): void {
   void window.glyphh.setPreference?.(LOCUS_FILTER_PREF, place);
   filtersChanged();
 }
+function setLoopFilter(ids: string[]): void {
+  loopFilter = ids;
+  void window.glyphh.setPreference?.(LOOP_FILTER_PREF, ids);
+  filtersChanged();
+}
 const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
 let loopFilterMenu: HTMLDivElement | null = null;
-/** THE PLACE FILTER's menu (his order, 2026-10-04): All places / This desktop /
- *  Cloud — one pick, the rail and the dropdown both narrow to it. (The loop
- *  rows went with the CLI agents, 2026-10-08.) */
+/** THE FUNNEL's menu: the loops (any number of them, "All loops" clears) and
+ *  the places (one pick) — the rail, the panel's list and the dropdown all
+ *  narrow to it. */
 function openPlaceFilterMenu(anchor: HTMLElement): void {
   loopFilterMenu?.remove();
   const m = document.createElement("div");
@@ -5954,6 +5284,16 @@ function openPlaceFilterMenu(anchor: HTMLElement): void {
     b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openPlaceFilterMenu(anchor); });
     m.appendChild(b);
   };
+  // THE LOOPS: the ones the member has on, each wearing its mark.
+  row("All loops", loopFilter.length === 0, null, () => setLoopFilter([]));
+  const ids = enabledLoopIds();
+  for (const id of LOOP_IDS.filter((x) => ids.includes(x) || loopFilter.includes(x))) {
+    const on = loopFilter.includes(id);
+    row(loopName(id), on, loopMarkEl(cliOfLoop(id)), () => setLoopFilter(on ? loopFilter.filter((x) => x !== id) : [...loopFilter, id]));
+  }
+  const sep = document.createElement("div");
+  sep.className = "code-menu-sep";
+  m.appendChild(sep);
   // THE PLACES (his order, 2026-10-04): one pick, the rail and the dropdown
   // both narrow to it. The mark is the row's own locus glyph.
   row("All places", locusFilter === "", null, () => setLocusFilter(""));
@@ -5971,10 +5311,15 @@ function openPlaceFilterMenu(anchor: HTMLElement): void {
   const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
   document.addEventListener("mousedown", close, true);
 }
-void (window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve("")).then((place) => {
+void Promise.all([
+  window.glyphh.getPreference?.(LOCUS_FILTER_PREF, "") ?? Promise.resolve(""),
+  window.glyphh.getPreference?.(LOOP_FILTER_PREF, []) ?? Promise.resolve([]),
+]).then(([place, loops]) => {
   locusFilter = locusFilterOf(place);
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  loopFilter = loopFilterOf(loops);
+  el("recent-sessions-filter")?.classList.toggle("active", filterActive());
   renderRailSessions();
+  renderHistory();
 }).catch(() => {});
 
 /** A rail row's loop mark: the vendor's, Sage for the Glyphh CLI, the brand mark for the Glyphh agent. */
@@ -5987,6 +5332,14 @@ function sessMarkEl(sess: RailSession): HTMLSpanElement {
     mark.innerHTML = botAvatarSvg(avatarOf({ slug: sess.bot, avatar: railBotAvatars.get(sess.bot) ?? null }), "idle", { size: 18 });
     mark.title = "Bot";
     return mark;
+  }
+  // A session on a CLI wears that CLI's mark, whichever store it came from.
+  const cli = cliOfLoop(sess.loop || sess.cli || GLYPHH_LOOP);
+  if (isVendorLoop(cli)) {
+    const own = loopMarkEl(cli);
+    own.classList.add("code-sess-mark");
+    own.title = loopName(cli);
+    return own;
   }
   {
     const img = document.createElement("img");
@@ -6019,7 +5372,12 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession {
+  /** `cli` is the store the row came from: "glyphh" for one of our chats
+   *  (whatever loop it runs on, `loop`), a vendor CLI for a session in that
+   *  CLI's own store. */
   id: string; cli: string; title: string; cwd: string; mtime: number;
+  /** The loop a chat runs on (absent on a CLI's own row: its cli is its loop). */
+  loop?: string;
   /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
    *  bot's cat and opens the Bots panel on it, never the agent panel. */
   bot?: string;
@@ -6090,7 +5448,6 @@ function adoptRunIfElsewhere(c: CodeChat, opts: { orphanOnly?: boolean } = {}): 
   if (!adopt) return;
   void adopt(r.chatId, opts).then((res) => {
     if (!res?.ok || liveRuns.has(c.id) || !chats.some((x) => x.id === c.id)) return;
-    stopObserving(c.id);
     liveRuns.set(c.id, { runId: res.runId, text: res.text || "", bubble: null, startAt: res.startedAt || Date.now(), inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "" });
     ensureRunTicker();
     renderHistory();
@@ -6154,9 +5511,10 @@ function scheduleRailSessionsRefresh(): void {
 }
 
 async function loadRailSessions(): Promise<void> {
-  const [snap, pins] = await Promise.all([
+  const [snap, pins, cliRes] = await Promise.all([
     (window.glyphh.glyphhSessionsLoad?.().catch(() => null) ?? Promise.resolve(null)),
     (window.glyphh.getPreference?.(SESS_PINS_PREF, []).catch(() => []) ?? Promise.resolve([])),
+    settle(window.glyphh.cliSessionsList?.(40), null),
   ]);
   // THE THREAD STORE IS THE ONLY STORE (his order, 2026-09-28): the vendor
   // CLIs kept their own transcripts on disk and the rail merged them in. The
@@ -6172,9 +5530,7 @@ async function loadRailSessions(): Promise<void> {
   // a moment before the write-through resolves.
   const rows: CodeChat[] = storeLoaded && chats.length ? chats : ((snap?.chats as CodeChat[]) ?? []);
   railSessions = rows
-    // A thread adopted from the server (a cloud thread, or one made on another
-    // surface) carries only a messageCount until opened — it lists all the same.
-    .filter((c) => (c.messages?.length ?? 0) > 0 || ((c as { messageCount?: number }).messageCount ?? 0) > 0)
+    .filter((c) => (c.messages?.length ?? 0) > 0)
     .map((c) => {
       const locus = threadLocus(c);
       // THE FOLDER IS THE THREAD'S (his rule): a thread adopted from the
@@ -6182,18 +5538,24 @@ async function loadRailSessions(): Promise<void> {
       // both, so the web groups a desktop session under its folder too.
       const cwd = c.workdir || (c.source?.kind === "local" ? c.source.path || "" : "");
       return {
-        id: c.id, cli: GLYPHH_LOOP, title: c.title, cwd, mtime: touchedAtOf(c),
+        id: c.id, cli: GLYPHH_LOOP, loop: c.loop || GLYPHH_LOOP, title: c.title, cwd, mtime: touchedAtOf(c),
         // A thread's own space. Every NEW session is born in Code (modeOf); the
         // older Chat and Work threads keep theirs, which is what makes the glyph
         // worth reading.
         mode: SESSION_MODE,
         locus,
         ...(c.bot ? { bot: c.bot } : {}),
-        ...(sessionLocked({ locus, cwd }, onWebTarget() ? "web" : "desktop", threadStore.attachedMachines()) ? { locked: true } : {}),
       };
     })
     .sort((a, b) => b.mtime - a.mtime);
-  reconcileWebDefaultFolder();
+  // THE CLIs' OWN STORES join the list (the loops the member has on): a
+  // session typed in the CLI itself is a recent like any other. One a chat
+  // already holds is that chat's row, never a second one.
+  const held = new Set(rows.flatMap((c) => [...Object.values(c.cliSessionIds ?? {}), ...(c.cliSessionId ? [c.cliSessionId] : [])]));
+  const cliRows: RailSession[] = (cliRes?.ok ? cliRes.sessions : [])
+    .filter((x) => !held.has(x.id))
+    .map((x) => ({ id: x.id, cli: x.cli, title: x.title, cwd: x.cwd, mtime: x.mtime, locus: "local" as const }));
+  railSessions = [...railSessions, ...cliRows].sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   if (railSessions.some((s) => s.bot)) await primeBotAvatars();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
@@ -6220,6 +5582,18 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
     danger: true,
   });
   if (!sure) return false;
+  // A CLI's own session is deleted from that CLI's store, and every chat
+  // bound to it lets go — the next turn there starts a fresh CLI session.
+  if (sess.cli !== GLYPHH_LOOP) {
+    const r = await window.glyphh.cliSessionDelete?.(sess.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    if (r && !r.ok) { toastError(r.error || "That session could not be deleted."); return false; }
+    let touched = false;
+    for (const c of chats) if (forgetCliSession(c as CliBound, sess.id)) touched = true;
+    if (touched) void saveStore();
+    railSessions = railSessions.filter((x) => x.id !== sess.id);
+    renderRailSessions();
+    return true;
+  }
   // A session lives in the thread store.
   if (!chats.some((x) => x.id === sess.id)) return false;
   railSessions = railSessions.filter((x) => x.id !== sess.id);
@@ -6271,8 +5645,11 @@ function sessSectionHead(label: string, title: string): HTMLDivElement {
   return head;
 }
 
-/** The agent a rail row resumes on — there is one. */
-function agentForSess(_sess: RailSession): RailCliAgent | undefined { return railAgents[0]; }
+/** The loop a rail row resumes on: a chat's own loop, a CLI row's CLI. */
+function agentForSess(sess: RailSession): RailCliAgent | undefined {
+  const id = sess.cli === GLYPHH_LOOP ? (sess.loop || GLYPHH_LOOP) : (loopRows.find((r) => r.cli === sess.cli)?.id ?? sess.cli);
+  return { id, name: loopName(id), cli: cliOfLoop(id) };
+}
 
 /**
  * OPEN THE THREAD, WHATEVER STORE THE ROW CAME FROM (his report, 2026-09-29:
@@ -6306,17 +5683,13 @@ async function openGlyphhSession(id: string): Promise<void> {
   }
   console.warn("[sess] open", JSON.stringify({ id, mode: SESSION_MODE, turns: chat.messages?.length ?? 0 }));
   selectChat(chat);
-  // A thread adopted as metadata carries no turns until fetched; renderThread
-  // asks too, but asking here means the history lands even if the thread is
-  // painted by something else first.
-  hydrateMessagesIfNeeded(chat.id);
   // A WORKSPACE'S SEAT already shows this document's agent — selectChat above
   // put the thread in it. Seating the loop again would go through
   // openAgentForLoop, which in the instanced shell mints ANOTHER panel (his
   // report: a recent "loads correctly in the agent panel BUT it also opens
   // another instance of the agent"). Front the seat and stop.
   if ((window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat?.()) return;
-  const loop = agentForSess({ id, cli: GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat) });
+  const loop = agentForSess({ id, cli: GLYPHH_LOOP, loop: chat.loop || GLYPHH_LOOP, title: chat.title, cwd: chat.workdir || "", mtime: touchedAtOf(chat) });
   if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
 }
 
@@ -6394,8 +5767,7 @@ function sessOpen(sess: RailSession): void {
   if (!(window as unknown as { __wbFrontAgentSeat?: () => boolean }).__wbFrontAgentSeat?.()) {
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
   }
-  (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
-    .__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: sess.id, agentId: agent.id, cli: sess.cli });
+  void adoptCliSession({ agentName: agent.name, sessionId: sess.id, agentId: agent.id, cli: sess.cli });
 }
 
 let sessMenuEl: HTMLDivElement | null = null;
@@ -6523,7 +5895,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   // 2026-09-16, restored 2026-09-30) — in every agent window's recents.
   const filterBtn = document.createElement("button");
   filterBtn.type = "button";
-  filterBtn.className = "rail-filter-btn" + (recentsFilterActive({ locus: locusFilter }) ? " active" : "");
+  filterBtn.className = "rail-filter-btn" + (filterActive() ? " active" : "");
   filterBtn.title = "Filter by place";
   filterBtn.innerHTML = FILTER_SVG;
   filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -6531,7 +5903,7 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { onPick: (sess: RailSe
   searchWrap.appendChild(filterBtn);
   const onFilter = (): void => {
     if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; }
-    filterBtn.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+    filterBtn.classList.toggle("active", filterActive());
     paint();
   };
   document.addEventListener("glyphh:loop-filter-changed", onFilter);
@@ -6675,7 +6047,6 @@ async function loadRecentApps(): Promise<void> {
   } catch { railApps = []; railLayouts = []; railRecentTs = {}; renderRecentApps(); }
   // Icons land async (Pipedream catalog + OS file icons), then re-render —
   // same as the palette / Apps page.
-  void primeConnectedIcons(railApps as never, renderRecentApps);
   void primeNativeIcons(railApps as never, renderRecentApps);
 }
 
@@ -6717,7 +6088,8 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
   list.appendChild(btn);
 }
 
-/** A workspace tile's menu: Delete (the standard confirm). */
+/** A workspace tile's menu: Edit (how it opens, its agents' loop, face and
+ *  route) and Delete (the standard confirm). */
 function openWorkspaceTileMenu(x: number, y: number, name: string): void {
   document.querySelector(".ws-tile-menu")?.remove();
   const m = document.createElement("div");
@@ -6726,6 +6098,12 @@ function openWorkspaceTileMenu(x: number, y: number, name: string): void {
   m.style.left = `${x}px`;
   m.style.top = `${y}px`;
   m.style.zIndex = "10040";
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "code-menu-item";
+  edit.textContent = "Edit workspace…";
+  edit.addEventListener("click", () => { m.remove(); void openEditWorkspaceModal(name); });
+  m.appendChild(edit);
   const del = document.createElement("button");
   del.type = "button";
   del.className = "code-menu-item danger";
@@ -6883,7 +6261,7 @@ function initRailApps(): void {
   // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
   el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openPlaceFilterMenu(e.currentTarget as HTMLElement); });
-  el("recent-sessions-filter")?.classList.toggle("active", recentsFilterActive({ locus: locusFilter }));
+  el("recent-sessions-filter")?.classList.toggle("active", filterActive());
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   initWorkspacesVsplit();
@@ -6907,12 +6285,9 @@ function initRailApps(): void {
   // sections open via the rail nav / settings modal now, and the trays below
   // are pure quick-launch grids.
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
-  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); void refreshBuildBadge(); });
+  document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
   // A bundle registered its tab in main (install, import, boot): the rail repaints.
-  window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); void refreshBuildBadge(); });
-  // APPS CARRY A VERSION (2026-10-07): the red count on Build. Nothing installs
-  // by default (his order, 2026-10-09: no default apps for any customer).
-  void refreshBuildBadge();
+  window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); });
 
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
@@ -7212,8 +6587,6 @@ export function initCode(): void {
     renderHistory();   // the search box follows the disclosure
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
-  void readSelfDevice();
-  window.addEventListener("focus", () => { void readSelfDevice(); });
   // ONE TYPE (his order, 2026-10-08): the face paints once at boot — there is
   // no tab to follow and nothing another document can switch.
   syncSpaceAttrs();
@@ -7223,6 +6596,8 @@ export function initCode(): void {
     .onPreferenceChanged?.((key, value) => {
       // Settings → General's default model moved: the next session starts on it.
       if (key === "defaultModel") { defaultModelPref = String(value || "") || null; try { paintModelChip(); } catch { /* */ } return; }
+      // Settings › General's default loop and gateway: a session with no loop of its own follows.
+      if (key === DEFAULT_LOOP_PREF || key === CLI_GATEWAY_PREF) { void refreshLoops(); return; }
       // Another panel turned the effort dial: this chip follows.
       if (key === EFFORT_PREF) { if (isEffort(value)) { effort = value; try { paintLevelChip(); } catch { /* */ } } }
     });
@@ -7457,10 +6832,8 @@ export function initCode(): void {
   // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
   // "Edit with <loop>"): loop + folder are held for the session the first send
   // creates; the prompt waits in the composer for the user to send.
-  (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }) => void }).__glyphhOpenSessionWith = (o) => {
+  (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void }).__glyphhOpenSessionWith = (o) => {
     newSessionInPlace();
-    // The New app door (Build › Apps › Add): the next turn carries the app contract.
-    if (o.appBuild) armAppBuildDoor();
     if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
     const put = (tries = 0): void => {
       const ta = input();
@@ -7523,54 +6896,19 @@ export function initCode(): void {
     paintCw();
     void checkWorkdirGate();
   });
-  // Restore the workspace source pick, then mount the chip above the composer.
+  // Restore the workspace source pick (a folder on this machine).
   void window.glyphh.getPreference?.(SOURCE_PREF, null).then((sc) => {
-    const coerce = (v: unknown): Source | null => {
-      if (!v || typeof v !== "object") return null;
-      const s = v as Source;
-      // The cloud fields ride the stored pick too (his report, 2026-10-05):
-      // the base branch, the whole selection and the environment.
-      const envId = (s as { environmentId?: unknown }).environmentId;
-      const env = typeof envId === "string" && envId ? { environmentId: envId } : {};
-      if (s.kind === "cloud-repo" && s.repo) {
-        const ps = picksOf(s);
-        return { kind: "cloud-repo", repo: String(s.repo), ...(s.branch ? { branch: String(s.branch) } : {}), ...(ps.length ? { repos: ps } : {}), ...env };
-      }
-      if (s.kind === "local" && s.path) return { kind: "local", path: String(s.path), ...(s.machineId ? { machineId: s.machineId } : {}) };
-      if (s.kind === "cloud-new") return { kind: "cloud-new", ...env };
-      return null;
-    };
-    const cc = coerce(sc); if (cc) pendingSource = cc;
-    // DEFAULT RESOLUTION — the user's own MACHINE wins where one exists: on
-    // the desktop this process IS the machine; on web only an ATTACHED desktop
-    // counts (no machine → cloud-new stays). An EXPLICIT stored pick — cloud
-    // or local — is always respected: the default applies only when the user
-    // has never picked. The resolved default also backs forgetCurrentSession,
-    // so a closed session falls back to the machine, not to cloud.
+    const stored = sc && typeof sc === "object" ? sc as Source : null;
+    const cc: Source | null = stored?.kind === "local" && stored.path ? { kind: "local", path: String(stored.path) } : null;
+    if (cc) pendingSource = cc;
+    // DEFAULT RESOLUTION: this machine's last-used working folder. An explicit
+    // stored pick is always respected; the default applies only when the user
+    // has never picked. The resolved default also backs forgetCurrentSession.
     void (async () => {
-      let local: Source | null = null;
-      if (!onWebTarget()) {
-        // Seed the machine's last-used working folder; none yet → an empty
-        // path flows through the workdir gate / home-dir default, exactly
-        // like a hand-picked machine with no folder.
-        const dir = (await wb()?.getCwdExplicit?.().catch(() => null)) || "";
-        local = { kind: "local", path: dir };
-      } else {
-        try {
-          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean; machines?: GrantedMachine[] }> } } }).glyphhSdk?.attach?.status?.();
-          // THE DEFAULT PLACE (session-locus.ts): the attached desktop when
-          // there is one, the cloud when none is — AND THE DEFAULT FOLDER
-          // (his report, 2026-10-04: "a new web session does not default to a
-          // folder"): a folder that desktop granted, the last used one first,
-          // so the chip names the folder the turn will actually run in. A
-          // local source with no path ran nowhere the relay would allow while
-          // the chip showed the desktop's own cwd.
-          if (defaultLocus("web", !!st?.attached) === "local") {
-            local = { kind: "local", path: defaultWebFolder({ machines: st?.machines ?? [], recents: recentDesktopFolders() }) };
-          }
-        } catch { /* stays cloud */ }
-      }
-      if (!local) return;
+      // None yet → an empty path flows through the workdir gate / home-dir
+      // default, exactly like a hand-picked folder-less source.
+      const dir = (await wb()?.getCwdExplicit?.().catch(() => null)) || "";
+      const local: Source = { kind: "local", path: dir };
       resolvedDefaultSource = { ...local };
       // Apply only where the DEFAULT is in play: no stored pick, and the user
       // hasn't picked something else while we resolved.
@@ -7580,7 +6918,6 @@ export function initCode(): void {
         paintSourceDependents();
       }
     })();
-    mountSourceChip();
     paintSourceDependents();
   });
   void window.glyphh.getPreference?.(LAST_SESSION_PREF, "").then((lco) => {
@@ -8073,7 +7410,6 @@ export function initCode(): void {
     await refreshModelList();
     // Cold start can race auth: an empty catalog gets one quiet retry.
     if (!availModels.length) setTimeout(() => void refreshModelList(), 2500);
-    void refreshSpend(true);
   })();
   const ta = input();
   ta?.addEventListener("keydown", (e) => {
@@ -8201,6 +7537,10 @@ export function initCode(): void {
   };
   void liveApi.glyphhLiveList?.().then(takeLive).catch(() => {});
   liveApi.onGlyphhLive?.(takeLive);
+  // A turn typed in a CLI itself lands in its own store: the recents follow.
+  window.glyphh.onCliSessionsChanged?.(() => scheduleRailSessionsRefresh());
+  // A loop turned on or off in Settings: the chips, the filter and the recents follow.
+  window.glyphh.onCliAgentsChanged?.(() => { void refreshLoops(); scheduleRailSessionsRefresh(); });
 }
 
 /**

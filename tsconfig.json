@@ -23,6 +23,9 @@
       "@glyphh/sdk/loop": [
         "./node_modules/@glyphh/sdk/dist/loop.d.ts"
       ],
+      "@glyphh/sdk/router": [
+        "./node_modules/@glyphh/sdk/dist/router.d.ts"
+      ],
       "@glyphh/sdk/slides": [
         "./node_modules/@glyphh/sdk/dist/slides.d.ts"
       ]

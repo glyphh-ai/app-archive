@@ -8,35 +8,35 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   plusCapsOf, plusMenuRows, manageTargetOf, readSkillRows, toggleSkill, readConnectorRows, toggleConnector,
-  readDeviceRows, readMemoryState, toggleMemory, MEMORY_PREFS, ATTACH_LABEL, ATTACH_SHORTCUT, PLUS_ICONS,
+  readMemoryState, toggleMemory, MEMORY_PREFS, ATTACH_LABEL, ATTACH_SHORTCUT, PLUS_ICONS,
   type PlusApi, type PlusState,
 } from "../../src/renderer/help/composer-plus.js";
 
 /** The desktop preload serves every door; the web's contract has no native picker. */
-const DESKTOP_HAS = new Set(["glyphhPickAttachments", "pickWorkingDir", "skillsList", "skillSetEnabled", "connectionsList", "mcpConnectionsList", "mcpConnectionsUpdate", "attachDevicesList", "getPreference", "setPreference"]);
-const WEB_HAS = new Set(["skillsList", "skillSetEnabled", "connectionsList", "mcpConnectionsList", "mcpConnectionsUpdate", "attachDevicesList", "getPreference", "setPreference"]);
+const DESKTOP_HAS = new Set(["glyphhPickAttachments", "pickWorkingDir", "skillsList", "skillSetEnabled", "mcpConnectionsList", "mcpConnectionsUpdate", "getPreference", "setPreference"]);
+const WEB_HAS = new Set(["skillsList", "skillSetEnabled", "mcpConnectionsList", "mcpConnectionsUpdate", "getPreference", "setPreference"]);
 const desktop = plusCapsOf((n) => DESKTOP_HAS.has(n));
 const web = plusCapsOf((n) => WEB_HAS.has(n));
 const st = (over: Partial<PlusState> = {}): PlusState => ({ surface: "desktop", space: "code", memoryOn: true, ...over });
 
 describe("the rows, per surface", () => {
-  it("desktop: attach ⌘U, Skills › Connectors › Devices ›, Memory ✓ — each with an icon — then the folder family", () => {
+  it("desktop: attach ⌘U, Skills › Connectors ›, Memory ✓ — each with an icon — then the folder family", () => {
     const rows = plusMenuRows(desktop, st());
-    expect(rows.slice(0, 5).map((r) => r.id)).toEqual(["attach", "skills", "connectors", "devices", "memory"]);
+    expect(rows.slice(0, 4).map((r) => r.id)).toEqual(["attach", "skills", "connectors", "memory"]);
     for (const r of rows) expect(r.icon).toMatch(/^<svg/);
     expect(rows[0]).toMatchObject({ label: ATTACH_LABEL, shortcut: ATTACH_SHORTCUT, kind: "action" });
-    expect(rows.filter((r) => r.kind === "submenu").map((r) => r.label)).toEqual(["Skills", "Connectors", "Devices"]);
-    expect(rows[4]).toMatchObject({ kind: "check", checked: true });
+    expect(rows.filter((r) => r.kind === "submenu").map((r) => r.label)).toEqual(["Skills", "Connectors"]);
+    expect(rows[3]).toMatchObject({ kind: "check", checked: true });
   });
   it("desktop: the folder family behind the OS pickers (one type since 2026-10-08)", () => {
     const rows = plusMenuRows(desktop, st({ workingFolder: "app" }));
-    expect(rows.map((r) => r.id)).toEqual(["attach", "skills", "connectors", "devices", "memory", "add-folder", "working-folder", "choose-folder"]);
+    expect(rows.map((r) => r.id)).toEqual(["attach", "skills", "connectors", "memory", "add-folder", "working-folder", "choose-folder"]);
     expect(rows.find((r) => r.id === "working-folder")?.label).toBe("Working folder: app");
     expect(rows.filter((r) => r.desktopOnly).every((r) => r.codeOnly)).toBe(true);
   });
   it("the web never lists a native row — no attach picker, no folder rows, even in Code", () => {
     const rows = plusMenuRows(web, st({ surface: "web" }));
-    expect(rows.map((r) => r.id)).toEqual(["skills", "connectors", "devices", "memory"]);
+    expect(rows.map((r) => r.id)).toEqual(["skills", "connectors", "memory"]);
     expect(rows.some((r) => r.desktopOnly)).toBe(false);
     expect(rows[0].sepBefore).toBe(false);
   });
@@ -52,16 +52,14 @@ describe("the rows, per surface", () => {
 });
 
 describe("where Manage goes", () => {
-  it("desktop: Skills + Connectors are the Build page's tabs too (his order, 2026-10-07); Devices + Memory stay settings pages", () => {
+  it("desktop: Skills + Connectors are the Build page's tabs too (his order, 2026-10-07); Memory stays a settings page", () => {
     expect(manageTargetOf("desktop", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
     expect(manageTargetOf("desktop", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
-    expect(manageTargetOf("desktop", "devices")).toEqual({ kind: "settings", sub: "devices" });
     expect(manageTargetOf("desktop", "memory")).toEqual({ kind: "settings", sub: "memory" });
   });
-  it("web: Skills + Connectors are the Build page's tabs; Devices + Memory stay settings pages", () => {
+  it("web: Skills + Connectors are the Build page's tabs; Memory stays a settings page", () => {
     expect(manageTargetOf("web", "skills")).toEqual({ kind: "group", group: "customize", sub: "skills" });
     expect(manageTargetOf("web", "connectors")).toEqual({ kind: "group", group: "customize", sub: "connections-cfg" });
-    expect(manageTargetOf("web", "devices")).toEqual({ kind: "settings", sub: "devices" });
     expect(manageTargetOf("web", "memory")).toEqual({ kind: "settings", sub: "memory" });
   });
 });
@@ -88,54 +86,34 @@ describe("Skills › — the member's skills, toggled through skillSetEnabled", 
   });
 });
 
-describe("Connectors › — the Connections page's two reads, one switch", () => {
+describe("Connectors › — the custom MCP servers, one switch each", () => {
   const api: PlusApi = {
-    connectionsList: vi.fn(async () => ({ ok: true, connections: [
-      { id: "c1", appSlug: "gmail", appName: "Gmail", connected: true },
-      { id: "c2", appSlug: "slack", appName: "Slack", label: "Acme Slack", connected: false, org: true },
-      { id: "c3", appSlug: "linear-mcp", appName: "Linear (shadowed)" },
-    ] })),
     mcpConnectionsList: vi.fn(async () => ({ ok: true, connections: [
       { slug: "linear-mcp", name: "Linear", enabled: true },
-      { slug: "org-tools", name: "Org tools", enabled: true, kind: "org" },
+      { slug: "docs", name: "Docs", enabled: false },
     ] })),
     mcpConnectionsUpdate: vi.fn(async () => ({ ok: true })),
   };
-  it("accounts + custom servers, by name; a server shadows an account of the same slug", async () => {
+  it("the servers, by name, each on or off", async () => {
     const rows = await readConnectorRows(api);
-    expect(rows.map((r) => [r.name, r.kind, r.on])).toEqual([
-      ["Acme Slack", "account", false], ["Gmail", "account", true], ["Linear", "mcp", true], ["Org tools", "mcp", true],
-    ]);
+    expect(rows.map((r) => [r.name, r.slug, r.on])).toEqual([["Docs", "docs", false], ["Linear", "linear-mcp", true]]);
   });
-  it("a custom server toggles through mcpConnectionsUpdate; an account or an org server does not", async () => {
+  it("a server toggles through mcpConnectionsUpdate", async () => {
     const rows = await readConnectorRows(api);
     const linear = rows.find((r) => r.slug === "linear-mcp")!;
     expect((await toggleConnector(api, linear, false)).ok).toBe(true);
     expect(api.mcpConnectionsUpdate).toHaveBeenCalledWith("linear-mcp", { enabled: false });
-    expect((await toggleConnector(api, rows.find((r) => r.slug === "gmail")!, false)).ok).toBe(false);
-    expect((await toggleConnector(api, rows.find((r) => r.slug === "org-tools")!, false)).ok).toBe(false);
     expect(api.mcpConnectionsUpdate).toHaveBeenCalledTimes(1);
   });
-  it("a host with neither read lists nothing", async () => {
+  it("a host without the switch refuses; a failing switch reads as an error", async () => {
+    const rows = await readConnectorRows(api);
+    expect((await toggleConnector({}, rows[0], true)).ok).toBe(false);
+    const res = await toggleConnector({ mcpConnectionsUpdate: async () => { throw new Error("down"); } }, rows[0], true);
+    expect(res).toEqual({ ok: false, error: "down" });
+  });
+  it("a host without the read lists nothing; a failing read lists nothing", async () => {
     expect(await readConnectorRows({})).toEqual([]);
-  });
-});
-
-describe("Devices › — the Devices page's read", () => {
-  it("attached machines first, then the ones disconnected from the web", async () => {
-    const api: PlusApi = { attachDevicesList: async () => ({
-      source: "devices", allowed: true,
-      devices: [{ id: "m1", device: "d1", name: "Chris's MacBook", app: "glyphh-desktop", version: "1.4.19", since: 1 }],
-      blocked: [{ device: "d2", name: "Old iMac", app: "glyphh-cli", disconnectedAt: 2 }],
-    }) };
-    expect(await readDeviceRows(api)).toEqual([
-      { machineId: "m1", name: "Chris's MacBook", app: "glyphh-desktop", state: "attached" },
-      { machineId: "d2", name: "Old iMac", app: "glyphh-cli", state: "disconnected" },
-    ]);
-  });
-  it("the status fallback reads too; no door reads empty", async () => {
-    expect(await readDeviceRows({ attachDevicesList: async () => ({ source: "status", devices: [{ id: "m9", name: "Studio" }], blocked: [] }) })).toMatchObject([{ machineId: "m9", name: "Studio", state: "attached" }]);
-    expect(await readDeviceRows({})).toEqual([]);
+    expect(await readConnectorRows({ mcpConnectionsList: async () => { throw new Error("down"); } })).toEqual([]);
   });
 });
 
@@ -166,20 +144,22 @@ describe("Memory ✓ — the member's preference (there is no per-session flag)"
 
 
 describe("connector rows wear the Connections page's logos (his order, 2026-10-06)", () => {
-  it("an account row builds its icon from the connection (logo once cached, else the initial); a custom server from its iconUrl", async () => {
+  it("a server with an iconUrl wears it; one without wears its monogram", async () => {
     vi.stubGlobal("window", {});   // the icon helper reads the API base off window; none here
     const { readConnectorRows } = await import("../../src/renderer/help/composer-plus");
     const api = {
-      connectionsList: async () => ({ ok: true, connections: [{ id: "c1", appSlug: "gmail", appName: "Gmail", connected: true, accountId: "apn_1" }] }),
-      mcpConnectionsList: async () => ({ ok: true, connections: [{ slug: "miro", name: "Miro Developer App", enabled: true, iconUrl: "https://cdn/miro.png" }] }),
+      mcpConnectionsList: async () => ({ ok: true, connections: [
+        { slug: "miro", name: "Miro Developer App", enabled: true, iconUrl: "https://cdn/miro.png" },
+        { slug: "docs", name: "Docs", enabled: true, iconUrl: null },
+      ] }),
     };
     const rows = await readConnectorRows(api as never);
-    const gmail = rows.find((r) => r.key === "pd:c1")!;
     const miro = rows.find((r) => r.key === "mcp:miro")!;
-    expect(gmail.prime).toEqual({ accountId: "apn_1", pipedreamSlug: "gmail" });
-    expect(gmail.icon).toMatch(/drop-icon-initial|<img/);
+    const docs = rows.find((r) => r.key === "mcp:docs")!;
     expect(miro.icon).toContain("<img");
     expect(miro.icon).toContain("cdn/miro.png");
+    expect(docs.icon).toContain("drop-icon-initial");
+    expect(docs.icon).not.toContain("<img");
     vi.unstubAllGlobals();
   });
 });

@@ -1,23 +1,18 @@
 /**
  * agent-ipc.ts — THE AGENT PANEL'S SEAM: the chat store on disk, and the
- * `glyphh-agent-*` channels the renderer has always spoken.
+ * `glyphh-agent-*` channels the renderer speaks.
  *
- * This was glyphh-cli-bridge.ts, which spawned a vendor CLI per chat and
- * translated its stream. That whole lane is gone (his order, 2026-09-28: "all
- * the bridge code goes period... Everything centers back to a single agent loop
- * in glyphh that can have multiple instances, no cli switching etc"). So every
- * turn on every chat now runs on the Glyphh loop (glyphh-loop.ts), and what
- * stays here is what was never about CLIs:
- *
- *   THE CHAT STORE — chats and their turns in the signed-in user's own folder,
- *                    merged by id so several panels (and the terminal) can
- *                    write it, watched so another writer repaints the rail.
+ *   THE CHAT STORE — chats and their turns in the user's own folder, merged
+ *                    by id so several panels (and the terminal) can write it,
+ *                    watched so another writer repaints the rail.
  *   THE CHANNELS   — run / stop / permission / approvals / attachments /
- *                    context / compaction / load / save.
+ *                    context / compaction / load / save, and the CLI session
+ *                    bindings (bind / session-of / transcript).
  *
- * A chat is a thread of ours, not a vendor session: its id IS the session id,
- * which is why the >_ hop can open `glyphh --resume <chatId>` on the same
- * conversation.
+ * A turn runs on the chat's LOOP: Glyphh's own (glyphh-loop.ts, the default)
+ * or a vendor CLI (glyphh-cli-bridge.ts). A chat is a thread of ours either
+ * way: on the Glyphh loop its id IS the session id (the >_ hop opens
+ * `glyphh --resume <chatId>`); on a CLI it binds that CLI's own session.
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
@@ -28,13 +23,17 @@ import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer } from "./local-mcp-server.js";
 import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
-// The server's copy of every local thread (his rule, 2026-10-04): each write
-// here publishes the index + the new messages (thread-publish.ts).
-import { noteThreadsSaved, noteThreadDeleted, noteThreadsRepaired, threadsList, threadsGet, threadsPush, threadsDelete } from "./thread-publish.js";
-import { repairChatStore, mergeChats } from "./chat-store-repair.js";
-import type { PushThreadInput } from "@glyphh/sdk";
+import { DEFAULT_LOOP, isCliId } from "./cli-ids.js";
+import { agentRowFor } from "./cli-agents.js";
+import type { RouteHints } from "./cli-route.js";
+import { cliTranscript } from "./cli-sessions.js";
+import { startCliSessionWatch } from "./cli-session-watch.js";
 import {
-  compactGlyphhLoop, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
+  bindCliSession, cliChatKnown, cliChatUsage, cliSessionOf, isCliApproval, respondCliApproval, runCliTurn, setCliPermission, stopCliChat,
+} from "./glyphh-cli-bridge.js";
+import { repairChatStore, mergeChats } from "./chat-store-repair.js";
+import {
+  compactGlyphhLoop, glyphhLoopHas, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
   runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop, type LoopPermission,
 } from "./glyphh-loop.js";
 
@@ -94,8 +93,7 @@ function adoptLegacySessions(): void {
 }
 
 /** A store the sync loop bloated (2026-10-04) is repaired once on load, before
- *  any of it crosses IPC, and the publisher is told to replace those threads
- *  on the server. */
+ *  any of it crosses IPC. */
 let repairedFile = "";
 function loadSessionsFile(): SessionsSnapshot {
   adoptLegacySessions();
@@ -108,7 +106,6 @@ function loadSessionsFile(): SessionsSnapshot {
     writeFileSync(sessionsFile(), JSON.stringify({ chats: r.chats, currentId: snap.currentId }), "utf-8");
     try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* announced by the watcher then */ }
   } catch { /* the in-memory copy is repaired either way */ }
-  noteThreadsRepaired(r.repaired);
   return { ...snap, chats: r.chats };
 }
 
@@ -153,10 +150,6 @@ function saveSessionsFile(snap: SessionsSnapshot, from?: WebContents): void {
       if (wc.isDestroyed() || (from && wc.id === from.id)) continue;
       wc.send("glyphh-sessions-updated", { deleted });
     }
-    // THE SERVER HEARS EVERY WRITE: the index and the new messages of each
-    // local thread ride up (debounced); a deleted id is tombstoned there.
-    for (const id of deleted) noteThreadDeleted(id);
-    noteThreadsSaved();
   } catch { /* a failed save loses nothing but the recents ordering */ }
 }
 
@@ -262,6 +255,23 @@ export interface RunPayload {
   mode?: string;
   /** The composer's effort dial; glyphh-loop.ts checks it against the SDK's names. */
   effort?: string;
+  /** The chat's LOOP: "glyphh" (the default when absent) or a vendor CLI's id.
+   *  A loop that is unknown or turned off is refused, never rerouted. */
+  loop?: string;
+  /** The chat's persisted session on that CLI (`cliSessionIds[loop]`), so the
+   *  first turn after a restart resumes instead of starting fresh. */
+  cliSessionId?: string;
+  /** Where the CLI's route was chosen (session → workspace cell → workspace). */
+  route?: RouteHints;
+}
+
+/** Tell the sender a turn was refused before it started: an error, then done. */
+function refuse(sender: WebContents, chatId: string, error: string): { runId: string } {
+  const runId = `${chatId}:${Date.now()}`;
+  try {
+    if (!sender.isDestroyed()) { sender.send("glyphh-agent:error", { runId, error }); sender.send("glyphh-agent:done", { runId, stopped: true }); }
+  } catch { /* window gone */ }
+  return { runId };
 }
 
 /** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
@@ -287,6 +297,28 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload): Promise<
   const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
   const steer = String(p.steer ?? "").trim();
   const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
+  const loop = String(p.loop ?? "").trim() || DEFAULT_LOOP;
+  const row = isCliId(loop) ? agentRowFor(loop) : null;
+  // NEVER A SILENT REROUTE: a turn on a loop that does not exist, or that the
+  // member turned off, is refused in words — never run on some other loop.
+  if (!row) {
+    console.warn("[agent] unknown loop refused", JSON.stringify({ chatId: p.chatId, loop }));
+    return refuse(sender, p.chatId, `There is no "${loop}" loop. Pick another loop for this session.`);
+  }
+  if (!row.enabled) return refuse(sender, p.chatId, `The ${row.name} loop is turned off in Settings. Turn it on there, or pick another loop for this session.`);
+  if (row.cli !== "glyphh") {
+    // A launch that cannot come up (the router's listener, a spawn) is said in
+    // the panel like any other failed turn.
+    return runCliTurn(sender, {
+      chatId: p.chatId, row, text, history: chat?.messages ?? [], workdir: folder,
+      permission: p.permission ?? "ask",
+      ...(p.model ? { model: p.model } : {}),
+      ...(p.effort ? { effort: p.effort } : {}),
+      ...(p.attachments?.length ? { attachments: p.attachments } : {}),
+      ...(p.route ? { route: p.route } : {}),
+      ...(p.cliSessionId ? { cliSessionId: p.cliSessionId } : {}),
+    }).catch((err: unknown) => refuse(sender, p.chatId, `${row.name} could not start: ${err instanceof Error ? err.message : String(err)}`));
+  }
   return runGlyphhLoopTurn(sender, {
     chatId: p.chatId,
     ...(p.permission ? { permission: p.permission } : {}),
@@ -332,15 +364,22 @@ export function commitBackgroundTurn(chatId: string, text: string): void {
   }
 }
 
+// The panel's controls go to whichever engine holds the chat: our own loop
+// when it knows the chat, else the CLI bridge.
+
 export function stopAgentChat(chatId: string): boolean {
-  return chatId ? stopGlyphhLoop(chatId) : false;
+  if (!chatId) return false;
+  if (glyphhLoopHas(chatId) && stopGlyphhLoop(chatId)) return true;
+  return stopCliChat(chatId);
 }
 
 export function setAgentPermission(chatId: string, permission: LoopPermission): boolean {
-  return setGlyphhLoopPermission(chatId, permission);
+  if (setCliPermission(chatId, permission)) return true;
+  return glyphhLoopHas(chatId) && setGlyphhLoopPermission(chatId, permission);
 }
 
 export function respondAgentApproval(id: string, allow: boolean): boolean {
+  if (isCliApproval(id)) return respondCliApproval(id, allow);
   if (!isGlyphhApproval(id)) return false;
   return respondGlyphhApproval(id, allow);
 }
@@ -364,7 +403,8 @@ export function registerAgentIpc(): void {
   ipcMain.handle("glyphh-agent-connect-respond", () => false);
 
   ipcMain.handle("glyphh-agent-context-usage", (_e, p: { chatId: string }) => {
-    const u = glyphhLoopUsage(p?.chatId ?? "");
+    const chatId = p?.chatId ?? "";
+    const u = cliChatUsage(chatId) ?? glyphhLoopUsage(chatId);
     // Cached prompt tokens are billed too, at cache rates, and they sit in the
     // window like any other (his question, 2026-09-19).
     const tokens = u.inTokens + u.outTokens + u.cacheRead;
@@ -372,10 +412,13 @@ export function registerAgentIpc(): void {
     return { tokens, budget, ratio: Math.min(1, tokens / budget), foldAt: 0.8, lanes: [] };
   });
 
-  // COMPACTION IS OURS NOW (it used to be "open the Terminal and /compact",
-  // because the bridge had no conversation of its own to summarize).
-  ipcMain.handle("glyphh-agent-compact", async (_e, p: { chatId?: string }) => {
-    const r = await compactGlyphhLoop(String(p?.chatId ?? ""));
+  // COMPACTION: our loop summarizes its own conversation; a CLI owns its
+  // session, so it compacts there, with its own /compact.
+  ipcMain.handle("glyphh-agent-compact", async (_e, p: { chatId?: string; loop?: string }) => {
+    const chatId = String(p?.chatId ?? "");
+    const onCli = (p?.loop && p.loop !== DEFAULT_LOOP) || (!glyphhLoopHas(chatId) && cliChatKnown(chatId));
+    if (onCli) return { ok: false, reason: "This session runs on its CLI, which compacts its own conversation: open the terminal (>_) and type /compact." };
+    const r = await compactGlyphhLoop(chatId);
     return r.ok ? { ok: true } : { ok: false, reason: r.error };
   });
   ipcMain.handle("glyphh-agent-remember", () => false);
@@ -384,24 +427,32 @@ export function registerAgentIpc(): void {
   ipcMain.handle("glyphh-agent-classify-paths", (_e, p: { paths: string[] }) => classifyPaths(p?.paths ?? []));
   ipcMain.handle("glyphh-agent-save-clipboard-image", (_e, p: { bytes: ArrayBuffer }) => saveClipboardImage(p.bytes));
 
-  // (The per-CLI session bindings are gone: THE CHAT IS THE SESSION, so there
-  //  is nothing to bind or look up — `glyphh --resume <chatId>` opens the same
-  //  conversation the panel has.)
+  // THE CHAT ⇄ TERMINAL HOP. The chat adopts a CLI session id so its next
+  // turn resumes the SAME conversation the terminal had; the terminal asks
+  // which session the chat is on. On the Glyphh loop the chat IS the session.
+  ipcMain.handle("glyphh-agent-bind-session", (_e, p: { chatId?: string; cliSessionId?: string; cli?: string }) => {
+    const cli = String(p?.cli ?? "claude");
+    if (!isCliId(cli) || cli === "glyphh") return false;
+    return bindCliSession(String(p?.chatId ?? ""), cli, String(p?.cliSessionId ?? ""));
+  });
+  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId?: string; cli?: string }) => {
+    const chatId = String(p?.chatId ?? "");
+    const cli = String(p?.cli ?? "claude");
+    if (!chatId) return null;
+    return cli === "glyphh" ? chatId : cliSessionOf(chatId, cli);
+  });
+  // A CLI session as chat turns: the CLI's transcript IS the history, so
+  // switching views carries the conversation.
+  ipcMain.handle("glyphh-agent-transcript", (_e, p: { sessionId?: string }) => cliTranscript(String(p?.sessionId ?? "")));
 
   ipcMain.handle("glyphh-agent-sessions-load", () => {
     watchSessionsFile();
+    // Our store is half the truth; the CLIs' own stores are the other half.
+    startCliSessionWatch();
     return loadSessionsFile();
   });
   ipcMain.handle("glyphh-agent-sessions-save", (e, p: { chats: unknown[]; currentId: string | null; deleted?: string[] }) => {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null, ...(Array.isArray(p?.deleted) ? { deleted: p.deleted.map(String) } : {}) }, e.sender);
     return true;
   });
-
-  // THE SERVER'S THREADS SURFACE for the renderer's thread-store (dead ends in
-  // agent-stubs.ts until 2026-10-04): the rail lists local + cloud threads
-  // from it, and a cloud thread's transcript comes down whole (thread-publish.ts).
-  ipcMain.handle("glyphh-threads-list", () => threadsList());
-  ipcMain.handle("glyphh-threads-get", (_e: unknown, id: string) => threadsGet(String(id)));
-  ipcMain.handle("glyphh-threads-push", (_e: unknown, p: { id: string; body: PushThreadInput }) => threadsPush(String(p?.id ?? ""), p?.body));
-  ipcMain.handle("glyphh-threads-delete", (_e: unknown, id: string) => threadsDelete(String(id)));
 }

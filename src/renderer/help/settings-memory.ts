@@ -1,24 +1,16 @@
 /**
- * Settings → Memory (his order, 2026-09-19): the policy a user accepts before
- * Glyphh remembers anything, the preferences that shape it, the org's
- * overrides on top, and the door to clear it all.
- *
- * Effective = accepted AND (org says on → on; org says off → off; else the
- * user's own toggle). Main reads the same preferences and the same gates, so
- * what this page shows is what the bridge does.
+ * Settings → Memory: the switches that shape what Glyphh remembers on this
+ * machine, what it has remembered, and the door to clear it all. Main reads
+ * the same preferences (memory.ts), so what this page shows is what the loop
+ * does.
  */
-import { loadEmbeddingsSettings } from "./settings-agent.js";
 import { keepIfHost } from "./web-surface.js";
-import { planGates, invalidatePlanGates } from "./plan-gate.js";
 import { confirmAction } from "./shared.js";
 import { toastOk } from "./toast.js";
 import { createGlyphhSpinner } from "../glyphh-spinner.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const notice = (msg: string): void => { toastOk(msg); };
-
-type Rule = "member" | "on" | "off";
-interface MemoryPolicy { inject?: Rule; capture?: Rule; sensitive?: Rule }
 
 const PREFS = { inject: "memoryInject", capture: "memoryCapture", sensitive: "memorySensitive" } as const;
 const DEFAULTS: Record<keyof typeof PREFS, boolean> = { inject: true, capture: true, sensitive: false };
@@ -30,42 +22,12 @@ export async function loadMemorySettings(): Promise<void> {
     memoryStats?: () => Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>;
     memoryClear?: () => Promise<{ ok: boolean; deleted?: number; error?: string }>;
   };
-  invalidatePlanGates();
-  const gates = await planGates() as unknown as { memoryPolicy?: MemoryPolicy };
-  const policy: MemoryPolicy = gates.memoryPolicy ?? {};
-  const accepted = !!(await g.getPreference?.("memoryPolicyAcceptedAt", ""));
-
-  const acceptBox = el<HTMLInputElement>("toggle-memory-policy");
-  const acceptDesc = el("memory-policy-desc");
-  if (acceptBox) {
-    acceptBox.checked = accepted;
-    if (acceptDesc) acceptDesc.textContent = accepted ? "Accepted. Memory follows the preferences below." : "Memory stays off until you accept.";
-    acceptBox.onchange = () => {
-      g.setPreference?.("memoryPolicyAcceptedAt", acceptBox.checked ? new Date().toISOString() : "");
-      void loadMemorySettings();
-    };
-  }
-
-  el("memory-accept-note")?.classList.toggle("hidden", accepted);
-  const note = el("memory-org-note");
-  const forced = (Object.entries(policy) as Array<[keyof typeof PREFS, Rule]>).filter(([, r]) => r === "on" || r === "off");
-  if (note) {
-    note.classList.toggle("hidden", forced.length === 0);
-    if (forced.length) note.textContent = "Your organization sets: " + forced.map(([k, r]) => `${LABEL[k]} ${r}`).join(", ") + ". Those rows follow the org.";
-  }
-
   for (const key of Object.keys(PREFS) as Array<keyof typeof PREFS>) {
     const box = el<HTMLInputElement>(`toggle-memory-${key}`);
     if (!box) continue;
-    const rule = policy[key] ?? "member";
-    const own = await g.getPreference?.(PREFS[key], DEFAULTS[key]);
-    const value = rule === "on" ? true : rule === "off" ? false : own !== false && (own === true || DEFAULTS[key]);
-    box.checked = value;
-    box.disabled = !accepted || rule !== "member";
+    box.checked = (await g.getPreference?.(PREFS[key], DEFAULTS[key])) === true;
     box.onchange = () => { g.setPreference?.(PREFS[key], box.checked); };
   }
-
-  await loadEmbeddingsSettings();
 
   // THIS MACHINE's store (turn chunks, the curator's pages, the clear): the web
   // bridge serves none of these — the rows hide instead of reading "Nothing yet".
@@ -110,7 +72,6 @@ export async function loadMemorySettings(): Promise<void> {
   }
 }
 
-const LABEL: Record<keyof typeof PREFS, string> = { inject: "search past sessions", capture: "generate memory", sensitive: "sensitive topics" };
 
 // ── THE MEMORY BROWSER (his order, 2026-09-20): rendered like a knowledge
 // base — You, Topics, Areas, then one section per project (workspace and

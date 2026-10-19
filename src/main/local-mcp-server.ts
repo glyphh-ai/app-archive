@@ -4,11 +4,8 @@
  * directly, with no cloud round-trip. It's an alternative to the cloud relay:
  * lowest latency, no account/tier requirement, works offline.
  *
- * It exposes the SAME tool surface as the cloud relay by dispatching every
- * call through `dispatchRelayMethod` — the shared handler registry that
- * `relay-handlers.ts` populates. Server-only tools (Pipedream connectors, the
- * capture store) are intentionally absent: those need cloud auth the local
- * server can't provide.
+ * Every panel/RPA/layout call dispatches through `dispatchRelayMethod` — the
+ * shared handler registry that `relay-handlers.ts` populates.
  *
  * Opt-in via the `localMcpEnabled` preference (Settings > MCP > Local server).
  * Bearer-token authed against locally-stored, SHA-256-hashed tokens.
@@ -25,16 +22,12 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { UNATTENDED_MCP_PATH, withoutUnattendedTools } from "./unattended-tools.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
-import { callInstanceTool, listInstanceTools, installFolderAsInstance, listInstanceReleases, pinInstanceRelease, refuseBase64Flood, readBuildJob, waitBuildJob, logTail } from "./app-instances.js";
-import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
 import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, runSkillHeadless, scheduleForTask } from "./local-library.js";
 import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
-import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
-import { scaffoldAppFolder } from "./app-scaffold.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -517,56 +510,6 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
 
   // ── Custom MCP connections — the user's own servers, aggregated ─────
-  // ── Connected APPS (Pipedream Connect, server-executed) ──────────────
-  // The org/personal connector reach (Gmail, Slack, 3,500 more) — governed
-  // and METERED server-side; this lane just carries the call. Distinct from
-  // connections_* below, which are the user's own LOCAL custom MCP servers.
-  // NEVER THE WHOLE CATALOG (his report, 2026-09-19: "the tool list is
-  // massive for the agents"). Bare, this answers the connected APPS and a
-  // count; `app` answers one app's tools; `query` searches names and
-  // descriptions across every app. The gateway's own key hands the CLIs two
-  // search tools for the same reason; this is the local door's version.
-  mcp.tool(
-    "connector_tools",
-    "The user's CONNECTED APPS (Gmail, Slack, Google Drive — 3,500+ via the org's connections). With no arguments: the apps and how many tools each has. `app`: that app's tools with input schemas. `query`: keyword search across every app's tools (top matches). Governed server-side: this is exactly what YOU may call. Invoke with connector_call.",
-    {
-      app: z.string().optional().describe("One connection slug (e.g. gmail) — its tools, with schemas"),
-      query: z.string().optional().describe("Keywords to find tools by name or description across all apps"),
-      top_k: z.number().int().min(1).max(50).optional().describe("Max matches for a query (default 20)"),
-    },
-    async ({ app, query, top_k }) => {
-      const tools = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog();
-      const shape = (t: typeof tools[number]) => ({ app: t.slug, tool: t.name, description: t.description, inputSchema: t.inputSchema });
-      if (app) {
-        const slug = app.trim().toLowerCase();
-        return text(tools.filter((t) => t.slug.toLowerCase() === slug).map(shape));
-      }
-      if (query && query.trim()) {
-        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-        const score = (t: typeof tools[number]): number => {
-          const hay = `${t.slug} ${t.name} ${t.description ?? ""}`.toLowerCase();
-          return words.reduce((n, w) => n + (t.name.toLowerCase().includes(w) ? 3 : t.slug.toLowerCase().includes(w) ? 2 : hay.includes(w) ? 1 : 0), 0);
-        };
-        return text(tools.map((t) => ({ t, s: score(t) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, top_k ?? 20).map((x) => shape(x.t)));
-      }
-      const byApp = new Map<string, number>();
-      for (const t of tools) byApp.set(t.slug, (byApp.get(t.slug) ?? 0) + 1);
-      return text([...byApp.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([slug, count]) => ({ app: slug, tools: count, hint: `connector_tools { app: "${slug}" }` })));
-    },
-  );
-  mcp.tool(
-    "connector_call",
-    "Call one connected app's tool (from connector_tools). Executes on the Glyphh server under the org's governance — the account binding, allow-lists, and metering all apply there.",
-    {
-      app: z.string().describe("The connection slug (connector_tools 'app')"),
-      tool: z.string().describe("The tool key to invoke"),
-      props: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments per its inputSchema"),
-    },
-    async ({ app, tool, props }) => {
-      try { return text(await callConnectorTool(app, tool, props ?? {})); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
   mcp.tool(
     "connections_list_tools",
     "List the tools published by the user's CUSTOM MCP CONNECTIONS (their own servers, dialed locally). Returns [{ connection, name, description, inputSchema }]. Call one with connections_call_tool.",
@@ -665,117 +608,6 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
       mode: z.enum(["window", "screen"]).optional().describe("'window' = tiled inside one window (default); 'screen' = OS-level tiling, one window per app"),
     },
     async ({ name, mode }) => via("layouts.open", { name, mode }),
-  );
-
-  // ── Installed Glyphh apps — discover / invoke / deploy. An app is a cloud
-  //    instance (his order, 2026-10-06); the same answers the gateway's /mcp gives.
-  const cloud = async (fn: () => Promise<unknown>) => {
-    try { return text(await fn()); }
-    catch (err) { return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }; }
-  };
-  mcp.tool(
-    "app_list_tools",
-    "List the MCP tools exposed by the user's installed Glyphh apps — their org's cloud instances and their own. Returns [{ app (the instance key: the slug, or slug~user for a personal one), name, kind, status, tools: [{ name, description, inputSchema }] }]. Call this to discover what THIS user's Glyphh can do, then invoke with app_call_tool.",
-    {},
-    async () => cloud(() => listInstanceTools()),
-  );
-  mcp.tool(
-    "app_call_tool",
-    "Invoke a tool exposed by an installed Glyphh app. Pass the app key + tool name from app_list_tools and an args object matching the tool's inputSchema. Runs on the app's own cloud machine as the user.",
-    {
-      app: z.string().describe("App key — from app_list_tools"),
-      tool: z.string().describe("Tool name — from app_list_tools"),
-      args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments matching the tool's inputSchema"),
-    },
-    async ({ app, tool, args }) => cloud(() => callInstanceTool(app, tool, args || {})),
-  );
-  // ONE DOOR, BY PATH (his order, 2026-10-07; punch list 17 + 19): `dir` is a
-  // folder on this machine and the runtime zips or builds it itself — a
-  // bundle folder (manifest.json + its entry) goes up as a release at once; a
-  // project (package.json with a build script) goes up as source and the
-  // platform builds it as a JOB answered at once. `bundleBase64` is only for
-  // a small bundle handed over from outside; past 64 KB it is refused with the
-  // path door named (the base64 flood of 2026-10-07 never rides again).
-  mcp.tool(
-    "app_install",
-    "INSTALL (= Build and run) a Glyphh app as the user's cloud instance from a FOLDER ON THIS MACHINE: `dir` — the app's folder (default: this session's folder). A folder that holds manifest.json + its entry page is zipped and released as it is; a project (package.json with a build script, the Next.js static-export shape) goes up as source and the platform builds it — the answer carries `job` and `release` is null until it is ready (wait: true, the default, follows the build up to `waitSeconds`; app_build_status { job } reads it any time). Re-installing the same slug is the next release of the same instance (data, secrets and schedules kept). Returns { key, mode, release, job, log, tools, url }. NEVER read a bundle into a tool call: `bundleBase64` is only for a small bundle (< 64 KB) handed over from outside. This is not the way to author something new: skill_save makes a skill or a task.",
-    {
-      dir: z.string().optional().describe("The app's folder on this machine (absolute). Default: this session's working folder"),
-      slug: z.string().optional().describe("The app's slug — must match manifest.json's when given"),
-      kind: z.enum(["org", "personal"]).optional().describe("Which instance: the organization's (admins) or your personal one. Default: the one that exists, else org then personal"),
-      note: z.string().optional().describe("A release note, kept on the release"),
-      wait: z.boolean().optional().describe("Follow a source build to its end (default true); false answers at once with the job"),
-      waitSeconds: z.number().int().positive().max(600).optional().describe("How long to follow a build before answering with it still running (default 600)"),
-      bundleBase64: z.string().optional().describe("A SMALL .glyphh bundle (a zip) as base64, handed over from outside — under 64 KB; otherwise pass `dir`"),
-      intent: z.literal("app").optional().describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),
-    },
-    async ({ dir, slug, kind, note, wait, waitSeconds, bundleBase64 }) => {
-      if (bundleBase64) {
-        try {
-          refuseBase64Flood(bundleBase64);
-          const installed = await dispatchRelayMethod("apps.install", { bundleBase64 });
-          return text({ installed, where: WHERE.app, convert: 'wrong shape? skill_retype { slug, to: "task" | "skill" }' });
-        } catch (err) { return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true }; }
-      }
-      return cloud(async () => {
-        const out = await installFolderAsInstance(dir || getExplicitWorkingDirectory(), {
-          ...(slug ? { slug } : {}), ...(kind ? { kind } : {}), ...(note ? { note } : {}),
-          wait: wait !== false, ...(waitSeconds ? { waitMs: waitSeconds * 1000 } : {}),
-        });
-        return { ...out, where: WHERE.app, next: out.release ? "open it: panels_open { app: <slug> }; its tools are in app_list_tools" : `still building: app_build_status { job: "${out.job?.id ?? ""}" }` };
-      });
-    },
-  );
-  // THE STARTER (his order, 2026-10-07; punch list 12): the first call of an
-  // app build writes a working app into the folder, with the member's real
-  // connected-account tool names, and answers the whole spec.
-  mcp.tool(
-    "glyphh_app_scaffold",
-    "START a Glyphh app here — call this FIRST when asked to build one. Writes a working starter into a folder on this machine (manifest.json, worker.js with one handler per tool, app/ pages, next.config.mjs, package.json, SKILL.md, and CONNECTIONS.md with the member's REAL connected-account tool names) and answers the full app spec plus the next steps. Then edit it and Build and run with app_install { dir }.",
-    {
-      name: z.string().describe("The app's name"),
-      slug: z.string().optional().describe("The folder and instance slug (lowercase [a-z0-9_-]); default: from the name"),
-      dir: z.string().optional().describe("Where to write it: under this session's folder by default (<folder>/<slug>), or an absolute path"),
-      description: z.string().optional().describe("One or two lines of what it does"),
-      connections: z.array(z.string()).optional().describe("Connection slugs the app works through (gmail, slack, google_calendar …)"),
-      tools: z.array(z.object({ name: z.string(), description: z.string().optional(), inputSchema: z.record(z.string(), z.unknown()).optional() })).optional().describe("The tools the app exposes to the agent; each gets a worker handler"),
-    },
-    async ({ name, slug, dir, description, connections, tools }) => cloud(async () => {
-      const catalog = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog().catch(() => getConnectorCatalog());
-      return scaffoldAppFolder({
-        name, ...(slug ? { slug } : {}), ...(dir ? { dir } : {}), ...(description ? { description } : {}),
-        connections: connections ?? [], tools: tools ?? [],
-        base: getExplicitWorkingDirectory() || "",
-        connectorTools: (app) => catalog.filter((t) => t.slug.toLowerCase() === app).map((t) => ({ name: t.name, ...(t.description ? { description: t.description } : {}), ...(t.inputSchema ? { inputSchema: t.inputSchema as Record<string, unknown> } : {}) })),
-      });
-    }),
-  );
-  mcp.tool(
-    "app_build_status",
-    "Read a Glyphh app BUILD JOB (app_install on a source folder answers one): { id, key, status: queued | building | ready | failed, log (the tail), release (once ready), error (when failed) }. `waitSeconds` follows it that long before answering.",
-    {
-      job: z.string().describe("The job id (job_…) from app_install"),
-      waitSeconds: z.number().int().positive().max(600).optional().describe("Follow the job up to this long (default: answer at once)"),
-    },
-    async ({ job, waitSeconds }) => cloud(async () => {
-      const j = waitSeconds ? await waitBuildJob(job, { timeoutMs: waitSeconds * 1000 }) : await readBuildJob(job);
-      return { ...j, log: logTail(j.log || "") };
-    }),
-  );
-  mcp.tool(
-    "app_releases",
-    "List an installed Glyphh app's releases, oldest first: [{ n, sha256, sizeBytes, note, at, by, pinned }] — `pinned` marks the one the app server serves. `app` is the instance key from app_list_tools (or the slug).",
-    { app: z.string().describe("App key — from app_list_tools (or the slug)") },
-    async ({ app }) => cloud(() => listInstanceReleases(app)),
-  );
-  mcp.tool(
-    "app_pin",
-    "PIN a release of an installed Glyphh app — rollback = pin n-1 (app_releases lists them). The app server reloads the instance on that release at once; nothing is rebuilt. Returns the instance with its `release`.",
-    {
-      app: z.string().describe("App key — from app_list_tools (or the slug)"),
-      n: z.number().int().positive().describe("The release number to pin"),
-    },
-    async ({ app, n }) => cloud(() => pinInstanceRelease(app, n)),
   );
 
   // ── The SEMANTIC STACK — every app's own vector store + knowledge graph

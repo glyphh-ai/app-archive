@@ -13,6 +13,7 @@ import { initDrip } from "./drip-ui.js";
 import { installAutofillGuard } from "./autofill-guard.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 import type { LibEnvelope } from "./help/library-types.js";
+import type { CliAgentPatch, CliAgentRow, CliId, CliOpenOverrides, CliRoute, CliRouteHints, CliSessionRow, CliTranscript, MissingCli } from "./help/cli-types.js";
 
 /** The library kinds a bundle can be: every one of them is a skill, the kind
  *  says which sort (his ruling, 2026-09-17). */
@@ -158,6 +159,8 @@ declare global {
       copyToClipboard: (text: string) => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
+      /** A generated session title's model call (main/session-title.ts). */
+      sessionTitleGenerate?: (body: { model: string; system: string; messages: Array<{ role: "user"; content: string }>; max_tokens: number; temperature: number }) => Promise<string | null>;
       // The live-run ledger and agent-panel steering (agent-live.ts).
       glyphhLiveList?: () => Promise<Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>>;
       onGlyphhLive?: (callback: (runs: Array<{ chatId: string; cliSessionId: string | null; cli: string; runId: string; senderId: number; startedAt: number }>) => void) => void;
@@ -169,7 +172,6 @@ declare global {
       onGlyphhAgentHandoff?: (callback: (d: { runId: string; chatId: string }) => void) => void;
       onAgentPanelOpenTool?: (callback: (p: { view: string; cwd?: string }) => void) => void;
       onAgentPanelCommand?: (callback: (cmd: unknown) => void) => void;
-      agentDockIgnoreMouse?: (ignore: boolean) => void;
       agentDockCaptureTarget?: () => Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>;
       micAccessStatus?: () => Promise<{ status: string; error?: string }>;
       micOpenSettings?: () => Promise<{ ok: boolean }>;
@@ -189,14 +191,7 @@ declare global {
         execPath?: string | null; appArchetype?: string | null;
         launchConfig?: Record<string, unknown> | null;
       }) => Promise<{ ok: boolean; error?: string }>;
-      glyphhAppPreviewOpen: (slug: string, previewWcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>;
-      glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
-      appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; limitUsd: number | null; limitSource: "member" | "team" | "organization" | null; mySpentUsd: number; poolUsd: number; poolSpentUsd: number; poolRemainingUsd: number; poolSource: "member" | "team" | "org"; planUsd: number; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
-      // `userId` narrows to one member (org_admin only); "" = the caller's scope.
-      usageSeries: (days: number, groupBy: string, userId?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       homeGotoSection: (section: string) => Promise<{ ok: boolean }>;
       onGotoSection: (cb: (section: string) => void) => void;
       onPrefsReady: (cb: () => void) => void;
@@ -206,20 +201,10 @@ declare global {
       chromeImportScan: () => Promise<{ ok: boolean; installed: boolean; cookiesSupported: boolean; profiles: Array<{ dir: string; name: string; bookmarks: number; newBookmarks: number; cookieSites: number }>; error?: string }>;
       chromeImportRun: (opts: { profile?: string; cookies?: boolean }) => Promise<{ ok: boolean; tabsAdded: number; tabsSkipped: number; cookiesImported: number; cookiesFailed: number; cookieError?: string; error?: string }>;
       loopsList: () => Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>;
-      connectionsList: () => Promise<{ ok: boolean; error?: string; connections: Connection[] }>;
-      connectionRename: (id: string, label: string) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
-      connectionToolsList: (id: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
-      connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
-      connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      connectionSetEnabled?: (id: string, enabled: boolean, isOrg?: boolean) => Promise<{ ok: boolean; error?: string }>;
-      connectionSetScope?: (id: string, scope: "org" | "personal") => Promise<{ ok: boolean; error?: string }>;
-      appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
-      appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
-      appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       orgClients: () => Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>;
       orgClientCreate: (name: string) => Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;
@@ -238,14 +223,13 @@ declare global {
       marketingLinkCreate: (input: { name: string; targetUrl: string; appId?: string }) => Promise<{ ok: boolean; link?: MarketingLinkRow; error?: string }>;
       marketingLinkUpdate: (id: string, patch: { name?: string; archived?: boolean }) => Promise<{ ok: boolean; error?: string }>;
       marketingLinkDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 
       // Layouts
       layoutsList: () => Promise<Array<{ name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean }> }>>;
       layoutsOpen: (name: string) => Promise<{ ok: boolean; error?: string }>;
       layoutsSave: (name: string, panelIds: string[]) => Promise<boolean>;
       layoutsPickFolder: () => Promise<string | null>;
-      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean | { error: string }>;
+      layoutsSaveGrid: (grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last"; gateway?: "on" | "off"; type?: "work" | "code" } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; view?: "glyphh" | "cli" | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; type?: "work" | "code" | null; gateway?: "on" | "off" | null; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => Promise<boolean | { error: string }>;
       layoutsDelete: (name: string) => Promise<boolean | { error: string }>;
       pickDirectory: () => Promise<string | null>;
       pickExecutable: () => Promise<string | null>;
@@ -259,14 +243,6 @@ declare global {
       getPreference: (key: string, defaultVal?: unknown) => Promise<unknown>;
       getBackgroundMode: () => Promise<boolean>;
       setBackgroundMode: (enabled: boolean) => Promise<boolean>;
-      remoteControlGet?: () => Promise<RemoteControlView>;
-      remoteControlSetEnabled?: (enabled: boolean) => Promise<RemoteControlView>;
-      remoteControlAddFolder?: () => Promise<RemoteControlView>;
-      remoteControlRemoveFolder?: (folder: string) => Promise<RemoteControlView>;
-      onRemoteControlChanged?: (cb: (v: RemoteControlView) => void) => () => void;
-      attachDevicesList?: () => Promise<{ source: "devices" | "status"; allowed?: boolean; devices: Array<Record<string, unknown>>; blocked: Array<Record<string, unknown>> }>;
-      attachDeviceDisconnect?: (machineId: string) => Promise<{ disconnected: boolean; device?: string; hours?: number }>;
-      attachDeviceAllow?: (device: string) => Promise<{ allowed: boolean }>;
       // Notifications (help/notify.ts): the host's door for one, and the OS/browser notification it asks for.
       onNotify?: (cb: (n: { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }) => void) => () => void;
       notifyShow?: (n: { id?: string; app: string; title: string; body: string; source: "cloud" | "local"; slug?: string }) => Promise<{ shown: boolean }>;
@@ -285,14 +261,9 @@ declare global {
       logout: () => Promise<void>;
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;
-      onShowOnboarding: (callback: () => void) => void;
       onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string; tier?: string; avatarUrl?: string } | null) => void) => void;
-      onAccountLocked: (callback: (info: { status: string; upgradeUrl: string }) => void) => void;
-      onAccountUnlocked: (callback: () => void) => void;
-      recheckAccount: () => Promise<{ status: string }>;
       onFocusInput: (callback: () => void) => void;
       onPanelAppsChanged: (callback: () => void) => void;
-      onLibrarySynced?: (callback: (info: { kind: string; pulled: string[]; deleted: string[]; taken: string[] }) => void) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
       pickWorkingDir: (opts?: { asDefault?: boolean }) => Promise<string | null>;
@@ -314,22 +285,29 @@ declare global {
       dripsRunning: () => Promise<string[]>;
       // Theme
       getTheme: () => Promise<string>;
-      exportGlyphhSkill: (provider: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
       setTheme: (theme: string) => Promise<void>;
       // Account info
       getAuthStatus: () => Promise<{ authenticated: boolean; status: string; tier?: string }>;
       refreshAuth: () => Promise<{ tier: string; status: string }>;
       openExternal: (url: string) => void;
-      platformUrl: string;
-      serverUrl: string;
       discordInvite: string;
       hasMcpAccess: () => Promise<boolean>;
-      openAccountDashboard: () => void;
-      openBilling: () => void;
-      // Support
-      submitSupportTicket: (ticket: { subject: string; description: string }) => Promise<{ ok: boolean; error?: string }>;
       // Recents (rich)
-      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; effort?: "low" | "medium" | "high" | "xhigh" | "max"; source?: unknown }) => Promise<{ runId: string }>;
+      glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; mode?: "work" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; cliSessionId?: string; route?: CliRouteHints; effort?: "low" | "medium" | "high" | "xhigh" | "max"; source?: unknown }) => Promise<{ runId: string }>;
+      // The chat ⇄ terminal hop (agent-ipc.ts): a chat's session on each CLI.
+      glyphhBindCliSession: (chatId: string, cliSessionId: string, cli?: string) => Promise<boolean>;
+      glyphhCliSessionOf: (chatId: string, cli?: string) => Promise<string | null>;
+      glyphhCliTranscript: (sessionId: string) => Promise<CliTranscript>;
+      // The loops (cli-agents.ts).
+      cliAgentsList: () => Promise<{ ok: boolean; agents: CliAgentRow[]; gatewayDefault?: boolean; gatewayReady?: boolean; error?: string }>;
+      cliAgentsSave: (patch: CliAgentPatch) => Promise<{ ok: boolean; agent?: CliAgentRow; error?: string }>;
+      onCliAgentsChanged: (callback: (r: { enabled: CliId[] }) => void) => () => void;
+      cliAgentOpen: (id: CliId, overrides?: CliOpenOverrides) => Promise<{ ok: boolean; command?: string; name?: string; cwd?: string; route?: CliRoute; missing?: MissingCli; error?: string }>;
+      cliSessionsList: (limit?: number) => Promise<{ ok: boolean; sessions: CliSessionRow[]; error?: string }>;
+      cliSessionDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      onCliSessionsChanged: (callback: () => void) => () => void;
+      cliAgentsMissing: () => Promise<{ ok: boolean; missing: Record<string, MissingCli | null>; error?: string }>;
+      cliLogin: (cli: string) => Promise<{ ok: true; data: { command: string } } | { ok: false; error: string }>;
       onGlyphhAgentConnect?: (cb: (p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => void) => () => void;
       glyphhAgentConnectRespond?: (p: { id: string; connected: boolean; reason?: string }) => Promise<boolean>;
       glyphhPickAttachments: (mode?: "files" | "folder") => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
@@ -337,11 +315,6 @@ declare global {
       glyphhSaveClipboardImage: (bytes: ArrayBuffer) => Promise<{ kind: "image"; path: string; name: string }>;
       glyphhSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
       glyphhSessionsSave: (chats: unknown[], currentId: string, deleted?: string[]) => Promise<boolean>;
-      // Server threads surface (desktop transport for help/thread-store.ts).
-      threadsList?: () => Promise<Array<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number }>>;
-      threadsGet?: (id: string) => Promise<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number; messages: unknown[] }>;
-      threadsPush?: (id: string, body: { title?: string; mode?: string; source?: unknown; messages?: unknown[]; updatedAt: number }) => Promise<{ applied: boolean; thread: { id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number } }>;
-      threadsDelete?: (id: string) => Promise<void>;
       glyphhRemember: (fact: string) => Promise<boolean>;
       libraryLoopGet: (ref: string) => Promise<LibEnvelope>;
       libraryLoopCreate: (input: unknown) => Promise<LibEnvelope>;
@@ -355,8 +328,6 @@ declare global {
       skillCreate: (name: string, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillsHome: (kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillImage: (id: string, rel: string) => Promise<LibEnvelope>;
-      hubCategories: () => Promise<LibEnvelope>;
-      skillHubFiles: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillImport: (kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillGet: (id: string) => Promise<LibEnvelope>;
       skillFileRead: (id: string, rel: string) => Promise<LibEnvelope>;
@@ -366,29 +337,10 @@ declare global {
       skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) => Promise<LibEnvelope>;
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
       skillDelete: (id: string, opts?: { purge?: boolean }) => Promise<LibEnvelope>;
-      appInstanceReleases: (id: string) => Promise<LibEnvelope>;
-      skillComments: (ref: { versionId?: string; kind?: string; itemId?: string; version?: number }) => Promise<LibEnvelope>;
-      skillCommentAdd: (versionId: string, body: string) => Promise<LibEnvelope>;
-      skillLifecycle: (itemId: string, kind: string, state: "live" | "retired" | "removed", note?: string) => Promise<LibEnvelope>;
-      skillSubmitPublic: (itemId: string, kind: string, notes?: string) => Promise<LibEnvelope>;
-      skillWithdrawPublic: (itemId: string, kind: string) => Promise<LibEnvelope>;
-      libraryQueue: () => Promise<LibEnvelope>;
-      libraryDecide: (versionId: string, verdict: "approve" | "changes" | "reject", note?: string) => Promise<LibEnvelope>;
-      libraryVersionFiles: (versionId: string) => Promise<LibEnvelope>;
-      appInstancePin: (id: string, n: number) => Promise<LibEnvelope>;
-      appInstanceUpdate: (id: string) => Promise<LibEnvelope>;
-      appInstancesUpdateAll: () => Promise<LibEnvelope>;
-      appInstallFolder: (dir: string, opts?: { slug?: string; kind?: "org" | "personal"; note?: string }) => Promise<LibEnvelope>;
-      appBuildStatus: (job: string) => Promise<LibEnvelope>;
-      skillTab: (id: string, opts?: { name?: string; slug?: string }) => Promise<{ ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string }>;
       skillReveal: (id: string) => Promise<LibEnvelope>;
       skillAdopt: (id: string) => Promise<LibEnvelope>;
       skillReplace: (id: string) => Promise<LibEnvelope>;
       skillDownload: (id: string) => Promise<LibEnvelope>;
-      skillsDiscover: (kind?: SkillKind | SkillKind[]) => Promise<LibEnvelope>;
-      skillUpdates: () => Promise<LibEnvelope>;
-      skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => Promise<LibEnvelope>;
-      skillUpdate: (id: string) => Promise<LibEnvelope>;
       tasksSpecs: () => Promise<LibEnvelope>;
       taskSpec: (slug: string) => Promise<LibEnvelope>;
       taskSlotSet: (slug: string, slot: string, agentId: string | null, lane?: { model?: string | null }) => Promise<LibEnvelope>;
@@ -404,15 +356,9 @@ declare global {
       scheduleRunNow: (id: string) => Promise<{ ok: boolean; error?: string }>;
       scheduleRuns: (id: string) => Promise<LibEnvelope>;
       scheduleRecentRuns: () => Promise<LibEnvelope>;
-      skillInstall: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
-      skillPublish: (id: string, notes?: string, media?: { icon?: string | null; screenshots?: Array<{ name: string; caption?: string; dataUrl: string }> }) => Promise<LibEnvelope>;
-      skillVersions: (id: string) => Promise<LibEnvelope>;
-      skillVersionFiles: (itemId: string, version: number, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
-      platformPanelUrl: (next?: string) => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
       loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; reasoning?: boolean; freePlan?: boolean }>; error?: string }>;
-      planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;
       libraryAgentsList: () => Promise<LibEnvelope>;
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;
       libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => Promise<LibEnvelope>;
@@ -431,16 +377,6 @@ declare global {
       libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<LibEnvelope>;
       loopRoles: (loop: string, force?: boolean, context?: "local" | "cloud") => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
       loopRoleSet: (loop: string, role: string, modelId: string | null) => Promise<{ ok: boolean; loop: string; roles: LoopRoleView[] }>;
-      // Org-admin Models page.
-      workspacesList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
-      workspacesCreate: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      workspacesUpdate: (id: string, input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      workspacesDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      workspacesModelCatalog: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
-      workspacesOrgConnectors: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      workspacesOrgToolCap: () => Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>;
-      workspacesConnTools: (slug: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      workspacesAppSearch: (search: string, limit?: number) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspaceProviderKeys: (id: string) => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       workspaceProviderKeySet: (id: string, slug: string, key: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
@@ -452,14 +388,14 @@ declare global {
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
       loopSetRoleDefault: (loopId: string, role: string, modelId: string | null, model?: string | null) => Promise<{ ok: boolean; error?: string }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
-      glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
+      glyphhCompact: (chatId: string, focus: string, loop?: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: (chatId?: string) => Promise<boolean>;
       glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") => Promise<{ updated: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentThinking?: (cb: (d: { runId: string; text: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
       onGlyphhAgentError: (cb: (d: { runId: string; error: string; fix?: { kind: string; cli: string; command: string; message: string } }) => void) => void;
-      onGlyphhAgentSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;
+      onGlyphhAgentSetup: (cb: (d: { phase: string; chatId?: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string; cli?: string; route?: CliRoute; cliSessionId?: string }) => void) => void;
       onGlyphhAgentPermission: (cb: (d: { runId: string; permission: "ask" | "plan" | "acceptEdits" | "auto" }) => void) => void;
       onGlyphhAgentCredits: (cb: (d: { runId: string; usd: number }) => void) => void;
       onGlyphhAgentProgress: (cb: (d: { runId: string; inTokens: number; outTokens: number }) => void) => void;
@@ -483,24 +419,6 @@ declare global {
       }>) => void) => () => void;
       listDir: (dirPath: string) => Promise<Array<{ name: string; isDir: boolean }>>;
       openFile: (filePath: string) => void;
-      mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
-      // Connectors (Pipedream Connect)
-      connectorsGetApps: (search?: string, after?: string, category?: string) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean; next?: string; total?: number }>;
-      connectorsGetPopular: () => Promise<Array<{ id: string; name: string; description: string; icon?: string; categories?: string[]; installs: number }>>;
-      connectorsGetCategories: () => Promise<Array<{ name: string; count: number; apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }> }>>;
-      connectorsGetAccounts: () => Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>;
-      connectorsConnect?: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;
-      connectorsDisconnect: (accountId: string) => Promise<boolean>;
-      connectorsRefreshMcp: () => Promise<{ ok: boolean; error?: string; toolCount: number }>;
-      connectorsListTools: () => Promise<Array<{ slug: string; name: string; description: string }>>;
-      onConnectorsChanged: (cb: () => void) => void;
-      onConnectorsConnectProgress: (cb: (p: { phase: "verifying" | "done"; appSlug: string; ok?: boolean; error?: string }) => void) => void;
-      // Auto-update
-      onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => void;
-      updateInstall: () => void;
-      updateDownload: () => Promise<void>;
-      checkForUpdates: () => Promise<string | null>;
-      getUpdateStatus: () => Promise<{ version: string; ready: boolean; downloading: boolean } | null>;
       // Remote relay
 
       // Local MCP server (127.0.0.1)
@@ -517,10 +435,8 @@ declare global {
       // Custom MCP connections (server-side; header values write-only)
       mcpCustomAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
       mcpConnectionsList: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; url: string; headerKeys: string[]; enabled: boolean; hiddenTools: string[]; createdAt: string; kind: "personal" | "org"; iconUrl: string | null }> }>;
-      mcpConnectionsCatalog: () => Promise<{ ok: boolean; error?: string; connections: Array<{ slug: string; name: string; installed: boolean; iconUrl: string | null }> }>;
       wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => void;
       onWbAppCommand: (cb: (cmd: { action: string; app?: { slug: string; name: string; url: string; glyphh?: boolean }; apps?: Array<{ slug: string; name: string; url: string; glyphh?: boolean }>; slug?: string }) => void) => void;
-      mcpConnectionsInstall: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsCreate: (fields: { name: string; url: string; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret?: string } }) => Promise<{ ok: boolean; error?: string; connection?: { slug: string; name: string }; toolCount?: number }>;
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
       mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
@@ -571,65 +487,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// -- Update bar --
-
-const updateBar = document.getElementById("update-bar")!;
-const updateMsg = document.getElementById("update-message")!;
-const updateProgress = document.getElementById("update-progress")!;
-const updateFill = document.getElementById("update-progress-fill")!;
-const updateAction = document.getElementById("update-action")!;
-const updateDismiss = document.getElementById("update-dismiss")!;
-
-// Full-screen updating overlay — shown once the user commits to relaunching
-// (main hides the panels first so this shell overlay is visible before quit).
-const updatingOverlay = document.getElementById("updating-overlay");
-const updatingLabel = document.getElementById("updating-label");
-const updatingFill = document.getElementById("updating-fill");
-
-let shellUpdateReady = false;
-window.glyphh.onUpdateStatus(({ status, version, percent, error }) => {
-  if (status === "available") {
-    shellUpdateReady = false;
-    updateMsg.textContent = `v${version} is available`;
-    updateProgress.classList.add("hidden");
-    updateAction.textContent = "Download";
-    updateAction.classList.remove("hidden");
-    updateBar.classList.remove("hidden");
-  } else if (status === "downloading") {
-    updateProgress.classList.remove("hidden");
-    updateAction.classList.add("hidden");
-    updateMsg.textContent = `Downloading v${version}…`;
-    updateFill.style.width = `${percent || 0}%`;
-    // If the user already hit relaunch, reflect the download on the overlay.
-    if (updatingOverlay && !updatingOverlay.classList.contains("hidden") && updatingFill) {
-      updatingFill.style.width = `${percent || 0}%`;
-    }
-  } else if (status === "ready") {
-    shellUpdateReady = true;
-    updateMsg.textContent = `v${version} downloaded. It installs when you next restart.`;
-    updateProgress.classList.add("hidden");
-    updateAction.textContent = "Restart now";
-    updateAction.classList.remove("hidden");
-    updateBar.classList.remove("hidden");
-  } else if (status === "restarting") {
-    // User committed to the update — take over the whole shell so they see a
-    // clean "Updating…" screen instead of a flash of the workspace.
-    if (updatingLabel) updatingLabel.textContent = version ? `Updating to v${version}…` : "Updating…";
-    if (updatingFill) updatingFill.style.width = "100%";
-    updatingOverlay?.classList.remove("hidden");
-  } else if (status === "error") {
-    updateMsg.textContent = `Update failed: ${error || "unknown error"}`;
-  }
-});
-
-updateAction.addEventListener("click", () => {
-  if (shellUpdateReady) window.glyphh.updateInstall();
-  else void window.glyphh.updateDownload();
-});
-
-updateDismiss.addEventListener("click", () => {
-  updateBar.classList.add("hidden");
-});
 
 // -- Drip effects (extracted to drip-ui.ts) --
 initDrip();

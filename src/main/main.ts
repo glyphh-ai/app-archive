@@ -8,7 +8,6 @@
 
 import "dotenv/config";
 import { sendToHomeShell } from "./broadcast.js";
-import { ConnectorManager } from "./connectors";
 
 // Fix process.cwd() in packaged Electron apps — .asar is a file, not a directory,
 // which causes ENOTDIR when child_process.spawn inherits cwd.
@@ -41,14 +40,13 @@ import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
-import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setOrgChangeObserver, setReauthHandler, PLATFORM_URL } from "./auth";
+import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat } from "./auth";
 import { getLayoutManager, type LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { clearPreferences, getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
 import { getLocalDb } from "./local-db";
 import { SessionCache } from "./session-cache";
 import { resolveShellPath } from "./shell-path";
-import { autoUpdater } from "electron-updater";
 
 /** True if semver `latest` is strictly newer than `current` (major.minor.patch). */
 function isNewerVersion(latest: string, current: string): boolean {
@@ -65,16 +63,10 @@ import { setMainWindowRef } from "./main-window-ref";
 import { initRailCollapse } from "./screen-layout";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { installRelayHandlers } from "./relay-handlers";
-import { installPanelHost, closeAllPanels } from "./panel-host";
-import { installRelayPty, killAllRelayPtys } from "./relay-pty";
-import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installRpaMapHandlers } from "./rpa-map";
 import { installAttachHandlers } from "./attach-handlers";
-import { registerRemoteControlIpc } from "./remote-control";
 import { registerNotifyIpc } from "./notify";
-import { installAttachRunHandlers } from "./attach-run";
-import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
@@ -82,11 +74,13 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
 import { registerAgentIpc } from "./agent-ipc";
+import { registerCliAgentsIpc } from "./cli-agents";
+import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { stopCliSessionWatch } from "./cli-session-watch";
+import { stopRouterServer } from "./router-server";
 import { registerAgentLiveIpc } from "./agent-live";
-import { registerCloudRunIpc } from "./cloud-run";
-import { registerCloudFsIpc } from "./cloud-fs";
-import { registerAccountIpc } from "./account-ipc";
-import { registerAdminIpc } from "./admin-ipc";
+import { registerVoiceIpc } from "./voice-ipc";
+import { registerModelsIpc } from "./models-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
@@ -96,18 +90,14 @@ import { registerOfficeSheetsIpc } from "./office-sheets";
 import { registerDesignIpc } from "./design";
 import { registerDriveIpc } from "./drive";
 import { registerMediaPanelIpc } from "./media-panel";
-import { registerMusicPanelIpc } from "./music-panel";
-import { registerSupportIpc } from "./support-ipc";
 import { registerArtifactsIpc } from "./artifacts-ipc";
-import { registerWorkspacesIpc } from "./workspaces-ipc";
-import { getClient, SERVER_URL } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerLoopModelsIpc } from "./loop-models";
-import { registerSpendStateIpc } from "./spend-state";
 import { registerSubAgentIpc } from "./subagent-ledger";
 import { registerAgentBriefIpc } from "./agent-brief";
+import { registerSessionTitleIpc } from "./session-title";
 import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
@@ -115,11 +105,9 @@ import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
-import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
 import { registerGitIpc } from "./git-ipc";
-import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { DripManager, setDripManagerInstance } from "./drip-manager";
@@ -128,7 +116,6 @@ import { migrateFromFiles } from "./stores/migrate-from-files";
 
 
 let mainWindow: BrowserWindow | null = null;
-let connectorManager: ConnectorManager | null = null;
 let homeView: HomeView;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
@@ -239,11 +226,6 @@ async function createWindow() {
     cleanupAll();
     app.quit();
   });
-
-  // Refresh auth/tier when window regains focus (e.g. returning from billing portal)
-  mainWindow.on("focus", () => {
-    refreshHeartbeat().catch(() => {});
-  });
 }
 
 async function boot() {
@@ -254,10 +236,6 @@ async function boot() {
   // Rotate ~/.glyphh to the current vocabulary (loops→tasks, agents→loops)
   // BEFORE anything opens a directory under it. Idempotent.
   migrateGlyphhHome();
-
-  // The app data seam's desktop credential: glyphh-app webviews get the
-  // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
-  installAppSeamAuth();
 
   // Resolve real shell PATH once — Electron on macOS launched from Finder
   // inherits a sanitized PATH that breaks Homebrew/asdf/nvm tools. Cached for
@@ -391,32 +369,15 @@ async function boot() {
     setPreference("zoom", factor);
   });
 
-  // Relay panel + RPA handlers. The WebSocket itself was started earlier;
-  // handlers are looked up at request time, so registering them here is fine.
+  // Panel + RPA handlers on the shared registry the loopback MCP dispatches
+  // through; handlers are looked up at request time.
   installRelayHandlers({});
-  // panel.open/input/close/stats/webrtc — stream a real on-machine page to a
-  // web client over the attach relay (panel-host.ts). Same registry, same
-  // socket. On web + desktop-attached, an app panel renders here and streams.
-  installPanelHost();
-  // pty.open/input/resize/close — a web Terminal panel runs a live shell ON
-  // THIS MACHINE over the same relay, output streamed back as byte pushes
-  // (relay-pty.ts). Same node-pty spawn as the local workbench terminal.
-  installRelayPty();
-  // fs.cwd/listDir/read/write/gitDiff/search/watch — the web workbench's
-  // Files / Diff / Monaco panels read THIS MACHINE's working folder over the
-  // same relay, with watcher events pushed up live (relay-fs.ts).
-  installRelayFs();
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();
   installRpaMapHandlers();
-  // fs picker, native apps and the headless scrape, for loopback MCP and the attach socket.
+  // fs picker, native apps and the headless scrape, for the loopback MCP.
   installAttachHandlers();
-  // agent.run/frames/answer/stop/permission: a turn from the web or a phone runs here.
-  installAttachRunHandlers();
-  // Every handler is registered: tell the server the whole table, in case the
-  // socket opened before this point.
-  void import("./attach-host").then((m) => m.attachRefreshHello()).catch(() => undefined);
   // ONLY THE WORKBENCH THE USER SEES registers what the agent drives (his
   // report, 2026-09-29: rpa_goto "preview" said ✓ while the Browser on screen
   // never moved). An agent panel is a home.html document running the same
@@ -466,16 +427,15 @@ async function boot() {
     registerGitIpc();
     // Dead ends for every retired agent-era channel (see agent-stubs.ts).
     registerAgentStubs();
-    // The Glyphh Agent panel's engine (the Glyphh loop).
+    // The Glyphh Agent panel's engines: the Glyphh loop, and the vendor CLIs
+    // on the bridge (their loops, sessions and terminal opens).
     registerAgentIpc();
-    registerRemoteControlIpc();
+    registerGlyphhCliBridge();
+    registerCliAgentsIpc();
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
     registerNotifyIpc();
     registerAgentLiveIpc();
     installBotsIpc();
-    registerCloudRunIpc();
-    // The cloud session's Files / Diff / Editor lane (his report, 2026-10-04).
-    registerCloudFsIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -515,74 +475,8 @@ async function boot() {
   // Create window
   await createWindow();
 
-  // Account gate — the heartbeat reports the account status. When it reports
-  // the account disabled (an admin action) we lock the user out of the
-  // workspace: hide the home view and raise the lockout overlay in the renderer.
-  // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
-  // inside initAuth) can never slip past us.
-  let accountLocked = false;
-  // An org-admin change (the gateway lane, the plan, governance) lands within
-  // the minute now, and every surface that reads account state repaints with
-  // it — the rail included (his report, 2026-09-18).
-  setOrgChangeObserver(() => {
-    mainWindow?.webContents.send("account-updated", getAccountInfo());
-    const home = homeView.webContents;
-    if (home && !home.isDestroyed()) {
-      try { home.send("account-updated", getAccountInfo()); } catch { /* view swapping */ }
-    }
-  });
-  setHeartbeatObserver((hb) => {
-    // The rail's identity chip repaints from this — without it, logging out
-    // and back in as a DIFFERENT account kept showing the previous user's
-    // name for the whole app run (the renderer filled it once at boot).
-    // The rail lives in the HOME VIEW (home.html), not the main window's
-    // index.html — sending only to mainWindow meant the repaint never
-    // arrived and the chip stayed on the previous identity. Send to both.
-    mainWindow?.webContents.send("account-updated", getAccountInfo());
-    const home = homeView.webContents;
-    if (home && !home.isDestroyed()) {
-      try { home.send("account-updated", getAccountInfo()); } catch { /* view swapping */ }
-    }
-    const locked = hb.status === "disabled";
-    if (locked === accountLocked) return;
-    accountLocked = locked;
-    // Set the lock FIRST and unconditionally (independent of mainWindow
-    // timing). While locked the home view refuses to attach, so nothing can
-    // paint over the lockout overlay.
-    homeView.setLocked(locked);
-    if (locked) {
-      if (mainWindow) homeView.hide(mainWindow);
-      mainWindow?.webContents.send("account-locked", {
-        status: hb.status,
-        upgradeUrl: `${PLATFORM_URL}/billing`,
-      });
-    } else {
-      mainWindow?.webContents.send("account-unlocked");
-    }
-  });
-
-  // Lockout overlay's "Refresh" button — force a fresh heartbeat. If the
-  // account is active again the observer above fires "account-unlocked"; the
-  // renderer also uses the returned status to message a still-inactive account.
-  ipcMain.handle("recheck-account", async () => {
-    const hb = await refreshHeartbeat();
-    return { status: hb?.status ?? getAuthStatus().status };
-  });
-
-  // Session expired and couldn't be refreshed → surface the login gate instead
-  // of silently degrading (connectors/cloud-sync go dark otherwise). Reuses the
-  // onboarding overlay; signing back in mints a fresh JWT and everything that
-  // rides the token (connector catalog, heartbeat, cloud-sync) recovers.
-  setReauthHandler(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      homeView.hide(mainWindow);
-      mainWindow.webContents.send("show-onboarding");
-    }
-  });
-
-  // Initialize auth — restore session, schedule refresh, start heartbeat.
-  // Hard 3s timeout so splash never hangs if server is unreachable.
-  await Promise.race([initAuth(), new Promise((r) => setTimeout(r, 3000))]);
+  // Scope to the local user and warm the preferences.
+  await initAuth();
 
   // LOAD-THEN-ADJUST. The window + renderer booted BEFORE the prefs fetch (createWindow
   // above runs before initAuth), so the shell opened at a default size and no pref-driven
@@ -605,10 +499,6 @@ async function boot() {
       try { wc.send("prefs-ready"); } catch { /* view mid-swap */ }
     }
   }
-
-  // Keep OAuth-authed remote MCP connections alive: refresh their tokens ahead
-  // of expiry and re-stamp the server-side connection header (the server dials
-  // the endpoint, so we can't react to its 401s). Self-guards when signed out.
 
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
@@ -651,198 +541,6 @@ async function boot() {
   if (!needsOnboarding) {
     if (mainWindow) homeView.ensureCreated(mainWindow);
     panelsReady = true;
-  }
-
-  // Start cloud sync if authenticated and tier allows it
-
-  // Initialize Pipedream connectors — always attempt so MCP tools are available.
-
-  // ── Auto-updater ───────────────────────────────────────────
-  // Startup only CHECKS the feed. Nothing downloads on its own (his order,
-  // 2026-09-20): a newer release surfaces as a card in the left rail above the
-  // account button and on Settings → About, each with a "Download" link. Once
-  // the user downloads it, the update installs on the next quit (or right away
-  // through "Restart now"). No mid-session auto-restart.
-  const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  // The releases repo is private and every surface reads it through the
-  // server (his order, 2026-09-20). The feed serves latest-<os>.yml as text
-  // and answers each file it names with a redirect to GitHub's signed link,
-  // so the app never holds a GitHub credential and never asks GitHub itself.
-  autoUpdater.setFeedURL({ provider: "generic", url: `${SERVER_URL.replace(/\/$/, "")}/api/releases/feed`, useMultipleRangeRequest: false });
-  // Every updater step lands in userData/updater.log — "it closed and never
-  // came back" was undiagnosable with the logger nulled.
-  const updaterLogPath = path.join(app.getPath("userData"), "updater.log");
-  const upLog = (level: string, ...args: unknown[]): void => {
-    try { fs.appendFileSync(updaterLogPath, `${new Date().toISOString()} ${level} ${args.map(String).join(" ")}\n`); } catch { /* disk */ }
-  };
-  autoUpdater.logger = {
-    info: (...a: unknown[]) => upLog("INFO", ...a),
-    warn: (...a: unknown[]) => upLog("WARN", ...a),
-    error: (...a: unknown[]) => upLog("ERROR", ...a),
-    debug: (...a: unknown[]) => upLog("DEBUG", ...a),
-  } as unknown as typeof autoUpdater.logger;
-
-  // Latest update the feed has offered this session; `downloading` while the
-  // user-requested download runs, `ready` once it has landed on disk.
-  let pendingUpdate: { version: string; ready: boolean; downloading: boolean } | null = null;
-  // Set when the user hits "Relaunch to Update" before the download finishes —
-  // we then install the moment it lands.
-  let installWhenReady = false;
-
-  // Broadcast to EVERY renderer — the shell (splash) and panels like the About
-  // page are separate webContents, so both must hear update status to stay in
-  // sync. (The old code only messaged mainWindow, so the About panel was deaf.)
-  const broadcastUpdate = (payload: { status: string; version?: string; percent?: number; error?: string }) => {
-    for (const wc of webContents.getAllWebContents()) {
-      if (!wc.isDestroyed()) { try { wc.send("update-status", payload); } catch { /* window gone */ } }
-    }
-  };
-
-  // Reveal the shell splash (the home view is a BrowserView layered over
-  // index.html) with an "Updating…" status, then quit + install + relaunch.
-  const doUpdateInstall = () => {
-    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
-    if (mainWindow) homeView.hide(mainWindow);
-    setTimeout(() => {
-      upLog("INFO", "install: begin teardown");
-      // Tear down BEFORE the installer runs: children (ptys) and handles die
-      // here, so when NSIS checks for a running copy the answer is already no.
-      // quitAndInstall closes every window — our window-all-closed handler
-      // then fires a PLAIN app.quit(), and with autoInstallOnAppQuit=false a
-      // plain quit that wins the race exits WITHOUT installing: app closed,
-      // installer never ran, version unchanged. Silence it for this quit.
-      app.removeAllListeners("window-all-closed");
-      // Long backstop: the 4s hard-exit inside cleanupAll killed the process
-      // mid-handoff and aborted the install the same way.
-      cleanupAll(30_000);
-      // Hand the single-instance lock back BEFORE the installer runs: the
-      // relaunched new version arrives while this process is still dying,
-      // and without this it lost the lock race and exited on the spot —
-      // "the app closed and never came back" after every update.
-      try { app.releaseSingleInstanceLock(); } catch { /* already released */ }
-      upLog("INFO", "install: calling quitAndInstall");
-      try { autoUpdater.quitAndInstall(false, true); }
-      catch (err) { upLog("ERROR", "quitAndInstall failed:", err instanceof Error ? err.message : String(err)); }
-    }, 1200);
-  };
-  // The rail card / About "Download" link. The feed is re-checked first so the
-  // download is always the CURRENT latest (skip-to-latest lives HERE, not on
-  // the install click), then electron-updater pulls it in the background;
-  // progress and the final "ready" fan out to every renderer.
-  let downloading = false;
-  // A "Restart now" that had to download first hid the workspace behind the
-  // updating splash; if that download cannot deliver, give the UI back.
-  const giveBackUi = () => {
-    if (!installWhenReady) return;
-    installWhenReady = false;
-    if (mainWindow) homeView.show(mainWindow);
-  };
-  const requestUpdateDownload = async () => {
-    if (downloading || pendingUpdate?.ready) return;
-    downloading = true;
-    try {
-      const result = await autoUpdater.checkForUpdates();
-      const latest = result?.updateInfo?.version;
-      if (!latest || !isNewerVersion(latest, app.getVersion())) {
-        pendingUpdate = null;
-        giveBackUi();
-        broadcastUpdate({ status: "none" });
-        return;
-      }
-      pendingUpdate = { version: latest, ready: false, downloading: true };
-      broadcastUpdate({ status: "downloading", percent: 0, version: latest });
-      upLog("INFO", "download: user requested", latest);
-      await autoUpdater.downloadUpdate();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      upLog("ERROR", "download failed:", message);
-      if (pendingUpdate) pendingUpdate = { ...pendingUpdate, downloading: false };
-      giveBackUi();
-      broadcastUpdate({ status: "error", error: message, version: pendingUpdate?.version });
-    } finally {
-      downloading = false;
-    }
-  };
-  ipcMain.handle("update-download", () => requestUpdateDownload());
-
-  // "Restart now" (rail card / About) via the update-install IPC. Install WHAT
-  // SQUIRREL HOLDS — never re-check or re-download here. The 2026-09-20 rework
-  // arms install-on-quit the moment a download lands, and with that flag on
-  // electron-updater starts Squirrel's native staging on EVERY download call.
-  // The re-check this used to do (skip-to-latest, 2026-08-14) therefore began
-  // a SECOND staging that deleted the first one's folder, and quitAndInstall
-  // 1.2s later — electron-updater's "Squirrel already has it" flag never
-  // resets — fired against the deleted copy: ShipIt "Failed to copy bundle …
-  // no such file", three retries, relaunch of the OLD version, the card back
-  // on screen. Every hop since 1.1.11 died that way (ShipIt_stderr.log,
-  // 2026-09-23). Skip-to-latest is the DOWNLOAD click's job (it re-checks the
-  // feed and pulls the current release), so the staged copy is at most as old
-  // as that click.
-  const requestUpdateInstall = () => {
-    if (pendingUpdate?.ready) { doUpdateInstall(); return; }
-    installWhenReady = true;
-    broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
-    if (mainWindow) homeView.hide(mainWindow);
-    // Nothing on disk yet: ONE download; update-downloaded installs it.
-    if (!downloading) void requestUpdateDownload();
-  };
-
-  autoUpdater.on("update-available", (info: { version: string }) => {
-    if (!isNewerVersion(info.version, app.getVersion())) return;
-    if (pendingUpdate?.version === info.version && (pendingUpdate.ready || pendingUpdate.downloading)) return;
-    pendingUpdate = { version: info.version, ready: false, downloading: false };
-    broadcastUpdate({ status: "available", version: info.version });
-  });
-  autoUpdater.on("download-progress", (progress: { percent: number }) => {
-    broadcastUpdate({ status: "downloading", percent: Math.round(progress.percent), version: pendingUpdate?.version });
-  });
-  autoUpdater.on("update-downloaded", (info: { version: string }) => {
-    pendingUpdate = { version: info.version, ready: true, downloading: false };
-    // Downloaded = armed: a plain quit now finishes the install, so the next
-    // launch is the new version. cleanupAll's hard-exit backstop is widened
-    // for that quit (updateReadyForQuit) so it cannot kill the handoff.
-    autoUpdater.autoInstallOnAppQuit = true;
-    updateReadyForQuit = true;
-    upLog("INFO", "downloaded: install armed for next quit", info.version);
-    broadcastUpdate({ status: "ready", version: info.version });
-    if (installWhenReady) doUpdateInstall();
-  });
-  autoUpdater.on("update-not-available", () => {
-    // Mid-install-request this means "you already run the latest" (or the feed
-    // rolled back): nothing to install, so bring the UI back instead of leaving
-    // the updating splash up forever.
-    if (installWhenReady) {
-      installWhenReady = false;
-      if (mainWindow) homeView.show(mainWindow);
-    }
-    if (pendingUpdate?.ready) return; // what is on disk still installs on quit
-    pendingUpdate = null;
-    broadcastUpdate({ status: "none" });
-  });
-  autoUpdater.on("error", (err: Error) => {
-    console.error("[auto-update] error:", err.message);
-    // Mid-install-request: fall back to the update already on disk, or give
-    // the UI back — never leave the updating splash stranded.
-    if (installWhenReady) {
-      if (pendingUpdate?.ready) { doUpdateInstall(); return; }
-      installWhenReady = false;
-      if (mainWindow) homeView.show(mainWindow);
-    }
-    broadcastUpdate({ status: "error", error: err.message });
-  });
-
-  // The About page asks for the current state on load so it can show the prompt.
-  ipcMain.handle("get-update-status", () => pendingUpdate);
-
-  if (autoUpdateEnabled) {
-    // Check only (autoDownload is off): a newer release becomes the rail card.
-    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800).unref();
-    // .unref() so this recurring check never keeps the process alive on quit.
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000).unref();
-  } else {
-    broadcastUpdate({ status: "none" });
   }
 
   // Global hotkey: Cmd+Y / Ctrl+Y
@@ -948,21 +646,6 @@ async function boot() {
   );
 
   // IPC: window controls
-  ipcMain.on("update-install", () => { requestUpdateInstall(); });
-  ipcMain.handle("check-for-updates", async () => {
-    // `checkForUpdates()` always resolves with the feed's *latest* version —
-    // even when it equals the version we're running. Returning that blindly
-    // makes the UI show "Downloading v<current>…" forever (nothing actually
-    // downloads). Only report a version that is genuinely newer.
-    try {
-      autoUpdater.autoDownload = false;
-      const result = await autoUpdater.checkForUpdates();
-      const latest = result?.updateInfo?.version;
-      if (latest && isNewerVersion(latest, app.getVersion())) return latest;
-      return null;
-    } catch { return null; }
-  });
-
   ipcMain.on("window-close", () => mainWindow?.close());
   ipcMain.on("window-minimize", () => mainWindow?.minimize());
   ipcMain.on("window-maximize", () => {
@@ -1047,7 +730,6 @@ async function boot() {
   // cypherBus directly and was never routed through this machinery.
 
   // ── Extracted IPC modules ──────────────────────────────
-  registerWorkspacesIpc();
   registerSettingsIpc({
     getPreference, setPreference, broadcastTheme,
     startAuthFlow, isAuthenticated,
@@ -1066,12 +748,10 @@ async function boot() {
     },
   });
 
-  // Settings › Billing / Organization / Account — the customer-facing account
-  // surfaces, straight through the main-process SDK client.
-  registerAccountIpc();
-
-  // Settings › Platform (super_admin console) — catalog, plans, usage, orgs.
-  registerAdminIpc();
+  // Voice — dictation and spoken replies on the user's own models (voice-ipc.ts).
+  registerVoiceIpc();
+  // Settings › Models — the providers, keys and models the router calls (models-ipc.ts).
+  registerModelsIpc();
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
@@ -1089,26 +769,16 @@ async function boot() {
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
   registerLoopModelsIpc();
-  registerSpendStateIpc();
   registerSubAgentIpc();
   registerAgentBriefIpc();
+  registerSessionTitleIpc();
   registerSkillsIpc();
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerConnToolModesIpc();
   registerLocalAgentsIpc();
-  registerHubIpc();
   registerTaskRunnerIpc();
   registerMcpConnectionsIpc();
-  // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
-  connectorManager = new ConnectorManager();
-  connectorManager.on("changed", () => {
-    mainWindow?.webContents.send("connectors-changed");
-  });
-  connectorManager.on("connect-progress", (p) => {
-    mainWindow?.webContents.send("connectors-connect-progress", p);
-  });
-  connectorManager.init().catch((err) => console.error("[connectors]", err instanceof Error ? err.message : err));
   startLoopScheduler();
   // Agents own schedules too: a parked agent must not fire. Runs AFTER the
   // generic arming, which only knows each row own enabled flag.
@@ -1122,11 +792,8 @@ async function boot() {
   registerMediaPanelIpc();
   // Glyphh Drive — the folders and the view across everything the house apps made.
   registerDriveIpc();
-  registerMusicPanelIpc();
 
-  // Support (threaded ticketing) — the settings panel's transport.
-  registerSupportIpc();
-  // THE ARTIFACTS PANEL (his order, 2026-10-05) — its transport to /api/artifacts.
+  // THE ARTIFACTS PANEL (his order, 2026-10-05) — the local artifacts and their comments.
   registerArtifactsIpc();
 
   registerAppsIpc({
@@ -1135,13 +802,8 @@ async function boot() {
     getMainWindow: () => mainWindow,
   });
 
-  // Installable Glyphh apps (marketplace unit) — cloud instances, panels here.
-  registerGlyphhAppHost();
-
-  // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
-  registerHomeIpc({
-    connectorManager,
-  });
+  // Settings / home panel IPC — section steering and the local MCP server.
+  registerHomeIpc();
 
   ipcMain.on("open-external", (_e, url: string) => {
     // Only allow http(s) and mailto URLs — block file://, javascript://, etc.
@@ -1154,22 +816,6 @@ async function boot() {
       }
     } catch {
       console.warn("[open-external] blocked malformed URL:", url.slice(0, 80));
-    }
-  });
-
-  // Account and billing managed via glyphh.ai/dashboard
-
-  // IPC: support ticket (uses authenticated server call)
-  ipcMain.handle("submit-support-ticket", async (_e, ticket: { subject: string; description: string }) => {
-    try {
-      // The ticket input is subject + description only — fold the build info in.
-      return await getClient().support.ticket({
-        subject: ticket.subject,
-        description: `${ticket.description}\n\n— Glyphh Desktop ${app.getVersion()} (${process.platform} ${process.arch})`,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: msg };
     }
   });
 
@@ -1200,19 +846,15 @@ async function boot() {
     if (mainWindow) homeView.hide(mainWindow);
   });
 
-  // The app-preview <webview> (Apps page) previews installed glyphh-apps, whose
-  // UI calls window.glyphh.call — so it needs the same preload the standalone app
-  // window gets (openGlyphhApp). A webview's preload is fixed when its guest is
-  // created, so it must be set here at will-attach time (setting it later is
-  // ignored). Inert for ordinary web-app previews: glyphh-app:call rejects any
-  // webContents without a capability grant (granted per-app via preview-open).
+  // A webview's preload is fixed when its guest is created, so it is set here
+  // at will-attach time: the coding panel (our own home.html) gets the shell
+  // preload; every other guest page gets none.
   (mainWindow?.webContents as any)?.on(
     "will-attach-webview",
     (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
       const src = String(params?.src || "");
-      webPreferences.preload = src.includes("home.html?solo=tool:coding")
-        ? path.join(__dirname, "..", "renderer", "preload.js")
-        : path.join(__dirname, "glyphh-app-preload.js");
+      if (src.includes("home.html?solo=tool:coding")) webPreferences.preload = path.join(__dirname, "..", "renderer", "preload.js");
+      else delete webPreferences.preload;
     },
   );
 
@@ -1408,8 +1050,6 @@ function cleanupAll(backstopMs = 4000) {
   cleanedUp = true;
   // Cookies first, before the hard-exit backstop is armed below.
   try { void flushCookieStores(); } catch { /* noop */ }
-  try { closeAllPanels(); } catch { /* noop */ }
-  try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
   // its own — a clean teardown exits well before this fires. The UPDATE path
@@ -1429,6 +1069,9 @@ function cleanupAll(backstopMs = 4000) {
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["authTimers", () => cleanupAuthTimers()],
+    ["cliBridge", () => shutdownGlyphhCliBridge()],
+    ["cliSessionWatch", () => stopCliSessionWatch()],
+    ["routerServer", () => { void stopRouterServer(); }],
     ["localMcpServer", () => stopLocalMcpServer()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],

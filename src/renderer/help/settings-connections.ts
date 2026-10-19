@@ -1,47 +1,31 @@
 /**
  * settings-connections.ts — CONNECTIONS in the Skills page's grammar (his
- * order, 2026-09-16: "exact same layout" as Skills, with a connector-style
- * detail screen).
+ * order, 2026-09-16: "exact same layout" as Skills).
  *
  *   Your connections   a table: connector · type · status, filtered by
- *                      All / Connected / Not connected, with a Popular row
- *   Discover           the directory: search + a grid of cards (+ / ✓),
- *                      Show all, each card opening the same detail
- *   Detail             hero (icon, name, description, Connected badge or
- *                      Connect, ⋮), the description, Tools as chips, the
- *                      tool switches, and the metadata grid
+ *                      All / Connected / Not connected
+ *   Detail             a compact header, the server's fields, and the tool
+ *                      permissions (Always allow / Needs approval / Never)
  *
- * Data lanes are the ones that already existed: the member's connection list
- * (personal + the org's, with state), custom MCP servers, the Pipedream app
- * directory, and the connect flow. ORG rows stay read-only except for
- * "connect your own account" on a per-member org connection.
+ * Every connection is a custom MCP server of the member's own, held in the
+ * local store (main/mcp-connections.ts): + Add takes a remote server by URL,
+ * and "connected" means the server is turned on.
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { appIconInner, primeConnectedIcons } from "./app-icon.js";
-import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
-import { planGates } from "./plan-gate.js";
+import { onConnectionsChanged } from "./connections.js";
 import { toastError } from "./toast.js";
-import { hostHas } from "./web-surface.js";
-import { hideAppOverlay } from "../app-overlay.js";
 
-type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
 type McpConn = Awaited<ReturnType<typeof window.glyphh.mcpConnectionsList>>["connections"][number];
-type CatalogApp = Awaited<ReturnType<typeof window.glyphh.connectorsGetApps>>["apps"][number];
 
-/** One row of Your connections, whatever lane it came from. */
+/** One row of Your connections. */
 interface Entry {
   key: string;
-  kind: "pipedream" | "custom" | "org";
   name: string;
   desc: string;
-  type: string;
-  badge: string;
+  /** A server is connected while it is turned on. */
   connected: boolean;
-  enabled: boolean;
-  icon: string | null;
-  conn?: Conn;
-  mcp?: McpConn;
+  mcp: McpConn;
 }
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
@@ -51,40 +35,23 @@ function fail(msg: string): void {
 }
 
 let entries: Entry[] = [];
-let customAllowed = false;
-/** Pipedream connections are paid-plan only (each connected account is billed);
- *  custom MCP servers stay free, so only Connect actions lock, never the page. */
-let pdAllowed = true;
-let tab: "mine" | "discover" = "mine";
 let stateFilter: "all" | "connected" | "not" = "all";
 let query = "";
-let catalog: CatalogApp[] = [];
-/** Popular = most connected across the server, from the fork. */
-let popular: Array<CatalogApp & { installs: number }> = [];
-let popularLoaded = false;
-let catalogQuery = "";
-let catalogAll = false;
-/** The cursor for the directory's next page; empty = the end. */
-let catalogNext = "";
-let catalogLoading = false;
-/** The directory by category (name, count, a few featured apps), loaded once. */
-type Category = { name: string; count: number; apps: CatalogApp[] };
-let categories: Category[] = [];
-let categoriesLoaded = false;
-/** A category page: its apps so far, the next offset, its own search. */
-let catView: string | null = null;
-let catApps: CatalogApp[] = [];
-let catNext = "";
-let catQuery = "";
-let catTotal = 0;
-let catLoading = false;
-/** The detail on screen: a connection of ours, or a directory app not yet connected. */
-let current: { entry?: Entry; app?: CatalogApp; page?: "summary" | "permissions" } | null = null;
+/** The server whose permissions are on screen. */
+let current: Entry | null = null;
 let wired = false;
 
+const entryOf = (m: McpConn): Entry => ({
+  key: `mcp:${m.slug}`,
+  name: m.name,
+  desc: m.url || "Custom MCP server",
+  connected: m.enabled,
+  mcp: m,
+});
+
 // ── loading ─────────────────────────────────────────────────────────────────
-/** An app to open as soon as the page loads, on its permissions — the door a
- *  refused unattended call offers ("not set to Always allow"). Consumed by
+/** A server to open as soon as the page loads, on its permissions — the door
+ *  a refused unattended call offers ("not set to Always allow"). Consumed by
  *  the page's own load ONLY, never by a quiet re-read (his report,
  *  2026-10-07: a stale one hijacked a later load). */
 let pendingApp: { app: string } | null = null;
@@ -92,19 +59,15 @@ export function openConnectionOnLoad(appSlug: string): void { pendingApp = { app
 
 /** THE CUSTOMIZE PAGE'S ONE SCOPE (his report, 2026-10-07: "instead of each
  *  tab having a different Yours / Discover it should span all the tabs"):
- *  the page hands Yours | Discover down before this tab loads. */
-export function setConnectionsScope(scope: "mine" | "discover"): void {
-  tab = scope;
-  if (scope === "mine") catView = null;
-}
-/** The directory's "Connections" crumb asks the page to flip its switch
- *  back to Yours, so the two never disagree. */
-function requestScope(scope: "mine" | "discover"): void {
-  document.dispatchEvent(new CustomEvent("glyphh:customize-scope", { detail: scope }));
+ *  the page hands its scope down before this tab loads. Connections have no
+ *  directory, so the only scope is Yours, and arriving on it lands on the
+ *  list rather than on whatever server was open last. */
+export function setConnectionsScope(_scope: "mine"): void {
+  current = null;
 }
 
-/** Is the Connections tab on screen? A redirect after a connect is never
- *  forced onto a member who moved on (his report, 2026-10-07). */
+/** Is the Connections tab on screen? A quiet re-read never repaints a page
+ *  the member moved off. */
 const pageShowing = (): boolean => {
   const panel = document.querySelector<HTMLElement>(`.settings-panel[data-sub="connections-cfg"]`);
   return !!panel && panel.getClientRects().length > 0;
@@ -114,191 +77,61 @@ export async function loadSettingsConnections(): Promise<void> {
   const body = el("conn2-body");
   if (!body) return;
   wire();
-  ensureAdopted();
+  current = null;
   el("conn2-detail-view")?.classList.add("hidden");
   el("conn2-list-view")?.classList.remove("hidden");
-  fail("");
   await loadLists();
-  // A deep link lands on the account's permissions, where the toggles are.
+  // A deep link lands on the server's permissions, where the toggles are.
   if (pendingApp) {
     const want = pendingApp.app.toLowerCase();
     pendingApp = null;
-    const hit = entries.find((e) => (e.conn?.appSlug || e.mcp?.slug || "").toLowerCase() === want);
-    if (hit) void openDetail({ entry: hit, page: "permissions" });
+    const hit = entries.find((e) => e.mcp.slug.toLowerCase() === want);
+    if (hit) void openDetail(hit);
   }
 }
 
-/** Re-read the lists and repaint the list view — the page's load and every
- *  quiet re-read share this; neither view is touched here. */
+/** Re-read the servers and repaint the list view — the page's load and every
+ *  quiet re-read share this; neither view is switched here. */
 async function loadLists(): Promise<void> {
   const body = el("conn2-body");
   if (!body) return;
   if (!entries.length) body.innerHTML = loadingHtml("Loading your connections…");
-  const [res, custom, gate, gates] = await Promise.all([
-    window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] })),
-    window.glyphh.mcpConnectionsList().catch(() => ({ ok: false, connections: [] as McpConn[] })),
-    window.glyphh.mcpCustomAllowed?.().catch(() => ({ allowed: false })) ?? Promise.resolve({ allowed: false }),
-    planGates(),
-  ]);
-  customAllowed = !!(gate as { allowed?: boolean })?.allowed;
-  pdAllowed = gates.connectionsAllowed !== false;
-  const addBtn = el<HTMLButtonElement>("conn2-add");
-  if (addBtn) { addBtn.disabled = !customAllowed; addBtn.title = customAllowed ? "Add an MCP server of your own" : (gate as { reason?: string })?.reason || "Custom MCP servers aren't available on your plan"; }
-  const conns = (res as { connections?: Conn[] })?.connections ?? [];
-  const mcps = (custom as { connections?: McpConn[] })?.connections ?? [];
-  const mcpSlugs = new Set(mcps.map((m) => m.slug));
-  entries = [
-    ...conns.filter((c) => !mcpSlugs.has(c.appSlug) && !mcpSlugs.has(c.id)).map((c): Entry => ({
-      key: `pd:${c.id}`,
-      kind: c.org ? "org" : "pipedream",
-      name: c.label || c.appName,
-      // A SHARED ACCOUNT NOBODY SIGNED INTO (his report, 2026-09-17): say so
-      // here, since a member cannot fix it and every call it makes is refused.
-      desc: c.org
-        ? (c.shared ? (c.connected === false ? "Shared org account — your admin has not signed into it yet." : "Shared org account — every member rides it.") : "Added by your organization.")
-        : c.appName,
-      type: "Web",
-      badge: c.org ? (c.shared ? (c.connected === false ? "Needs your admin" : "Shared") : "Org") : "",
-      connected: c.connected !== false,
-      enabled: true,
-      icon: null,
-      conn: c,
-    })),
-    ...mcps.map((m): Entry => ({
-      key: `mcp:${m.slug}`,
-      kind: m.kind === "org" ? "org" : "custom",
-      name: m.name,
-      desc: m.url || "Custom MCP server",
-      type: "MCP",
-      badge: m.kind === "org" ? "Org" : "",
-      connected: m.enabled,
-      enabled: m.enabled,
-      icon: m.iconUrl,
-      mcp: m,
-    })),
-  ].sort((a, b) => a.name.localeCompare(b.name));
-  if (tab === "discover" && !catalog.length) await loadCatalog("");
+  const res = await window.glyphh.mcpConnectionsList().catch((err: unknown) => {
+    fail(err instanceof Error ? err.message : String(err));
+    return { ok: false, connections: [] as McpConn[] };
+  });
+  entries = (res.connections ?? []).map(entryOf).sort((a, b) => a.name.localeCompare(b.name));
   render();
-  void primeConnectedIcons(
-    entries.filter((x) => x.conn).map((x) => ({ connection: { accountId: x.conn!.accountId, pipedreamSlug: x.conn!.appSlug } })),
-    render,
-  );
-}
-
-async function loadCatalog(q: string): Promise<void> {
-  catalogQuery = q;
-  catalogNext = "";
-  if (!catalog.length) { const b = el("conn2-body"); if (b) b.innerHTML = loadingHtml("Loading the directory…"); }
-  try {
-    const r = await window.glyphh.connectorsGetApps(q);
-    catalog = r.apps ?? [];
-    catalogNext = r.next || "";
-  } catch (err) {
-    catalog = [];
-    fail(err instanceof Error ? err.message : String(err));
-  }
-}
-
-async function loadCategories(): Promise<void> {
-  if (categoriesLoaded) return;
-  try { categories = await window.glyphh.connectorsGetCategories(); } catch { categories = []; }
-  categoriesLoaded = true;
-}
-
-async function loadCategoryPage(reset: boolean): Promise<void> {
-  if (!catView || catLoading) return;
-  if (!reset && !catNext) return;
-  if (reset) { const b = el("conn2-body"); if (b) b.innerHTML = loadingHtml("Loading this category…"); }
-  catLoading = true;
-  try {
-    const r = await window.glyphh.connectorsGetApps(catQuery.trim(), reset ? undefined : catNext, catView);
-    catApps = reset ? (r.apps ?? []) : [...catApps, ...(r.apps ?? [])];
-    catNext = r.next || "";
-    catTotal = r.total ?? catApps.length;
-  } catch (err) {
-    if (reset) catApps = [];
-    catNext = "";
-    fail(err instanceof Error ? err.message : String(err));
-  } finally {
-    catLoading = false;
-  }
-}
-
-async function openCategory(name: string | null): Promise<void> {
-  catView = name;
-  catQuery = "";
-  catApps = [];
-  catNext = "";
-  if (name) await loadCategoryPage(true);
-  render();
-}
-
-/** Show all = the directory keeps loading as the user scrolls, page by page. */
-async function loadMoreCatalog(): Promise<void> {
-  if (!catalogNext || catalogLoading) return;
-  catalogLoading = true;
-  try {
-    const r = await window.glyphh.connectorsGetApps(catalogQuery, catalogNext);
-    const seen = new Set(catalog.map((a) => a.id));
-    catalog = [...catalog, ...(r.apps ?? []).filter((a) => !seen.has(a.id))];
-    catalogNext = r.next || "";
-  } catch (err) {
-    catalogNext = "";
-    fail(err instanceof Error ? err.message : String(err));
-  } finally {
-    catalogLoading = false;
-  }
 }
 
 // ── the list ────────────────────────────────────────────────────────────────
 const CHECK = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
-const PLUS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 
-function iconFor(e: Entry, cls = "conn2-icon"): string {
-  // A connected row wears PIPEDREAM'S icon (his order, 2026-10-05): the
-  // directory's row for the slug when it is loaded, else the connected-icon
-  // cache (app-icon.ts) — the same art as the Discover cards, never the
-  // domain favicon's generic G.
-  if (e.conn) return `<span class="${cls}">${appIconInner({ iconUrl: e.icon ?? null, connection: { accountId: e.conn.accountId, pipedreamSlug: e.conn.appSlug } }, e.name, "conn2-icon-initial")}</span>`;
-  if (e.icon) return `<span class="${cls}"><img src="${escapeHtml(e.icon)}" alt="" /></span>`;
-  return `<span class="${cls}"><span class="conn2-icon-initial">${escapeHtml((e.name || "?").charAt(0).toUpperCase())}</span></span>`;
+function iconFor(name: string, iconUrl: string | null | undefined, cls = "conn2-icon"): string {
+  if (iconUrl) return `<span class="${cls}"><img src="${escapeHtml(iconUrl)}" alt="" /></span>`;
+  return `<span class="${cls}"><span class="conn2-icon-initial">${escapeHtml((name || "?").charAt(0).toUpperCase())}</span></span>`;
 }
-function iconForApp(a: CatalogApp, cls = "conn2-icon"): string {
-  return `<span class="${cls}">${appIconInner({ iconUrl: a.icon ?? null, connection: { pipedreamSlug: a.id } }, a.name, "conn2-icon-initial")}</span>`;
-}
-const connectedSlugs = (): Set<string> => new Set(entries.filter((e) => e.conn && e.connected).map((e) => e.conn!.appSlug));
 
-/** The upsell line every plan-gated page wears, but only over Connect: the
- *  list, tool switches and custom MCP servers stay live on Free. */
-function lockedNote(): HTMLElement {
-  const note = document.createElement("div");
-  note.className = "plan-locked-note";
-  const msg = document.createElement("span");
-  msg.textContent = "Connections are on a paid plan — upgrade to connect apps. Custom MCP servers are free on every plan. ";
-  const link = document.createElement("a");
-  link.href = "#";
-  link.className = "plan-locked-link";
-  link.textContent = "Upgrade plan →";
-  link.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    document.querySelector<HTMLButtonElement>('.settings-nav-item[data-sub="billing"]')?.click();
-  });
-  note.append(msg, link);
-  return note;
+/** One table row: icon, name, type, then the status cell the caller fills. */
+function tableRow(name: string, iconUrl: string | null | undefined): { tr: HTMLElement; status: HTMLElement } {
+  const tr = document.createElement("div");
+  tr.className = "conn2-tr";
+  tr.innerHTML = `${iconFor(name, iconUrl)}<span class="conn2-name"></span><span class="conn2-type"><span>MCP</span></span><span class="conn2-status"></span>`;
+  (tr.querySelector(".conn2-name") as HTMLElement).textContent = name;
+  return { tr, status: tr.querySelector(".conn2-status") as HTMLElement };
+}
+
+function tableHead(): HTMLElement {
+  const table = document.createElement("div");
+  table.className = "conn2-table";
+  table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
+  return table;
 }
 
 function render(): void {
   const host = el("conn2-body");
   if (!host) return;
-  document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.classList.toggle("active", b.dataset.conn2Tab === tab));
-  // On Discover the header search steps aside: the directory bar carries its
-  // own (his screens, 2026-09-16). Painted here, since the page's switch —
-  // not this panel's tab pair — flips the tab (his report, 2026-10-07).
-  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.toggle("hidden", tab === "discover");
-  noteDirSearchFocus();
   host.textContent = "";
-  if (!pdAllowed) host.appendChild(lockedNote());
-  if (tab === "discover") { renderDiscover(host); refocusDirSearch(); return; }
 
   const q = query.trim().toLowerCase();
   const shown = entries
@@ -319,417 +152,106 @@ function render(): void {
   host.appendChild(chips);
 
   if (!shown.length) {
-    host.insertAdjacentHTML("beforeend", `<div class="crud-empty">${q ? `No connections matching "${escapeHtml(q)}"` : stateFilter === "not" ? "Everything is connected." : "No connections yet — Add one, or pick from Discover."}</div>`);
-  } else {
-    const table = document.createElement("div");
-    table.className = "conn2-table";
-    table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
-    for (const e of shown) {
-      const tr = document.createElement("div");
-      tr.className = "conn2-tr openable";
-      const adminsToFix = e.kind === "org" && !e.connected;
-      tr.innerHTML = `${iconFor(e)}<span class="conn2-name"></span><span class="conn2-type"><span></span>${e.badge ? `<span class="conn2-badge">${escapeHtml(e.badge)}</span>` : ""}</span><span class="conn2-status"></span>`;
-      (tr.querySelector(".conn2-name") as HTMLElement).textContent = e.name;
-      (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = e.type;
-      const st = tr.querySelector(".conn2-status") as HTMLElement;
-      if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
-      else if (adminsToFix) st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
-      else st.appendChild(connectButton(e));
-      tr.addEventListener("click", () => void openDetail({ entry: e, page: "permissions" }));
-      table.appendChild(tr);
-    }
-    host.appendChild(table);
+    host.insertAdjacentHTML("beforeend", `<div class="crud-empty">${q ? `No connections matching "${escapeHtml(q)}"` : stateFilter === "not" ? "Everything is connected." : "No connections yet — + Add takes an MCP server of your own."}</div>`);
+    return;
   }
+  const table = tableHead();
+  for (const e of shown) {
+    const { tr, status } = tableRow(e.name, e.mcp.iconUrl);
+    tr.classList.add("openable");
+    if (e.connected) status.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
+    else status.appendChild(enableButton(e));
+    tr.addEventListener("click", () => void openDetail(e));
+    table.appendChild(tr);
+  }
+  host.appendChild(table);
+}
 
-  // POPULAR — the most connected apps across the server (install counts),
-  // minus what this member already has, three across.
-  if (!popularLoaded) {
-    popularLoaded = true;
-    void window.glyphh.connectorsGetPopular().then((rows) => { popular = rows; if (tab === "mine") render(); }).catch(() => { popular = []; });
-  }
-  const have = connectedSlugs();
-  const show = popular.filter((a) => !have.has(a.id)).slice(0, 3);
-  if (show.length) {
-    const sec = document.createElement("div");
-    sec.className = "conn2-popular";
-    sec.innerHTML = `<div class="skill-group-head"><span>Popular</span></div><div class="conn2-popular-grid"></div>`;
-    const grid = sec.querySelector(".conn2-popular-grid") as HTMLElement;
-    for (const a of show) {
-      const card = document.createElement("div");
-      card.className = "conn2-pop openable";
-      card.innerHTML = `${iconForApp(a)}<span class="conn2-name"></span>`;
-      (card.querySelector(".conn2-name") as HTMLElement).textContent = a.name;
-      card.title = a.installs ? `${a.installs} connection${a.installs === 1 ? "" : "s"} across Glyphh` : "Featured";
-      card.appendChild(connectAppButton(a, true));
-      card.addEventListener("click", () => void openDetail({ app: a }));
-      grid.appendChild(card);
-    }
-    host.appendChild(sec);
-  }
+/** A turned-off server's one action: turn it back on. */
+function enableButton(e: Entry): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "action-btn conn2-connect";
+  b.textContent = "Enable";
+  b.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    b.disabled = true;
+    void setEnabled(e, true).then((ok) => { if (!ok) b.disabled = false; });
+  });
+  return b;
+}
+
+/** Turn a server on or off, then re-read. */
+async function setEnabled(e: Entry, on: boolean): Promise<boolean> {
+  const r = await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { enabled: on })
+    .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  if (!r.ok) { fail(r.error || `Couldn't turn ${e.name} ${on ? "on" : "off"}.`); return false; }
+  await reloadKeepingDetail(e);
+  return true;
+}
+
+/** Re-read the servers; when `e`'s page is open, repaint it from the fresh
+ *  row in place (its name, status and tools follow the change). */
+async function reloadKeepingDetail(e: Entry): Promise<void> {
+  await loadLists();
+  if (current?.key !== e.key) return;
+  const fresh = entries.find((x) => x.key === e.key);
+  if (fresh) await openDetail(fresh, true);
 }
 
 /**
  * ONE CONNECTION TABLE (his order, 2026-09-17).
  *
- * A bundle's Connections tab listed its accounts as plain rows with a link
- * glyph while the Connections page showed a real table: the connector's own
- * logo, a Type column, the Shared badge, a check when connected. Both
- * surfaces render HERE now, so they cannot drift again — the same lesson as
- * the app list the wall and the rail share.
+ * A bundle's Connections tab draws its declared connections with the same
+ * table as the Connections page, so the two surfaces cannot drift.
  *
- * `deps` are what a manifest declares. Every one is REQUIRED: an unconnected
- * account gets the page's own Connect button, which runs the same flow.
+ * `deps` are what a manifest declares, each by slug. One is connected when a
+ * custom MCP server with that slug exists and is turned on; otherwise the row
+ * says so, and adding the server on the Connections page connects it.
  */
 export interface ConnDep { app: string; as?: string }
 
 /** A manifest carries either `["gmail"]` or `[{ app: "gmail", as: "member" }]`.
  *  Reading both is the RENDERER's job here: nothing in src/renderer may import
  *  src/shared — one such import moves tsc's inferred rootDir and every
- *  renderer file emits to a directory the app never loads (2026-09-17). */
+ *  renderer file emits to a directory the app never loads (2026-09-17). A
+ *  local server has one owner, so `as` is accepted and not carried. */
 export const connDeps = (raw: ReadonlyArray<ConnDep | string> | undefined | null): ConnDep[] =>
   (raw ?? [])
     .map((d) => (typeof d === "string" ? { app: d } : d))
     .filter((d): d is ConnDep => !!d && typeof d.app === "string" && !!d.app.trim())
-    .map((d) => ({ app: d.app.trim().toLowerCase(), as: d.as === "org" ? "org" : "member" }));
+    .map((d) => ({ app: d.app.trim().toLowerCase() }));
 
-export async function renderConnectionTable(
-  host: HTMLElement,
-  raw: ReadonlyArray<ConnDep | string>,
-  opts: { onChanged?: () => void } = {},
-): Promise<void> {
+export async function renderConnectionTable(host: HTMLElement, raw: ReadonlyArray<ConnDep | string>): Promise<void> {
   const deps = connDeps(raw);
   host.textContent = "";
   if (!deps.length) return;
-  pdAllowed = (await planGates()).connectionsAllowed !== false;
   // THE LOADING LINE THE PAGE ITSELF USES (his order, 2026-09-17), so the pane
-  // never sits blank while the member's accounts come back.
+  // never sits blank while the servers come back.
   host.innerHTML = loadingHtml("Loading connections…");
-  const settle = (): void => { host.textContent = ""; };
-  const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] }));
-  const have = new Map((mine.connections ?? []).map((c) => [c.appSlug, c]));
+  const res = await window.glyphh.mcpConnectionsList().catch(() => ({ ok: false, connections: [] as McpConn[] }));
+  const have = new Map((res.connections ?? []).map((m) => [m.slug.toLowerCase(), m]));
   const pretty = (slug: string): string => slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
-  settle();
-  const table = document.createElement("div");
-  table.className = "conn2-table";
-  table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
-  const rows: Entry[] = [];
+  host.textContent = "";
+  const table = tableHead();
   for (const dep of deps) {
-    const c = have.get(dep.app);
-    const org = dep.as === "org";
-    const e: Entry = c
-      ? {
-          key: `pd:${c.id}`, kind: c.org ? "org" : "pipedream", name: c.label || c.appName || pretty(dep.app),
-          desc: c.appName || "", type: "Web",
-          badge: c.org ? (c.shared ? (c.connected === false ? "Needs your admin" : "Shared") : "Org") : "",
-          // A shared account is only usable once an admin has signed into it.
-          connected: c.connected !== false, enabled: true, icon: catalog.find((a) => a.id === c.appSlug)?.icon ?? null, conn: c,
-        }
-      : {
-          key: `dep:${dep.app}`, kind: "pipedream", name: pretty(dep.app), desc: "", type: "Web",
-          badge: org ? "Org" : "", connected: false, enabled: true, icon: catalog.find((a) => a.id === dep.app)?.icon ?? null,
-        };
-    rows.push(e);
-    const tr = document.createElement("div");
-    tr.className = "conn2-tr";
-    tr.innerHTML = `${iconFor(e)}<span class="conn2-name"></span><span class="conn2-type"><span></span>${e.badge ? `<span class="conn2-badge">${escapeHtml(e.badge)}</span>` : ""}</span><span class="conn2-status"></span>`;
-    (tr.querySelector(".conn2-name") as HTMLElement).textContent = e.name;
-    (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = e.type;
-    const st = tr.querySelector(".conn2-status") as HTMLElement;
-    if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
-    else if (org || e.kind === "org") st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
-    else {
-      // The catalog row when we have it (its own name and logo), else the slug.
-      const app: CatalogApp = catalog.find((a) => a.id === dep.app) ?? { id: dep.app, name: e.name, description: "" };
-      const btn = connectAppButton(app, true);
-      btn.addEventListener("click", () => {
-        // The flow finishes out of band; re-read until the row turns.
-        let tries = 0;
-        const tick = (): void => {
-          void renderConnectionTable(host, deps, opts).then(() => { opts.onChanged?.(); });
-          if (++tries < 6) window.setTimeout(tick, 1500);
-        };
-        window.setTimeout(tick, 1500);
-      });
-      st.appendChild(btn);
-    }
+    const m = have.get(dep.app);
+    const { tr, status } = tableRow(m?.name || pretty(dep.app), m?.iconUrl);
+    if (m?.enabled) status.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
+    else status.innerHTML = `<span class="conn2-muted">${m ? "Turned off" : "Not connected"}</span>`;
     table.appendChild(tr);
   }
   host.appendChild(table);
-  // Connected accounts wear their own logo once the icon cache warms.
-  void primeConnectedIcons(
-    rows.filter((x) => x.conn).map((x) => ({ connection: { accountId: x.conn!.accountId, pipedreamSlug: x.conn!.appSlug } })),
-    () => { void renderConnectionTable(host, deps, opts); },
-  );
-}
-
-const LOCKED_TITLE = "Connections are on a paid plan — upgrade to connect apps";
-/** The apps a connect is in flight for: every Connect button for one paints
- *  "Connecting…" across the re-renders the polling causes, so the progress
- *  the member sees is the button's, not an overlay's (his report, 2026-10-07). */
-const connecting = new Set<string>();
-
-function connectButton(e: Entry): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "action-btn conn2-connect";
-  const busy = !!e.conn && connecting.has(e.conn.appSlug);
-  b.textContent = busy ? "Connecting…" : "Connect";
-  if (busy) b.disabled = true;
-  else if (!pdAllowed && !e.mcp) { b.disabled = true; b.title = LOCKED_TITLE; }
-  b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectEntry(e, b); });
-  return b;
-}
-function connectAppButton(a: CatalogApp, wide = false): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  const done = connectedSlugs().has(a.id);
-  const busy = !done && connecting.has(a.id);
-  b.className = wide ? "action-btn conn2-connect" : "action-btn conn2-plus" + (done ? " done" : "");
-  b.innerHTML = wide ? (done ? "Connected" : busy ? "Connecting…" : "Connect") : (done ? CHECK : busy ? "…" : PLUS);
-  b.disabled = done || busy || !pdAllowed;
-  b.title = done ? "Connected" : busy ? "Connecting…" : pdAllowed ? "Connect" : LOCKED_TITLE;
-  b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectApp(a.id, b); });
-  return b;
-}
-
-async function connectEntry(e: Entry, btn: HTMLButtonElement): Promise<void> {
-  if (e.mcp) {
-    btn.disabled = true;
-    const r = await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { enabled: true }).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-    if (!(r as { ok?: boolean })?.ok) { btn.disabled = false; fail((r as { error?: string })?.error || "Couldn't enable that server."); return; }
-    await loadSettingsConnections();
-    return;
-  }
-  if (e.conn) await connectApp(e.conn.appSlug, btn);
-}
-
-/** THE CONNECT CLOCK (his report, 2026-10-07: "Adding a connection is not
- *  redirecting immediately to the connection → MCP tools / permissions
- *  screen. It is random."). The account lands out of band after the OAuth
- *  window closes; six ticks of 1.5 s missed it as often as not. A re-read now,
- *  then these waits — ~30 s in all — and a connectors-changed push from the
- *  main process wakes the clock at once instead of at its next tick. */
-const CONNECT_WAITS_MS: ReadonlyArray<number> = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
-let wakeConnectPoll: (() => void) | null = null;
-const connectSleep = (ms: number): Promise<void> => new Promise((resolve) => {
-  const t = setTimeout(() => { wakeConnectPoll = null; resolve(); }, ms);
-  wakeConnectPoll = () => { clearTimeout(t); wakeConnectPoll = null; resolve(); };
-});
-
-/** Re-read until `slug` is connected on an account that was NOT connected
- *  before the flow began; null once the clock runs out. */
-async function awaitConnected(slug: string, before: ReadonlySet<string>): Promise<Entry | null> {
-  for (let i = 0; ; i++) {
-    await reloadQuietly();
-    const hit = entries.find((e) => !!e.conn && e.conn.appSlug === slug && e.connected && !before.has(e.conn.id));
-    if (hit) return hit;
-    if (i >= CONNECT_WAITS_MS.length) return null;
-    await connectSleep(CONNECT_WAITS_MS[i]);
-  }
-}
-
-async function connectApp(slug: string, btn: HTMLButtonElement): Promise<void> {
-  if (connecting.has(slug)) return;
-  btn.disabled = true;
-  const was = btn.innerHTML;
-  btn.textContent = "Connecting…";
-  connecting.add(slug);
-  const settle = (): void => { connecting.delete(slug); btn.disabled = false; btn.innerHTML = was; hideAppOverlay(); };
-  // The accounts connected BEFORE the flow, so a second account of the same
-  // app still reads as the new one.
-  const before: ReadonlySet<string> = new Set(entries.filter((e) => e.conn && e.connected).map((e) => e.conn!.id));
-  const app = catalog.find((a) => a.id === slug) ?? (current?.app?.id === slug ? current.app : undefined);
-  const r = await (window.glyphh.connectorsConnect?.(slug) ?? Promise.resolve({ ok: false, error: "Connect is not available here." }))
-    .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-  if (!r.ok) { settle(); fail(r.error || "Couldn't connect."); return; }
-  // THE REDIRECT (his report, 2026-10-07): once the account lands, its
-  // permissions page opens from wherever Connect was pressed — a Discover
-  // card's +, a Popular card, a list row or the detail's hero (the old path
-  // only redirected with a detail already open, and only for 9 s).
-  const fresh = await awaitConnected(slug, before);
-  if (!fresh) {
-    settle();
-    fail(`${app?.name ?? slug} hasn't shown up yet — it will appear under Your connections once it lands.`);
-    return;
-  }
-  connecting.delete(slug);
-  // The member moved on (the tab is off screen): the lists are fresh, and
-  // nothing is forced over what they are looking at.
-  if (!pageShowing()) { hideAppOverlay(); return; }
-  await openDetail({ entry: fresh, app, page: "permissions" });
-  // The "Connecting" overlay (connections.ts raises it on `verifying`) drops
-  // once the permissions page has painted — never left up (his report, 2026-10-07).
-  hideAppOverlay();
-}
-
-/** Re-read the lists without touching either view (the detail stays up;
- *  the deep-link `pendingApp` is the page load's alone). */
-async function reloadQuietly(): Promise<void> {
-  await loadLists();
-}
-
-// ── discover ────────────────────────────────────────────────────────────────
-function renderDiscover(host: HTMLElement): void {
-  // (The header search is hidden by render(): the directory bar below the
-  // breadcrumb carries its own — his screens, 2026-09-16.)
-  if (catView) { renderCategoryPage(host); return; }
-  const count = el("conn2-count"); if (count) count.textContent = `${catalog.length} available`;
-  const crumb = document.createElement("div");
-  crumb.className = "conn2-crumb";
-  crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
-  crumb.querySelector(".crumb-link")!.addEventListener("click", () => { tab = "mine"; render(); requestScope("mine"); });
-  host.appendChild(crumb);
-  host.appendChild(dirBar(catalogQuery, (q) => { void loadCatalog(q).then(() => { catalogAll = false; render(); refocusDirSearch(); }); }, "All"));
-
-
-  const have = connectedSlugs();
-  const rows = catalog;
-  const sec = document.createElement("section");
-  sec.className = "disc-shelf";
-  sec.innerHTML = `<div class="disc-shelf-head"><span>${catalogQuery ? "Results" : "Top connectors"}</span></div><div class="conn2-dir-grid"></div>`;
-  if (rows.length > 8 || catalogNext) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "disc-link"; b.textContent = catalogAll ? "Show fewer" : "Show all";
-    b.addEventListener("click", () => { catalogAll = !catalogAll; render(); });
-    sec.querySelector(".disc-shelf-head")!.appendChild(b);
-  }
-  const grid = sec.querySelector(".conn2-dir-grid") as HTMLElement;
-  if (!rows.length) grid.innerHTML = `<div class="crud-empty">${catalogQuery ? `Nothing matching "${escapeHtml(catalogQuery)}"` : "The directory is empty."}</div>`;
-  for (const a of catalogAll ? rows : rows.slice(0, 8)) grid.appendChild(dirCard(a, have));
-  host.appendChild(sec);
-  // SHOW ALL paginates by scrolling: a sentinel under the grid pulls the next
-  // page as it comes into view, until the directory runs out.
-  if (catalogAll && catalogNext) {
-    sec.appendChild(sentinel(host, () => loadMoreCatalog().then(() => { if (tab === "discover") render(); })));
-    return;
-  }
-  // BY CATEGORY (his order, 2026-09-16): a section per category with a few
-  // featured apps, Show all opening the category page. Not under a search.
-  if (catalogQuery || catalogAll) return;
-  if (!categoriesLoaded) {
-    host.insertAdjacentHTML("beforeend", `<div class="conn2-more">Indexing the directory…</div>`);
-    void loadCategories().then(() => { if (tab === "discover" && !catView) render(); });
-    return;
-  }
-  for (const c of categories) {
-    const csec = document.createElement("section");
-    csec.className = "disc-shelf";
-    csec.innerHTML = `<div class="disc-shelf-head"><span></span></div><div class="conn2-dir-grid"></div>`;
-    (csec.querySelector(".disc-shelf-head > span") as HTMLElement).textContent = c.name;
-    const all = document.createElement("button");
-    all.type = "button"; all.className = "disc-link"; all.textContent = "Show all";
-    all.addEventListener("click", () => void openCategory(c.name));
-    csec.querySelector(".disc-shelf-head")!.appendChild(all);
-    const cgrid = csec.querySelector(".conn2-dir-grid") as HTMLElement;
-    for (const a of c.apps.slice(0, 6)) cgrid.appendChild(dirCard(a, have));
-    host.appendChild(csec);
-  }
-}
-
-function sentinel(host: HTMLElement, more: () => Promise<void>): HTMLElement {
-  const m = document.createElement("div");
-  m.className = "conn2-more";
-  m.textContent = "Loading more…";
-  const scroller = host.closest(".settings-panels") ?? undefined;
-  const io = new IntersectionObserver((entries) => {
-    if (!entries.some((x) => x.isIntersecting)) return;
-    io.disconnect();
-    void more();
-  }, { root: scroller as Element | undefined, rootMargin: "240px" });
-  io.observe(m);
-  return m;
-}
-
-function dirCard(a: CatalogApp, have: Set<string>): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "conn2-dir-card openable";
-  card.innerHTML = `${iconForApp(a, "conn2-icon lg")}<div class="conn2-dir-main"><div class="conn2-dir-name"><span></span>${have.has(a.id) ? `<span class="conn2-verified" title="Connected">${CHECK}</span>` : ""}</div><div class="conn2-dir-desc"></div></div>`;
-  (card.querySelector(".conn2-dir-name > span") as HTMLElement).textContent = a.name;
-  (card.querySelector(".conn2-dir-desc") as HTMLElement).textContent = a.description || "";
-  card.appendChild(connectAppButton(a));
-  card.addEventListener("click", () => void openDetail({ app: a }));
-  return card;
-}
-
-/** The directory bar under the breadcrumb: search on the left, "Filter: <x>"
- *  on the right opening the category list. */
-/** ONE BAR, KEPT ACROSS RE-RENDERS (his report, 2026-10-05: "as the input
- *  refreshes it clears / breaks the user typing"). Every render used to build
- *  a fresh input and seed it with the query the results were fetched for, so
- *  whatever was typed after the fetch went out was wiped and the caret lost.
- *  The input element is now created once and re-attached; while it is being
- *  typed in its value is never touched, and only the latest onQuery fires. */
-let dirBarEl: HTMLElement | null = null;
-let dirBarOnQuery: (q: string) => void = () => {};
-let dirBarWasFocused = false;
-function dirBar(value: string, onQuery: (q: string) => void, filterLabel: string): HTMLElement {
-  dirBarOnQuery = onQuery;
-  if (!dirBarEl) {
-    const bar = document.createElement("div");
-    bar.className = "conn2-dir-bar";
-    bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"><span class="conn2-muted">Filter:</span> <span></span></button>`;
-    const input = bar.querySelector("input") as HTMLInputElement;
-    let t: ReturnType<typeof setTimeout> | null = null;
-    input.addEventListener("input", () => { if (t) clearTimeout(t); t = setTimeout(() => dirBarOnQuery(input.value.trim()), 250); });
-    const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
-    filter.addEventListener("click", () => {
-      if (!categoriesLoaded) { void loadCategories().then(() => filter.click()); return; }
-      openMenu(filter, [
-        { label: "All connectors", onClick: () => void openCategory(null) },
-        ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
-      ]);
-    });
-    dirBarEl = bar;
-  }
-  const input = dirBarEl.querySelector("input") as HTMLInputElement;
-  // A navigation (tab, category) seeds the box; a render while typing never does.
-  if (!dirBarWasFocused && document.activeElement !== input) input.value = value;
-  (dirBarEl.querySelector(".conn2-filter > span:last-child") as HTMLElement).textContent = filterLabel;
-  return dirBarEl;
-}
-/** Called before a render empties the host: remember whether the box had
- *  focus, so it is restored (caret at the end) once re-attached — and never
- *  stolen when it did not. */
-function noteDirSearchFocus(): void {
-  const input = dirBarEl?.querySelector("input") ?? null;
-  dirBarWasFocused = !!input && document.activeElement === input;
-}
-function refocusDirSearch(): void {
-  if (!dirBarWasFocused) return;
-  const again = dirBarEl?.querySelector<HTMLInputElement>("input") ?? null;
-  if (again && again.isConnected) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-  dirBarWasFocused = false;
-}
-
-/** A category page: breadcrumb, its own search with the Filter dropdown, the
- *  grid paging by scroll. */
-function renderCategoryPage(host: HTMLElement): void {
-  const count = el("conn2-count"); if (count) count.textContent = `${catTotal} in ${catView}`;
-  const crumb = document.createElement("div");
-  crumb.className = "conn2-crumb";
-  crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="crumb-link dir">Directory</span><span class="sep">/</span><span class="here"></span>`;
-  (crumb.querySelector(".here") as HTMLElement).textContent = catView!;
-  crumb.querySelector(".crumb-link:not(.dir)")!.addEventListener("click", () => { catView = null; tab = "mine"; render(); requestScope("mine"); });
-  crumb.querySelector(".crumb-link.dir")!.addEventListener("click", () => void openCategory(null));
-  host.appendChild(crumb);
-  host.appendChild(dirBar(catQuery, (q) => { catQuery = q; void loadCategoryPage(true).then(() => { render(); refocusDirSearch(); }); }, catView!));
-
-  const have = connectedSlugs();
-  const grid = document.createElement("div");
-  grid.className = "conn2-dir-grid";
-  if (!catApps.length) grid.innerHTML = `<div class="crud-empty">${catLoading ? "Loading…" : catQuery ? `Nothing in ${escapeHtml(catView!)} matching "${escapeHtml(catQuery)}"` : "Nothing here yet."}</div>`;
-  for (const a of catApps) grid.appendChild(dirCard(a, have));
-  host.appendChild(grid);
-  if (catNext) host.appendChild(sentinel(host, () => loadCategoryPage(false).then(() => { if (tab === "discover" && catView) render(); })));
 }
 
 // ── tools: names people can read, split by what they do ─────────────────────
 const READ_VERBS = /^(get|list|search|find|read|fetch|retrieve|query|describe|count|check|lookup|view|show|download|export|preview|watch|summarize|detect)\b/i;
-/** The tool's own name, as words: the gateway prefixes tool names with the
- *  server's technical name and Pipedream with the app slug, so everything up
- *  to the last run of the app's tokens is dropped. "pd_o52…_gmail-gmail-send-email"
- *  → "Send email". The raw name rides the tooltip. */
+/** The tool's own name, as words: a server often prefixes its tool names with
+ *  its own name, so everything up to the last run of the server's tokens is
+ *  dropped. "linear-mcp_linear_mcp_create_issue" → "Create issue". The raw
+ *  name rides the tooltip. Mirrors main's humanizeTool (conn-tool-modes.ts),
+ *  which decides the default each mode starts from. */
 function humanize(name: string, app?: string): string {
   const tokens = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   const appTokens = (app || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -740,8 +262,6 @@ function humanize(name: string, app?: string): string {
       if (appTokens.every((t, j) => tokens[i + j] === t)) cut = i + appTokens.length;
     }
     if (cut > 0) rest = tokens.slice(cut);
-  } else if (tokens[0] === "pd") {
-    rest = tokens.slice(tokens.findIndex((t) => t.length >= 30) + 1);
   }
   const words = rest.length ? rest : tokens;
   const out = words.join(" ");
@@ -755,27 +275,21 @@ const MODE_ICON: Record<ToolMode, string> = {
   ask: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V6a2 2 0 1 1 4 0v6M12 7a2 2 0 1 1 4 0v6M16 9a2 2 0 1 1 4 0v5a7 7 0 0 1-7 7h-1a7 7 0 0 1-6-3.4L3.4 13a2 2 0 0 1 3.4-2L8 13"/></svg>`,
   never: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>`,
 };
-/** Modes other than Never are the member's preference, per connection (server-side prefs). */
+/** Modes other than Never are the member's preference, per connection (local prefs). */
 async function readModes(key: string): Promise<Record<string, ToolMode>> {
   const raw = await window.glyphh.getPreference?.(`connToolModes:${key}`, {}).catch(() => ({}));
   return raw && typeof raw === "object" ? (raw as Record<string, ToolMode>) : {};
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
-async function openDetail(target: { entry?: Entry; app?: CatalogApp; page?: "summary" | "permissions" }, quiet = false): Promise<void> {
-  // A directory app we already have becomes its connection's detail.
-  if (target.app && !target.entry) {
-    const mine = entries.find((e) => e.conn?.appSlug === target.app!.id);
-    if (mine) target = { entry: mine, app: target.app, page: target.page };
-  }
-  // A connection of ours opened from the list: fetch its app so the detail
-  // carries Pipedream's blurb and categories, not just the app name.
-  if (target.entry?.conn && !target.app) {
-    const slug = target.entry.conn.appSlug;
-    const hit = catalog.find((x) => x.id === slug) ?? (await window.glyphh.connectorsGetApps(target.entry.conn.appName).catch(() => ({ apps: [] as CatalogApp[] }))).apps.find((x) => x.id === slug);
-    if (hit) target = { entry: target.entry, app: hit, page: target.page };
-  }
-  current = target;
+/** THE PERMISSIONS PAGE (his screens, 2026-09-16): a compact header, the
+ *  server's fields, then the tools in two groups, Read-only and Write/delete,
+ *  each with a group mode and a three-way switch per tool: Always allow,
+ *  Needs approval, Never. Never = hidden from every agent (the server's
+ *  hidden list); the other two are the member's preference per connection.
+ *  `quiet` repaints in place (after a switch) without flipping the views. */
+async function openDetail(e: Entry, quiet = false): Promise<void> {
+  current = e;
   const host = el("conn2-detail");
   if (!host) return;
   if (!quiet) {
@@ -783,206 +297,40 @@ async function openDetail(target: { entry?: Entry; app?: CatalogApp; page?: "sum
     el("conn2-detail-view")?.classList.remove("hidden");
   }
   host.textContent = "";
-  // A CONNECTED connection opened from Your connections is the permissions
-  // page; Discover opens the summary (hero, description, tools, metadata).
-  if (target.page === "permissions" && target.entry) { await renderPermissionsPage(host, target.entry, target.app); return; }
-  const e = target.entry;
-  const a = target.app;
-  const name = e?.name ?? a?.name ?? "";
-  const desc = e ? (e.mcp ? (e.mcp.url || "Custom MCP server") : (a?.description || e.desc)) : (a?.description || "");
-  const connected = !!e?.connected;
 
-  // HERO — icon, name, description; Connected badge or Connect; ⋮.
-  const hero = document.createElement("div");
-  hero.className = "conn2-hero";
-  hero.innerHTML = `${e ? iconFor(e, "conn2-icon xl") : iconForApp(a!, "conn2-icon xl")}<div class="conn2-hero-main"><div class="conn2-hero-name"></div><div class="conn2-hero-desc"></div></div><div class="conn2-hero-actions"></div>`;
-  (hero.querySelector(".conn2-hero-name") as HTMLElement).textContent = name;
-  (hero.querySelector(".conn2-hero-desc") as HTMLElement).textContent = desc;
-  const actions = hero.querySelector(".conn2-hero-actions") as HTMLElement;
-  if (connected) actions.insertAdjacentHTML("beforeend", `<span class="conn2-connected">${CHECK}<span>Connected</span></span>`);
-  else if (e) { const b = connectButton(e); b.classList.add("primary"); b.textContent = e.mcp ? "Enable" : "Connect"; actions.appendChild(b); }
-  else if (a) { const b = connectAppButton(a, true); b.classList.add("primary"); actions.appendChild(b); }
-  if (e && e.kind !== "org") {
-    const kebab = document.createElement("button");
-    kebab.type = "button";
-    kebab.className = "skills-kebab";
-    kebab.title = "More";
-    kebab.textContent = "⋮";
-    kebab.addEventListener("click", () => openMenu(kebab, [
-      ...(e.mcp?.url ? [{ label: "Copy server URL", onClick: () => { void navigator.clipboard?.writeText(e.mcp!.url); } }] : []),
-      ...(e.mcp ? [{ label: e.enabled ? "Turn off" : "Turn on", onClick: async () => {
-        await window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { enabled: !e.enabled });
-        await reloadQuietly();
-        const fresh = entries.find((x) => x.key === e.key);
-        if (fresh) await openDetail({ entry: fresh }, true);
-      } }] : []),
-      { label: e.mcp ? "Delete" : "Disconnect", danger: true, onClick: () => void removeEntry(e) },
-    ]));
-    actions.appendChild(kebab);
-  }
-  host.appendChild(hero);
-
-  const body = document.createElement("div");
-  body.className = "conn2-detail-body";
-  host.appendChild(body);
-
-  // DESCRIPTION
-  const about = document.createElement("p");
-  about.className = "conn2-about";
-  about.textContent = e?.kind === "org"
-    ? (e.conn?.shared ? `${name} is a shared org account: your organization authorized it once and every member's agents ride it.` : `Your organization added ${name}. ${connected ? "Your own account is connected; your agents use it through the gateway." : "Connect your own account to use it from your agents."}`)
-    : e?.mcp ? "A custom MCP server your agents reach through the gateway. Its tools are listed below; turn one off to hide it from your AI."
-    : `${name} through Pipedream Connect: ${connected ? "your account is authorized and its tools are exposed to your agents through the gateway." : "connect your account and its tools become available to your agents through the gateway."}`;
-  body.appendChild(about);
-
-  // CUSTOM MCP — the fields (URL, headers, OAuth) commit on change.
-  if (e?.mcp && e.kind !== "org") body.appendChild(customFields(e));
-
-  // TOOLS — chips, then the switches.
-  const toolsHead = document.createElement("h3");
-  toolsHead.className = "conn2-h3";
-  toolsHead.textContent = "Tools";
-  body.appendChild(toolsHead);
-  const chips = document.createElement("div");
-  chips.className = "conn2-tool-chips";
-  chips.innerHTML = `<span class="conn2-chip-muted">Loading…</span>`;
-  body.appendChild(chips);
-  const perms = document.createElement("div");
-  perms.className = "conn2-perms";
-  body.appendChild(perms);
-
-  // META
-  const meta = document.createElement("div");
-  meta.className = "conn2-meta";
-  const metaRows: Array<[string, string]> = [
-    ["Made by", e?.mcp ? (e.kind === "org" ? "Your organization" : "You") : e?.kind === "org" ? "Your organization" : "Pipedream"],
-    ["Type", e?.type ?? "Web"],
-    ...(e?.mcp?.url ? [["Server URL", e.mcp.url] as [string, string]] : []),
-    ["Sign-in", e?.conn?.shared ? "Org account (shared)" : e?.mcp ? (e.mcp.headerKeys?.length ? "Headers" : "Server's own") : "Required"],
-    ...(e?.conn ? [["Access", e.kind === "org" ? "Managed by your organization" : "Yours"] as [string, string]] : []),
-    ...(a?.categories?.length ? [["Categories", a.categories.join(", ")] as [string, string]] : []),
-  ];
-  for (const [k, v] of metaRows) {
-    const cell = document.createElement("div");
-    cell.className = "conn2-meta-cell";
-    cell.innerHTML = `<div class="conn2-meta-k"></div><div class="conn2-meta-v"></div>`;
-    (cell.querySelector(".conn2-meta-k") as HTMLElement).textContent = k;
-    const val = cell.querySelector(".conn2-meta-v") as HTMLElement;
-    if (k === "Made by" && v === "Pipedream") {
-      const link = document.createElement("a");
-      link.href = "https://pipedream.com/";
-      link.textContent = "Pipedream";
-      link.className = "conn2-link";
-      link.addEventListener("click", (ev) => { ev.preventDefault(); const g = window.glyphh as unknown as { openExternal?: (u: string) => void }; if (g.openExternal) g.openExternal("https://pipedream.com/"); else window.open("https://pipedream.com/", "_blank", "noopener"); });
-      val.appendChild(link);
-    } else val.textContent = v;
-    meta.appendChild(cell);
-  }
-  body.appendChild(meta);
-
-  if (!e) { chips.innerHTML = `<span class="conn2-chip-muted">Connect to see this connector's tools.</span>`; return; }
-  await paintTools(e, chips, perms);
-}
-
-async function paintTools(e: Entry, chips: HTMLElement, perms: HTMLElement): Promise<void> {
-  let tools: Array<{ name: string; description?: string; hidden?: boolean }> = [];
-  try {
-    const res = e.mcp ? await window.glyphh.mcpConnectionsTools(e.mcp.slug) : await window.glyphh.connectionToolsList(e.conn!.id);
-    if (!(res as { ok?: boolean })?.ok) throw new Error((res as { error?: string }).error || "couldn't load tools");
-    tools = (res as { tools?: typeof tools }).tools ?? [];
-  } catch (err) {
-    chips.innerHTML = `<span class="conn2-chip-muted">Couldn't load tools.</span>`;
-    fail(err instanceof Error ? err.message : String(err));
-    return;
-  }
-  if (!tools.length) { chips.innerHTML = `<span class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</span>`; return; }
-  chips.textContent = "";
-  const appName = e.conn?.appSlug || e.mcp?.slug || e.name;
-  for (const t of tools) { const c = document.createElement("span"); c.className = "conn2-tool-chip" + (t.hidden ? " off" : ""); c.textContent = humanize(t.name, appName); c.title = t.description ? `${t.name}\n${t.description}` : t.name; chips.appendChild(c); }
-
-  const readOnly = e.kind === "org";
-  const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
-  const commit = async (): Promise<void> => {
-    const list = Array.from(hidden);
-    try {
-      if (e.mcp) await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list });
-      else await window.glyphh.connectionToolsSet(e.conn!.id, list);
-    } catch (err) { fail(err instanceof Error ? err.message : String(err)); }
-    chips.querySelectorAll<HTMLElement>(".conn2-tool-chip").forEach((c) => c.classList.toggle("off", hidden.has(c.textContent || "")));
-  };
-  const head = document.createElement("div");
-  head.className = "conn2-perms-head";
-  head.innerHTML = `<div><div class="conn2-h3" style="margin:0">Tool permissions</div><div class="conn2-muted">Choose which tools your AI may use. ${readOnly ? "Managed by your organization." : "Off hides a tool from every agent."}</div></div><label class="skills-switch conn2-all" title="All tools"><input type="checkbox" /><span></span></label>`;
-  const all = head.querySelector("input") as HTMLInputElement;
-  all.disabled = readOnly;
-  perms.appendChild(head);
-  const list = document.createElement("div");
-  list.className = "conn2-perm-list";
-  perms.appendChild(list);
-  const paintAll = (): void => { all.checked = hidden.size === 0; };
-  all.addEventListener("change", () => {
-    hidden.clear();
-    if (!all.checked) for (const t of tools) hidden.add(t.name);
-    list.querySelectorAll<HTMLInputElement>("input").forEach((b) => { b.checked = all.checked; });
-    void commit();
-  });
-  for (const t of tools) {
-    const row = document.createElement("div");
-    row.className = "conn2-perm";
-    row.innerHTML = `<div class="conn2-perm-main"><div class="conn2-perm-name"></div><div class="conn2-perm-desc"></div></div><label class="skills-switch"><input type="checkbox" /><span></span></label>`;
-    (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = humanize(t.name, appName);
-    (row.querySelector(".conn2-perm-name") as HTMLElement).title = t.name;
-    (row.querySelector(".conn2-perm-desc") as HTMLElement).textContent = t.description || "";
-    const box = row.querySelector("input") as HTMLInputElement;
-    box.checked = !hidden.has(t.name);
-    box.disabled = readOnly;
-    box.addEventListener("change", () => { if (box.checked) hidden.delete(t.name); else hidden.add(t.name); paintAll(); void commit(); });
-    row.querySelector(".conn2-perm-main")!.addEventListener("click", () => row.classList.toggle("expanded"));
-    list.appendChild(row);
-  }
-  paintAll();
-}
-
-/** THE PERMISSIONS PAGE (his screens, 2026-09-16): a compact header, the
- *  description, then the tools in two groups, Read-only and Write/delete, each
- *  with a group mode and a three-way switch per tool: Always allow, Needs
- *  approval, Never. Never = hidden from every agent (the existing hidden
- *  list); the other two are the member's preference per connection. */
-async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogApp): Promise<void> {
   const head = document.createElement("div");
   head.className = "conn2-phead";
-  head.innerHTML = `${iconFor(e, "conn2-icon")}<span class="conn2-phead-name"></span><div style="flex:1"></div><div class="conn2-hero-actions"></div>`;
+  head.innerHTML = `${iconFor(e.name, e.mcp.iconUrl)}<span class="conn2-phead-name"></span><div style="flex:1"></div><div class="conn2-hero-actions"></div>`;
   (head.querySelector(".conn2-phead-name") as HTMLElement).textContent = e.name;
   const actions = head.querySelector(".conn2-hero-actions") as HTMLElement;
-  if (e.kind !== "org") {
-    const dis = document.createElement("button");
-    dis.type = "button";
-    dis.className = "action-btn";
-    dis.textContent = e.mcp ? "Delete" : "Disconnect";
-    dis.addEventListener("click", () => void removeEntry(e));
-    actions.appendChild(dis);
-  } else if (!e.connected && !e.conn?.shared) {
-    const b = connectButton(e); b.classList.add("primary"); actions.appendChild(b);
-  }
+  if (e.connected) actions.insertAdjacentHTML("beforeend", `<span class="conn2-connected">${CHECK}<span>Connected</span></span>`);
+  else { const b = enableButton(e); b.classList.add("primary"); actions.appendChild(b); }
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "action-btn";
+  del.textContent = "Delete";
+  del.addEventListener("click", () => void removeEntry(e));
+  actions.appendChild(del);
   const kebab = document.createElement("button");
   kebab.type = "button";
   kebab.className = "skills-kebab";
   kebab.title = "More";
   kebab.textContent = "⋮";
   kebab.addEventListener("click", () => openMenu(kebab, [
-    { label: "About this connector", onClick: () => void openDetail({ entry: e, app, page: "summary" }) },
-    ...(e.mcp?.url ? [{ label: "Copy server URL", onClick: () => { void navigator.clipboard?.writeText(e.mcp!.url); } }] : []),
-    ...(e.mcp && e.kind !== "org" ? [{ label: e.enabled ? "Turn off" : "Turn on", onClick: async () => { await window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { enabled: !e.enabled }); await reloadQuietly(); const fresh = entries.find((x) => x.key === e.key); if (fresh) await openDetail({ entry: fresh, app, page: "permissions" }, true); } }] : []),
+    ...(e.mcp.url ? [{ label: "Copy server URL", onClick: () => { void navigator.clipboard?.writeText(e.mcp.url); } }] : []),
+    { label: e.connected ? "Turn off" : "Turn on", onClick: () => { void setEnabled(e, !e.connected); } },
   ]));
   actions.appendChild(kebab);
   host.appendChild(head);
 
   const about = document.createElement("p");
   about.className = "conn2-about";
-  about.textContent = app?.description || (e.mcp ? (e.mcp.url || "A custom MCP server your agents reach through the gateway.") : e.desc);
+  about.textContent = e.connected
+    ? "A custom MCP server your agents reach through the local Glyphh MCP server."
+    : "This server is turned off: your agents see none of its tools until you turn it back on.";
   host.appendChild(about);
 
-  if (e.mcp && e.kind !== "org") host.appendChild(customFields(e));
+  host.appendChild(customFields(e));
 
   const title = document.createElement("div");
   title.className = "conn2-h3";
@@ -991,7 +339,7 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
   const sub = document.createElement("div");
   sub.className = "conn2-muted";
   sub.style.marginBottom = "10px";
-  sub.textContent = e.kind === "org" ? "Managed by your organization." : "Choose when your AI is allowed to use these tools.";
+  sub.textContent = "Choose when your AI is allowed to use these tools.";
   host.appendChild(sub);
 
   const groupsHost = document.createElement("div");
@@ -999,21 +347,22 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
   groupsHost.innerHTML = `<div class="conn2-chip-muted">Loading tools…</div>`;
   host.appendChild(groupsHost);
 
-  let tools: Array<{ name: string; description?: string; hidden?: boolean }> = [];
-  try {
-    const res = e.mcp ? await window.glyphh.mcpConnectionsTools(e.mcp.slug) : await window.glyphh.connectionToolsList(e.conn!.id);
-    if (!(res as { ok?: boolean })?.ok) throw new Error((res as { error?: string }).error || "couldn't load tools");
-    tools = (res as { tools?: typeof tools }).tools ?? [];
-  } catch (err) {
-    groupsHost.innerHTML = `<div class="conn2-chip-muted">Couldn't load tools.</div>`;
-    fail(err instanceof Error ? err.message : String(err));
+  const res = await window.glyphh.mcpConnectionsTools(e.mcp.slug)
+    .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }));
+  if (current?.key !== e.key) return;   // the member opened another meanwhile
+  if (!res.ok) {
+    groupsHost.innerHTML = `<div class="conn2-chip-muted">Couldn't reach the server.</div>`;
+    fail(res.error || "Couldn't load the server's tools.");
     return;
   }
-  if (!tools.length) { groupsHost.innerHTML = `<div class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</div>`; return; }
+  if (!res.tools.length) { groupsHost.innerHTML = `<div class="conn2-chip-muted">This server publishes no tools yet.</div>`; return; }
 
   await renderToolGroups(groupsHost, {
-    key: e.key, appName: e.conn?.appSlug || e.mcp?.slug || e.name, tools, readOnly: e.kind === "org",
-    persistHidden: async (list) => { if (e.mcp) await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list }); else await window.glyphh.connectionToolsSet(e.conn!.id, list); },
+    key: e.key, appName: e.mcp.slug, tools: res.tools,
+    persistHidden: async (list) => {
+      const r = await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list });
+      if (!r.ok) throw new Error(r.error || "Couldn't save the tool list.");
+    },
   });
 }
 
@@ -1099,10 +448,17 @@ export async function renderToolGroups(groupsHost: HTMLElement, o: ToolPermissio
   }
 }
 
-/** A custom MCP server's fields, committing on change. */
+/** A custom MCP server's fields, committing on change. The OAuth client is
+ *  set when the server is added (+ Add): the store keeps it with the secrets
+ *  and an update leaves it alone, so it has no field here. */
 function customFields(e: Entry): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "conn2-fields";
+  const commitField = async (fields: Record<string, unknown>): Promise<void> => {
+    const r = await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, fields);
+    if (!r.ok) throw new Error(r.error || "Couldn't save that.");
+    await reloadKeepingDetail(e);
+  };
   const field = (title: string, desc: string, value: string, placeholder: string, secret: boolean, commit: (v: string) => Promise<unknown>): HTMLElement => {
     const r = document.createElement("div");
     r.className = "set-pref-row";
@@ -1118,39 +474,38 @@ function customFields(e: Entry): HTMLElement {
     input.spellcheck = false;
     input.addEventListener("change", () => {
       const v = input.value.trim();
-      if (!v && secret) return;
+      // A blank secret keeps the saved one; a blank name or URL is refused.
+      if (!v) { if (!secret) input.value = value; return; }
       void commit(v).then(() => { if (secret) input.value = ""; }).catch((err) => fail(err instanceof Error ? err.message : String(err)));
     });
     r.querySelector(".set-pref-value")!.appendChild(input);
     return r;
   };
-  wrap.appendChild(field("Name", "", e.name, "My MCP server", false, (v) => window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { name: v })));
-  wrap.appendChild(field("Remote MCP server URL", "The endpoint the server dials.", e.mcp!.url, "https://mcp.example.com/mcp", false, (v) => window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { url: v })));
-  wrap.appendChild(field("Header", e.mcp!.headerKeys?.length ? `Stored: ${e.mcp!.headerKeys.join(", ")} — write-only, enter a line to replace.` : "Write-only — stored sealed, never shown again.", "", "Authorization: Bearer …", true, (v) => {
-    const k = v.indexOf(":");
-    return window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { headers: k > 0 ? { [v.slice(0, k).trim()]: v.slice(k + 1).trim() } : {} });
+  wrap.appendChild(field("Name", "", e.name, "My MCP server", false, (v) => commitField({ name: v })));
+  wrap.appendChild(field("Remote MCP server URL", "The endpoint Glyphh dials.", e.mcp.url, "https://mcp.example.com/mcp", false, (v) => {
+    if (!/^https?:\/\//i.test(v)) return Promise.reject(new Error("The server URL must start with http:// or https://."));
+    return commitField({ url: v });
   }));
-  wrap.appendChild(field("OAuth client ID", "For servers that sign you in on first connect.", "", "", false, (v) => window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { oauth: { clientId: v } })));
-  wrap.appendChild(field("OAuth client secret", "Write-only — never shown again.", "", "", true, (v) => window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { oauth: { clientSecret: v } })));
+  wrap.appendChild(field("Header", e.mcp.headerKeys?.length ? `Stored: ${e.mcp.headerKeys.join(", ")} — write-only, enter a line to replace.` : "Write-only — stored sealed, never shown again.", "", "Authorization: Bearer …", true, (v) => {
+    const k = v.indexOf(":");
+    if (k <= 0) return Promise.reject(new Error("A header is “Name: value”."));
+    return commitField({ headers: { [v.slice(0, k).trim()]: v.slice(k + 1).trim() } });
+  }));
   return wrap;
 }
 
 async function removeEntry(e: Entry): Promise<void> {
   const yes = await confirmAction({
-    title: e.mcp ? `Delete ${e.name}?` : `Disconnect ${e.name}?`,
-    body: "Agents lose its tools immediately. You can connect it again any time.",
-    confirmLabel: e.mcp ? "Delete" : "Disconnect",
+    title: `Delete ${e.name}?`,
+    body: "Agents lose its tools immediately. The MCP server itself is not touched; you can add it again any time.",
+    confirmLabel: "Delete",
     danger: true,
   });
   if (!yes) return;
-  try {
-    if (e.mcp) await window.glyphh.mcpConnectionsDelete(e.mcp.slug);
-    else if (e.conn) await window.glyphh.connectionDisconnect(e.conn.id);
-    current = null;
-    await loadSettingsConnections();
-  } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
-  }
+  const r = await window.glyphh.mcpConnectionsDelete(e.mcp.slug)
+    .catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+  if (!r.ok) { fail(r.error || `Couldn't delete ${e.name}.`); return; }
+  await loadSettingsConnections();
 }
 
 // ── menus ───────────────────────────────────────────────────────────────────
@@ -1185,12 +540,6 @@ function wire(): void {
     query = (ev.target as HTMLInputElement).value;
     render();
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.addEventListener("click", async () => {
-    tab = b.dataset.conn2Tab as "mine" | "discover";
-    if (tab === "discover" && !catalog.length) await loadCatalog("");
-    render();
-  }));
-  // Apps come from Discover; the button is for a server of your own.
   el("conn2-add")?.addEventListener("click", () => void openCustomMcpModal());
   el("conn2-back")?.addEventListener("click", () => {
     current = null;
@@ -1198,41 +547,14 @@ function wire(): void {
     el("conn2-list-view")?.classList.remove("hidden");
     render();
   });
-  // A CONNECTORS-CHANGED PUSH from the main process (an account landed after
-  // its OAuth) wakes a waiting connect at once instead of at its next tick,
-  // and otherwise keeps the list honest (his report, 2026-10-07). The web
-  // bridge serves no such push, so the subscription is capability-gated.
-  if (hostHas("onConnectorsChanged")) {
-    window.glyphh.onConnectorsChanged(() => {
-      if (wakeConnectPoll) { wakeConnectPoll(); return; }
-      if (pageShowing() && !current) void reloadQuietly();
-    });
-  }
-}
-
-// ── the adopted original: catalog modal + connect flow (one implementation) ──
-let adopted = false;
-let selfTriggered = false;
-let refreshing = false;
-async function refreshFromStore(): Promise<void> {
-  if (refreshing) return;
-  refreshing = true;
-  try { await loadSettingsConnections(); } finally { refreshing = false; }
-}
-function ensureAdopted(): void {
-  const host = el("conncfg-legacy");
-  if (!host || adopted) return;
-  adopted = true;
-  selfTriggered = true;
-  adoptConnectionsInto(host, [], null);
+  // The Connections section (connections.ts) edits the same store: when it
+  // re-reads, the list here follows — never over an open server's page.
   onConnectionsChanged(() => {
-    if (selfTriggered) { selfTriggered = false; return; }
-    if (current) return;
-    void refreshFromStore();
+    if (pageShowing() && !current) void loadLists();
   });
 }
 
-/** + Custom MCP uses the app's standard form modal. */
+/** + Add uses the app's standard form modal. */
 async function openCustomMcpModal(): Promise<void> {
   const { formModal } = await import("./settings-list-page.js");
   await formModal({
@@ -1260,13 +582,14 @@ async function openCustomMcpModal(): Promise<void> {
         url: v.url.trim(),
         ...(Object.keys(headers).length ? { headers } : {}),
         ...(v.clientId ? { oauth: { clientId: v.clientId.trim(), ...(v.clientSecret ? { clientSecret: v.clientSecret.trim() } : {}) } } : {}),
-      });
+      }).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err), connection: undefined }));
       if (!res?.ok) return { ok: false as const, error: res?.error || "couldn't add that server" };
       const slug = res.connection?.slug;
+      // After the modal closes: the fresh list, then the new server's page.
       setTimeout(() => {
         void loadSettingsConnections().then(() => {
           const fresh = slug ? entries.find((x) => x.key === `mcp:${slug}`) : undefined;
-          if (fresh) void openDetail({ entry: fresh });
+          if (fresh) void openDetail(fresh);
         });
       }, 0);
       return { ok: true as const };

@@ -24,7 +24,7 @@ import { registerRelayHandler } from "./relay-client.js";
 import { deleteAgent, getAgent, listAgents, saveAgent, slugify } from "./local-agents.js";
 import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
-import { bareModel } from "./org-models.js";
+import { modelRef } from "./org-models.js";
 import { agentRoleOf, type AgentRole } from "../shared/member-library.js";
 
 interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown }
@@ -32,7 +32,7 @@ interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; b
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
 function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; role: AgentRole; hasBrief: boolean } {
-  return { agent: a.slug, name: a.name, description: a.description, model: bareModel(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
+  return { agent: a.slug, name: a.name, description: a.description, model: modelRef(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
 }
 /** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
 function checkedRole(raw: unknown): AgentRole {
@@ -42,7 +42,7 @@ function checkedRole(raw: unknown): AgentRole {
 }
 
 async function checkedModel(raw: string): Promise<string> {
-  const m = bareModel(raw);
+  const m = modelRef(raw);
   if (!m) return "";
   const list = await listLoopModels().catch(() => null);
   if (!list?.ok) return m;   // the list couldn't be read: the gateway decides at spawn time

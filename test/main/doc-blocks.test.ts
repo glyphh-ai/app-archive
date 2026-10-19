@@ -1,6 +1,4 @@
 /**
- * @license Proprietary — © Glyphh. All rights reserved.
- *
  * Glyphh Docs structured blocks (formatMarkdown container fences) + the
  * design-system doc-style directive. Pure — no Electron, no network.
  */

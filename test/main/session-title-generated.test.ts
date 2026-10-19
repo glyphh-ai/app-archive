@@ -1,7 +1,7 @@
 /**
  * session-title-generated.test.ts — the generated session title (his order,
  * 2026-10-05: do the same as Claude's titles): the placeholder rule, the
- * "may generate?" decision, the request body, the sanitizer and the fetch.
+ * "may generate?" decision, the request body, the sanitizer and the call.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -68,13 +68,11 @@ describe("mayGenerateTitle", () => {
 });
 
 describe("titleRequestBody", () => {
-  it("is the OpenAI body: the fixed system line, one user turn, 16 tokens, temperature 0", () => {
-    expect(titleRequestBody("claude-haiku-4-5", PROMPT, REPLY)).toEqual({
-      model: "claude-haiku-4-5",
-      messages: [
-        { role: "system", content: TITLE_SYSTEM_PROMPT },
-        { role: "user", content: `User:\n${PROMPT}\n\nAssistant:\n${REPLY}` },
-      ],
+  it("is the Messages body: the fixed system line, one user turn, 16 tokens, temperature 0", () => {
+    expect(titleRequestBody("anthropic::claude-haiku-5-5", PROMPT, REPLY)).toEqual({
+      model: "anthropic::claude-haiku-5-5",
+      system: TITLE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `User:\n${PROMPT}\n\nAssistant:\n${REPLY}` }],
       max_tokens: 16,
       temperature: 0,
     });
@@ -105,24 +103,15 @@ describe("sanitizeTitle", () => {
 });
 
 describe("fetchSessionTitle", () => {
-  const body = titleRequestBody("claude-haiku-4-5", PROMPT, REPLY);
-  it("POSTs the Router's chat door with the session bearer and the attribution line, and sanitizes the answer", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '"Research agent setup."' } }] }), { status: 200 }));
-    const t = await fetchSessionTitle({ apiUrl: "https://api.glyphh.ai/", token: "tok", body, fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(t).toBe("Research agent setup");
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://api.glyphh.ai/api/gateway/v1/chat/completions");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ authorization: "Bearer tok", "content-type": "application/json", "x-glyphh-service": "session-title" });
-    expect(JSON.parse(String(init.body))).toEqual(body);
+  const body = titleRequestBody("anthropic::claude-haiku-5-5", PROMPT, REPLY);
+  it("hands the body to the door once and sanitizes the answer", async () => {
+    const ask = vi.fn(async () => '"Research agent setup."');
+    expect(await fetchSessionTitle({ body, ask })).toBe("Research agent setup");
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask).toHaveBeenCalledWith(body);
   });
-  it("never throws: a refusal, a bad body or a network error all keep the placeholder", async () => {
-    const refused = vi.fn(async () => new Response("{\"error\":\"budget\"}", { status: 402 }));
-    expect(await fetchSessionTitle({ apiUrl: "x", token: "t", body, fetchImpl: refused as unknown as typeof fetch })).toBeNull();
-    const junk = vi.fn(async () => new Response("not json", { status: 200 }));
-    expect(await fetchSessionTitle({ apiUrl: "x", token: "t", body, fetchImpl: junk as unknown as typeof fetch })).toBeNull();
-    const down = vi.fn(async () => { throw new Error("offline"); });
-    expect(await fetchSessionTitle({ apiUrl: "x", token: "t", body, fetchImpl: down as unknown as typeof fetch })).toBeNull();
+  it("never throws: no answer or a failed call both keep the placeholder", async () => {
+    expect(await fetchSessionTitle({ body, ask: async () => null })).toBeNull();
+    expect(await fetchSessionTitle({ body, ask: async () => { throw new Error("offline"); } })).toBeNull();
   });
 });

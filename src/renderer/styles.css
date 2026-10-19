@@ -1384,76 +1384,6 @@ html:is([data-theme="dark"], [data-theme="highvis"], [data-theme="modern-dark"],
 }
 #onboarding-overlay .code-input-box:focus { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
 
-/* ── Lockout gate (trial expired / account disabled) ─────────── */
-
-/* Starts below the 38px titlebar so window controls stay clickable —
-   the user must always be able to quit, even while locked out. */
-#lockout-overlay {
-  position: fixed;
-  top: var(--titlebar-h);
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9000;
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#lockout-overlay.hidden { display: none !important; }
-
-/* While the account is locked the overlay covers everything below the 38px
-   titlebar, but the titlebar's own workspace chrome would otherwise stay
-   visible and clickable above it. Hide it — the bare titlebar (drag region +
-   window controls, so the user can still quit) is all that remains. */
-body.account-locked #tab-bar,
-body.account-locked #files-rail-toggle,
-body.account-locked #yo-rail-toggle,
-body.account-locked #titlebar-refresh,
-body.account-locked #dl-btn-wrap {
-  display: none !important;
-}
-
-#lockout-content {
-  text-align: center;
-  max-width: 400px;
-  width: 100%;
-  padding: 0 24px;
-}
-
-.lockout-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--white);
-  margin: 4px 0 10px;
-}
-
-.lockout-message {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-2);
-  margin: 0 0 24px;
-}
-
-#lockout-status {
-  margin-top: 12px;
-  font-size: 12px;
-  min-height: 18px;
-}
-
-.lockout-link {
-  margin-top: 18px;
-  background: none;
-  border: none;
-  color: var(--text-3);
-  font-size: 12px;
-  cursor: pointer;
-  text-decoration: underline;
-  transition: color 0.15s;
-}
-.lockout-link:hover { color: var(--text); }
-
 /* ── Auth buttons — ported 1:1 from the platform (yo-platform globals.css)
    so the client's login / create-account / forgot-password buttons match
    it exactly. Primary = white resting, black text, accent→pink gradient
@@ -5790,11 +5720,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   background: rgba(175, 95, 255, 0.15);
   color: var(--text);
 }
-/* Governance: connected but the caller's agents can't use it. */
-.app-card-badge.badge-blocked {
-  background: rgba(212, 74, 74, 0.16);
-  color: var(--text);
-}
 
 /* ── + New dropdown menu ──────────────────────────────── */
 
@@ -5880,81 +5805,6 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   min-height: 0;
   overflow-y: auto;
 }
-
-.connector-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-}
-
-.connector-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 10px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color 0.15s;
-  text-align: center;
-}
-
-.connector-card:hover { border-color: var(--accent); }
-
-.connector-card-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.connector-card-initial {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: var(--surface-2);
-  color: var(--text-3);
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.connector-card-info { min-width: 0; width: 100%; }
-
-.connector-card-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.connector-card-desc {
-  font-size: 10px;
-  color: var(--text-3);
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.connector-load-more {
-  text-align: center;
-  padding: 10px;
-  color: var(--text);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px dashed var(--border-3);
-  border-radius: 8px;
-  background: none;
-  width: 100%;
-}
-
-.connector-load-more:hover { background: var(--active-bg); }
 
 /* ── Connected apps list ─────────────────────────────── */
 
@@ -6290,9 +6140,6 @@ img[src*="github.com"],
 img[src*="githubassets"],
 img[data-mark-src*="github.com"] { filter: invert(var(--mark-invert, 0)); }
 
-/* A share's verdict, on the bundle: waiting, declined, live. */
-.skill-share-chip.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
-.skill-share-chip.declined { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 
 /* A model the catalog no longer carries: named, and marked. */
 .code-chip.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
@@ -12135,7 +11982,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .settings-group-head > .settings-group-tabs { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
 /* The Yours | Discover switch sits RIGHT AFTER the tabs (not flung to the far
    edge, where nobody saw it), set off by a thin rule. */
-.settings-group-scope { flex: 0 0 auto; margin-left: 4px; padding-left: 16px; border-left: 1px solid var(--border, rgba(127,127,127,.25)); }
 /* The per-panel Yours / Discover pair is the page's switch now: hidden inside
    the host, while a panel's secondary tabs (Updates, Review) stay. */
 .settings-group-host .skills-tab[data-tab="mine"],
@@ -13629,11 +13475,6 @@ select:focus {
 .conn-modal-close { background: none; border: none; color: var(--text-3); font-size: 16px; cursor: pointer; line-height: 1; padding: 4px; }
 .conn-modal-close:hover { color: var(--text); }
 .conn-modal-panel .settings-input { margin-bottom: 12px; flex-shrink: 0; }
-/* Grid fills the constant-height panel + scrolls, so search results never
-   resize the modal. */
-.conn-modal-panel .connector-grid { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
-/* A search in flight dims the current results instead of wiping them. */
-.connector-grid.is-searching { opacity: .6; transition: opacity .15s; }
 
 /* ── Required connections (app editor, installed Glyphh apps) ── */
 .app-req-conn-row {
@@ -20407,6 +20248,12 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    head. Plain terminals keep their tabs; this styles only the agent face. */
 
 
+.ws-agent-termhead { display: flex; align-items: center; gap: 4px; padding: 3px 8px; }
+.ws-agent-term-title {
+  font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
+}
+
 /* The agent terminal head's recents IS the chat head's dropdown —
    .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
    own on purpose: one surface, two places it can be opened from. */
@@ -20539,13 +20386,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .orglib-pill-skill { border-color: color-mix(in srgb, #f59e0b 40%, transparent); color: #f59e0b; }
 .orglib-desc { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Settings → Connections: the tools SECTION collapses like the row above it. */
-.conncfg-tools-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; padding: 10px 0; }
-.conncfg-tools-chev { width: 13px; height: 13px; color: var(--text-3); transition: transform 0.15s; flex: none; }
-.conncfg-tools.open .conncfg-tools-chev { transform: rotate(90deg); }
-.conncfg-tools .conncfg-tools-body { display: none; }
-.conncfg-tools.open .conncfg-tools-body { display: block; }
-
 /* Settings → Connections: the value column is a SHARE of the row, not a
    fixed pixel width — it tracks the panel instead of leaving a ragged gap at
    any other size (his correction, 2026-09-12: "fix the percentage"). */
@@ -20553,39 +20393,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .settings-panel[data-sub="connections-cfg"] .set-pref-value { flex: 0 0 55%; width: 55%; }
 .settings-panel[data-sub="connections-cfg"] .set-pref-value > * { width: 100%; }
 .settings-panel[data-sub="connections-cfg"] .set-pref-value > .settings-toggle { width: auto; margin-left: auto; }
-
-/* Settings → Connections (help/settings-connections.ts): the far-left icon
-   in the accordion head and the app rows of the New-connection modal. */
-.conncfg-icon { width: 20px; height: 20px; border-radius: 5px; margin-right: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.conncfg-icon img { width: 100%; height: 100%; object-fit: contain; border-radius: 5px; }
-.conncfg-icon-initial { font-size: 11px; font-weight: 600; color: var(--text-2); }
-/* The adopted section is a PARTS BIN, not a page: only its catalog modal and
-   its tools pane are wanted. The toolbar, the card list and the page-level
-   detail editor (breadcrumb + head + Cancel/Save) all stay hidden — the tools
-   pane has already relocated into the open accordion row by the time the
-   detail un-hides itself (his report, 2026-09-12: the editor rendered under
-   the list). */
-.conncfg-legacy #connections-toolbar,
-.conncfg-legacy #connections-list { display: none !important; }
-/* The page EDITOR is hidden wherever it sits inside this page — bin, row, or
-   anywhere a previous build left it. Scoping the hide to the bin let a node
-   that had been relocated render its breadcrumb, Remove/Cancel/Save and its
-   own field layout inside the accordion (his report, 2026-09-12). */
-.settings-panel[data-sub="connections-cfg"] #conn-detail { display: none !important; }
-/* …EXCEPT the Custom MCP form, which IS that same node. Hiding it outright
-   made "+ Custom MCP" a no-op (his report, 2026-09-12): the button fired, the
-   form opened, and it opened inside something invisible. The host flips this
-   class for the duration of that flow. */
-
-/* While the Custom MCP form is open it OWNS the page: the header, the search
-   toolbar and the accordion step aside, exactly as the Connections page hides
-   its list behind its editor. */
-.settings-panel[data-sub="connections-cfg"].editing > h2,
-.settings-panel[data-sub="connections-cfg"].editing > .section-desc,
-.settings-panel[data-sub="connections-cfg"].editing > .crud-toolbar,
-/* Inside an OPEN ROW the detail is the row's form — visible there, hidden in
-   the parts-bin host it came from. */
-
 
 /* ── Settings → Build → Skills (2026-09-16) — the list/detail pages ───────── */
 .settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
@@ -20618,12 +20425,10 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skills-tabs.detail .skills-tab { border-radius: 0; padding: 8px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; background: none; }
 .skills-tabs.detail .skills-tab.active { border-bottom-color: var(--text); }
 .skills-count { font-size: 12px; color: var(--text-3); }
-/* APPS CARRY A VERSION (2026-10-07): the red square that counts the apps
-   with an update waiting — on the Updates tab and on the rail's Build item. */
-.skills-badge, .rail-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--danger-soft); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
-.skills-badge { margin-left: 6px; vertical-align: middle; }
+/* The red square that counts on a rail item. */
+.rail-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 4px; background: var(--danger-soft); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
 .rail-count { margin-left: auto; }
-.skills-badge.hidden, .rail-count.hidden { display: none; }
+.rail-count.hidden { display: none; }
 .skill-group { margin-bottom: 18px; }
 .skill-group-head { display: flex; align-items: baseline; gap: 6px; padding: 6px 4px; font-size: 13px; font-weight: 600; color: var(--text); }
 .skill-group-count { font-weight: 400; color: var(--text-3); font-size: 12px; }
@@ -20641,7 +20446,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skill-row-desc { overflow: hidden; text-overflow: ellipsis; }
 .skill-row-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .skill-row-date { font-size: 12px; color: var(--text-3); }
-.skill-add-btn { min-width: 34px; }
 .skills-kebab { width: 28px; height: 28px; border: none; border-radius: 6px; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; }
 .skills-kebab:hover { background: var(--hover); color: var(--text); }
 /* ABOVE THE SETTINGS MODAL (his report, 2026-10-05: the Skills ⋮ "no longer works" —
@@ -20686,8 +20490,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skill-author { font-size: 13.5px; color: var(--text); }
 .skill-author-meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 .skill-contents-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.skill-version { padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px; color: var(--text-2); background: var(--surface-2); cursor: pointer; }
-.skill-version:disabled { cursor: default; opacity: .8; }
 .skill-files { display: grid; grid-template-columns: 240px 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-height: 460px; height: calc(100vh - 340px); }
 .skill-tree { border-right: 1px solid var(--border); padding: 10px 6px; overflow-y: auto; background: var(--surface-2); }
 .skill-tree-dir { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: none; border-radius: 6px; background: none; font: inherit; font-size: 12.5px; color: var(--text-2); cursor: pointer; text-align: left; }
@@ -20715,7 +20517,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .disc-featured-name { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
 .disc-featured-desc { font-size: 13.5px; color: var(--text-2); margin-bottom: 14px; max-width: 560px; }
 .disc-featured-art { color: var(--accent); opacity: .85; flex-shrink: 0; }
-.skill-add-wide { min-width: 64px; }
 .disc-shelf { margin-bottom: 22px; }
 .disc-shelf-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 10px; font-size: 13px; font-weight: 600; color: var(--text); }
 .disc-link { border: none; background: none; color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 400; cursor: pointer; }
@@ -20756,64 +20557,25 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .conn2-tr.openable:hover { background: var(--hover); border-radius: 8px; }
 .conn2-icon { width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); flex-shrink: 0; }
 .conn2-icon img { width: 100%; height: 100%; object-fit: contain; }
-.conn2-icon.lg { width: 44px; height: 44px; border-radius: 10px; }
-.conn2-icon.xl { width: 72px; height: 72px; border-radius: 16px; }
 .conn2-icon-initial { font-size: 12px; font-weight: 600; color: var(--text-2); }
-.conn2-icon.xl .conn2-icon-initial { font-size: 26px; }
 .conn2-name { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conn2-type { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); }
-.conn2-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--hover); color: var(--text-2); }
 .conn2-status { display: flex; align-items: center; }
 .conn2-check { color: var(--text-2); display: inline-flex; padding-left: 6px; }
 .conn2-connect { min-width: 84px; }
-.conn2-plus { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.conn2-plus.done { color: #4ade80; border-color: transparent; background: rgba(74, 222, 128, .12); }
-.conn2-popular { margin-top: 22px; }
-.conn2-popular-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.conn2-pop .conn2-name { flex: 1; }
-.conn2-pop.openable, .conn2-dir-card.openable { cursor: pointer; }
-.conn2-pop.openable:hover, .conn2-dir-card.openable:hover { background: var(--hover); }
-.conn2-crumb { display: flex; gap: 8px; font-size: 13.5px; color: var(--text-3); margin: 2px 0 12px; }
-.conn2-crumb .here { color: var(--text); }
-.conn2-dir-bar { display: flex; gap: 8px; margin-bottom: 18px; }
-.conn2-dir-search { flex: 1; max-width: none; }
-.conn2-dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.conn2-dir-card { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
-.conn2-dir-main { flex: 1; min-width: 0; }
-.conn2-dir-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--text); }
-.conn2-verified { color: #4ade80; display: inline-flex; }
-.conn2-dir-desc { font-size: 12.5px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.conn2-hero { display: flex; align-items: center; gap: 22px; padding: 36px 26px; margin: 0 -8px 18px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
-.conn2-hero-main { flex: 1; min-width: 0; }
-.conn2-hero-name { font-size: 24px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.conn2-hero-desc { font-size: 13.5px; color: var(--text-2); max-width: 560px; }
 .conn2-hero-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .conn2-connected { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: var(--hover); color: var(--text); font-size: 13px; }
-.conn2-detail-body { padding: 0 4px 24px; }
 .conn2-about { font-size: 14px; line-height: 1.55; color: var(--text-2); margin: 0 0 24px; }
 .conn2-h3 { font-size: 18px; font-weight: 600; color: var(--text); margin: 24px 0 12px; }
 .conn2-muted { font-size: 12.5px; color: var(--text-3); }
-.conn2-tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.conn2-tool-chip { font-family: var(--font-mono); font-size: 12px; padding: 5px 10px; border-radius: 8px; background: var(--hover); color: var(--text); }
-.conn2-tool-chip.off { opacity: .45; text-decoration: line-through; }
 .conn2-chip-muted { font-size: 12.5px; color: var(--text-3); }
-.conn2-perms { margin-top: 22px; }
-.conn2-perms-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.conn2-perm-list { border-top: 1px solid var(--border); }
-.conn2-perm { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); }
 .conn2-perm-main { flex: 1; min-width: 0; cursor: pointer; }
 .conn2-perm-name { font-size: 13.5px; color: var(--text); }
-.conn2-perm-desc { font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conn2-perm.expanded .conn2-perm-desc { white-space: normal; }
 .conn2-fields { margin: 0 0 12px; }
-.conn2-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 24px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--border); }
-.conn2-meta-k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
-.conn2-meta-v { font-size: 13.5px; color: var(--text); word-break: break-all; }
 .conn2-tr { grid-template-columns: 28px minmax(0, 1fr) 150px 110px; }
 .conn2-tr.head .conn2-head-connector { grid-column: 1 / 3; }
 .conn2-head-status, .conn2-status { justify-self: end; }
 .conn2-status .conn2-check { padding: 0 10px; }
-.conn2-tool-chip { font-family: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
 .conn2-phead { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
 .conn2-phead .conn2-icon { width: 28px; height: 28px; border-radius: 7px; }
 .conn2-phead-name { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -20833,14 +20595,7 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .conn2-seg button:hover { color: var(--text); }
 .conn2-seg button.active { background: var(--hover); color: var(--text); }
 .conn2-seg button:disabled { cursor: default; }
-.conn2-more { padding: 16px; text-align: center; font-size: 12.5px; color: var(--text-3); }
-.conn2-crumb .crumb-link { cursor: pointer; }
-.conn2-crumb .crumb-link:hover { color: var(--text); }
-.conn2-filter { white-space: nowrap; }
-.conn2-link { color: var(--accent); text-decoration: none; }
-.conn2-link:hover { text-decoration: underline; }
 .conn2-perm-main { position: relative; display: flex; align-items: center; gap: 6px; cursor: default; }
-.conn2-pop { position: absolute; left: 0; top: calc(100% + 6px); z-index: 20; max-width: 520px; padding: 10px 12px; border-radius: 10px; background: var(--bg-raised); border: 1px solid var(--border-2); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); font-size: 12.5px; line-height: 1.45; color: var(--text-2); white-space: normal; }
 /* ── Apps: the Overview's gallery and dependencies ── */
 .app-overview-extra { margin-top: 18px; }
 .app-gallery { margin-bottom: 18px; }
@@ -20891,6 +20646,21 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .rail-filter-btn:hover { color: var(--text); background: var(--hover); }
 .rail-filter-btn.active { color: var(--accent); border-color: var(--accent); }
 .code-menu-item .loop-mark { vertical-align: middle; }
+/* A loop's mark as an element: the vendor's image once it has loaded, its
+   first letter on a plate until then (or when it cannot load). */
+span.loop-mark { display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+span.loop-mark img { width: 100%; height: 100%; object-fit: contain; }
+.loop-mark-letter { font-size: 9.5px; font-weight: 700; line-height: 1; color: var(--text-2); background: var(--surface-3); }
+.code-drop-item.loop-drop-item .drop-main .loop-mark { margin-right: 7px; }
+.loop-drop-manage { color: var(--text-3); border-top: 1px solid var(--border-2); margin-top: 4px; }
+.loop-drop-boundary .loop-drop-sub { color: var(--warning, var(--text-3)); }
+/* The route chip: the gateway wears the accent, direct reads plain. */
+.code-chip.code-route-chip.route-gateway { color: var(--accent); }
+.code-drop-item.disabled, .code-drop-item:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Settings › Loops: installed / missing, with its Install and Sign in. */
+.loops-state { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.loops-state-ok { font-size: 12px; color: var(--accent); }
+.loops-state-missing { font-size: 12px; color: var(--warning, var(--text-3)); }
 .code-menu-item .menu-check { margin-left: auto; }
 
 /* ── THE FIXED SIDEBAR (his order, 2026-09-16): the rail is the one fixed
@@ -21023,7 +20793,6 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .skill-row-name, .disc-card-name, .skill-detail-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .skill-row-title, .disc-card-title, .skill-detail-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skill-row-sub .skill-type-chip, .skill-detail-sub .skill-type-chip { margin-right: 0; }
-.skill-update-btn { height: 24px; padding: 0 10px; font-size: 11px; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }
 /* The fallback MARK where a monogram would go (Tabs table, app cards): no
    colored plate behind it. A panel's mark is full-bleed art and fills the box
    the way an icon does; the generic app glyph is line work and sits inside. */
@@ -21036,16 +20805,6 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .skill-flow-host { position: relative; width: 100%; height: calc(100vh - 250px); min-height: 380px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
 /* The library pages' one message row, in its two moods. */
 .crud-form-error.ok { color: var(--text-2); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-/* Where a share stands: live on the org's hub, or waiting on its desk. */
-.skill-share-chip { text-transform: none; }
-.skill-share-chip.pending { border-color: color-mix(in srgb, var(--warning, #d9a441) 45%, var(--border-2)); color: var(--warning, #d9a441); }
-/* The shelves a shared bundle sits on, on its detail (2026-09-17). */
-.skill-cats-block { margin-top: 14px; }
-.skill-cats { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.skill-cat-chip { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2); font-size: 11px; }
-.skill-cat-none { font-size: 12px; color: var(--text-3); }
-.skill-cat-edit { background: none; border: none; padding: 1px 4px; color: var(--accent); font-size: 11.5px; cursor: pointer; }
-.skill-cat-edit:hover { text-decoration: underline; }
 
 /* Settings → Memory: the two privacy disclosures (his order, 2026-09-19). */
 .memory-disclosure { border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; background: var(--surface-2); }
@@ -21442,9 +21201,6 @@ h4):not(.gdoc-paper *),
 .devices-folders { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
 .devices-folders code { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
 
-/* The Platform row in Settings is an anchor styled as a nav row (opens the org console in a new tab). */
-.settings-nav a.settings-nav-ext { text-decoration: none; }
-.settings-nav a.settings-nav-ext.active { background: none; }
 
 /* The turn's timing line under an answer (ready · first token · tok/s · total). */
 .code-msg-timing { font-size: 10.5px; color: var(--text-faint); margin: 4px 0 0 2px; font-variant-numeric: tabular-nums; }
@@ -21611,9 +21367,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .artp-row-icon svg { width: 16px; height: 16px; }
 .artp-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
 .artp-row-meta { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; color: var(--text-3); }
-.artp-row-lock { display: inline-flex; color: var(--text-3); }
-.artp-row-lock svg { width: 12px; height: 12px; }
-.artp-row-by::after, .artp-row-lock::after { content: "·"; margin-left: 6px; color: var(--text-faint); }
 .artp-row-kebab { flex: none; width: 24px; height: 24px; opacity: 0; }
 .artp-row:hover .artp-row-kebab, .artp-row:focus-within .artp-row-kebab { opacity: 1; }
 .artp-row-kebab svg { width: 14px; height: 14px; }
@@ -21711,53 +21464,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .artp-pop-go:hover { color: var(--text); background: var(--hover); }
 .artp-pop-go svg { width: 14px; height: 14px; }
 
-/* The share popover: Private / Organization / Public link (+ Copy). */
-.artp-share-pop {
-  position: fixed; z-index: 1000; width: 260px; padding: 8px; border-radius: 10px;
-  background: var(--surface); border: 1px solid var(--border-2); box-shadow: 0 18px 50px var(--shadow); color: var(--text);
-}
-.artp-share-title { font-size: 12px; font-weight: 600; color: var(--text-3); padding: 2px 6px 6px; }
-.artp-share-rows { display: flex; flex-direction: column; gap: 2px; }
-.artp-share-row {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 7px;
-  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
-}
-.artp-share-row:hover { background: var(--hover); }
-.artp-share-row.active { background: var(--surface-2); }
-.artp-share-check { flex: none; width: 16px; height: 16px; display: inline-flex; color: var(--accent-text); }
-.artp-share-check svg { width: 16px; height: 16px; }
-.artp-share-text { display: flex; flex-direction: column; gap: 1px; }
-.artp-share-text strong { font-size: 13px; font-weight: 500; }
-.artp-share-text small { font-size: 11px; color: var(--text-3); }
-.artp-share-link { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-.artp-share-url { flex: 1; min-width: 0; font-size: 11.5px; }
-.artp-share-copy { flex: none; height: 28px; padding: 0 10px; }
-
-/* ── THE USAGE RING (his order, 2026-10-07, Code only): bottom-right of the
-   chip row, a ring whose arc fills with the budget nearest its line; the
-   popover above it lists the plan, that budget and the context window. ── */
-
-#code-usage-wrap { flex: 0 0 auto; margin-left: auto; }
-.code-composer-bar .code-chip.code-usage-chip { display: inline-flex; align-items: center; padding: 2px 3px; }
-.code-usage-ring { width: 16px; height: 16px; transform: rotate(-90deg); display: block; }
-.code-usage-ring .ring-track { fill: none; stroke: var(--border-2); stroke-width: 3; }
-.code-usage-ring .ring-fill {
-  fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round;
-  stroke-dasharray: 100; stroke-dashoffset: 100;
-  transition: stroke-dashoffset 0.3s ease;
-}
-.code-usage-chip.hot .ring-fill { stroke: var(--warning); }
-.code-drop-up.code-usage-pop { left: auto; right: 0; min-width: 240px; max-width: 300px; padding: 12px 14px 13px; }
-.usage-plan { font-size: 12px; font-weight: 600; color: var(--text); }
-.usage-empty { margin-top: 8px; font-size: 11px; color: var(--text-3); }
-.usage-row { margin-top: 10px; }
-.usage-row-head { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-2); }
-.usage-row-head span:last-child { color: var(--text-3); white-space: nowrap; }
-.usage-bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 5px; overflow: hidden; }
-.usage-fill { height: 100%; border-radius: 2px; background: var(--accent); }
-.usage-fill.hot { background: var(--warning); }
-.usage-billing { margin-top: 12px; width: 100%; }
-
 /* THE CODE LAYOUT (his order, 2026-10-07): the environment / directory / git /
    new-folder chips ride their own row ABOVE the box, always — the Glyphh
    mascot at that row's far right. */
@@ -21769,50 +21475,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    the standard modal, asked before a CLI tile from the Echo opens. */
 
 
-/* ══ THE DEVELOPER'S DESK + THE REVIEW DESK (his asks, 2026-10-07) ══════════
-   Releases (an app instance's) and Publish (the hub) tabs on a library item;
-   the Review tab org admins see on every library page. One row grammar. */
-.pub-pane .pub-main { display: flex; flex-direction: column; gap: 16px; }
-.pub-standing { font-size: 13px; color: var(--text-2); }
-.pub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.pub-field { display: flex; flex-direction: column; gap: 6px; }
-.pub-version { font: 600 14px var(--font-display, inherit); color: var(--text); }
-.pub-visibility { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); }
-.pub-notes { width: 100%; resize: vertical; min-height: 64px; }
-.pub-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.pub-rows { display: flex; flex-direction: column; gap: 6px; }
-.pub-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
-.pub-row.live { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.pub-row-main { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 3px; }
-.pub-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.pub-row-sub { font-size: 12px; color: var(--text-3); }
-.pub-row-note { font-size: 12px; color: var(--text-2); padding: 6px 8px; border-left: 2px solid var(--accent); background: var(--surface-3); border-radius: 0 6px 6px 0; }
-.pub-row-actions { display: flex; gap: 6px; flex: none; }
-.pub-row-actions .action-btn { height: 26px; padding: 0 10px; font-size: 12px; }
-.pub-v-pending .pub-row-title::after { content: " · in review"; color: var(--warning); font-weight: 500; }
-.pub-thread-pane, .pub-files-pane { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-.pub-comment { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; background: var(--surface-3); }
-.pub-comment.ai { border-left: 2px solid var(--accent); }
-.pub-comment-by { font-size: 11px; color: var(--text-3); }
-.pub-comment-body { font-size: 12.5px; color: var(--text); white-space: pre-wrap; }
-.pub-reply { display: flex; gap: 8px; align-items: flex-start; }
-.pub-reply textarea { flex: 1; resize: vertical; }
-.pub-decide { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.pub-decide textarea { width: 100%; resize: vertical; }
-.pub-file { max-height: 240px; overflow: auto; font-size: 11.5px; padding: 8px; background: var(--surface-3); border-radius: 6px; white-space: pre-wrap; }
-.pub-files-pane details > summary { cursor: pointer; font-size: 12px; color: var(--text-2); }
-
-/* THE ICON AND SCREENSHOTS ON THE PUBLISH TAB (2026-10-07) */
-.pub-media { display: flex; flex-direction: column; gap: 14px; }
-.pub-icon-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.pub-icon-preview { width: 40px; height: 40px; border-radius: 9px; background: var(--surface-3); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
-.pub-icon-preview img { width: 28px; height: 28px; }
-.pub-shots { display: flex; flex-direction: column; gap: 8px; }
-.pub-shot { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
-.pub-shot img { width: 96px; height: 60px; object-fit: cover; border-radius: 6px; background: var(--surface-3); flex: none; }
-.pub-shot-caption { flex: 1; min-width: 160px; }
-.pub-shot-actions { display: flex; gap: 4px; flex: none; }
-.pub-shot-actions .action-btn { height: 26px; padding: 0 8px; font-size: 12px; }
 /* THE BUILD LOG IN THE THREAD (2026-10-07): the app card's log tail */
 .code-app-card .cax-log { margin: 8px 0 0; max-height: 160px; overflow: auto; padding: 8px; border-radius: 8px; background: var(--surface-3); color: var(--text-2); font-size: 11.5px; line-height: 1.4; white-space: pre-wrap; }
 
@@ -21972,6 +21634,12 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .wsc-dir .action-btn { flex: none; }
 .wsc-error { font-size: 12px; color: var(--danger, #ff7a70); }
 .wsc-error.hidden { display: none; }
+/* How the workspace's agent starts, and each agent panel's own answers. */
+.wsc-body { max-height: min(70vh, 640px); overflow-y: auto; }
+.wsc-group { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border-2); }
+.wsc-group-head { font-size: 12px; font-weight: 600; color: var(--text); }
+.wsc-cells { display: flex; flex-direction: column; gap: 12px; }
+.wsc-cells:empty { display: none; }
 
 /* ── NO HEADER ROW ON WORK PANELS (his order, 2026-10-09: "remove the headers
    off all work panels, move the title down to the next row of each panel —
@@ -22094,8 +21762,6 @@ body.rail-collapsed .settings-group-titlebar.clears-strip { padding-left: var(--
 .artp-list { padding: 0 0 24px; }
 .artp-list > .settings-group-titlebar { flex: none; }
 .artp-head { flex: none; }
-.artp-head > .skills-tabs { margin-bottom: 0; }
-.artp-head > .artp-count { margin-left: 8px; }
 .artp-groups { padding: 0 28px; }
 .artp-viewer-head {
   height: var(--panel-row-h, 46px); box-sizing: border-box;
@@ -22127,3 +21793,32 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
    2026-10-09: the Schedules page showed no close). */
 .settings-group-titlebar .settings-group-close { width: 28px; height: 28px; flex: none; }
 .settings-group-titlebar .settings-group-close svg { width: 15px; height: 15px; }
+
+/* ── SETTINGS › MODELS (help/settings-models.ts): a card per provider with its
+   models under it; the add/edit form is a card in the same list. ── */
+.pvd-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 0 0 10px; background: var(--bg-2, transparent); }
+.pvd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pvd-left { min-width: 0; }
+.pvd-title { display: flex; align-items: baseline; gap: 8px; }
+.pvd-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.pvd-kind { font-size: 11px; color: var(--text-3); }
+.pvd-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pvd-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.pvd-models { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pvd-model { display: flex; align-items: center; gap: 8px; }
+.pvd-model .settings-input { margin-bottom: 0; }
+.pvd-model select.settings-input { width: 140px; flex: 0 0 auto; }
+.pvd-model-name { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pvd-add input.settings-input { flex: 1 1 auto; min-width: 0; }
+.pvd-x { flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--text-3); font-size: 15px; line-height: 1; cursor: pointer; }
+.pvd-x:hover { background: var(--hover, rgba(127,127,127,.12)); color: var(--text); }
+.pvd-none { font-size: 12px; color: var(--text-3); }
+.pvd-form { display: flex; flex-direction: column; gap: 8px; }
+.pvd-field { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 10px; }
+.pvd-field .settings-input { margin-bottom: 0; width: 100%; }
+.pvd-field-label { font-size: 12px; color: var(--text-2); }
+.pvd-form-actions { display: flex; gap: 8px; margin-top: 4px; }
+.pvd-listing { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.pvd-listing-rows { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.pvd-listing-row { display: flex; align-items: center; gap: 8px; }
+.pvd-listing-row select.settings-input { width: 140px; margin-bottom: 0; }

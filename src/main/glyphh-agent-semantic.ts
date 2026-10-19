@@ -8,8 +8,8 @@
  * belongs to — build here, run anywhere the app runs. Nothing writes into
  * desktop-global state.
  *
- * Connection-sourced ingestion goes through connections.runTool — the same
- * workspace-grant gate as every connector call the agent makes.
+ * Connection-sourced ingestion calls one of the user's MCP connections
+ * (mcp-connections.ts) — the same door every connection call takes.
  *
  * RESTORED from add3f592^ (his order, 2026-09-14) — the purge took these as
  * collateral of the engine move. The old in-main action gate is gone with
@@ -21,8 +21,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import { llmChunk, vectorUpsert, vectorSearch, graphCypher, listCollections } from "./glyphh-app-ai.js";
 import { getExplicitWorkingDirectory } from "./working-directory.js";
-import { getClient } from "./glyphh-client.js";
-import { callGatewayToolText } from "./gateway-mcp.js";
+import { callConnectionTool } from "./mcp-connections.js";
 
 interface SemanticToolDef {
   name: string;
@@ -140,7 +139,7 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   },
   {
     name: "index_connection",
-    doc: "index_connection(app, collection, slug, tool, props?) — run a connector tool (Drive list/read, Gmail search, …) and index its output. Rides the workspace connection grants like every connector call.",
+    doc: "index_connection(app, collection, slug, tool, props?) — run one of the user's MCP connection tools and index its output.",
     run: async (a) => {
       const app = appSlug(a);
       const collection = collectionName(a);
@@ -148,9 +147,9 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
       const connTool = String(a.tool ?? "").trim();
       if (!connSlug || !connTool) return "ERROR: slug and tool are required (a connection + one of its tools)";
       const props = a.props && typeof a.props === "object" ? (a.props as Record<string, unknown>) : {};
-      const result = { ret: await callGatewayToolText(connSlug, connTool, props) };
+      const result = await callConnectionTool(connSlug, connTool, props);
       const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-      if (!text || text === "null") return "connector returned nothing to index";
+      if (!text || text === "null") return "the connection returned nothing to index";
       const sourceId = `${connSlug}/${connTool}`;
       const n = await indexText(app, collection, sourceId, text, 1500);
       return `indexed ${n} chunks from ${sourceId} into ${app}/${collection}`;

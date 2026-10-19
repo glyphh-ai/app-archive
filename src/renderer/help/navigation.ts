@@ -4,31 +4,22 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { onWeb, DESKTOP_ONLY_SUBS, hideDesktopOnlySubs } from "./web-surface.js";
-import { groupOfSub, groupPageKey, subHasDiscover, CUSTOMIZE_TAB_ORDER, type GroupPage } from "./surface.js";
-import { loadOAuth, initOAuth } from "./settings-oauth.js";
-import { loadGatewayMetrics } from "./gateway-metrics.js";
-import { loadGatewayKeys } from "./gateway-keys.js";
+import { groupOfSub, groupPageKey, CUSTOMIZE_TAB_ORDER, type GroupPage } from "./surface.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
-import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
+import { loadDashboard, initDashboardEvents } from "./dashboard.js";
+import { loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings, setLibraryScope } from "./settings-skills.js";
 import { loadAgentsSettings } from "./settings-agents.js";
-import { loadRemoteControl } from "./settings-remote.js";
-import { initDevices, loadDevices } from "./settings-devices.js";
 import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
-import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections, setConnectionsScope } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
-import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
+import { loadSettings, initSettings, loadMcp } from "./settings.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
-import { loadSupport, loadAbout } from "./docs.js";
 import { loadMemorySettings } from "./settings-memory.js";
+import { initModelsSettings, loadModelsSettings } from "./settings-models.js";
+import { initSettingsLoops, loadAgentDefaults, loadSettingsLoops } from "./settings-loops.js";
 import { loadFiles, initFiles } from "./files.js";
-import { loadDownload } from "./settings-download.js";
-import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadAdminPlans, loadAdminOrgs, loadAdminModels, loadAdminUsage } from "./settings-admin.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -43,14 +34,10 @@ const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
 // settings shell's bottom-left chip.
 const USER_MENU_ROWS: ReadonlyArray<{ label: string; sub: string; icon: string }> = [
   { label: "Settings", sub: "", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` },
-  { label: "Account", sub: "account", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>` },
-  { label: "About", sub: "about", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>` },
 ];
-/** Render the shared rows + Log out into `menu`. `go` routes a sub.
+/** Render the shared rows into `menu`. `go` routes a sub.
  *  `insideSettings` drops the Settings row: it is the door into the dialog,
  *  and inside the dialog there is nowhere for it to go. */
-/** The org console; the same address the Settings row under Organization opens. */
-const PLATFORM_URL = "https://platform.glyphh.ai";
 const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicked: () => void, insideSettings = false): void => {
   for (const r of USER_MENU_ROWS) {
     if (insideSettings && !r.sub) continue;
@@ -63,36 +50,6 @@ const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicke
     b.addEventListener("click", () => { onPicked(); go(r.sub); });
     menu.appendChild(b);
   }
-  void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ version?: string; ready?: boolean } | null> } })
-    .glyphh?.getUpdateStatus?.().then((st) => {
-      if (!st?.version) return;
-      Array.from(menu.querySelectorAll<HTMLElement>(".code-menu-item span"))
-        .find((sp) => sp.textContent === "About")
-        ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="${st.ready ? "An update is ready to install" : "A new release is available"}"></span>`);
-    }).catch(() => {});
-  // PLATFORM (his order, 2026-10-04): the org console, in a new tab — a
-  // browser tab on the web, a workspace panel on the desktop (house rule).
-  const platform = document.createElement("button");
-  platform.type = "button";
-  platform.className = "code-menu-item";
-  platform.setAttribute("role", "menuitem");
-  platform.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6"/></svg><span>Platform</span>`;
-  platform.addEventListener("click", () => { onPicked(); window.open(PLATFORM_URL, "_blank", "noopener"); });
-  menu.appendChild(platform);
-  const sep = document.createElement("div");
-  sep.className = "menu-sep";
-  menu.appendChild(sep);
-  const out = document.createElement("button");
-  out.type = "button";
-  out.className = "code-menu-item danger menu-danger";
-  out.setAttribute("role", "menuitem");
-  out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
-  out.addEventListener("click", () => {
-    onPicked();
-    clearUiState();
-    void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
-  });
-  menu.appendChild(out);
 };
 
 export function openHelp() {
@@ -166,7 +123,6 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "files") void loadFiles();
   else if (sec === "code") loadCode();
   else if (sec === "settings") loadSettings();
-  else if (sec === "support") loadSupport();
 }
 
 /**
@@ -351,31 +307,15 @@ function arrangeAppSettingsNav(): void {
       const pick = (sub: string): Element | null =>
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
-      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
+      // Memory, Appearance, Artifacts, MCP Server.
       // Appearance sits right under General (his order, 2026-09-20).
       // Connections lives in BUILD on both hosts (his order, 2026-10-05: the
       // web's Build page is the desktop's, tab for tab).
-      for (const sub of ["general", "appearance", "memory", "privacy", "devices", "remote", "account", "artifacts", "usage", "mcp"]) {
+      for (const sub of ["general", "appearance", "models", "loops", "memory", "artifacts", "mcp"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
-      let orgGroup = nav.querySelector("#app-nav-group-org");
-      if (!orgGroup) {
-        orgGroup = document.createElement("div");
-        orgGroup.id = "app-nav-group-org";
-        orgGroup.className = "settings-nav-group";
-        orgGroup.textContent = "Organization";
-      }
-      anchor.after(orgGroup);
-      anchor = orgGroup;
-      for (const sub of ["billing"]) {
-        const item = pick(sub);
-        if (item) { anchor.after(item); anchor = item; }
-      }
-      // A header with nothing under it is not drawn (his report, 2026-09-29):
-      // Billing is its only item and is org_admin's alone.
-      orgGroup.classList.toggle("hidden", !!document.getElementById("nav-billing")?.classList.contains("hidden"));
-      // ONE CUSTOMIZE GROUP follows Organization (his report, 2026-10-07:
+      // ONE CUSTOMIZE GROUP follows (his report, 2026-10-07:
       // "The Build and Customize tabs are confusing. It should just be one
       // tab"): the Build rows and the Customize rows under one header, in
       // the page's tab order (surface.ts CUSTOMIZE_TAB_ORDER; artifacts
@@ -411,7 +351,7 @@ export function openSettingsModal(sub?: string): void {
   // Desktop lands on General now — Account left the nav rail for the user
   // menu (his order, 2026-09-10), so it can't be the modal's landing row.
   // Platform LANDS on the Dashboard (his order, 2026-09-11) — not General.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "general";
+  const defaultSub = "general";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
   // Pages a Build / Customize work-panel borrowed go home first: the modal
   // adopts the whole layout and every loader looks for them under it.
@@ -568,12 +508,10 @@ export function openSettingsModal(sub?: string): void {
     }
   }
 
-  // Populate the whole panel set + admin gating, then reveal the requested sub.
+  // Populate the whole panel set, then reveal the requested sub.
   loadSettings();
-  gateAdminSubs();
-  initOrgSwitcher();
   initCollapsibleNavGroups();
-  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
+  selectSettingsSub(sub || "general");
 }
 
 // ── Collapsible rail sections (his order, 2026-09-02, PLATFORM only) ─────────
@@ -696,146 +634,12 @@ function wireAppUserChip(nav: HTMLElement): void {
       face.textContent = (name || "?").charAt(0).toUpperCase();
     }
     (chip.querySelector(".asu-name") as HTMLElement).textContent = name || "—";
-    const tier = (info.tier || "none");
-    // A member sees their organization here, not its plan (his order, 2026-09-29).
-    const role = (info as { role?: string }).role;
-    const admin = !!role && ["org_admin", "super_admin"].includes(role);
-    (chip.querySelector(".asu-plan") as HTMLElement).textContent = !admin
-      ? String((info as { orgName?: string }).orgName || "")
-      : tier === "none" || tier === "free" ? "Free plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
   };
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then(paintChip).catch(() => { /* signed out — the dash stays */ });
   // RE-PAINT on every account refresh (his report, 2026-09-01: a first paint
   // that raced the account cache — or a freshly uploaded avatar — left the
   // initial sitting here for the whole run).
   window.glyphh.onAccountUpdated?.(paintChip);
-}
-
-function gateAdminSubs(): void {
-  void window.glyphh.getAccountInfo?.().then((info) => {
-    // The mid-tier 'admin' is "org_admin minus Billing" (his spec, 2026-09-02):
-    // every org surface admits admins; only the money door stays org_admin's.
-    const orgAdmin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
-    const admin = orgAdmin || info?.role === "admin";
-    document.getElementById("nav-org-general")?.classList.toggle("hidden", !admin);
-    // The LIBRARY is the admin's curation surface (his ruling, 2026-09-12) —
-    // members meet the library through Marketplace/installs, never this door.
-    document.getElementById("nav-org-library")?.classList.toggle("hidden", !admin);
-    // SECURITY and GATEWAY are admin groups too (his ruling, 2026-09-12) —
-    // the whole cluster (headers + items) rides one class, like nav-super.
-    // The server enforces the role on every route regardless.
-    settingsNavOwn<HTMLElement>(".nav-admin").forEach((el) => el.classList.toggle("hidden", !admin));
-    // BILLING IS THE MONEY DOOR and it is org_admin's alone, on every surface
-    // (his order, 2026-09-17: a member of an org should not see it in the app
-    // either). Someone who signed up alone is org_admin of their own org, so
-    // they keep it; an invited member does not. The server 403s the reads
-    // regardless — this hides the door.
-    document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
-    document.getElementById("app-nav-group-org")?.classList.toggle("hidden", !orgAdmin);
-    // The Platform group (the super-admin console — Catalog / Plans / Usage /
-    // Orgs) is a TIER above the org-admin gate: super_admin only. The server
-    // enforces the role on every route regardless — this only hides the nav.
-    // The platform axis is the REAL gate (bootstrap seeds the admin as an
-    // org_admin member with is_platform_admin=true); role kept as fallback.
-    const superAdmin = (info as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true || info?.role === "super_admin";
-    settingsNavOwn<HTMLElement>(".nav-super").forEach((el) => el.classList.toggle("hidden", !superAdmin));
-    paintImpersonationBanner(info as { orgName?: string; impersonatingOrgId?: string | null } | null);
-  }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
-}
-
-/**
- * The ORG SWITCHER (multi-org membership, his order 2026-09-02): a member of
- * two-plus orgs gets a workspace dropdown — platform rail top-left and the
- * Settings nav — that re-pins THIS session's active org server-side and
- * reloads. Single-org members never see it; there is no forced picker (the
- * session defaults to the member's default/first org).
- */
-export function initOrgSwitcher(): void {
-  void (async () => {
-    type Membership = { orgId: string; orgName: string; role: string; active: boolean };
-    // SDK first (web — window.glyphh is a fabricating proxy there), IPC on desktop.
-    const sdk = (window as unknown as { glyphhSdk?: { memberships?: { orgs?: () => Promise<Membership[]>; setActiveOrg?: (id: string) => Promise<unknown> } } }).glyphhSdk?.memberships;
-    const ipc = window.glyphh as unknown as { orgMemberships?: () => Promise<Membership[]>; orgSwitch?: (id: string) => Promise<{ ok: boolean; error?: string }> };
-    let list: Membership[] = [];
-    try { list = (sdk?.orgs ? await sdk.orgs() : await ipc.orgMemberships?.()) ?? []; }
-    catch { return; /* signed out / no seam — no switcher */ }
-    if (list.length < 2) return;
-
-    const paint = (host: HTMLElement): void => {
-      host.classList.remove("hidden");
-      host.innerHTML = "";
-      const sel = document.createElement("select");
-      // Self-owned styling — settings-input's global margins fought the nav's
-      // flow and overlapped the first item (his report, 2026-09-02).
-      sel.className = "org-switch-select";
-      sel.title = "Switch organization";
-      for (const m of list) {
-        const opt = document.createElement("option");
-        opt.value = m.orgId;
-        opt.textContent = m.orgName;
-        opt.selected = m.active;
-        sel.appendChild(opt);
-      }
-      sel.addEventListener("change", () => {
-        void (async () => {
-          sel.disabled = true;
-          try {
-            if (sdk?.setActiveOrg) await sdk.setActiveOrg(sel.value);
-            else {
-              const r = await ipc.orgSwitch?.(sel.value);
-              if (r && !r.ok) throw new Error(r.error || "switch failed");
-            }
-            // Scope changed server-side — a full reload repaints every surface
-            // (sessions, apps, settings) as the newly active org.
-            window.location.reload();
-          } catch {
-            sel.disabled = false;
-            sel.value = list.find((m) => m.active)?.orgId ?? sel.value;
-          }
-        })();
-      });
-      host.appendChild(sel);
-    };
-    for (const id of ["org-switch-rail", "org-switch-settings"]) {
-      const host = document.getElementById(id);
-      if (host) paint(host);
-    }
-  })();
-}
-
-/**
- * The IMPERSONATION banner (scoped-membership epic, his order 2026-09-01):
- * while a platform admin rides another org, EVERY surface shows a loud fixed
- * red bar naming where they are, with the way back. The session scope is
- * server-side, so stopping + a reload restores their real org everywhere.
- */
-function paintImpersonationBanner(info: { orgName?: string; impersonatingOrgId?: string | null } | null): void {
-  document.getElementById("impersonation-banner")?.remove();
-  if (!info?.impersonatingOrgId) return;
-  const bar = document.createElement("div");
-  bar.id = "impersonation-banner";
-  bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 16px;background:#b91c1c;color:#fff;font-size:13px;font-weight:600;box-shadow:0 -2px 10px rgba(0,0,0,.35);";
-  const label = document.createElement("span");
-  label.textContent = `You are impersonating ${info.orgName || "another organization"} — everything you do here acts as its admin.`;
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "action-btn";
-  btn.textContent = "Stop impersonating";
-  btn.style.cssText = "background:#fff;color:#b91c1c;border-color:#fff;font-weight:700;";
-  btn.addEventListener("click", () => {
-    void (async () => {
-      btn.disabled = true;
-      // SDK first (web — window.glyphh is a fabricating proxy there), IPC on desktop.
-      const sdk = (window as unknown as { glyphhSdk?: { admin?: { stopImpersonate?: () => Promise<unknown> } } }).glyphhSdk?.admin;
-      try {
-        if (sdk?.stopImpersonate) await sdk.stopImpersonate();
-        else await (window.glyphh as unknown as { adminImpersonate?: (o: null) => Promise<unknown> }).adminImpersonate?.(null);
-      } catch { /* the reload below re-reads the true scope either way */ }
-      window.location.reload();
-    })();
-  });
-  bar.append(label, btn);
-  document.body.appendChild(bar);
 }
 
 /**
@@ -849,10 +653,7 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   // the app-level customization panel (themes, browser). General/Appearance/
   // Drips/Desktop/MCP are the app-config subs; Appearance is the natural anchor.
   app: "appearance",
-  // Organization / Runtime / Guardrails retired as tabs — Organization is
-  // now Organization › General; Runtime + Guardrails live on General (the
-  // Sessions group and the folded Guardrails group).
-  organization: "org-general",
+  // Runtime + Guardrails retired as tabs; General holds what is left.
   runtime: "general",
   guardrails: "general",
   // Apps and tasks are skills with a type now (2026-09-17) — their tabs are
@@ -874,51 +675,25 @@ const settingsSubAlias = (sub: string): string => {
   // DESKTOP_ONLY_SUBS: plugins, remote control, and since the web cut of
   // 2026-10-05 the whole Build and Customize groups) lands on General on
   // web; its nav item + panel are CSS-hidden there.
-  if (onWeb() && DESKTOP_ONLY_SUBS.has(target)) {
-    return document.body.classList.contains("platform-shell") ? "dash" : "general";
-  }
-  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "org-general";
+  if (onWeb() && DESKTOP_ONLY_SUBS.has(target)) return "general";
   return target;
 };
 
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  // THE PURGE: the settings shell is the minimal platform — account, org,
-  // members, billing (the license), apps, download, support, docs,
-  // and the super-admin Plans/Orgs console.
-  if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
-  else if (sub === "mcp") loadMcp();
-  else if (sub === "support") void loadSupportPanel();
-  else if (sub === "about") loadAbout();
-  else if (sub === "billing") void loadBilling();
-  else if (sub === "workspaces") void loadWorkspacesPanel();
-  else if (sub === "org-library") loadOrgLibrary();
+  if (sub === "mcp") loadMcp();
   else if (sub === "connections-cfg") void loadSettingsConnections();
   else if (sub === "skills") void loadSkillsSettings();
   else if (sub === "agents") void loadAgentsSettings();
   else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "tasks") void loadTasksSettings();
-  else if (sub === "gateway") void loadGatewayMetrics();
-  else if (sub === "gateway-keys") void loadGatewayKeys();
-  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
-  else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
-  // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") void loadOrgPanel();
-  else if (sub === "account") void loadProfile();
-  else if (sub === "members") void loadMembers();
-  // The Platform group — the super-admin console (settings-admin.ts). Each
-  // loader re-checks the role and paints an honest gate; the server enforces.
-  else if (sub === "padmin-models") loadAdminModels();
-  else if (sub === "padmin-plans") loadAdminPlans();
-  else if (sub === "padmin-usage") loadAdminUsage();
-  else if (sub === "padmin-orgs") loadAdminOrgs();
-  else if (sub === "download") void loadDownload();
-  else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
-  else if (sub === "remote") void loadRemoteControl();
-  else if (sub === "devices") { initDevices(); void loadDevices(); }
+  else if (sub === "memory") void loadMemorySettings();
+  else if (sub === "models") void loadModelsSettings();
+  else if (sub === "loops") void loadSettingsLoops();
+  else if (sub === "general") void loadAgentDefaults();
   // The installer is a terminal panel, not a settings page: open it and step aside.
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -943,67 +718,21 @@ const groupPanelPen: Record<string, HTMLElement | null> = {};
  *  2026-10-07: "switching it should stay"). */
 const groupLastSub: Record<string, string> = {};
 const LAST_SUB_PREF = "customizeLastSub";
-/** ONE Yours | Discover SWITCH FOR THE WHOLE PAGE (his report, 2026-10-07:
- *  "instead of each tab having a different Yours / Discover it should span
- *  all the tabs and switching it should stay"): the scope every tab shows
- *  under, remembered as the `customizeScope` pref. */
-type GroupScope = "mine" | "discover";
-let groupScope: GroupScope = "mine";
-const SCOPE_PREF = "customizeScope";
-const asScope = (v: unknown): GroupScope => (v === "discover" ? "discover" : "mine");
-
-/** Read both prefs once at init, before any door opens the page (the same
- *  door every other remembered pref uses: window.glyphh.getPreference, served
- *  by the preload on the desktop and the bridge on the web). */
+/** Read the remembered tab once at init, before any door opens the page (the
+ *  same door every other remembered pref uses: window.glyphh.getPreference,
+ *  served by the preload on the desktop and the bridge on the web). */
 function primeGroupPrefs(): void {
-  // A page asking for the other scope by itself (the directory's
-  // "Connections" crumb in settings-connections.ts) flips the one switch.
-  document.addEventListener("glyphh:customize-scope", (ev) => setGroupScope(asScope((ev as CustomEvent).detail)));
-  void window.glyphh.getPreference?.(SCOPE_PREF, "mine").then((v) => { groupScope = asScope(v); }).catch(() => {});
   void window.glyphh.getPreference?.(LAST_SUB_PREF, "").then((v) => {
     const sub = typeof v === "string" ? v : "";
     if (sub && !groupLastSub.customize) groupLastSub.customize = sub;
   }).catch(() => {});
 }
 
-/** Hand the scope to the page a tab shows: the library pages and Connections
- *  carry a Discover half; every other tab shows the empty state below.
- *  `force` is the switch's own click (Yours leaves a secondary tab such as
- *  Updates for the list); a tab switch only applies the scope. */
-function applyScopeTo(sub: string, scope: GroupScope, force: boolean): void {
-  if (setLibraryScope(sub, scope, force)) return;
-  if (sub === "connections-cfg") setConnectionsScope(scope);
-}
-
-/** The inline empty state a tab without a Discover half shows under
- *  Discover — the switch stays live, the tab says there is nothing to find. */
-function paintNoDiscover(host: HTMLElement | null, sub: string, label: string, scope: GroupScope): void {
-  const panel = host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`);
-  if (!panel) return;
-  const bare = scope === "discover" && !subHasDiscover(sub);
-  panel.classList.toggle("scope-discover-empty", bare);
-  let note = panel.querySelector<HTMLElement>(":scope > .settings-group-nodiscover");
-  if (!bare) { note?.remove(); return; }
-  if (!note) {
-    note = document.createElement("div");
-    note.className = "crud-empty settings-group-nodiscover";
-    panel.prepend(note);
-  }
-  note.textContent = `Nothing to discover for ${label} yet.`;
-}
-
-/** Set the page's scope — the switch's click, or a door that wants Discover
- *  (the composer's "Add connector"). Persists when it changed, repaints the
- *  switch and, with the page open, re-shows the current tab under the scope
- *  (a Yours click on Updates returns to the list, so the switch is never a
- *  dead button). */
-export function setGroupScope(scope: GroupScope): void {
-  if (groupScope !== scope) void window.glyphh.setPreference?.(SCOPE_PREF, scope);
-  groupScope = scope;
-  document.querySelectorAll<HTMLElement>(".settings-group-scope > .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.scope === scope));
-  const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="customize"]`);
-  const shown = sec?.querySelector<HTMLElement>(".settings-group-tabs > .skills-tab.active")?.dataset.sub;
-  if (sec && shown && sec.classList.contains("active")) showGroupTab("customize", shown, true);
+/** Every tab shows what is yours: the library pages and Connections are told
+ *  so before they load. */
+function showYoursIn(sub: string): void {
+  if (setLibraryScope(sub, "mine")) return;
+  if (sub === "connections-cfg") setConnectionsScope("mine");
 }
 
 function groupTabs(group: string): Array<{ sub: string; label: string }> {
@@ -1022,8 +751,7 @@ function groupTabs(group: string): Array<{ sub: string; label: string }> {
   return out;
 }
 
-/** Build (or refresh) the group page: tabs from its nav rows, panels adopted,
- *  the one scope switch wired once. */
+/** Build (or refresh) the group page: tabs from its nav rows, panels adopted. */
 export function loadSettingsGroup(group: string): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   const strip = sec?.querySelector<HTMLElement>(".settings-group-tabs");
@@ -1032,12 +760,6 @@ export function loadSettingsGroup(group: string): void {
   arrangeAppSettingsNav();
   const tabs = groupTabs(group);
   if (!tabs.length) { host.innerHTML = `<div class="ws-empty">Nothing to show here yet.</div>`; return; }
-  const scopeStrip = sec.querySelector<HTMLElement>(".settings-group-scope");
-  if (scopeStrip && !scopeStrip.dataset.wired) {
-    scopeStrip.dataset.wired = "1";
-    scopeStrip.querySelectorAll<HTMLButtonElement>(".skills-tab[data-scope]").forEach((b) => b.addEventListener("click", () => setGroupScope(asScope(b.dataset.scope))));
-  }
-  scopeStrip?.querySelectorAll<HTMLElement>(".skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.scope === groupScope));
   strip.innerHTML = "";
   for (const t of tabs) {
     const b = document.createElement("button");
@@ -1109,7 +831,7 @@ function adoptGroupTools(sec: HTMLElement, panel: HTMLElement | null): void {
   }
 }
 
-function showGroupTab(group: string, sub: string, forceScope = false): void {
+function showGroupTab(group: string, sub: string): void {
   const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
   if (!sec) return;
   if (groupLastSub[group] !== sub) void window.glyphh.setPreference?.(LAST_SUB_PREF, sub);
@@ -1119,14 +841,10 @@ function showGroupTab(group: string, sub: string, forceScope = false): void {
   host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
   if (host) host.scrollTop = 0;
   returnGroupTools();
-  // The page's one scope reaches the tab before it loads, so the tab paints
-  // straight into Yours or Discover (his report, 2026-10-07).
-  applyScopeTo(sub, groupScope, forceScope);
+  showYoursIn(sub);
   loadSettingsSub(sub);
   // After the load: a section tab (Schedules) is mounted by it, so its tools exist now.
   adoptGroupTools(sec, host?.querySelector<HTMLElement>(`:scope > .settings-panel[data-sub="${sub}"]`) ?? null);
-  const label = sec.querySelector<HTMLElement>(`.settings-group-tabs > .skills-tab[data-sub="${sub}"]`)?.textContent?.trim() || sub;
-  paintNoDiscover(host ?? null, sub, label, groupScope);
 }
 
 /**
@@ -1405,8 +1123,6 @@ export function initHelp() {
   };
   void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
   window.glyphh.onAccountUpdated?.(fillRailUser);
-  // Multi-org members get the workspace dropdown at the rail's top-left.
-  initOrgSwitcher();
 
   // Initialize all section event handlers. Each init is ISOLATED — one panel
   // throwing (a moved element, a missing id after a refactor) must not kill
@@ -1416,11 +1132,10 @@ export function initHelp() {
     try { fn(); } catch (err) { console.error(`[init] ${name} failed:`, err); }
   };
   boot("dashboard", initDashboardEvents);
-  boot("org", initOrgPanel);
   boot("settings", initSettings);
+  boot("models", initModelsSettings);
+  boot("loops", initSettingsLoops);
   boot("files", initFiles);
-  // A4 settings panels — wire their controls once at boot (idempotent).
-  boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
   boot("schedules", initSchedulesEvents);
   boot("connections", initConnections);

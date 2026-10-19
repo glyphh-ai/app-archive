@@ -7,11 +7,11 @@ export const GLYPHH_MASCOT_SRC = "brand/glyphh-mark.png";
  * list (layouts.ts), and the command overlay so an app shows the exact same
  * icon everywhere.
  *
- * Priority mirrors the platform Apps page:
- *   1. Pipedream catalog icon (for connected apps) — cached per slug
+ * Priority:
+ *   1. the app's own uploaded art (iconUrl)
  *   2. Google favicon by hostname (for web apps with a URL)
  *   3. OS file icon of the executable (for native apps) — cached per path
- *   4. initial letter (fallback)
+ *   4. a designed monogram (fallback)
  */
 
 type IconApp = {
@@ -19,7 +19,6 @@ type IconApp = {
   url?: string | null;
   execPath?: string | null;
   appArchetype?: string | null;
-  connection?: { accountId?: string; pipedreamSlug: string } | null;
   /** The app's OWN uploaded art (a marketplace listing icon) — wins over every
    *  derived source: an installed Glyphh app's launch URL has no favicon. */
   iconUrl?: string | null;
@@ -69,25 +68,18 @@ function navGlyph(app: IconApp): string {
     : "";
 }
 
-// Pipedream's catalog icon per connected app's pipedreamSlug — the saved-app
-// row doesn't carry an icon itself, so it's looked up from the connector
-// catalog once per unique slug and cached for the session.
-export const connectedIconCache: Record<string, string | null> = {};
-
 // OS icon (data URL) per native app's execPath, via the app-file-icon IPC.
 export const nativeIconCache: Record<string, string> = {};
 
 // window.glyphh is globally typed in the renderer program (via renderer.ts), but
 // this module is also compiled into the main-process typecheck through
 // code-workbench.ts's import, where that global augmentation isn't in scope.
-// Reach the two IPC methods through a locally typed accessor so both programs
+// Reach the IPC method through a locally typed accessor so both programs
 // type-check identically.
 const yoIcons = (): {
   appFileIcon: (execPath: string) => Promise<string | null>;
-  connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
 } => (window as unknown as { glyphh: {
   appFileIcon: (execPath: string) => Promise<string | null>;
-  connectorsGetApps: (slug: string) => Promise<{ apps: Array<{ id: string; icon?: string | null }> }>;
 } }).glyphh;
 
 // ── Curated brand layer ──────────────────────────────────────────────────
@@ -109,19 +101,6 @@ function brandColor(host: string): string {
   }
   return "";
 }
-
-// Connectors carry a Pipedream slug, not a URL — map the household slugs to
-// their real domains so the RESOLVER layer (and brand plates) apply to the
-// Connections page exactly like everywhere else. Unknown slugs fall through
-// to the catalog icon, then the monogram.
-const CONNECTOR_DOMAINS: Record<string, string> = {
-  gmail: "gmail.com", google_gmail: "gmail.com",
-  google_calendar: "calendar.google.com", google_drive: "drive.google.com",
-  google_docs: "docs.google.com", google_sheets: "sheets.google.com",
-  slack: "slack.com", github: "github.com", notion: "notion.so",
-  linear: "linear.app", figma: "figma.com", discord: "discord.com",
-  microsoft_outlook: "outlook.com", microsoft_teams: "teams.microsoft.com",
-};
 
 /** A domain's favicon — STRAIGHT from the public favicon service (THE PURGE,
  *  2026-09-10: the server-side icon resolver died with the R2 cache; every
@@ -156,29 +135,10 @@ export function appIconUrl(app: IconApp): string {
     try { resolved = resolverUrlFor(new URL(app.url).hostname); }
     catch { resolved = ""; }
   }
-  // A CONNECTOR ROW WEARS PIPEDREAM'S ICON (his order, 2026-10-05: "why are
-  // they not the icons from the API? Pipedream provides the icons"). The
-  // domain favicon used to win here — gmail.com and calendar.google.com both
-  // resolve to Google's generic G — so a connected Gmail row and the
-  // directory's Gmail card showed different art. The catalog icon is the one
-  // source for every connector surface; the domain favicon is only the
-  // fallback while the catalog has none.
-  const connectedIcon = app.connection?.accountId && app.connection.pipedreamSlug
-    ? connectedIconCache[app.connection.pipedreamSlug] || ""
-    : "";
-  if (!app.url && !connectedIcon && app.connection?.pipedreamSlug) {
-    const domain = CONNECTOR_DOMAINS[app.connection.pipedreamSlug];
-    if (domain) resolved = resolverUrlFor(domain);
-  }
   const nativeIcon = app.execPath ? nativeIconCache[app.execPath] || "" : "";
   // ONE ENDPOINT PER ENTITY, EVERY SURFACE (Chris: "it is not calling the
-  // same endpoint or the images would be the same"). A URL-bearing app ALWAYS
-  // uses OUR resolver — desktop was decorating the same apps with Pipedream
-  // CDN art the web can't reach (its rows carry no connection object), which
-  // is exactly why the two surfaces showed different images. Pipedream icons
-  // remain only for URL-LESS entries (connector rows), where both surfaces
-  // share the same connectorsGetApps seam.
-  if (connectedIcon) return connectedIcon;
+  // same endpoint or the images would be the same"): a URL-bearing app ALWAYS
+  // uses the favicon resolver, so every surface shows the same image.
   if (resolved) return resolved;
   return nativeIcon;
 }
@@ -203,7 +163,6 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   // names, else a deterministic hue from the slug — never a bare letter.
   let host = "";
   try { host = app.url ? new URL(app.url).hostname : ""; } catch { host = ""; }
-  if (!host && app.connection?.pipedreamSlug) host = CONNECTOR_DOMAINS[app.connection.pipedreamSlug] || "";
   const plate = brandColor(host) ? `background:${brandColor(host)};color:#fff;` : monogramStyle(app.slug || name || "?");
   const mono = `<span class="${initialClass} icon-monogram" style="${plate}">${initial}</span>`;
   // No crossorigin: the favicon service doesn't promise ACAO, and a CORS-mode
@@ -227,34 +186,6 @@ export async function primeNativeIcons(
   await Promise.all(paths.map(async (p) => {
     try { nativeIconCache[p] = (await yoIcons().appFileIcon(p)) || ""; }
     catch { nativeIconCache[p] = ""; }
-  }));
-  onLoaded();
-}
-
-/** Fetch + cache the Pipedream catalog icon for any connected app not already
- *  cached. Calls onLoaded() once new icons land so the caller can re-render. */
-export async function primeConnectedIcons(
-  apps: Array<{ connection?: { accountId?: string; pipedreamSlug: string } | null }>,
-  onLoaded: () => void,
-): Promise<void> {
-  const slugs = [...new Set(
-    apps
-      .filter((a) => a.connection?.accountId && a.connection?.pipedreamSlug)
-      .map((a) => a.connection!.pipedreamSlug),
-  )].filter((slug) => !(slug in connectedIconCache));
-  if (slugs.length === 0) return;
-  await Promise.all(slugs.map(async (slug) => {
-    try {
-      const { apps: catalog } = await yoIcons().connectorsGetApps(slug);
-      // Pipedream's search is by name, so an exact id match comes first, then
-      // the same slug spelt with dashes, then the one row a slug search
-      // returned — the catalog icon is what every connector surface wears.
-      const norm = (x: string): string => x.toLowerCase().replace(/-/g, "_");
-      const row = catalog.find((a) => a.id === slug) ?? catalog.find((a) => norm(a.id) === norm(slug)) ?? (catalog.length === 1 ? catalog[0] : undefined);
-      connectedIconCache[slug] = row?.icon || null;
-    } catch {
-      connectedIconCache[slug] = null;
-    }
   }));
   onLoaded();
 }

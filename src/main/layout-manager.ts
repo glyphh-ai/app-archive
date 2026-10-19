@@ -1,18 +1,13 @@
 /**
- * Layouts — THE WORKSPACES, read from the server and held in memory.
- *
- * Until 2026-10-07 a workspace was a folder on this machine
- * (~/.glyphh/<user>/workspaces/<id>/workspace.json) the library sync kept
- * level with the server. His order that day: the server is the only truth;
- * this manager keeps a RUNNING COPY of the member library's `workspace` rows
- * (library-remote.ts primes it at sign-in and refreshes it) and writes
- * straight back. Nothing on disk. Opening a layout still goes through
- * app-resolver's openLayoutByName, which turns every cell into a
- * renderer-owned workbench panel.
+ * Layouts — THE WORKSPACES: the local member library's `workspace` records
+ * (member-library-local.ts), with a running copy in memory, written through
+ * on every save. Opening a layout goes through app-resolver's
+ * openLayoutByName, which turns every cell into a renderer-owned workbench
+ * panel.
  */
 
 import { isGridLayout, layoutRowOf, workspaceId as sharedWorkspaceId, workspaceSurfaceOf, type LayoutRowLike, type WorkspaceSurface } from "../shared/member-library.js";
-import { remoteList, remotePut, remoteRemove } from "./library-remote.js";
+import { libraryDelete, libraryRows, libraryWrite } from "./member-library-local.js";
 
 // The flattened spec shape the palette / app resolver / agent tools read.
 // (The name is historical — "server" layouts are local files now.)
@@ -148,53 +143,54 @@ export async function fetchServerLayouts(): Promise<ServerLayout[]> {
 
 export class LayoutManager {
   private layouts: Map<string, GridLayout> = new Map();
-  private loading: Promise<void> | null = null;
+  private loaded = false;
 
   /** Save a workspace: stamped with this client's clock and the surface it
    *  was made on (a grid without one is this desktop's), written to the
-   *  server, held in the running copy. */
+   *  library, held in the running copy. */
   async saveLayout(grid: GridLayout): Promise<void> {
     const stamped: GridLayout = { ...grid, surface: grid.surface ?? "desktop", updatedAt: Date.now() };
-    await remotePut("workspace", sharedWorkspaceId(stamped.name), stamped);
-    this.layouts.set(stamped.name, stamped);
+    libraryWrite("workspace", sharedWorkspaceId(stamped.name), stamped);
+    this.copy().set(stamped.name, stamped);
   }
 
-  /** Delete a workspace on the server; the running copy drops it. */
+  /** Delete a workspace; the running copy drops it. */
   async deleteLayout(name: string): Promise<boolean> {
-    if (!this.layouts.has(name)) return false;
-    await remoteRemove("workspace", sharedWorkspaceId(name));
+    if (!this.copy().has(name)) return false;
+    libraryDelete("workspace", sharedWorkspaceId(name));
     this.layouts.delete(name);
     return true;
   }
 
   /** Every workspace in the running copy. */
   listLayouts(): GridLayout[] {
-    return Array.from(this.layouts.values());
+    return Array.from(this.copy().values());
   }
 
-  /** Reload the running copy from the server and return it. */
+  /** Reload the running copy from the library and return it. */
   async refreshAndList(): Promise<GridLayout[]> {
-    await this.load();
+    this.load();
     return this.listLayouts();
   }
 
-  private load(): Promise<void> {
-    if (this.loading) return this.loading;
-    this.loading = (async () => {
-      const fresh = await remoteList<GridLayout>("workspace");
-      this.layouts.clear();
-      for (const r of fresh) {
-        if (!isGridLayout(r.data) || !r.data.name) continue;
-        this.layouts.set(r.data.name, { ...(r.data as GridLayout), updatedAt: r.updatedAt });
-      }
-    })().finally(() => { this.loading = null; });
-    return this.loading;
+  private copy(): Map<string, GridLayout> {
+    if (!this.loaded) this.load();
+    return this.layouts;
   }
 
-  /** Identity switch: the copy is the previous member's — drop it and reload. */
+  private load(): void {
+    this.layouts.clear();
+    for (const r of libraryRows<GridLayout>("workspace")) {
+      if (!isGridLayout(r.data) || !r.data.name) continue;
+      this.layouts.set(r.data.name, { ...(r.data as GridLayout), updatedAt: r.updatedAt });
+    }
+    this.loaded = true;
+  }
+
+  /** Identity switch: the copy is the previous member's — drop it. */
   resetForUserChange(): void {
     this.layouts.clear();
-    void this.load().catch(() => undefined);
+    this.loaded = false;
   }
 }
 

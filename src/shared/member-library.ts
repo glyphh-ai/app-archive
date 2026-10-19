@@ -83,6 +83,10 @@ export interface GridLayoutLike {
   folderMode?: "single" | "multi";
   target?: "glyphh" | "desktop";
   loop?: string;
+  /** The face the workspace's agents open with: the chat panel or the loop's terminal. */
+  view?: "glyphh" | "cli";
+  /** Route the workspace's CLI agents through the user's own providers (on) or their own login (off). */
+  gateway?: "on" | "off";
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
   /** THE TYPE (his order, 2026-10-07): Work or Code — what every agent
@@ -122,6 +126,10 @@ export interface LayoutRowLike {
   rowHeights: number[];
   target: "glyphh" | "desktop";
   loop: string | null;
+  /** The agents' opening face; null = the member's default. */
+  view: "glyphh" | "cli" | null;
+  /** The CLI route; null = the member's default. */
+  gateway: "on" | "off" | null;
   modelSelections: Record<string, string>;
   sessionMode: "keep" | "new" | "last";
   /** THE TYPE (his report, 2026-10-07: "the type overall is not persisting on
@@ -148,6 +156,8 @@ export function layoutRowOf(l: GridLayoutLike): LayoutRowLike {
     rowHeights: Array.isArray(l.rowHeights) ? l.rowHeights : [],
     target: l.target ?? "glyphh",
     loop: l.loop ?? null,
+    view: l.view === "glyphh" || l.view === "cli" ? l.view : null,
+    gateway: l.gateway === "on" || l.gateway === "off" ? l.gateway : null,
     modelSelections: l.modelSelections ?? {},
     sessionMode: l.sessionMode ?? "keep",
     type: l.type === "work" || l.type === "code" ? l.type : null,

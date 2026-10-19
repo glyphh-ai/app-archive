@@ -1,10 +1,9 @@
 /**
- * user-zone.ts — ONE zone everywhere (his word, 2026-10-05): the zone from
- * Settings › Account (glyphh_users.timezone) is the clock every schedule on
- * this machine reads — the app scheduler's node-cron tasks and the library's.
- * The profile seeds it at sign-in, the Account page's save moves it, and a
- * move re-arms what is armed through the listeners. UTC until a profile says
- * otherwise, and for a zone this runtime does not know. Pure: no Electron.
+ * user-zone.ts — ONE zone everywhere (his word, 2026-10-05): the clock every
+ * schedule on this machine reads — the app scheduler's node-cron tasks and
+ * the library's. auth.ts seeds it with this machine's zone at start, and a
+ * move re-arms what is armed through the listeners. UTC until it is set, and
+ * for a zone this runtime does not know. Pure: no Electron.
  */
 
 /** True when `name` is a zone Intl knows (an IANA name, or "UTC"). */

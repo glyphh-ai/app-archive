@@ -4,8 +4,7 @@
 
           <div id="connections-toolbar" class="crud-toolbar">
             <input id="conn-search" type="text" class="crud-search" placeholder="Search connections..." spellcheck="false" autocomplete="off" />
-            <button id="conn-add-btn" class="action-btn primary">+ New</button>
-            <button id="conn-add-custom-btn" class="action-btn primary hidden">+ Custom MCP</button>
+            <button id="conn-add-custom-btn" class="action-btn primary">+ Custom MCP</button>
             <button id="connections-refresh-btn" class="action-btn" title="Refresh" aria-label="Refresh" style="padding:6px 9px;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
@@ -26,33 +25,30 @@
                 <div id="conn-detail-error" class="crud-form-error hidden"></div>
                 <div id="conn-detail-head" class="edit-head"></div>
                 <label class="settings-label">Name</label>
-                <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
-                <!-- Scope (his rule, 2026-09-13): org-wide or the owner's own.
-                     Title left, standard bare toggle right; admins only. -->
-                <div id="conn-scope-row" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
-                  <label class="settings-label" style="margin:0;">Org connection</label>
-                  <label class="settings-toggle ws-model-allow"><input id="conn-scope-toggle" type="checkbox" /><span class="toggle-switch"></span></label>
-                </div>
-                <!-- Custom MCP: connect a remote server by URL. Auth is handled
-                     automatically on first connect (OAuth). The OAuth client +
-                     headers under Advanced are only for servers that need them
-                     (header values are write-only — saved encrypted, never shown). -->
-                <div id="conn-custom-config" class="hidden">
+                <input id="conn-name" type="text" class="settings-input" placeholder="My MCP server" spellcheck="false" autocomplete="off" />
+                <!-- Connect a remote server by URL. Auth is handled automatically
+                     on first connect (OAuth). The OAuth client + headers under
+                     Advanced are only for servers that need them (header values
+                     are write-only — kept in the secrets file, never shown). The
+                     OAuth client is set when the server is added. -->
+                <div id="conn-custom-config">
                   <label class="settings-label">Remote MCP server URL</label>
                   <input id="conn-custom-url" type="text" class="settings-input" placeholder="https://mcp.example.com/mcp" spellcheck="false" autocomplete="off" />
                   <button type="button" id="conn-advanced-toggle" class="mcp-advanced-toggle" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:8px 0;text-align:left;display:block;">▸ Advanced settings</button>
                   <div id="conn-advanced" class="hidden">
-                    <label class="settings-label">OAuth Client ID <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                    <input id="conn-oauth-id" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label">OAuth Client Secret <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-                    <input id="conn-oauth-secret" type="password" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <div id="conn-oauth-fields">
+                      <label class="settings-label">OAuth Client ID <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                      <input id="conn-oauth-id" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                      <label class="settings-label">OAuth Client Secret <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
+                      <input id="conn-oauth-secret" type="password" class="settings-input" spellcheck="false" autocomplete="off" />
+                    </div>
                     <label class="settings-label">Headers <span style="color:var(--text-2);font-weight:400;">(Name: value, one per line)</span></label>
                     <textarea id="conn-custom-headers" class="settings-input" rows="3" placeholder="Authorization: Bearer sk-..." spellcheck="false" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
                     <p id="conn-custom-headers-hint" class="settings-hint hidden" style="margin-top:4px;"></p>
                   </div>
                   <p class="settings-hint" style="margin-top:8px;">Authenticated servers sign you in automatically on first connect.</p>
                 </div>
-                <!-- Custom MCP only (saved connections): live status + enable/disable -->
+                <!-- Saved servers only: live status + enable/disable -->
                 <div id="conn-custom-status" class="hidden" style="margin-top:16px;">
                   <label class="settings-label">Status</label>
                   <div style="display:flex;gap:12px;align-items:center;">
@@ -60,9 +56,9 @@
                     <button id="conn-custom-toggle" class="action-btn" type="button">Disable</button>
                   </div>
                 </div>
-                <!-- Same button row as the App edit form: Delete/Disconnect left, Cancel/Save right -->
+                <!-- Same button row as the App edit form: Remove left, Cancel/Save right -->
                 <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
-                  <button id="conn-disconnect" class="action-btn danger" type="button">Disconnect</button>
+                  <button id="conn-remove" class="action-btn danger hidden" type="button">Remove</button>
                   <span style="flex:1;"></span>
                   <button id="conn-cancel" class="action-btn" type="button">Cancel</button>
                   <button id="conn-name-save" class="action-btn primary" type="button">Save</button>
@@ -85,20 +81,6 @@
                   <div id="conn-tools" class="conn-tools"></div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- "+ New" modal: the full Pipedream catalog; click one to connect it -->
-          <div id="conn-modal" class="conn-modal hidden">
-            <div class="conn-modal-backdrop"></div>
-            <div class="conn-modal-panel">
-              <div class="conn-modal-header">
-                <h3 class="conn-modal-title">Add a connection</h3>
-                <button id="conn-modal-close" class="conn-modal-close" aria-label="Close">✕</button>
-              </div>
-              <input id="conn-catalog-search" type="text" class="settings-input" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
-              <div id="conn-catalog-grid" class="connector-grid"></div>
-              <button id="conn-catalog-more" class="connector-load-more hidden">Load more</button>
             </div>
           </div>
         </div>

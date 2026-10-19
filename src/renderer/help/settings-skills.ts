@@ -1,20 +1,19 @@
 /**
- * settings-skills — Settings → Build → Skills (his order, 2026-09-16).
+ * settings-skills — Settings → Build → Skills, Apps, Tasks and Plugins (his
+ * order, 2026-09-16).
  *
- * Skills are FOLDERS in the Agent Skills standard, read straight from the
- * CLIs' own skill directories and Glyphh's (main/skills-fs.ts). Two tabs:
- *   Your skills — grouped by where they live (yours, Claude Code, Codex, Gemini)
- *   Discover    — the org's hub + the Glyphh catalog the org allowed
- * A row opens the detail: Overview (SKILL.md rendered, the author beside it)
- * and Contents (the folder's files with a Monaco viewer — preview or code).
+ * Every bundle is a FOLDER on this machine in the Agent Skills standard, read
+ * straight from the CLIs' own skill directories and Glyphh's (main/skills-fs.ts).
+ * The list groups them by who made them (you, Claude Code, Codex, Gemini); a
+ * row opens the detail: Overview (SKILL.md rendered, the author beside it),
+ * Contents (the folder's files in a Monaco viewer — preview or code, saved
+ * back to disk), and whatever that kind of bundle has — its skills, tools,
+ * agents, connections, and for a task its flow and runs.
  */
 
-import { escapeHtml, confirmAction, confirmChoice, loadingHtml } from "./shared.js";
-import { commentAuthor, decisionNeedsNote, mayRetire, notesRequired, queueForKinds, releaseLine, shareFace, standingLine, versionLabel, VERDICT_LABEL, type CommentLike, type QueueRowLike, type ReleaseRowLike, type Verdict } from "./publish-desk.js";
-import { paintBuildBadge } from "./app-updates.js";
+import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { onWeb } from "./web-surface.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
-import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -32,12 +31,9 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null; instance?: InstanceOfRow }
-/** A cloud app's card carries its instance (shared/app-instances.ts InstanceCard): `release` = the pinned n. */
-interface InstanceOfRow { key: string; kind: "org" | "personal"; status: string; access: string; public: boolean; tools: string[]; release: number | null; version?: string | null; update?: { available: boolean; headVersion: string | null; headRelease: number | null } | null }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -47,12 +43,12 @@ const PLUGIN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const TASK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg>`;
 const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
 
-/** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
- *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
+/** ONE page, SEVERAL homes (his ruling, 2026-09-16): Skills, Apps, Tasks and
+ *  Plugins share the page; an app is a skill folder plus app.json in its own home. */
 export interface PageCfg {
   kind: BundleType;
   /** The homes this page lists. Defaults to its own kind; the Skills page
-   *  lists apps beside skills while the Apps page still stands. */
+   *  lists tasks beside skills. */
   kinds?: BundleType[];
   /** The panel's ids: skills-* / skill-* for Skills, gapps-* / gapp-* for Apps (app-* belongs to Tabs). */
   id: (skillsId: string) => string;
@@ -65,25 +61,21 @@ export interface PageCfg {
   back: string;
 }
 
-/** What "New …" hands the agent. The ask belongs to the KIND, not the page, so
- *  one page that lists several kinds can offer each of them. */
 /** The mark a bundle wears when it ships none of its own: its TYPE's, not the
  *  page's — an app among skills looks like an app (his order, 2026-09-17). */
 const TYPE_ICON: Record<BundleType, string> = { skill: SKILL_ICON, app: APP_ICON, task: TASK_ICON, plugin: PLUGIN_ICON };
 
+/** What "New …" hands the agent. The ask belongs to the KIND, not the page, so
+ *  one page that lists several kinds can offer each of them. */
 const NEW_PROMPT: Record<BundleType, string> = {
   skill: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
-  app: "Build a new Glyphh app in this folder. Start with glyphh_app_scaffold (name, slug, the connections it works through, the tools it exposes), edit the starter it writes, then Build and run with app_install { dir }. The app should ",
+  app: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then what the app is for), an app.json (name, ui: ui/index.html, tools: tools/manifest.json, dependencies on connections, screenshots), the app's face in ui/index.html and its tools in tools/manifest.json ({ tools: [{ name, description }] }). The app should ",
   plugin: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
   task: "Create a new Glyphh task in this folder: a new subfolder named after the task with a SKILL.md (frontmatter name + description, then what the task does and when to run it), a task.json (name, program: run.js, slots the program calls agents through, dependencies on connections, an optional five-field cron schedule) and run.js exporting async function run(ctx, input) that returns the result. The program is the process: it drives the logic itself and uses ctx.agents.<slot>.run(prompt, {schema}) only where an agent is needed, ctx.connections.<app>.call(tool, args) for connections, ctx.data(repo).exec(sql, params) for app data, ctx.route(state, branches, {minConfidence, fallback}) or ctx.decide(state, questions) for a deterministic Jev decision (no prose, through GlyphhRouter) instead of asking an agent to classify, and ctx.checkpoint(key, fn) around anything worth not redoing after a restart. The task should ",
 };
 
 export function createLibraryPage(cfg: PageCfg) {
 let wired = false;
-let tab: "mine" | "discover" | "updates" | "review" = "mine";
-/** THE REVIEW DESK (his ask, 2026-10-07): org admins see a Review tab on every library page. */
-let isAdmin = false;
-let queueRows: QueueRowLike[] = [];
 let query = "";
 /** List controls: filter by origin and author; sort order. */
 let filterSource: Source | "" = "";
@@ -94,23 +86,12 @@ type SortKey = "edited" | "name" | "author";
 let sortKey: SortKey = "edited";
 const SORT_LABEL: Record<SortKey, string> = { edited: "Last edited", name: "Name", author: "Created by" };
 let skills: SkillRow[] = [];
-let discoverRows: DiscoverRow[] = [];
-/** Installed bundles the catalog has moved past, by folder id. */
-let updates: Record<string, { have: number; latest: number; name: string }> = {};
-let hubCategories: Array<{ id: string; label: string }> = [];
-/** Discover drill-down: the home, one category, or one shelf ("new" / "top" / "all"). */
-let discoverView: { kind: "home" } | { kind: "category"; id: string } | { kind: "shelf"; id: "new" | "top" | "all" } = { kind: "home" };
-let showAllCategories = false;
 let current: SkillDetail | null = null;
 let currentFile = "";
 let viewMode: "preview" | "code" = "preview";
 let editing = false;
 /** The file text as loaded from disk; the editor is dirty when it differs. */
 let loadedText = "";
-/** A hub version being viewed read-only (null = the folder on disk). */
-let viewedVersion: { itemId: string; version: number; files: Record<string, string> } | null = null;
-/** The Discover item on the detail page (read-only, Add instead of Share), or null for a local skill. */
-let hubItem: DiscoverRow | null = null;
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
@@ -120,24 +101,24 @@ const api = () => window.glyphh;
 const KINDS: BundleType[] = cfg.kinds ?? [cfg.kind];
 const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.type ?? cfg.kind;
 /** The type reads as a chip only when it is NOT what this page is already
- *  about — a plain skill on Skills says nothing, an app among them says "app". */
+ *  about — a plain skill on Skills says nothing, a task among them says "task". */
 const typeChip = (type: BundleType | undefined): string =>
   type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
-/** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
- *  IS, else its type's. The middle step matters for the work-panel apps —
- *  Design, Slides, Drive and the media panels are those panels, and the ones
- *  installed before the catalog shipped icons carry no icon.svg at all. */
-/** THE GLYPHH BUNDLE WEARS THE MASCOT (his order, 2026-09-17), through the
- *  same resolver every app row uses — `appIconInner` answers the brand mark
- *  for slug "glyphh", so the skill and the app are one identity and nothing
- *  here hand-rolls a second path to that image. */
 /** Where the user finds each kind — the line a toast reads back after a write. */
 const WHERE_TO_SEE: Record<BundleType, string> = {
   skill: "Settings → Build → Skills (type Skill)",
-  app: "Settings → Build → Skills (type App) and the Apps work panel",
+  app: "Settings → Build → Apps",
   task: "Settings → Build → Skills (type Task); put it on a clock under Customize → Schedules",
   plugin: "Settings → Build → Plugins",
 };
+/** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
+ *  IS, else its type's. The middle step matters for the work-panel apps —
+ *  Design, Slides, Drive and the media panels are those panels, and many of
+ *  them carry no icon.svg at all.
+ *  THE GLYPHH BUNDLE WEARS THE MASCOT (his order, 2026-09-17), through the
+ *  same resolver every app row uses — `appIconInner` answers the brand mark
+ *  for slug "glyphh", so the skill and the app are one identity and nothing
+ *  here hand-rolls a second path to that image. */
 const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
   return slug === "glyphh";
@@ -146,99 +127,6 @@ const markOf = (s: { icon?: string | null; tool?: string | null; id?: string; sl
   isGlyphhBundle(s) ? appIconInner({ slug: "glyphh" }, s?.name || "Glyphh", "skill-icon-initial")
     : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
-/** The shelves a shared bundle sits on, and the door to change them. Nothing
- *  to show until it has been shared — an unshared folder is on no shelf. */
-function paintCategories(): void {
-  const block = el("skill-cats-block"); const host = el("skill-cats");
-  if (!block || !host) return;
-  block.classList.toggle("hidden", !shareItem || !!hubItem);
-  if (!shareItem || hubItem) return;
-  host.textContent = "";
-  const chosen = shareItem.categories;
-  for (const id of chosen) {
-    const c = document.createElement("span");
-    c.className = "skill-cat-chip";
-    c.textContent = catLabel(id);
-    host.appendChild(c);
-  }
-  if (!chosen.length) {
-    const none = document.createElement("span");
-    none.className = "skill-cat-none";
-    none.textContent = "On no shelf yet";
-    host.appendChild(none);
-  }
-  const edit = document.createElement("button");
-  edit.type = "button";
-  edit.className = "skill-cat-edit";
-  edit.textContent = "Edit";
-  edit.addEventListener("click", () => {
-    if (!hubCategories.length) { void api().hubCategories().then((c) => { const e = c as Env<Array<{ id: string; label: string }>>; if (e.ok) hubCategories = e.data ?? []; openCategoryMenu(edit); }); return; }
-    openCategoryMenu(edit);
-  });
-  host.appendChild(edit);
-}
-
-function openCategoryMenu(anchor: HTMLElement): void {
-  if (!shareItem) return;
-  const chosen = new Set(shareItem.categories);
-  openMenu(anchor, [
-    { heading: "On these shelves" },
-    ...hubCategories.map((c) => ({
-      label: c.label,
-      checked: chosen.has(c.id),
-      onClick: () => {
-        const next = chosen.has(c.id) ? shareItem!.categories.filter((x) => x !== c.id) : [...shareItem!.categories, c.id];
-        void saveCategories(next);
-      },
-    })),
-  ]);
-}
-
-async function saveCategories(ids: string[]): Promise<void> {
-  if (!shareItem) return;
-  const item = shareItem;
-  const r = await (api() as unknown as { skillCategoriesSet: (id: string, kind: string, ids: string[]) => Promise<Env<string[]>> })
-    .skillCategoriesSet(item.id, item.kind, ids)
-    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<string[]>);
-  if (!r.ok) { fail(r.error || "Couldn't change the categories. An org admin can."); return; }
-  shareItem = { ...item, categories: r.data ?? ids };
-  paintCategories();
-  discoverRows = [];
-}
-
-/** THE THREE ANSWERS A REVIEW CAN GIVE (his order, 2026-09-17): waiting and
- *  never-shared used to look identical, and a decline looked like neither.
- *  One chip, used by the detail title AND by every list row — a share that
- *  only shows on the page you already opened is not a status. */
-function shareChip(s: { head: number | null; pending: number | null; declined?: { version: number; summary: string } | null; rejected?: number | null }): HTMLElement | null {
-  const declinedVersion = s.declined?.version ?? s.rejected ?? null;
-  const state = s.pending ? "pending" : declinedVersion ? "declined" : s.head ? "live" : "";
-  if (!state) return null;
-  const chip = document.createElement("span");
-  chip.className = `skill-type-chip skill-share-chip ${state}`;
-  chip.textContent = state === "pending" ? `in review · v${s.pending}`
-    : state === "declined" ? `changes requested · v${declinedVersion}`
-    : `shared · v${s.head}`;
-  chip.title = state === "pending"
-    ? "Waiting on your organization's review desk. An admin decides; sharing again replaces it."
-    : state === "declined"
-      ? `${s.declined?.summary || "An admin declined this version."} Share again to send a new one.`
-      : "Live on your organization's hub. Members install it from Discover.";
-  return chip;
-}
-
-/** Where this bundle stands with the org's hub, beside its name. */
-function paintShareChip(): void {
-  const host = el("skill-detail-name");
-  if (!host) return;
-  host.querySelector(".skill-share-chip")?.remove();
-  if (hubItem) return;
-  const chip = shareChip(shareState);
-  if (chip) host.appendChild(chip);
-  // The share state arrives after the header is drawn, so the header is drawn
-  // again: it decides whether Share is still offered.
-  paintDetailChrome();
-}
 
 /** The name, with the type beside it (never under it — his order, 2026-09-17). */
 const setDetailName = (name: string, type?: BundleType): void => {
@@ -267,7 +155,7 @@ function when(iso: string): string {
 /** ONE PATTERN FOR WHAT JUST HAPPENED (his order, 2026-09-17): the toast
  *  stack, top right, above the settings overlay. The page's own error row is
  *  gone — it lived under whatever the user was reading and said nothing at all
- *  when an install worked. */
+ *  when an action worked. */
 function fail(msg: string): void {
   toastError(msg);
 }
@@ -276,214 +164,20 @@ function notice(msg: string, opts?: { detail?: string }): void {
   toastOk(msg, opts);
 }
 
-/** WHERE EACH BUNDLE CAME FROM (his report, 2026-09-17: "there is no update
- *  mechanism"). The detail page says the source and the version even when
- *  nothing is newer, and the ⋮ can always check or re-pull. */
-interface Standing { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
-let standings: Record<string, Standing> = {};
-
-/** Every bundle's share state by folder id, for the list rows. */
-interface ListShare { head: number | null; pending: number | null; rejected: number | null }
-let shares: Record<string, ListShare> = {};
-
-async function refreshShares(): Promise<void> {
-  const r = await (api() as unknown as { skillShares: () => Promise<Env<Record<string, ListShare>>> }).skillShares()
-    .catch(() => ({ ok: false } as Env<Record<string, ListShare>>));
-  const next = r.ok ? r.data ?? {} : {};
-  const changed = JSON.stringify(next) !== JSON.stringify(shares);
-  shares = next;
-  if (changed && el("skills-groups")) renderList();
-}
-
-/** TAKE IT BACK OFF THE DESK (his report, 2026-09-17: "the user has no way to
- *  revoke their submission"). Only a share still waiting can be withdrawn;
- *  once an admin approves it, it belongs to the org. */
-async function withdrawShare(id: string, name: string): Promise<void> {
-  const sure = await confirmAction({
-    title: `Withdraw "${name}" from review?`,
-    body: "It comes off your organization's review desk. Nothing changes on this machine, and you can share it again whenever you want.",
-    confirmLabel: "Withdraw",
-  });
-  if (!sure) return;
-  const r = await (api() as unknown as { skillWithdraw: (id: string) => Promise<Env<{ withdrawn: number }>> }).skillWithdraw(id)
-    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ withdrawn: number }>);
-  if (!r.ok) { fail(r.error || "Couldn't withdraw that submission."); return; }
-  notice(`${name} is off the review desk`, { detail: `v${r.data?.withdrawn ?? ""} was never published.` });
-  delete shares[id];
-  await refreshShares();
-  if (current?.id === id) await loadVersions();
-  renderList();
-}
-
-async function refreshStandings(): Promise<void> {
-  const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
-    .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
-  standings = r.ok ? r.data ?? {} : {};
-  if (current) paintSource(current.id);
-}
-
-/** The Overview's source line: a folder from a hub says so and names its version. */
-function paintSource(id: string): void {
-  const st = standings[id];
-  const authorEl = el("skill-author"); const metaEl = el("skill-author-meta");
-  if (!st || !authorEl || !metaEl) return;
-  authorEl.textContent = st.from === "org" ? "Your organization's hub" : "Glyphh";
-  metaEl.textContent = st.have ? `Installed from ${st.sourceName} · v${st.have}${st.latest > st.have ? ` · v${st.latest} available` : " · up to date"}` : `From ${st.sourceName}`;
-}
-
-/** Ask the hub what has moved on. Never blocks the list; repaints if it finds any. */
-async function refreshUpdates(): Promise<void> {
-  const r = await (api() as unknown as { skillUpdates: () => Promise<Env<typeof updates>> }).skillUpdates().catch(() => ({ ok: false } as Env<typeof updates>));
-  const next = r.ok ? r.data ?? {} : {};
-  const changed = Object.keys(next).join() !== Object.keys(updates).join();
-  updates = next;
-  void refreshStandings();
-  void refreshShares();
-  if (changed && el("skills-groups")) renderList();
-  if (changed && current) paintDetailChrome();
-}
-
-/** ALWAYS A DOOR: ask the hub now and say what came back, whether or not
- *  anything moved. Without this a bundle that was current looked like a
- *  bundle with no update mechanism at all. */
-async function checkForUpdates(): Promise<void> {
-  if (!current) return;
-  const id = current.id, name = current.name;
-  await refreshUpdates();
-  await refreshStandings();
-  paintDetailChrome();
-  const up = updates[id]; const st = standings[id];
-  if (up) notice(`${name} can go to v${up.latest}`, { detail: `You are on v${up.have}. Update is in the header.` });
-  else if (st) notice(`${name} is up to date`, { detail: `v${st.have} from ${st.sourceName}` });
-  else notice(`${name} isn't on a hub`, { detail: "Nothing to update from. Share it to put it on your organization's hub." });
-}
-
-/** Take the hub's copy again even when the versions match — the way back from
- *  a local edit. */
-async function reinstall(): Promise<void> {
-  if (!current) return;
-  const st = standings[current.id];
-  if (!st) { fail("This one isn't on a hub, so there is nothing to reinstall from."); return; }
-  const sure = await confirmAction({
-    title: `Reinstall "${current.name}"?`,
-    body: `The hub's v${st.latest} is written over this copy. Files you added stay; files the hub dropped go.`,
-    confirmLabel: "Reinstall",
-  });
-  if (!sure) return;
-  const id = current.id;
-  const r = await (api() as unknown as { skillUpdate: (id: string) => Promise<Env<{ version: number }>> }).skillUpdate(id)
-    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ version: number }>);
-  if (!r.ok) { fail(r.error || "Couldn't reinstall."); return; }
-  notice(`${current.name} reinstalled at v${r.data?.version ?? st.latest}`);
-  delete updates[id];
-  await loadSkillsSettings();
-  await openDetail(id);
-}
-
-/** Take the catalog's version over this copy. */
-async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
-  const up = updates[id];
-  if (!up) return;
-  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
-  const r = await (api() as unknown as { skillUpdate: (id: string) => Promise<Env<{ version: number }>> }).skillUpdate(id)
-    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ version: number }>);
-  if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = "Update"; } fail(r.error || "Couldn't update."); return; }
-  delete updates[id];
-  notice(`${up.name} updated to v${r.data?.version ?? up.latest}`);
-  const wasOpen = current?.id === id;
-  await loadSkillsSettings();
-  if (wasOpen) await openDetail(id);
-}
-
-// ── APPS CARRY A VERSION (his order, 2026-10-07) ─────────────────────────────
-/** The cloud apps whose catalog head has moved past the release they took. */
-const instanceUpdates = (): SkillRow[] => skills.filter((s) => !!s.instance?.update?.available);
-
-/** The red count on the Updates tab, Update All beside it, and the rail's
- *  Build item (the Apps page is the one that knows; code.ts asks the same
- *  question at boot through app-updates.ts). */
-function paintUpdatesBadge(): void {
-  const n = instanceUpdates().length;
-  const badge = el("skills-updates-badge");
-  if (badge) { badge.textContent = n ? String(n) : ""; badge.classList.toggle("hidden", !n); }
-  el("skills-update-all")?.classList.toggle("hidden", !n || tab !== "updates");
-  if (cfg.kind === "app") paintBuildBadge(n);
-}
-
-/** Move one cloud app to the catalog's head: same key, data and secrets kept. */
-async function updateInstanceNow(s: SkillRow, btn?: HTMLButtonElement): Promise<void> {
-  const head = s.instance?.update?.headVersion;
-  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
-  const r = await api().appInstanceUpdate(s.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<{ version?: string | null }>;
-  if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = "Update"; } fail(r.error || "Couldn't update."); return; }
-  notice(`${s.name} updated${r.data?.version ? ` to v${r.data.version}` : head ? ` to v${head}` : ""}`);
-  const wasOpen = current?.id === s.id;
-  await loadSkillsSettings();
-  if (wasOpen) await openDetail(s.id);
-  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-}
-
-/** Update All: every instance with an update waiting, moved at once. */
-async function updateAllInstances(btn?: HTMLButtonElement): Promise<void> {
-  if (!instanceUpdates().length) return;
-  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
-  const r = await api().appInstancesUpdateAll().catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<{ updated: unknown[]; failed: Array<{ key: string; error: string }> }>;
-  if (btn) { btn.disabled = false; btn.textContent = "Update All"; }
-  if (!r.ok) { fail(r.error || "Couldn't update."); return; }
-  const n = r.data?.updated?.length ?? 0, failed = r.data?.failed ?? [];
-  if (failed.length) fail(`${n} updated; ${failed.length} failed: ${failed.map((f) => f.key).join(", ")}`);
-  else notice(`${n} ${n === 1 ? "app" : "apps"} updated`);
-  await loadSkillsSettings();
-  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-}
-
-/** "Update" on a cloud app's row: the catalog's head, with its version in the title. */
-function instanceUpdateButton(s: SkillRow): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "action-btn skill-update-btn";
-  b.textContent = "Update";
-  const head = s.instance?.update?.headVersion;
-  b.title = head ? `Version ${head} is in the catalog` : "A newer release is in the catalog";
-  b.addEventListener("click", (e) => { e.stopPropagation(); void updateInstanceNow(s, b); });
-  return b;
-}
-
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
-  // SKILLS, TASKS AND PLUGINS ARE THE MEMBER LIBRARY'S (his rule, 2026-10-04;
-  // plugins since his report, 2026-10-05): the web lists, views, installs and
-  // edits them from the server (web-contract.js); the desktop syncs its
-  // folders from the same records. APPS are machine bundles still — a browser
-  // tab has none, and the page is the one card that says so.
-  // APPS LIST ON THE WEB TOO (his report, 2026-10-05: "the Build -> Apps page
-  // is not showing in web"): the web's list is the cloud instances and the
-  // installed tab apps (member-library-web.js skillsList), and Install from
-  // Discover routes by the manifest's `data` — nothing here is desktop-only.
   wire();
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");
   if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
-  void refreshUpdates();
-  void refreshShares();
   const r = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
-  if (tab === "discover") await loadDiscover();
   renderList();
 }
 
-async function loadDiscover(): Promise<void> {
-  if (!discoverRows.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml("Loading the hub…"); }
-  const [r, c] = await Promise.all([api().skillsDiscover(KINDS) as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
-  if (!r.ok) { fail(r.error || "The hub didn't answer."); discoverRows = []; return; }
-  discoverRows = r.data ?? [];
-  hubCategories = c.ok ? (c.data ?? []) : [];
-  discoverView = { kind: "home" };
-}
-
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; icon?: string | null; tool?: string | null; type?: BundleType }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
@@ -494,10 +188,6 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
     </div>
     <div class="skill-row-right"></div>`;
   (r.querySelector(".skill-row-title") as HTMLElement).textContent = opts.name;
-  if (opts.share) {
-    const chip = shareChip(opts.share);
-    if (chip) (r.querySelector(".skill-row-name") as HTMLElement).appendChild(chip);
-  }
   (r.querySelector(".skill-row-by") as HTMLElement).textContent = opts.by;
   (r.querySelector(".skill-row-desc") as HTMLElement).textContent = opts.desc || "No description";
   const right = r.querySelector(".skill-row-right") as HTMLElement;
@@ -505,7 +195,6 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
   date.className = "skill-row-date";
   date.textContent = opts.right;
   right.appendChild(date);
-  if (opts.action) right.appendChild(opts.action);
   if (opts.menu?.length) {
     const kb = document.createElement("button");
     kb.className = "skills-kebab";
@@ -591,300 +280,42 @@ function renderList(): void {
   const host = el("skills-groups");
   if (!host) return;
   host.textContent = "";
-  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const q = query.trim().toLowerCase();
   const hit = (s: string) => !q || s.toLowerCase().includes(q);
-  paintUpdatesBadge();
-
-  if (tab === "review") { renderReview(host); return; }
-
-  if (tab === "updates") {
-    const shown = instanceUpdates().filter((s) => hit(`${s.name} ${s.description} ${s.author}`)).sort((a, b) => a.name.localeCompare(b.name));
-    const count = el("skills-count"); if (count) count.textContent = shown.length ? `${shown.length} ${shown.length === 1 ? "update" : "updates"}` : "";
-    paintControls();
-    if (!shown.length) {
-      host.innerHTML = `<div class="crud-empty">${q ? `No updates matching "${escapeHtml(q)}"` : `Every app is on its latest release.`}</div>`;
-      return;
-    }
-    const g = group(host, "Updates available", shown.length);
-    for (const s of shown) {
-      g.appendChild(row({
-        name: s.name, by: s.author ? `by ${s.author}` : "by you",
-        desc: s.description, right: releaseLabel(s.instance!), icon: s.icon, tool: s.tool, type: s.type,
-        onOpen: () => void openDetail(s.id),
-        action: instanceUpdateButton(s),
-      }));
-    }
-    return;
-  }
-
-  if (tab === "mine") {
-    const shown = skills
-      .filter((s) => hit(`${s.name} ${s.description} ${s.author}`))
-      .filter((s) => !filterSource || s.source === filterSource)
-      .filter((s) => !filterType || s.type === filterType)
-      .filter((s) => !filterAuthor || authorOf(s) === filterAuthor)
-      .sort((a, b) => sortKey === "name" ? a.name.localeCompare(b.name) : sortKey === "author" ? authorOf(a).localeCompare(authorOf(b)) || a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
-    const count = el("skills-count"); if (count) count.textContent = `${shown.length} ${shown.length === 1 ? cfg.noun : cfg.nouns}`;
-    paintControls();
-    if (!shown.length) {
-      host.innerHTML = `<div class="crud-empty">${q ? `No ${cfg.nouns} matching "${escapeHtml(q)}"` : `No ${cfg.nouns} yet. Add one, or install from Discover.`}</div>`;
-      return;
-    }
-    // Groups by author, like Claude's: yours first, then each named author.
-    const groups = new Map<string, SkillRow[]>();
-    for (const s of shown) { const k = s.author ? s.author : ""; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
-    const keys = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
-    for (const k of keys) {
-      const rows = groups.get(k)!;
-      const g = group(host, k ? `From ${k}` : "Created by you", rows.length);
-      for (const s of rows) {
-        const up = updates[s.id];
-        const back = rollbackTarget(s);
-        g.appendChild(row({
-          name: s.name, by: s.author ? `by ${s.author}` : "by you",
-          // A cloud app's card reads its release where a folder reads its date.
-          desc: s.description, right: s.instance ? releaseLabel(s.instance) : when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
-          share: shares[s.id],
-          onOpen: () => void openDetail(s.id),
-          action: up ? updateButton(s.id, up.latest) : s.instance?.update?.available ? instanceUpdateButton(s) : undefined,
-          menu: [
-            { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
-            ...(back !== null ? [{ label: `Rollback to release ${back}`, onClick: () => void rollback(s) }] : []),
-            ...(shares[s.id]?.pending
-              ? [{ label: "Withdraw from review", onClick: () => void withdrawShare(s.id, s.name) }]
-              : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
-            ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
-            { sep: true as const },
-            { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
-          ],
-        }));
-        if (!s.enabled) (g.lastElementChild as HTMLElement).classList.add("disabled");
-      }
-    }
-    return;
-  }
-
-  const shown = discoverRows.filter((d) => hit(`${d.name} ${d.description} ${d.author}`));
-  const count = el("skills-count"); if (count) count.textContent = `${shown.length} available`;
+  const shown = skills
+    .filter((s) => hit(`${s.name} ${s.description} ${s.author}`))
+    .filter((s) => !filterSource || s.source === filterSource)
+    .filter((s) => !filterType || s.type === filterType)
+    .filter((s) => !filterAuthor || authorOf(s) === filterAuthor)
+    .sort((a, b) => sortKey === "name" ? a.name.localeCompare(b.name) : sortKey === "author" ? authorOf(a).localeCompare(authorOf(b)) || a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
+  const count = el("skills-count"); if (count) count.textContent = `${shown.length} ${shown.length === 1 ? cfg.noun : cfg.nouns}`;
   paintControls();
   if (!shown.length) {
-    // The line names THIS page's kind (his report, 2026-10-05: Tasks said "skills").
-    host.innerHTML = `<div class="crud-empty">${q ? `Nothing matching "${escapeHtml(q)}"` : `Nothing to discover yet — your organization hasn't published ${cfg.nouns}, and Glyphh's catalog has none your org allows.`}</div>`;
+    host.innerHTML = `<div class="crud-empty">${q ? `No ${cfg.nouns} matching "${escapeHtml(q)}"` : `No ${cfg.nouns} yet. Add one, or import a folder or zip.`}</div>`;
     return;
   }
-  if (q || discoverView.kind !== "home") { renderDiscoverList(host, shown); return; }
-  renderDiscoverHome(host, shown);
-}
-
-// ── Discover ────────────────────────────────────────────────────────────────
-const CATEGORY_GLYPHS: Record<string, string> = {
-  apis: `<path d="M8 4H6a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-2"/>`,
-  data: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/>`,
-  engineering: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14l2 2-2 2M12 18h4"/>`,
-  code: `<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/>`,
-  files: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>`,
-  contacts: `<circle cx="12" cy="8" r="3.5"/><path d="M4 20a8 8 0 0 1 16 0"/>`,
-  pipelines: `<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/>`,
-  databases: `<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>`,
-  design: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/>`,
-  sales: `<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>`,
-  marketing: `<path d="M3 11v2a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M16 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/>`,
-  finance: `<path d="M12 3v18M17 7H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7"/>`,
-  legal: `<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0zM17 7l-3 7a3 3 0 0 0 6 0z"/>`,
-  product: `<path d="M12 3 3 8l9 5 9-5zM3 8v8l9 5 9-5V8"/>`,
-  research: `<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M9 11h4M11 9v4"/>`,
-  productivity: `<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>`,
-  security: `<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>`,
-  support: `<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>`,
-  memory: `<path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/>`,
-  apps: `<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>`,
-};
-const glyph = (id: string, size = 20): string => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${CATEGORY_GLYPHS[id] ?? CATEGORY_GLYPHS.productivity}</svg>`;
-const catLabel = (id: string): string => hubCategories.find((c) => c.id === id)?.label ?? id;
-const fmtInstalls = (n: number): string => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
-const isNew = (d: DiscoverRow): boolean => Date.now() - Date.parse(d.createdAt || d.updatedAt) < 14 * 864e5;
-
-/** "Update" on a row whose catalog version has moved past this copy. */
-function updateButton(id: string, latest: number): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "action-btn skill-update-btn";
-  b.textContent = "Update";
-  b.title = `Version ${latest} is on the hub`;
-  b.addEventListener("click", (e) => { e.stopPropagation(); void updateNow(id, b); });
-  return b;
-}
-
-/** The Add button's face: an app installs in the cloud (its one shape), a
- *  skill, task or plugin into the member's library. */
-const addFace = (d: { type?: BundleType; installed: boolean }, wide: boolean): { label: string; disabled: boolean; title: string } => {
-  const noun = d.type === "app" ? "apps" : "skills";
-  if (d.installed) return { label: wide ? "Added" : "✓", disabled: true, title: `Already in your ${noun}` };
-  return { label: wide ? "Add" : "+", disabled: false, title: d.type === "app" ? "Install in the cloud" : `Add to your ${noun}` };
-};
-function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = wide ? "action-btn skill-add-wide" : "action-btn skill-add-btn";
-  const face = addFace(d, wide);
-  b.textContent = face.label;
-  b.disabled = face.disabled;
-  b.title = face.title;
-  b.addEventListener("click", (e) => { e.stopPropagation(); void installFrom(d, b); });
-  return b;
-}
-
-function discoverCard(d: DiscoverRow): HTMLElement {
-  const c = document.createElement("div");
-  c.className = "disc-card";
-  const mark = markOf(d);
-  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"><span class="disc-card-title"></span>${typeChip(d.type)}</div><div class="disc-card-desc"></div><div class="disc-card-meta"><span class="disc-card-metatext"></span></div></div>`;
-  (c.querySelector(".disc-card-title") as HTMLElement).textContent = d.name;
-  (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
-  (c.querySelector(".disc-card-metatext") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
-  c.appendChild(addButton(d));
-  c.classList.add("openable");
-  c.addEventListener("click", () => void openHubDetail(d));
-  return c;
-}
-
-function shelf(host: HTMLElement, title: string, rows: DiscoverRow[], seeAll: (() => void) | null, limit = 8): void {
-  if (!rows.length) return;
-  const sec = document.createElement("section");
-  sec.className = "disc-shelf";
-  const head = document.createElement("div");
-  head.className = "disc-shelf-head";
-  head.innerHTML = `<span></span>`;
-  (head.querySelector("span") as HTMLElement).textContent = title;
-  if (seeAll && rows.length > limit) {
-    const b = document.createElement("button"); b.type = "button"; b.className = "disc-link"; b.textContent = "See all ›";
-    b.addEventListener("click", seeAll); head.appendChild(b);
-  }
-  const grid = document.createElement("div");
-  grid.className = "disc-grid";
-  rows.slice(0, limit).forEach((d) => grid.appendChild(discoverCard(d)));
-  sec.append(head, grid);
-  host.appendChild(sec);
-}
-
-function renderDiscoverHome(host: HTMLElement, rows: DiscoverRow[]): void {
-  // FEATURED: the newest Glyphh catalog pick, else the org's newest share.
-  const featured = [...rows].sort((a, b) => (a.from === b.from ? b.createdAt.localeCompare(a.createdAt) : a.from === "glyphh" ? -1 : 1))[0];
-  if (featured) {
-    const f = document.createElement("div");
-    f.className = "disc-featured";
-    f.innerHTML = `<div class="disc-featured-main"><div class="disc-featured-from"></div><div class="disc-featured-name"></div><div class="disc-featured-desc"></div></div><div class="disc-featured-art">${glyph(featured.categories[0] || "productivity", 96)}</div>`;
-    (f.querySelector(".disc-featured-from") as HTMLElement).textContent = `From ${featured.author || "your organization"}`;
-    (f.querySelector(".disc-featured-name") as HTMLElement).textContent = featured.name;
-    (f.querySelector(".disc-featured-desc") as HTMLElement).textContent = featured.description;
-    (f.querySelector(".disc-featured-main") as HTMLElement).appendChild(addButton(featured, true));
-    f.classList.add("openable");
-    f.addEventListener("click", () => void openHubDetail(featured));
-    host.appendChild(f);
-  }
-  // The featured pick is already the biggest thing on the page; showing it
-  // again two inches below made a two-item catalog look like three.
-  const byInstalls = [...rows].sort((a, b) => b.installs - a.installs || b.createdAt.localeCompare(a.createdAt));
-  shelf(host, "For you", byInstalls.filter((d) => !d.installed && d.ref !== featured?.ref), () => { discoverView = { kind: "shelf", id: "all" }; renderList(); }, 6);
-
-  // BROWSE BY CATEGORY — counts over what this member can see; "Show all" opens the rest.
-  const counts = new Map<string, number>();
-  for (const d of rows) for (const c of d.categories) counts.set(c, (counts.get(c) ?? 0) + 1);
-  const cats = hubCategories.filter((c) => counts.get(c.id)).sort((a, b) => (counts.get(b.id)! - counts.get(a.id)!) || a.label.localeCompare(b.label));
-  if (cats.length) {
-    const sec = document.createElement("section");
-    sec.className = "disc-shelf";
-    const head = document.createElement("div");
-    head.className = "disc-shelf-head";
-    head.innerHTML = `<span>Browse by category</span>`;
-    if (cats.length > 9) {
-      const b = document.createElement("button"); b.type = "button"; b.className = "disc-link";
-      b.textContent = showAllCategories ? "Show fewer ⌃" : `Show all ${cats.length} ⌄`;
-      b.addEventListener("click", () => { showAllCategories = !showAllCategories; renderList(); });
-      head.appendChild(b);
+  // Groups by author, like Claude's: yours first, then each named author.
+  const groups = new Map<string, SkillRow[]>();
+  for (const s of shown) { const k = s.author ? s.author : ""; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
+  const keys = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
+  for (const k of keys) {
+    const rows = groups.get(k)!;
+    const g = group(host, k ? `From ${k}` : "Created by you", rows.length);
+    for (const s of rows) {
+      g.appendChild(row({
+        name: s.name, by: s.author ? `by ${s.author}` : "by you",
+        desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
+        onOpen: () => void openDetail(s.id),
+        menu: [
+          { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
+          ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
+          { sep: true as const },
+          { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
+        ],
+      }));
+      if (!s.enabled) (g.lastElementChild as HTMLElement).classList.add("disabled");
     }
-    const grid = document.createElement("div");
-    grid.className = "disc-cat-grid";
-    for (const c of showAllCategories ? cats : cats.slice(0, 9)) {
-      const t = document.createElement("button");
-      t.type = "button";
-      t.className = "disc-cat";
-      t.innerHTML = `<span class="disc-cat-icon">${glyph(c.id, 22)}</span><span class="disc-cat-label"></span><span class="disc-cat-count"></span>`;
-      (t.querySelector(".disc-cat-label") as HTMLElement).textContent = c.label;
-      (t.querySelector(".disc-cat-count") as HTMLElement).textContent = String(counts.get(c.id));
-      t.addEventListener("click", () => { discoverView = { kind: "category", id: c.id }; renderList(); });
-      grid.appendChild(t);
-    }
-    sec.append(head, grid);
-    host.appendChild(sec);
   }
-  shelf(host, "New", [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), () => { discoverView = { kind: "shelf", id: "new" }; renderList(); });
-  shelf(host, "Most installed", byInstalls.filter((d) => d.installs > 0), () => { discoverView = { kind: "shelf", id: "top" }; renderList(); });
-}
-
-function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
-  const v = discoverView;
-  let list = rows;
-  let title = "Results";
-  if (v.kind === "category") { list = rows.filter((d) => d.categories.includes(v.id)); title = catLabel(v.id); }
-  else if (v.kind === "shelf") {
-    title = v.id === "new" ? "New" : v.id === "top" ? "Most installed" : `All ${cfg.nouns}`;
-    list = v.id === "new" ? [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [...rows].sort((a, b) => b.installs - a.installs || a.name.localeCompare(b.name));
-  }
-  if (v.kind !== "home") {
-    const back = document.createElement("button");
-    back.type = "button";
-    back.className = "disc-back";
-    back.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Discover</span>`;
-    back.addEventListener("click", () => { discoverView = { kind: "home" }; renderList(); });
-    host.appendChild(back);
-  }
-  const h = document.createElement("div");
-  h.className = "disc-shelf-head";
-  h.innerHTML = `<span></span>`;
-  (h.querySelector("span") as HTMLElement).textContent = title;
-  host.appendChild(h);
-  if (!list.length) { host.insertAdjacentHTML("beforeend", `<div class="crud-empty">Nothing here yet.</div>`); return; }
-  for (const d of list) {
-    const r = document.createElement("div");
-    r.className = "disc-row";
-    r.innerHTML = `<div class="skill-tile-icon">${glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-row-main"><div class="disc-row-title"><span class="disc-row-name"></span></div><div class="disc-row-sub"></div></div><div class="disc-row-installs"></div>`;
-    (r.querySelector(".disc-row-name") as HTMLElement).textContent = d.name;
-    const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
-    // The category being browsed leads the chips; the rest fold into +N.
-    const lead = v.kind === "category" && d.categories.includes(v.id) ? v.id : d.categories[0];
-    // typeChip escapes its value; the rule cannot see through the call.
-  // nosemgrep: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
-  titleEl.insertAdjacentHTML("beforeend", typeChip(d.type));
-    const chips: string[] = [];
-    if (isNew(d)) chips.push("New");
-    if (lead) chips.push(catLabel(lead));
-    if (d.categories.length > 1) chips.push(`+${d.categories.length - 1}`);
-    for (const c of chips) { const s = document.createElement("span"); s.className = "disc-chip" + (c === "New" ? " new" : ""); s.textContent = c; titleEl.appendChild(s); }
-    (r.querySelector(".disc-row-sub") as HTMLElement).textContent = `by ${d.author || "your org"} · ${d.description || "No description"}`;
-    (r.querySelector(".disc-row-installs") as HTMLElement).textContent = d.installs ? `${fmtInstalls(d.installs)} installs` : "";
-    r.appendChild(addButton(d, true));
-    r.classList.add("openable");
-    r.addEventListener("click", () => void openHubDetail(d));
-    host.appendChild(r);
-  }
-}
-
-async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void> {
-  btn.disabled = true;
-  btn.textContent = "…";
-  const r = await api().skillInstall(d.ref, d.type ?? cfg.kind) as Env<{ id: string }>;
-  if (!r.ok) { btn.disabled = false; btn.textContent = btn.classList.contains("skill-add-wide") ? "Add" : "+"; fail(r.error || "Install failed."); return; }
-  d.installed = true;
-  // THE WALL REPAINTS AT ONCE (his report, 2026-10-07: the tile took a while to show up).
-  document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-  const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
-  if (list.ok) skills = list.data ?? [];
-  const installed = (list.ok ? list.data ?? [] : []).find((s) => s.name === d.name || s.id.endsWith(`:${d.slug ?? ""}`));
-  notice(`${d.name} installed`, installed ? { detail: `${TYPE_LABEL[typeOf(installed)]} · ${WHERE_TO_SEE[typeOf(installed)]}` } : undefined);
-  if (hubItem && hubItem.ref === d.ref) { paintDetailChrome(); return; }
-  renderList();
 }
 
 async function toggle(id: string, on: boolean): Promise<void> {
@@ -899,57 +330,12 @@ async function toggle(id: string, on: boolean): Promise<void> {
 }
 
 async function remove(id: string, name: string): Promise<void> {
-  const instance = skills.find((s) => s.id === id)?.instance || (current?.id === id ? current.instance : undefined);
-  if (instance) {
-    // UNINSTALL ≠ DELETE (his decision, 2026-10-07): a remove keeps the app's
-    // data for a reinstall; "delete everything" purges it. Discover is untouched.
-    const choice = await confirmChoice({
-      title: `Remove "${name}"?`,
-      body: "Your running copy stops and leaves Your apps. Keep my data: a reinstall gets it back. Delete everything: its releases and data go too. Discover and any shared version are untouched.",
-      confirmLabel: "Delete everything", altLabel: "Remove, keep my data", danger: true,
-    });
-    if (choice === "no") return;
-    const r = await api().skillDelete(id, { purge: choice === "yes" }) as Env<boolean>;
-    if (!r.ok) { fail(r.error || "Remove failed."); return; }
-    notice(choice === "yes" ? `${name} removed, with its data` : `${name} removed — its data is kept for a reinstall`);
-    document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
-    await loadSkillsSettings();
-    return;
-  }
-  const sure = await confirmAction({ title: `Remove "${name}"?`, body: "The folder is removed from this machine and from every loop that used it. A shared copy on your organization's hub stays.", confirmLabel: "Remove", danger: true });
+  const sure = await confirmAction({ title: `Remove "${name}"?`, body: "The folder is removed from this machine and from every loop that used it.", confirmLabel: "Remove", danger: true });
   if (!sure) return;
   const r = await api().skillDelete(id) as Env<boolean>;
   if (!r.ok) { fail(r.error || "Remove failed."); return; }
   notice(`${name} removed`);
   await loadSkillsSettings();
-}
-
-/** What a cloud app's card says on the right: `release n`, or that nothing is deployed yet. */
-function releaseLabel(inst: InstanceOfRow): string {
-  const have = inst.version ? `v${inst.version}` : inst.release ? `release ${inst.release}` : "no release";
-  const up = inst.update;
-  if (!up?.available) return have;
-  return `${have} → ${up.headVersion ? `v${up.headVersion}` : up.headRelease ? `release ${up.headRelease}` : "latest"}`;
-}
-
-/** Rollback = pin n-1 (app-platform.md §10): the release a Rollback pins, or null with nothing before the live one. */
-function rollbackTarget(s: SkillRow | null | undefined): number | null {
-  const n = s?.instance?.release;
-  return typeof n === "number" && Number.isInteger(n) && n > 1 ? n - 1 : null;
-}
-
-/** Settings → Apps → Rollback: the instance goes back one release; the
- *  server reloads it at once (nothing is rebuilt). */
-async function rollback(s: SkillRow): Promise<void> {
-  const back = rollbackTarget(s);
-  if (back === null) return;
-  const sure = await confirmAction({ title: `Roll back "${s.name}" to release ${back}?`, body: `The app serves release ${back} again at once; release ${s.instance!.release} stays on the list and can be pinned back.`, confirmLabel: "Rollback" });
-  if (!sure) return;
-  const r = await api().appInstancePin(s.id, back) as Env<{ release?: number | null }>;
-  if (!r.ok) { fail(r.error || "Rollback failed."); return; }
-  notice(`${s.name} is on release ${r.data?.release ?? back}`);
-  await loadSkillsSettings();
-  if (current && current.id === s.id) await openDetail(s.id);
 }
 
 async function adopt(id: string): Promise<void> {
@@ -975,16 +361,15 @@ async function download(): Promise<void> {
   if (!r.ok) fail(r.error || "Download failed.");
 }
 
-
 /** A new session in the workbench: in `loop` (or the current one), rooted at
  *  `cwd` when given, with `prompt` waiting in the composer. */
-function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }): void {
+function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string }): void {
   closeSettingsModal();
   // On the web this page is a full-screen panel, not the modal: it must step
   // aside or the session opens behind it (his report, 2026-10-05: the plugin
   // menu's items "do nothing").
   if (onWeb()) (window as unknown as { __wbCloseWebFullPanel?: () => void }).__wbCloseWebFullPanel?.();
-  const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string; appBuild?: boolean }) => void };
+  const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void };
   if (!w.__glyphhOpenSessionWith) { fail("The agent isn't ready yet."); return; }
   w.__glyphhOpenSessionWith(opts);
 }
@@ -1003,98 +388,23 @@ function editWith(): void {
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
-/** A Discover item: the same detail page, read from the hub, with Add in place
- *  of Share. Back returns to Discover exactly where the user left it. */
-async function openHubDetail(d: DiscoverRow): Promise<void> {
-  const r = await api().skillHubFiles(d.ref, d.type ?? cfg.kind) as Env<Record<string, string>>;
-  if (!r.ok || !r.data) { fail(r.error || `Couldn't open that ${cfg.noun}.`); return; }
-  const files = r.data;
-  const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
-  hubItem = d;
-  current = {
-    id: `hub:${d.ref}`, source: "glyphh", type: d.type ?? cfg.kind, name: d.name, description: d.description || frontmatter.description || "", author: d.author,
-    enabled: true, dir: "", fileCount: Object.keys(files).length, updatedAt: d.updatedAt, frontmatter, body,
-    files: Object.keys(files).sort().map((p) => ({ path: p, size: files[p].length })),
-  };
-  viewedVersion = { itemId: d.id, version: d.version ?? 1, files };
-  currentFile = "";
-  editing = false;
-  el("skills-list-view")?.classList.add("hidden");
-  el("skill-detail-view")?.classList.remove("hidden");
-  setDetailName(d.name, d.type);
-  (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
-  (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
-  (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
-  paintOverviewBody(current.body);
-  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type, slug: d.slug, name: d.name });
-  void paintExtras(current, files);
-  (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
-  (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
-  paintDetailChrome();
-  paintDetailTabs(typeOf(current));
-  tabHasContent("contents", current.files.length);
-  collapsedDirs = new Set();
-  const sel = el<HTMLSelectElement>("skill-version");
-  if (sel) { sel.innerHTML = `<option value="${d.version ?? 1}">${escapeHtml(d.name)} · v${d.version ?? 1}</option>`; sel.disabled = true; sel.title = "The version on the hub"; }
-  selectDetailTab("overview");
-  renderTree();
-}
-
-/** Share / enabled / ⋮ for a local skill; one Add button for a hub item. */
+/** The header's actions beside the enabled switch and the ⋮: a task's Run now. */
 function paintDetailChrome(): void {
-  const hub = !!hubItem;
-  // Share goes away once there IS a share (his order, 2026-09-17). Waiting on
-  // the desk or live on the hub, the door out is Withdraw in the ⋮.
-  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head);
-  el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
-  el("skill-kebab")?.classList.toggle("hidden", hub);
   el("skill-edit")?.classList.add("hidden");
-  let add = el<HTMLButtonElement>("skill-hub-add");
-  if (!add) {
-    add = document.createElement("button");
-    add.id = cfg.id("skill-hub-add");
-    add.type = "button";
-    add.className = "action-btn primary";
-    add.addEventListener("click", () => { if (hubItem) void installFrom(hubItem, add!); });
-    el("skill-share")?.before(add);
+  // Resolved every time: a mixed list moves between a task and a skill, and a
+  // stale Run now must not survive the move.
+  let run = el<HTMLButtonElement>("skill-run-now");
+  if (!run && typeOf(current) === "task") {
+    run = document.createElement("button");
+    run.id = cfg.id("skill-run-now");
+    run.type = "button";
+    run.className = "action-btn primary";
+    run.textContent = "Run now";
+    const self = run;
+    run.addEventListener("click", () => void runNow(self));
+    el("skill-enabled")?.closest(".skills-switch")?.before(run);
   }
-  add.classList.toggle("hidden", !hub);
-  if (hub) {
-    const face = addFace(hubItem!, true);
-    add.textContent = face.label;
-    add.disabled = face.disabled;
-    add.title = face.title;
-  }
-  // The detail's actions, resolved every time: a mixed list moves between an
-  // app and a skill, and a stale Open must not survive the move.
-  const action = (id: string, label: string, primary: boolean, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
-    let b = el<HTMLButtonElement>(id);
-    if (!b) {
-      b = document.createElement("button");
-      b.id = cfg.id(id);
-      b.type = "button";
-      b.className = primary ? "action-btn primary" : "action-btn";
-      b.textContent = label;
-      const self = b;
-      b.addEventListener("click", () => onClick(self));
-      el("skill-share")?.before(b);
-    }
-    return b;
-  };
-  const up = current ? updates[current.id] : undefined;
-  const upBtn = action("skill-update", "Update", false, (b) => { if (current) void updateNow(current.id, b); });
-  upBtn.classList.toggle("hidden", hub || !up);
-  if (up) { upBtn.textContent = `Update to v${up.latest}`; upBtn.disabled = false; }
-  const type = typeOf(current);
-  if (type === "app" || el("skill-open-tab")) action("skill-open-tab", "Open", true, (b) => void openAsTab(b)).classList.toggle("hidden", hub || !current || type !== "app");
-  // A cloud app's Rollback (pin n-1) sits beside Open; it hides with nothing before the live release.
-  const back = hub ? null : rollbackTarget(current);
-  if (back !== null || el("skill-rollback")) {
-    const rb = action("skill-rollback", "Rollback", false, () => { if (current) void rollback(current); });
-    rb.classList.toggle("hidden", back === null);
-    if (back !== null) rb.title = `Roll back to release ${back}`;
-  }
-  if (type === "task" || el("skill-run-now")) action("skill-run-now", "Run now", true, (b) => void runNow(b)).classList.toggle("hidden", hub || !current || type !== "task");
+  run?.classList.toggle("hidden", !current || typeOf(current) !== "task");
 }
 
 /** TASKS: start a run and land on its story. */
@@ -1109,26 +419,6 @@ async function runNow(btn: HTMLButtonElement): Promise<void> {
   selectDetailTab("runs");
 }
 
-/** The app opens as a tab beside the agent: registered on first open, then the workbench door. */
-async function openAsTab(btn: HTMLButtonElement): Promise<void> {
-  if (!current) return;
-  btn.disabled = true;
-  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string; cloud?: boolean }; error?: string };
-  const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-  btn.disabled = false;
-  const tab = r.data;
-  if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
-  closeSettingsModal();
-  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in
-  // panel. Both doors go through the cold-safe openers, which boot the
-  // workbench and wait for its bridge — calling the bridge directly was a
-  // silent no-op whenever the workbench had not mounted yet.
-  if (tab.tool) { openWorkPanelInWorkbench("__wbOpenTool", tab.tool); return; }
-  // A cloud app opens as a web panel on the web (his report, 2026-10-05);
-  // anything else keeps the desktop door.
-  openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true, ...(tab.cloud ? { cloud: true } : {}) });
-}
-
 function parseFrontmatter(text: string): { frontmatter: Record<string, string>; body: string } {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
   if (!m) return { frontmatter: {}, body: text };
@@ -1137,32 +427,8 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
   return { frontmatter: fm, body: text.slice(m[0].length) };
 }
 
-/** APPS ONLY: the Overview gains what app.json declares — screenshots as a
- *  gallery and the dependencies (connections, as member or org). Local apps
- *  read the manifest and images from the folder; a hub item carries them in
- *  its files (screenshots as data URLs). */
 /** The graph behind the Flow tab, rebuilt whenever a detail is opened. */
 let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
-/** What the org's hub holds for the open bundle: the live version, and the one
- *  still on the review desk. Null until loadVersions answers. */
-let shareState: { head: number | null; pending: number | null; declined: { version: number; summary: string } | null; changes?: { version: number; note: string } | null; lifecycle?: string; lifecycleNote?: string; visibility?: string; own?: boolean } = { head: null, pending: null, declined: null };
-/** THE ICON AND SCREENSHOTS ATTACHED ON THE PUBLISH TAB (his ask, 2026-10-07),
- *  by item id, until the next share carries them. */
-type PubShot = { name: string; caption: string; dataUrl: string };
-const pubMedia = new Map<string, { icon: string | null; screenshots: PubShot[] }>();
-const mediaFor = (id: string) => { let m = pubMedia.get(id); if (!m) { m = { icon: null, screenshots: [] }; pubMedia.set(id, m); } return m; };
-const PUB_SHOT_MAX = 8;
-const PUB_SHOTS_BYTES = 600_000;
-const PUB_ICON_BYTES = 64_000;
-/** A picked file as a data URL. */
-const readAsDataUrl = (f: File): Promise<string> => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
-const safeShotName = (name: string): string => name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "").slice(0, 80) || "shot.png";
-/** The hub versions behind the open item, as loadVersions last read them (the Publish tab's history). */
-let hubVersions: Array<{ version: number; notes: string; createdAt: string; status?: string; reviewSummary?: string; decisionNote?: string }> = [];
-/** The shared item behind the open bundle: what it is on the org's hub, and
- *  the shelves it sits on. Promote guesses the shelves from the payload, so
- *  this is where a person corrects the guess (his report, 2026-09-17). */
-let shareItem: { id: string; kind: BundleType; categories: string[] } | null = null;
 function paintFlow(): void {
   const host = el("skill-flow-host");
   if (!host) return;
@@ -1170,7 +436,11 @@ function paintFlow(): void {
   void renderFlow(host, flowGraph);
 }
 
-async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | null): Promise<void> {
+/** What the bundle's manifest declares, on the tabs its kind earns: a
+ *  plugin's skills; a task's flow, agents, connections, runs and schedule; an
+ *  app's screenshots (on the Overview), skills, tools and connections. All of
+ *  it is read from the folder. */
+async function paintExtras(s: SkillDetail): Promise<void> {
   const host = el("skill-overview-extra");
   if (!host) return;
   host.textContent = "";
@@ -1180,7 +450,6 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   const type = typeOf(s);
   if (type === "skill") return;
   const read = async (rel: string): Promise<string> => {
-    if (hubFiles) return hubFiles[rel] ?? "";
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
@@ -1196,11 +465,11 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
       if (!el("skill-flow")?.classList.contains("hidden")) paintFlow();
     });
     await Promise.all([paintBundleAgents(s), paintBundleConnections(tm.dependencies?.connections ?? [])]);
-    if (!hubItem) { void paintTaskRuns(s); void paintTaskSchedule(s, tm.schedule ?? null); }
+    void paintTaskRuns(s);
+    void paintTaskSchedule(s, tm.schedule ?? null);
     return;
   }
-  // THE APP'S MANIFEST (his report, 2026-10-07: Discover showed none of an
-  // app's tools): manifest.json — the bundle's, inline tools — else the older
+  // THE APP'S MANIFEST: manifest.json — the bundle's, inline tools — else the
   // app.json authoring form, whose `tools` names a file.
   let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<ConnDep | string> }; connectors?: string[]; ui?: string; tools?: string | Array<{ name: string; description?: string }> } = {};
   try { manifest = JSON.parse(await read("manifest.json") || await read("app.json") || "{}"); } catch { manifest = {}; }
@@ -1215,7 +484,6 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const cap = g.querySelector(".app-gallery-caption") as HTMLElement;
     const thumbs = g.querySelector(".app-gallery-thumbs") as HTMLElement;
     const urls = await Promise.all(gallery.map(async (shot) => {
-      if (hubFiles) return hubFiles[shot.path] || "";
       const r = await api().skillImage(s.id, shot.path) as Env<string>;
       return r.ok ? (r.data || "") : "";
     }));
@@ -1420,17 +688,8 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
     (r.querySelector(".skill-row-name") as HTMLElement).textContent = a.name;
     (r.querySelector(".skill-row-desc") as HTMLElement).textContent = a.description;
     const right = r.querySelector(".skill-row-right") as HTMLElement;
-    if (hubItem) {
-      const chip = document.createElement("span");
-      chip.className = "app-conn-state";
-      chip.textContent = "Set after Add";
-      right.appendChild(chip);
-      host.appendChild(r);
-      continue;
-    }
-
     // WHICH AGENT (his order, 2026-10-07: tasks define cli or glyphh agents
-    // with models) — a task slot picks one of the member's agents, Glyphh or
+    // with models) — a task slot picks one of your agents, Glyphh or
     // CLI; the first option is the default Glyphh agent (an unbound slot).
     if (a.source === "slot") {
       const agentSel = document.createElement("select");
@@ -1474,7 +733,7 @@ function agentLabel(a: RosterAgentRow): string {
   return a.name;
 }
 
-/** The member's agents (Settings → Build → Agents), each labelled by its lane. */
+/** Your agents (Settings → Build → Agents), each labelled by its lane. */
 function fillAgentChoices(sel: HTMLSelectElement, chosen: string, roster: RosterAgentRow[]): void {
   const rows = roster.slice().sort((a, b) => a.name.localeCompare(b.name));
   const options = [`<option value="">Default Glyphh agent</option>`];
@@ -1486,11 +745,9 @@ function fillAgentChoices(sel: HTMLSelectElement, chosen: string, roster: Roster
 }
 
 /**
- * THE SAME LIST AS EVERY OTHER PICKER (his order, 2026-10-04): the models this
- * member's team runs on the gateway, as main's loop-models.ts answers them —
- * server-filtered, so a Free org sees its free-plan models and nothing it
- * cannot run. It used to read the whole org catalog, which named models the
- * turn would then be refused on.
+ * THE SAME LIST AS EVERY OTHER PICKER (his order, 2026-10-04): the models the
+ * Glyphh loop can run, as main's loop-models.ts answers them, so a slot never
+ * names a model the turn would then be refused on.
  */
 async function fillModelChoices(sel: HTMLSelectElement, chosen: string): Promise<void> {
   if (!agentModels) {
@@ -1500,7 +757,7 @@ async function fillModelChoices(sel: HTMLSelectElement, chosen: string): Promise
   }
   const models = [...await agentModels].sort((a, b) => a.name.localeCompare(b.name));
   const options = [`<option value="">Model: default</option>`];
-  // A model the agent already names survives even when the catalog moved on.
+  // A model the agent already names survives even when the model list moved on.
   if (chosen && !models.some((m) => m.id === chosen)) options.push(`<option value="${escapeHtml(chosen)}" selected>${escapeHtml(chosen)}</option>`);
   for (const m of models) options.push(`<option value="${escapeHtml(m.id)}"${m.id === chosen ? " selected" : ""}>${escapeHtml(m.name)}</option>`);
   sel.innerHTML = options.join("");
@@ -1543,18 +800,13 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
   });
 }
 
-const AGENT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>`;
-
 /** The app's tools (tools/manifest.json) with the same permission grammar as a connection's. */
 async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<string>, rel: string | Array<{ name: string; description?: string }>): Promise<void> {
   const host = el("skill-tools-list"); const count = el("skill-tool-count");
   if (!host) return;
   let tools: Array<{ name: string; description?: string }> = [];
-  // AN INSTANCE'S TOOLS ARE ITS MANIFEST'S (his report, 2026-10-07: "Tools · 0"
-  // on an installed app): the card carries them; there is no folder to read.
-  // A manifest.json carries its tools inline; the old app.json names a file.
+  // A manifest.json carries its tools inline; app.json names a file.
   if (Array.isArray(rel)) tools = rel.filter((t) => t && t.name);
-  else if (s.instance) tools = s.instance.tools.map((name) => ({ name }));
   else { try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; } }
   if (count) count.textContent = `· ${tools.length}`;
   tabHasContent("tools", tools.length);
@@ -1592,8 +844,8 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
 }
 
 /** A bundle's declared accounts, as the Connections page draws them (his
- *  order, 2026-09-17): the connector's own logo, a Type column, the Shared
- *  badge, a check when connected and a Connect button when not. The rows are
+ *  order, 2026-09-17): the connector's own logo, a Type column, a check
+ *  when connected and a Connect button when not. The rows are
  *  rendered by that page so the two tables cannot drift. Either manifest
  *  shape is accepted, since a hand-written one carries bare slugs. */
 async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<void> {
@@ -1610,7 +862,6 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
 async function openDetail(id: string): Promise<void> {
   const r = await api().skillGet(id) as Env<SkillDetail>;
   if (!r.ok || !r.data) { fail(r.error || `Couldn't open that ${cfg.noun}.`); return; }
-  hubItem = null;
   current = r.data;
   currentFile = "";
   editing = false;
@@ -1620,134 +871,38 @@ async function openDetail(id: string): Promise<void> {
   setDetailName(s.name, s.type);
   (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
   const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = s.enabled;
-  const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
   paintOverviewBody(s.body);
   setDetailIcon(s);
-  void paintExtras(s, null);
+  void paintExtras(s);
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
-  // An installed app lives in the cloud, never "on this machine" (his report, 2026-10-07).
-  (el("skill-author-meta") as HTMLElement).textContent = s.instance ? "In the cloud" : local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
-  paintSource(s.id);
-  viewedVersion = null;
-  shareState = { head: null, pending: null, declined: null };
-  shareItem = null;
-  paintCategories();
+  (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   paintDetailChrome();
   paintDetailTabs(typeOf(s));
   tabHasContent("contents", s.files.length);
   collapsedDirs = new Set();
-  paintVersions([]);
-  void loadVersions();
   selectDetailTab("overview");
   renderTree();
 }
 
-function paintVersions(rows: Array<{ version: number; notes: string; createdAt: string }>): void {
-  const sel = el<HTMLSelectElement>("skill-version");
-  if (!sel || !current) return;
-  const name = current.name;
-  sel.innerHTML = [`<option value="current">${escapeHtml(name)} · current</option>`]
-    .concat(rows.map((r) => `<option value="${r.version}">${escapeHtml(name)} · v${r.version}${r.createdAt ? ` · ${escapeHtml(when(r.createdAt))}` : ""}</option>`))
-    .join("");
-  sel.value = viewedVersion ? String(viewedVersion.version) : "current";
-  sel.disabled = rows.length === 0;
-  sel.title = rows.length ? "Shared versions on your organization's hub" : "Not shared yet — the folder is the only version";
-}
-
-let versionItemId: string | null = null;
-async function loadVersions(): Promise<void> {
-  if (!current) return;
-  const id = current.id;
-  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string; status?: string; reviewSummary?: string; decisionNote?: string }>; head?: number | null; pending?: number | null; declined?: { version: number; summary: string } | null; changes?: { version: number; note: string } | null; lifecycle?: string; lifecycleNote?: string; visibility?: string; own?: boolean; categories?: string[] }>;
-  if (!current || current.id !== id) return;
-  versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
-  hubVersions = r.ok ? (r.data?.versions ?? []) : [];
-  shareState = {
-    head: r.ok ? r.data?.head ?? null : null,
-    pending: r.ok ? r.data?.pending ?? null : null,
-    declined: r.ok ? r.data?.declined ?? null : null,
-    changes: r.ok ? r.data?.changes ?? null : null,
-    lifecycle: r.ok ? r.data?.lifecycle ?? "live" : "live",
-    lifecycleNote: r.ok ? r.data?.lifecycleNote ?? "" : "",
-    visibility: r.ok ? r.data?.visibility ?? "org" : "org",
-    own: r.ok ? !!r.data?.own : false,
-  };
-  paintPublish();
-  shareItem = r.ok && r.data?.itemId
-    ? { id: r.data.itemId, kind: r.data.kind ?? typeOf(current), categories: r.data.categories ?? [] }
-    : null;
-  paintShareChip();
-  paintCategories();
-  paintVersions(r.ok ? (r.data?.versions ?? []) : []);
-}
-
-async function chooseVersion(value: string): Promise<void> {
-  if (!current) return;
-  if (editing && !(await leaveEditing())) { paintVersionsKeep(); return; }
-  if (value === "current" || !versionItemId) {
-    viewedVersion = null;
-    const fresh = await api().skillGet(current.id) as Env<SkillDetail>;
-    if (fresh.ok && fresh.data) current = fresh.data;
-  } else {
-    const r = await api().skillVersionFiles(versionItemId, Number(value), typeOf(current)) as Env<Record<string, string>>;
-    if (!r.ok || !r.data) { fail(r.error || "Couldn't load that version."); return; }
-    viewedVersion = { itemId: versionItemId, version: Number(value), files: r.data };
-  }
-  currentFile = "";
-  renderTree();
-  const first = filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? "");
-  await openFile(first);
-}
-function paintVersionsKeep(): void { const sel = el<HTMLSelectElement>("skill-version"); if (sel) sel.value = viewedVersion ? String(viewedVersion.version) : "current"; }
-/** The files being browsed: the hub version's, or the folder's. */
-function filesNow(): SkillFile[] {
-  if (viewedVersion) return Object.keys(viewedVersion.files).sort().map((p) => ({ path: p, size: viewedVersion!.files[p].length }));
-  return current?.files ?? [];
-}
-
-type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow" | "releases" | "publish";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow";
 /** One agent a bundle ships: agents/<name>.md, or a task's slot under the older name. */
 interface BundleAgentRow { ref: string; name: string; description: string; loop: string; model: string; source: "file" | "slot" }
-/** One of the member's agents as the slot picker lists it (library-agents-list). */
+/** One of your agents as the slot picker lists it (library-agents-list). */
 interface RosterAgentRow { id: string; slug?: string; name: string }
 interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents", "agents", "publish"],
-  app: ["overview", "contents", "skills", "tools", "agents", "connections", "releases", "publish"],
-  task: ["overview", "flow", "contents", "agents", "runs", "connections", "publish"],
-  plugin: ["overview", "contents", "skills", "publish"],
+  skill: ["overview", "contents", "agents"],
+  app: ["overview", "contents", "skills", "tools", "agents", "connections"],
+  task: ["overview", "flow", "contents", "agents", "runs", "connections"],
+  plugin: ["overview", "contents", "skills"],
 };
-/** THE DEVELOPER'S DESK (his ask, 2026-10-07): Releases (an app instance's,
- *  what Build and run makes) and Publish (the hub: version, notes, standing,
- *  the reviewer's note, the thread, visibility, retire / remove). The tabs
- *  and panes are made here, once, for every library page. */
-function ensureDeskTabs(): void {
-  const row = document.querySelector<HTMLElement>(`${cfg.panel} .skills-tabs.detail`);
-  const view = el("skill-detail-view");
-  if (!row || !view) return;
-  for (const [key, label] of [["releases", "Releases"], ["publish", "Publish"]] as const) {
-    if (!row.querySelector(`.skills-tab[data-dtab="${key}"]`)) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "skills-tab"; b.dataset.dtab = key; b.textContent = label;
-      row.appendChild(b);
-      b.addEventListener("click", () => selectDetailTab(key));
-    }
-    if (!el(`skill-${key}`)) {
-      const pane = document.createElement("div");
-      pane.id = cfg.id(`skill-${key}`); pane.className = "skill-overview hidden pub-pane";
-      view.appendChild(pane);
-    }
-  }
-}
 /** THE PAGE IS NEVER BLANK (his order, 2026-10-07): the Overview renders the
- *  bundle's SKILL.md (an instance's pinned release ships it; a folder's is on
- *  disk; a hub item's rides its files) under the one-line description. An app
- *  that ships no SKILL.md gets the synthesized page the detail already carries. */
+ *  bundle's SKILL.md from the folder under the one-line description. */
 function paintOverviewBody(body: string): void {
   const host = el("skill-overview-body");
   if (!host) return;
@@ -1788,13 +943,9 @@ function selectDetailTab(t: DetailTab): void {
   el("skill-agents")?.classList.toggle("hidden", t !== "agents");
   el("skill-runs")?.classList.toggle("hidden", t !== "runs");
   el("skill-flow")?.classList.toggle("hidden", t !== "flow");
-  el("skill-releases")?.classList.toggle("hidden", t !== "releases");
-  el("skill-publish")?.classList.toggle("hidden", t !== "publish");
-  if (t === "releases") void paintReleases();
-  if (t === "publish") paintPublish();
-  if (t === "runs" && current && !hubItem) void paintTaskRuns(current);
+  if (t === "runs" && current) void paintTaskRuns(current);
   if (t === "flow") paintFlow();
-  if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
+  if (t === "contents" && current && !currentFile) void openFile(current.files.some((f) => f.path === "SKILL.md") ? "SKILL.md" : (current.files[0]?.path ?? ""));
   if (t === "contents") editor?.layout();
 }
 
@@ -1855,7 +1006,7 @@ function renderTree(): void {
     }
     rest.forEach(file);
   };
-  paint(buildTree(filesNow()), 0);
+  paint(buildTree(current.files), 0);
 }
 
 function langFor(name: string): string {
@@ -1882,9 +1033,7 @@ async function openFile(rel: string): Promise<void> {
   currentFile = rel;
   (el("skill-file-path") as HTMLElement).textContent = `/${rel}`;
   renderTree();
-  const r = viewedVersion
-    ? { ok: true, data: { text: viewedVersion.files[rel] ?? "", binary: false, size: (viewedVersion.files[rel] ?? "").length } }
-    : await api().skillFileRead(current.id, rel) as Env<{ text: string; binary: boolean; size: number }>;
+  const r = await api().skillFileRead(current.id, rel) as Env<{ text: string; binary: boolean; size: number }>;
   if (!r.ok || !r.data) { fail(r.error || "Couldn't read that file."); return; }
   const isMd = /\.(md|markdown)$/i.test(rel);
   document.querySelector<HTMLElement>(".skill-view-toggle")?.classList.toggle("hidden", !isMd);
@@ -1924,18 +1073,16 @@ function mountEditor(text: string, language: string): void {
   const w = window as unknown as { monaco: { editor: { create: (h: HTMLElement, o: Record<string, unknown>) => typeof editor; createModel: (v: string, l: string) => unknown; setModelLanguage: (m: unknown, l: string) => void }; Uri?: unknown } };
   if (!editor) {
     editor = w.monaco.editor.create(host, {
-      value: text, language, readOnly: !!viewedVersion, automaticLayout: true, minimap: { enabled: false },
+      value: text, language, automaticLayout: true, minimap: { enabled: false },
       fontSize: 12.5, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", theme: document.documentElement.classList.contains("light") ? "vs" : "vs-dark",
     });
     (editor as unknown as { onDidChangeModelContent: (f: () => void) => void }).onDidChangeModelContent(() => {
-      if (viewedVersion) return;
       editing = (editor?.getValue() ?? "") !== loadedText;
       paintEditButton();
     });
   } else {
     editor.setValue(text);
     w.monaco.editor.setModelLanguage(editor.getModel(), language);
-    editor.updateOptions({ readOnly: !!viewedVersion });
   }
   loadedText = text;
   editing = false;
@@ -1960,7 +1107,7 @@ function paintEditButton(): void {
 }
 
 async function onEdit(): Promise<void> {
-  if (!current || !currentFile || viewedVersion || !editing) return;
+  if (!current || !currentFile || !editing) return;
   const text = editor?.getValue() ?? "";
   const r = await api().skillFileWrite(current.id, currentFile, text) as Env<boolean>;
   if (!r.ok) { fail(r.error || "Save failed."); return; }
@@ -1971,401 +1118,12 @@ async function onEdit(): Promise<void> {
   if (currentFile === "SKILL.md") { const id = current.id; await openDetail(id); selectDetailTab("contents"); await openFile("SKILL.md"); }
 }
 
-async function share(): Promise<void> {
-  if (!current) return;
-  // RELEASE NOTES ARE REQUIRED ON A RE-SHARE (his spec, 2026-10-07): the
-  // Publish tab collects them; a re-share without them lands there.
-  const notes = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
-  if (notesRequired(shareState.head, shareState.pending, hubVersions) && !notes) {
-    selectDetailTab("publish");
-    el<HTMLTextAreaElement>("pub-notes")?.focus();
-    fail("Say what changed: release notes are required when sharing a new version.");
-    return;
-  }
-  const instance = !!current.instance;
-  const sure = await confirmAction({
-    title: `Share "${current.name}" with your organization?`,
-    body: instance
-      ? `Release ${current.instance?.release ?? ""} of your running copy goes to your organization's hub${current.instance?.version ? ` as version ${current.instance.version}` : ""}. An org admin's share goes live at once; anyone else's waits on the review desk. Members install their own copy from Discover; your folder never leaves your machine.`
-      : "Its SKILL.md and files go to your organization's hub. An org admin's share goes live at once; anyone else's waits on the review desk. Members install it from Discover.",
-    confirmLabel: shareFace(shareState).label,
-  });
-  if (!sure) return;
-  const btn = el<HTMLButtonElement>("skill-share");
-  if (btn) btn.disabled = true;
-  const media = mediaFor(current.id);
-  const r = await api().skillPublish(current.id, notes, { icon: media.icon, screenshots: media.screenshots }) as Env<{ version: number; status: string }>;
-  if (btn) btn.disabled = false;
-  if (!r.ok) { fail(r.error || "Couldn't share."); return; }
-  const v = r.data?.version;
-  const approved = r.data?.status === "approved";
-  // A fresh share clears any earlier decline: this version has not been judged.
-  shareState = approved
-    ? { head: v ?? null, pending: null, declined: null }
-    : { head: shareState.head, pending: v ?? null, declined: null };
-  paintShareChip();
-  paintCategories();
-  notice(approved
-    ? `"${current.name}" is live on your organization's hub as v${v}. Members install it from Discover.`
-    : `"${current.name}" v${v} went to your organization's review desk. An org admin decides; sharing again replaces it.`);
-  const ta = el<HTMLTextAreaElement>("pub-notes"); if (ta) ta.value = "";
-  // The attached media went with this version; the next share starts clean.
-  pubMedia.delete(current.id);
-  void loadVersions();
-  void refreshShares();
-}
-
-/** THE ICON AND SCREENSHOTS on the Publish tab: pick, caption, order, remove. */
-function paintPubMedia(host: HTMLElement, id: string): void {
-  const m = mediaFor(id);
-  host.innerHTML = `<div class="pub-media">
-    <div class="pub-field"><div class="skill-overview-label">Icon</div>
-      <div class="pub-icon-row"><span class="pub-icon-preview"></span><button type="button" class="action-btn pub-icon-pick">Choose .svg…</button><button type="button" class="action-btn pub-icon-clear hidden">Remove</button><span class="mdl-hint">An SVG, under 64 KB. Shown on Discover and in Your apps.</span></div></div>
-    <div class="pub-field"><div class="skill-overview-label">Screenshots</div>
-      <div class="pub-shots"></div>
-      <div class="pub-actions"><button type="button" class="action-btn pub-shot-pick">Add screenshots…</button><span class="mdl-hint">Up to ${PUB_SHOT_MAX} images (png, jpeg, gif, webp, svg), 600 KB together. They ride the next share, in this order.</span></div></div>
-  </div>`;
-  const preview = host.querySelector(".pub-icon-preview") as HTMLElement;
-  const clear = host.querySelector(".pub-icon-clear") as HTMLButtonElement;
-  const paintIcon = (): void => {
-    preview.innerHTML = m.icon ? `<img alt="" src="${m.icon.startsWith("data:") ? m.icon : `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(m.icon)))}`}" />` : "";
-    clear.classList.toggle("hidden", !m.icon);
-  };
-  const pickFiles = (accept: string, multiple: boolean, onFiles: (files: File[]) => void): void => {
-    const input = document.createElement("input");
-    input.type = "file"; input.accept = accept; input.multiple = multiple;
-    input.addEventListener("change", () => onFiles(Array.from(input.files ?? [])));
-    input.click();
-  };
-  (host.querySelector(".pub-icon-pick") as HTMLButtonElement).addEventListener("click", () => pickFiles("image/svg+xml,.svg", false, async (files) => {
-    const f = files[0]; if (!f) return;
-    if (f.size > PUB_ICON_BYTES) { fail("The icon is over 64 KB."); return; }
-    try { m.icon = await readAsDataUrl(f); paintIcon(); } catch { fail("Couldn't read that file."); }
-  }));
-  clear.addEventListener("click", () => { m.icon = null; paintIcon(); });
-  paintIcon();
-  const shots = host.querySelector(".pub-shots") as HTMLElement;
-  const paintShots = (): void => {
-    shots.textContent = "";
-    if (!m.screenshots.length) { shots.innerHTML = `<div class="mdl-hint">None attached yet.</div>`; return; }
-    m.screenshots.forEach((s, i) => {
-      const row = document.createElement("div");
-      row.className = "pub-shot";
-      row.innerHTML = `<img alt="" /><input type="text" class="crud-input pub-shot-caption" placeholder="Caption" /><div class="pub-shot-actions"><button type="button" class="action-btn" data-up title="Move up">↑</button><button type="button" class="action-btn" data-down title="Move down">↓</button><button type="button" class="action-btn danger" data-remove>Remove</button></div>`;
-      (row.querySelector("img") as HTMLImageElement).src = s.dataUrl;
-      const cap = row.querySelector(".pub-shot-caption") as HTMLInputElement;
-      cap.value = s.caption;
-      cap.addEventListener("input", () => { s.caption = cap.value.slice(0, 200); });
-      (row.querySelector("[data-up]") as HTMLButtonElement).disabled = i === 0;
-      (row.querySelector("[data-down]") as HTMLButtonElement).disabled = i === m.screenshots.length - 1;
-      row.querySelector("[data-up]")!.addEventListener("click", () => { if (i > 0) { [m.screenshots[i - 1], m.screenshots[i]] = [m.screenshots[i]!, m.screenshots[i - 1]!]; paintShots(); } });
-      row.querySelector("[data-down]")!.addEventListener("click", () => { if (i < m.screenshots.length - 1) { [m.screenshots[i + 1], m.screenshots[i]] = [m.screenshots[i]!, m.screenshots[i + 1]!]; paintShots(); } });
-      row.querySelector("[data-remove]")!.addEventListener("click", () => { m.screenshots.splice(i, 1); paintShots(); });
-      shots.appendChild(row);
-    });
-  };
-  (host.querySelector(".pub-shot-pick") as HTMLButtonElement).addEventListener("click", () => pickFiles("image/png,image/jpeg,image/gif,image/webp,image/svg+xml", true, async (files) => {
-    for (const f of files) {
-      if (m.screenshots.length >= PUB_SHOT_MAX) { fail(`At most ${PUB_SHOT_MAX} screenshots.`); break; }
-      let dataUrl: string;
-      try { dataUrl = await readAsDataUrl(f); } catch { continue; }
-      const total = m.screenshots.reduce((n, s) => n + s.dataUrl.length, 0) + dataUrl.length;
-      if (total > PUB_SHOTS_BYTES) { fail("The screenshots together are over 600 KB — smaller images, or fewer."); break; }
-      let name = safeShotName(f.name);
-      while (m.screenshots.some((s) => s.name.toLowerCase() === name.toLowerCase())) name = `${Date.now().toString(36)}-${name}`;
-      m.screenshots.push({ name, caption: "", dataUrl });
-    }
-    paintShots();
-  }));
-  paintShots();
-}
-
-// ── THE RELEASES TAB (an app instance's; his ask, 2026-10-07) ────────────────
-async function paintReleases(): Promise<void> {
-  const host = el("skill-releases");
-  if (!host || !current) return;
-  if (!current.instance) { host.innerHTML = `<div class="crud-empty">Releases belong to an installed app. Build and run makes the first.</div>`; return; }
-  host.innerHTML = loadingHtml("Reading the releases…");
-  const id = current.id;
-  const r = await api().appInstanceReleases(id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<unknown>) as Env<ReleaseRowLike[]>;
-  if (!current || current.id !== id) return;
-  if (!r.ok) { host.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "Couldn't read the releases.")}</div>`; return; }
-  const rows = [...(r.data ?? [])].sort((a, b) => b.n - a.n);
-  host.innerHTML = `<div class="skill-overview-main">
-    <div class="skill-overview-label">Releases</div>
-    <div class="skill-overview-desc">Every Build and run is the next release of your running copy. The live one serves the panel and the tools; pin an older one to roll back — nothing is rebuilt.</div>
-    <div class="pub-rows"></div></div>`;
-  const list = host.querySelector(".pub-rows") as HTMLElement;
-  if (!rows.length) { list.innerHTML = `<div class="crud-empty">No release yet. Build and run makes the first.</div>`; return; }
-  for (const rel of rows) {
-    const row = document.createElement("div");
-    row.className = "pub-row" + (rel.pinned ? " live" : "");
-    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div></div><div class="pub-row-actions"></div>`;
-    (row.querySelector(".pub-row-title") as HTMLElement).textContent = releaseLine(rel);
-    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${rel.note ? `${rel.note} · ` : ""}${when(typeof rel.at === "number" ? new Date(rel.at * (rel.at < 1e12 ? 1000 : 1)).toISOString() : String(rel.at))}${rel.by ? ` · by ${rel.by}` : ""}`;
-    if (!rel.pinned) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "action-btn"; b.textContent = "Pin";
-      b.title = `Serve release ${rel.n}`;
-      b.addEventListener("click", async () => {
-        b.disabled = true;
-        const p = await api().appInstancePin(id, rel.n) as Env<{ release?: number | null }>;
-        if (!p.ok) { b.disabled = false; fail(p.error || "Couldn't pin that release."); return; }
-        notice(`${current?.name ?? "The app"} is on release ${p.data?.release ?? rel.n}`);
-        await loadSkillsSettings();
-        if (current?.id === id) { await openDetail(id); selectDetailTab("releases"); }
-      });
-      (row.querySelector(".pub-row-actions") as HTMLElement).appendChild(b);
-    }
-    list.appendChild(row);
-  }
-}
-
-// ── THE PUBLISH TAB (the hub; his ask, 2026-10-07) ───────────────────────────
-function paintPublish(): void {
-  const host = el("skill-publish");
-  if (!host || !current || hubItem) return;
-  const s = current;
-  const face = shareFace(shareState);
-  const manifestVersion = s.instance?.version || s.frontmatter?.version || "";
-  const admin = isAdmin;
-  const own = !!shareState.own || !versionItemId;
-  const live = shareState.lifecycle !== "retired" && shareState.lifecycle !== "removed";
-  const needNotes = notesRequired(shareState.head, shareState.pending, hubVersions);
-  host.innerHTML = `<div class="skill-overview-main pub-main">
-    <div class="pub-standing"></div>
-    <div class="pub-grid">
-      <div class="pub-field"><div class="skill-overview-label">Version</div><div class="pub-version"></div><div class="mdl-hint">${s.instance ? "The manifest's version — bump it by hand before a new share. Release numbers are the system's, per Build and run." : "The frontmatter's version, if it names one."}</div></div>
-      <div class="pub-field"><div class="skill-overview-label">Visibility</div><div class="pub-visibility"></div></div>
-    </div>
-    <div class="pub-field"><div class="skill-overview-label">Release notes${needNotes ? " (required)" : ""}</div>
-      <textarea id="${cfg.id("pub-notes")}" class="crud-input pub-notes" rows="3" placeholder="${needNotes ? "What changed in this version" : "What this does, in a line or two (optional on a first share)"}"></textarea>
-      <div class="pub-actions"><button type="button" class="action-btn primary pub-share"></button><button type="button" class="action-btn pub-withdraw hidden">Withdraw from review</button><button type="button" class="action-btn pub-shelves">Shelves…</button></div>
-      <div class="mdl-hint pub-blocked"></div></div>
-    <div class="pub-media-host"></div>
-    <div class="pub-field"><div class="skill-overview-label">Versions on the hub</div><div class="pub-rows pub-history"></div></div>
-    <div class="pub-field pub-lifecycle"><div class="skill-overview-label">On Discover</div><div class="pub-lifecycle-body"></div></div>
-  </div>`;
-  (host.querySelector(".pub-standing") as HTMLElement).textContent = standingLine(shareState);
-  (host.querySelector(".pub-version") as HTMLElement).textContent = manifestVersion ? `v${manifestVersion}` : "no version in the manifest";
-  // Visibility: the org's hub, or submitted to Glyphh (an org admin's move, once a version is live).
-  const vis = host.querySelector(".pub-visibility") as HTMLElement;
-  const isPublic = shareState.visibility === "public";
-  vis.textContent = isPublic ? "Your organization and the Glyphh catalog" : "Your organization";
-  if (admin && versionItemId && shareState.head) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "action-btn pub-public";
-    b.textContent = isPublic ? "Withdraw from Glyphh" : "Submit to Glyphh";
-    b.title = isPublic ? "Take it off the Glyphh catalog's desk" : "Send the live version to the Glyphh catalog's review desk";
-    b.addEventListener("click", async () => {
-      const item = shareItem; if (!item) return;
-      b.disabled = true;
-      const r = isPublic
-        ? await api().skillWithdrawPublic(item.id, item.kind)
-        : await api().skillSubmitPublic(item.id, item.kind, (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim());
-      b.disabled = false;
-      if (!r.ok) { fail(r.error || "The Glyphh desk didn't answer."); return; }
-      notice(isPublic ? `${s.name} is off the Glyphh desk` : `${s.name} v${shareState.head} went to the Glyphh catalog's review desk`);
-      void loadVersions();
-    });
-    vis.appendChild(b);
-  }
-  paintPubMedia(host.querySelector(".pub-media-host") as HTMLElement, s.id);
-  const shareBtn = host.querySelector(".pub-share") as HTMLButtonElement;
-  shareBtn.textContent = face.label;
-  shareBtn.disabled = !!face.blocked || !live;
-  (host.querySelector(".pub-blocked") as HTMLElement).textContent = face.blocked || (!live ? "A retired or removed item takes no new versions until an org admin brings it back." : "");
-  shareBtn.addEventListener("click", () => void share());
-  const wd = host.querySelector(".pub-withdraw") as HTMLButtonElement;
-  wd.classList.toggle("hidden", !shareState.pending);
-  wd.addEventListener("click", () => void withdrawShare(s.id, s.name));
-  (host.querySelector(".pub-shelves") as HTMLButtonElement).addEventListener("click", (e) => {
-    if (!shareItem) { fail("Share it first — the shelves are the hub item's."); return; }
-    if (!hubCategories.length) { void api().hubCategories().then((c) => { const r = c as Env<Array<{ id: string; label: string }>>; if (r.ok) hubCategories = r.data ?? []; openCategoryMenu(e.currentTarget as HTMLElement); }); return; }
-    openCategoryMenu(e.currentTarget as HTMLElement);
-  });
-  // The history: every version with its notes, the reviewer's note, and its thread.
-  const hist = host.querySelector(".pub-history") as HTMLElement;
-  if (!hubVersions.length) hist.innerHTML = `<div class="crud-empty">Nothing on the hub yet.</div>`;
-  for (const v of hubVersions) {
-    const row = document.createElement("div");
-    row.className = `pub-row pub-v-${v.status || "approved"}`;
-    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div><div class="pub-row-note hidden"></div></div><div class="pub-row-actions"><button type="button" class="action-btn pub-thread">Thread</button></div>`;
-    (row.querySelector(".pub-row-title") as HTMLElement).textContent = versionLabel({ ...v, status: v.status || "approved", manifestVersion: v.version === shareState.head ? manifestVersion || null : null });
-    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${v.notes || "no release notes"} · ${when(v.createdAt)}`;
-    const note = row.querySelector(".pub-row-note") as HTMLElement;
-    if (v.decisionNote || v.reviewSummary) { note.classList.remove("hidden"); note.textContent = v.decisionNote ? `Reviewer: ${v.decisionNote}` : `Review agent: ${v.reviewSummary}`; }
-    (row.querySelector(".pub-thread") as HTMLButtonElement).addEventListener("click", (e) => { if (versionItemId) void toggleThread(row, { kind: typeOf(s), itemId: versionItemId, version: v.version }, e.currentTarget as HTMLButtonElement); });
-    hist.appendChild(row);
-  }
-  // Retire / Remove (his law, 2026-10-07): the author their own, an org admin any; only an admin brings one back.
-  const lc = host.querySelector(".pub-lifecycle-body") as HTMLElement;
-  if (!versionItemId || !shareItem) { lc.innerHTML = `<div class="mdl-hint">Not on Discover yet.</div>`; }
-  else if (!mayRetire({ admin, own })) { lc.innerHTML = `<div class="mdl-hint">${escapeHtml(live ? "Live on Discover." : standingLine(shareState))}</div>`; }
-  else {
-    const item = shareItem;
-    const act = (label: string, state: "live" | "retired" | "removed", danger: boolean, title: string, body: string): HTMLButtonElement => {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = danger ? "action-btn danger" : "action-btn"; b.textContent = label;
-      b.addEventListener("click", async () => {
-        const noteInput = (el<HTMLTextAreaElement>("pub-notes")?.value ?? "").trim();
-        const sure = await confirmAction({ title, body, confirmLabel: label, danger });
-        if (!sure) return;
-        const r = await api().skillLifecycle(item.id, item.kind, state, state === "live" ? "" : noteInput);
-        if (!r.ok) { fail(r.error || "Couldn't change that."); return; }
-        notice(state === "live" ? `${s.name} is back on Discover` : state === "retired" ? `${s.name} is retired` : `${s.name} is off Discover`);
-        void loadVersions(); void refreshShares(); discoverRows = [];
-      });
-      return b;
-    };
-    lc.innerHTML = `<div class="mdl-hint pub-lc-hint"></div><div class="pub-actions"></div>`;
-    (lc.querySelector(".pub-lc-hint") as HTMLElement).textContent = live
-      ? "Retire = leaves Discover, no new installs, members who hold it keep running it (a note in the box above names the replacement). Remove = off Discover for good; running copies stay until their members remove them."
-      : standingLine(shareState);
-    const acts = lc.querySelector(".pub-actions") as HTMLElement;
-    if (live) {
-      acts.appendChild(act("Retire", "retired", false, `Retire "${s.name}"?`, "It leaves Discover and takes no new installs. Members who hold it keep running it, marked Retired."));
-      acts.appendChild(act("Remove from Discover", "removed", true, `Remove "${s.name}" from Discover?`, "Off the catalog for good. Running copies stay until their members remove them. Only an org admin can bring it back."));
-    } else if (admin) {
-      acts.appendChild(act("Bring back", "live", false, `Bring "${s.name}" back to Discover?`, "It is live again: members can install it."));
-    }
-  }
-}
-
-/** THE THREAD under a version (reviewer ↔ author; the AI review is entry one). */
-async function toggleThread(row: HTMLElement, ref: { versionId?: string; kind?: string; itemId?: string; version?: number }, btn?: HTMLButtonElement): Promise<void> {
-  const open = row.querySelector<HTMLElement>(".pub-thread-pane");
-  if (open) { open.remove(); if (btn) btn.textContent = "Thread"; return; }
-  const pane = document.createElement("div");
-  pane.className = "pub-thread-pane";
-  pane.innerHTML = loadingHtml("Reading the thread…");
-  row.appendChild(pane);
-  if (btn) btn.textContent = "Hide thread";
-  const r = await api().skillComments(ref) as Env<{ versionId: string; status: string; decisionNote: string; comments: CommentLike[] }>;
-  if (!r.ok || !r.data) { pane.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "No thread yet.")}</div>`; return; }
-  const t = r.data;
-  const paintThread = (): void => {
-    pane.innerHTML = `<div class="pub-comments"></div><div class="pub-reply"><textarea class="crud-input" rows="2" placeholder="Reply…"></textarea><button type="button" class="action-btn primary">Send</button></div>`;
-    const list = pane.querySelector(".pub-comments") as HTMLElement;
-    if (!t.comments.length) list.innerHTML = `<div class="mdl-hint">No comments yet.</div>`;
-    for (const c of t.comments) {
-      const line = document.createElement("div");
-      line.className = "pub-comment" + (c.by === "ai" ? " ai" : "");
-      line.innerHTML = `<div class="pub-comment-by"></div><div class="pub-comment-body"></div>`;
-      (line.querySelector(".pub-comment-by") as HTMLElement).textContent = `${commentAuthor(c)}${c.verdict ? ` · ${c.verdict}` : ""}${c.createdAt ? ` · ${when(c.createdAt)}` : ""}`;
-      (line.querySelector(".pub-comment-body") as HTMLElement).textContent = c.body;
-      list.appendChild(line);
-    }
-    const ta = pane.querySelector("textarea") as HTMLTextAreaElement;
-    const send = pane.querySelector("button") as HTMLButtonElement;
-    send.addEventListener("click", async () => {
-      const body = ta.value.trim();
-      if (!body) return;
-      send.disabled = true;
-      const a = await api().skillCommentAdd(t.versionId, body) as Env<CommentLike>;
-      send.disabled = false;
-      if (!a.ok || !a.data) { fail(a.error || "Couldn't post that."); return; }
-      t.comments.push(a.data);
-      paintThread();
-    });
-  };
-  paintThread();
-}
-
-// ── THE REVIEW DESK (org admins; his ask, 2026-10-07) ────────────────────────
-async function loadQueue(): Promise<void> {
-  const r = await api().libraryQueue().catch(() => ({ ok: false } as Env<unknown>)) as Env<QueueRowLike[]>;
-  queueRows = r.ok ? queueForKinds(r.data ?? [], KINDS) : [];
-}
-
-function renderReview(host: HTMLElement): void {
-  const q = query.trim().toLowerCase();
-  const shown = queueRows.filter((r) => !q || `${r.name} ${r.slug} ${r.submitted_by_name ?? ""}`.toLowerCase().includes(q));
-  const count = el("skills-count"); if (count) count.textContent = shown.length ? `${shown.length} waiting` : "";
-  paintControls();
-  if (!shown.length) { host.innerHTML = `<div class="crud-empty">Nothing is waiting on the review desk.</div>`; return; }
-  const g = group(host, "Waiting for a decision", shown.length);
-  for (const r of shown) {
-    const row = document.createElement("div");
-    row.className = "pub-row pub-queue-row";
-    row.innerHTML = `<div class="pub-row-main"><div class="pub-row-title"></div><div class="pub-row-sub"></div><div class="pub-row-note hidden"></div>
-        <div class="pub-decide hidden"><textarea class="crud-input" rows="2" placeholder="A note to the author (required for changes or a decline)"></textarea><div class="pub-actions"></div></div></div>
-      <div class="pub-row-actions"><button type="button" class="action-btn pub-files">Files</button><button type="button" class="action-btn pub-thread">Thread</button><button type="button" class="action-btn primary pub-open">Decide</button></div>`;
-    (row.querySelector(".pub-row-title") as HTMLElement).textContent = `${r.name} · v${r.version}${typeChipText(r.kind)}${r.status === "changes" ? " · changes requested" : ""}`;
-    (row.querySelector(".pub-row-sub") as HTMLElement).textContent = `${r.submitted_by_name ? `by ${r.submitted_by_name} · ` : ""}${r.notes || "no release notes"}${r.created_at ? ` · ${when(r.created_at)}` : ""}`;
-    const note = row.querySelector(".pub-row-note") as HTMLElement;
-    if (r.review_verdict) { note.classList.remove("hidden"); note.textContent = `Review agent: ${r.review_verdict}`; }
-    (row.querySelector(".pub-thread") as HTMLButtonElement).addEventListener("click", (e) => void toggleThread(row, { versionId: r.id }, e.currentTarget as HTMLButtonElement));
-    (row.querySelector(".pub-files") as HTMLButtonElement).addEventListener("click", async (e) => {
-      const b = e.currentTarget as HTMLButtonElement;
-      const open = row.querySelector<HTMLElement>(".pub-files-pane");
-      if (open) { open.remove(); b.textContent = "Files"; return; }
-      const f = await api().libraryVersionFiles(r.id) as Env<Record<string, string>>;
-      const pane = document.createElement("div");
-      pane.className = "pub-files-pane";
-      const files = f.ok ? f.data ?? {} : {};
-      pane.innerHTML = Object.keys(files).length ? "" : `<div class="mdl-hint">${escapeHtml(f.error || "No files in this version.")}</div>`;
-      for (const [p, text] of Object.entries(files).sort()) {
-        const d = document.createElement("details");
-        d.innerHTML = `<summary></summary><pre class="pub-file"></pre>`;
-        (d.querySelector("summary") as HTMLElement).textContent = p;
-        (d.querySelector("pre") as HTMLElement).textContent = text.startsWith("data:") ? "(image)" : text.slice(0, 20_000);
-        pane.appendChild(d);
-      }
-      row.appendChild(pane);
-      b.textContent = "Hide files";
-    });
-    const decide = row.querySelector(".pub-decide") as HTMLElement;
-    (row.querySelector(".pub-open") as HTMLButtonElement).addEventListener("click", () => decide.classList.toggle("hidden"));
-    const acts = decide.querySelector(".pub-actions") as HTMLElement;
-    for (const verdict of ["approve", "changes", "reject"] as Verdict[]) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = verdict === "approve" ? "action-btn primary" : verdict === "reject" ? "action-btn danger" : "action-btn";
-      b.textContent = VERDICT_LABEL[verdict];
-      b.addEventListener("click", async () => {
-        const noteText = (decide.querySelector("textarea") as HTMLTextAreaElement).value.trim();
-        if (decisionNeedsNote(verdict, noteText)) { fail("Tell the author why — a note is required for changes or a decline."); return; }
-        b.disabled = true;
-        const d = await api().libraryDecide(r.id, verdict, noteText) as Env<{ status: string }>;
-        b.disabled = false;
-        if (!d.ok) { fail(d.error || "The decision didn't land."); return; }
-        notice(`${r.name} v${r.version}: ${verdict === "approve" ? "approved" : verdict === "changes" ? "changes requested" : "declined"}`);
-        await loadQueue();
-        renderList();
-        discoverRows = [];
-      });
-      acts.appendChild(b);
-    }
-    g.appendChild(row);
-  }
-}
-
-/** The kind beside a queue row's name, when this page lists more than one. */
-function typeChipText(kind: string): string {
-  return KINDS.length > 1 && kind !== cfg.kind ? ` · ${kind}` : "";
-}
-
-/** The Review tab exists for org admins only, made once per page. */
-async function ensureReviewTab(): Promise<void> {
-  const info = await window.glyphh.getAccountInfo?.().catch(() => null);
-  isAdmin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
-  const row = document.querySelector<HTMLElement>(`${cfg.panel} .skills-tabs:not(.detail)`);
-  if (!row || !isAdmin || row.querySelector(`.skills-tab[data-tab="review"]`)) return;
-  const b = document.createElement("button");
-  b.type = "button"; b.className = "skills-tab"; b.dataset.tab = "review"; b.textContent = "Review";
-  const after = row.querySelector(`.skills-tab[data-tab="updates"], .skills-tab[data-tab="discover"]`);
-  if (after) after.after(b); else row.prepend(b);
-  b.addEventListener("click", async () => { tab = "review"; await loadQueue(); renderList(); });
-}
-
 function authorOf(s: SkillRow): string {
   return s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
 }
 
 function paintControls(): void {
   const f = el("skills-filter"); const so = el("skills-sort");
-  const mine = tab === "mine";
-  f?.classList.toggle("hidden", !mine); so?.classList.toggle("hidden", !mine);
   f?.classList.toggle("on", !!(filterSource || filterAuthor || filterType));
   const fl = f?.querySelector("span"); if (fl) fl.textContent = filterSource || filterAuthor || filterType ? `Filter · ${[filterType ? TYPE_LABEL[filterType] : "", filterSource ? SOURCE_LABEL[filterSource].replace("From ", "").replace("Created by you", "You") : "", filterAuthor].filter(Boolean).join(", ")}` : "Filter";
   const sl = so?.querySelector("span"); if (sl) sl.textContent = `Sort · ${SORT_LABEL[sortKey]}`;
@@ -2401,61 +1159,20 @@ function sortMenu(): MenuItem[] {
 function wire(): void {
   if (wired) return;
   wired = true;
-  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web wrote, or
-  // dropped what it deleted): the list re-reads. An open detail is left alone.
-  (api() as unknown as { onLibrarySynced?: (cb: (info: { kind: string }) => void) => void }).onLibrarySynced?.((info) => {
-    if (info.kind !== "skill" && info.kind !== "task" && info.kind !== "plugin") return;
-    if (el("skill-detail-view")?.classList.contains("hidden") !== false) void loadSkillsSettings();
-  });
-  // THE APP CARD's "Share to publish" (2026-10-07): open this app's detail on
-  // the tab it names — the Apps page only (the slug is an instance's).
-  if (cfg.kind === "app") {
-    document.addEventListener("glyphh:open-app-detail", (ev) => {
-      const d = (ev as CustomEvent<{ slug?: string; tab?: string }>).detail || {};
-      const slug = String(d.slug || "").split("~")[0]!.toLowerCase();
-      if (!slug) return;
-      void (async () => {
-        if (!skills.length) await loadSkillsSettings();
-        const row = skills.find((s) => s.instance && (s.instance.key === d.slug || s.instance.key.split("~")[0] === slug));
-        if (!row) return;
-        await openDetail(row.id);
-        if (d.tab) selectDetailTab(d.tab as DetailTab);
-      })();
-    });
-  }
-  ensureDeskTabs();
-  void ensureReviewTab();
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
   const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
-  el<HTMLButtonElement>("skills-update-all")?.addEventListener("click", (e) => void updateAllInstances(e.currentTarget as HTMLButtonElement));
-  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.addEventListener("click", async () => {
-    tab = b.dataset.tab as "mine" | "discover" | "updates" | "review";
-    discoverView = { kind: "home" };
-    if (tab === "discover") await loadDiscover();
-    renderList();
-  }));
   el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
     ...KINDS.map((k) => ({ label: `New ${TYPE_LABEL[k]}`, onClick: () => void createNew(k) })),
     { label: "Import from file…", onClick: () => void importFromFile() },
-    { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
-  el("skill-back")?.addEventListener("click", () => {
-    if (hubItem) {
-      hubItem = null; viewedVersion = null; current = null;
-      el("skill-detail-view")?.classList.add("hidden");
-      el("skills-list-view")?.classList.remove("hidden");
-      renderList();
-      return;
-    }
-    void loadSkillsSettings();
-  });
+  el("skill-back")?.addEventListener("click", () => void loadSkillsSettings());
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as DetailTab)));
   if (KINDS.includes("task")) {
     (api() as unknown as { onTaskRunsChanged?: (fn: () => void) => void }).onTaskRunsChanged?.(() => {
-      if (current && !hubItem && el("skill-runs") && !el("skill-runs")!.classList.contains("hidden")) void paintTaskRuns(current);
+      if (current && el("skill-runs") && !el("skill-runs")!.classList.contains("hidden")) void paintTaskRuns(current);
     });
     (window as unknown as { __glyphhOpenTaskRun?: (slug: string, runId: string) => void }).__glyphhOpenTaskRun = (slug, runId) => {
       openRunId = runId;
@@ -2463,7 +1180,6 @@ function wire(): void {
     };
   }
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
-  el("skill-share")?.addEventListener("click", () => void share());
   el("skill-kebab")?.addEventListener("click", async (e) => {
     if (!current) return;
     const anchor = e.currentTarget as HTMLElement;
@@ -2474,9 +1190,6 @@ function wire(): void {
     openMenu(anchor, [
       { label: "Try in chat", onClick: tryInChat },
       ...(machine ? [{ label: "Edit with Glyphh", onClick: () => editWith() }] : []),
-      { label: "Check for updates", onClick: () => void checkForUpdates() },
-      ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
-      ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
       ...(machine ? [
         { label: "Replace", onClick: () => void replaceFiles() },
         { label: "Download", onClick: () => void download() },
@@ -2487,7 +1200,6 @@ function wire(): void {
     ]);
   });
   el("skill-reveal")?.addEventListener("click", () => { if (current) void api().skillReveal(current.id); });
-  el<HTMLSelectElement>("skill-version")?.addEventListener("change", (e) => void chooseVersion((e.target as HTMLSelectElement).value));
   el("skill-edit")?.addEventListener("click", () => void onEdit());
   el("skill-view-preview")?.addEventListener("click", () => { viewMode = "preview"; void openFile(currentFile); });
   el("skill-view-code")?.addEventListener("click", () => { viewMode = "code"; void openFile(currentFile); });
@@ -2501,8 +1213,6 @@ async function createNew(kind: BundleType): Promise<void> {
   openSessionWith({
     cwd: r.data,
     prompt: NEW_PROMPT[kind],
-    // THE NEW APP DOOR (2026-10-07): the turn carries the app contract, scaffold first.
-    ...(kind === "app" ? { appBuild: true } : {}),
   });
 }
 
@@ -2515,19 +1225,7 @@ async function importFromFile(): Promise<void> {
   await openDetail(r.data.id);
 }
 
-/** THE PAGE'S ONE SCOPE (his report, 2026-10-07: "instead of each tab
- *  having a different Yours / Discover it should span all the tabs and
- *  switching it should stay"): the Customize page hands its Yours | Discover
- *  to every tab before the tab loads (navigation.ts showGroupTab). Yours
- *  keeps a secondary tab already up (Updates, Review); Discover is Discover. */
-function setScope(scope: "mine" | "discover", force = false): void {
-  if (scope === "discover") { tab = "discover"; discoverView = { kind: "home" }; return; }
-  // `force` is the switch's own Yours click: it leaves Updates / Review for
-  // the list; a tab switch merely applying the scope keeps them.
-  if (force || tab === "discover") tab = "mine";
-}
-
-  return { load: loadSkillsSettings, setScope };
+  return { load: loadSkillsSettings };
 }
 
 const SKILLS_PAGE = createLibraryPage({
@@ -2547,11 +1245,11 @@ export const loadTasksSettings = TASKS_PAGE.load;
 export const loadAppsSettings = APPS_PAGE.load;
 export const loadPluginsSettings = PLUGINS_PAGE.load;
 /** The Customize page's scope reaching a library tab by its settings sub;
- *  false for a sub that is not a library page (his report, 2026-10-07). */
-const LIBRARY_PAGES_BY_SUB: Readonly<Record<string, { setScope: (s: "mine" | "discover", force?: boolean) => void }>> = { skills: SKILLS_PAGE, apps: APPS_PAGE, plugins: PLUGINS_PAGE, tasks: TASKS_PAGE };
-export function setLibraryScope(sub: string, scope: "mine" | "discover", force = false): boolean {
-  const page = LIBRARY_PAGES_BY_SUB[sub];
-  if (!page) return false;
-  page.setScope(scope, force);
-  return true;
+ *  false for a sub that is not a library page (his report, 2026-10-07). The
+ *  library is the folders on this machine and nothing else, so every scope
+ *  ("discover" included) shows them: the answer only says whether the sub is
+ *  one of these pages. */
+const LIBRARY_SUBS: ReadonlySet<string> = new Set(["skills", "apps", "plugins", "tasks"]);
+export function setLibraryScope(sub: string, _scope?: "mine" | "discover", _force?: boolean): boolean {
+  return LIBRARY_SUBS.has(sub);
 }

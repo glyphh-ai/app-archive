@@ -27,9 +27,9 @@ vi.mock("../../src/main/agent-brief", () => ({
   generateAgentBrief: async (input: unknown) => { briefCalls.push(input); return { ok: true, brief: "You research. (written)", model: "claude-opus-5" }; },
 }));
 vi.mock("../../src/main/loop-models", () => ({
-  listLoopModels: async () => ({ ok: true, models: [{ id: "claude-opus-5", name: "claude-opus-5", providerSlug: "anthropic" }, { id: "gemini-3.8-flash", name: "gemini-3.8-flash", providerSlug: "google" }] }),
+  listLoopModels: async () => ({ ok: true, models: [{ id: "anthropic::claude-opus-5", name: "claude-opus-5", providerSlug: "Anthropic" }, { id: "google::gemini-3.8-flash", name: "gemini-3.8-flash", providerSlug: "Google" }] }),
 }));
-vi.mock("../../src/main/org-models", () => ({ bareModel: (m: string) => m.replace(/^[a-z0-9_-]+::/i, "").trim() }));
+vi.mock("../../src/main/org-models", () => ({ modelRef: (m: string) => m.replace(/"/g, "").trim() }));
 
 const { installAgentRelayHandlers } = await import("../../src/main/agent-tools");
 installAgentRelayHandlers();
@@ -40,8 +40,8 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
 
   it("an agent made with no brief gets one WRITTEN, from what the caller said", async () => {
     const r = await call("agents.save", { name: "Researcher", description: "Finds and cites primary sources", model: "google::gemini-3.8-flash" }) as Record<string, unknown>;
-    expect(r).toMatchObject({ agent: "researcher", created: true, generatedBrief: true, brief: "You research. (written)", model: "gemini-3.8-flash" });
-    expect(briefCalls).toEqual([{ name: "Researcher", description: "Finds and cites primary sources", model: "gemini-3.8-flash" }]);
+    expect(r).toMatchObject({ agent: "researcher", created: true, generatedBrief: true, brief: "You research. (written)", model: "google::gemini-3.8-flash" });
+    expect(briefCalls).toEqual([{ name: "Researcher", description: "Finds and cites primary sources", model: "google::gemini-3.8-flash" }]);
   });
 
   it("making never overwrites: a name in use is refused, with the id to update instead", async () => {
@@ -51,14 +51,14 @@ describe("agent tools — make, read, update, delete (his order, 2026-09-29)", (
   });
 
   it("a model slot must be one the member's team carries", async () => {
-    await expect(call("agents.save", { name: "X", brief: "b", model: "gpt-9" })).rejects.toThrow(/not one of this member's models.*claude-opus-5/);
+    await expect(call("agents.save", { name: "X", brief: "b", model: "gpt-9" })).rejects.toThrow(/not one of this member's models.*anthropic::claude-opus-5/);
     expect(rows.size).toBe(0);
   });
 
   it("an update keeps what it was not told to change, and writes no brief it already has", async () => {
-    await call("agents.save", { name: "Reviewer", description: "Reviews diffs", brief: "You review.", model: "claude-opus-5" });
+    await call("agents.save", { name: "Reviewer", description: "Reviews diffs", brief: "You review.", model: "anthropic::claude-opus-5" });
     const r = await call("agents.save", { agent: "reviewer", description: "Reviews diffs for concurrency" }) as Record<string, unknown>;
-    expect(r).toMatchObject({ created: false, generatedBrief: false, brief: "You review.", model: "claude-opus-5", description: "Reviews diffs for concurrency" });
+    expect(r).toMatchObject({ created: false, generatedBrief: false, brief: "You review.", model: "anthropic::claude-opus-5", description: "Reviews diffs for concurrency" });
     expect(briefCalls).toEqual([]);
   });
 

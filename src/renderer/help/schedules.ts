@@ -25,8 +25,7 @@ import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
 import { renderRunList, type RunRowLite } from "./lib-runs.js";
-import { accountApi } from "./settings-api.js";
-import { cronNext, deviceZone, isZone } from "./cron-next.js";
+import { cronNext, deviceZone } from "./cron-next.js";
 let openRunId: string | null = null;
 
 interface Env<T> { ok: boolean; data?: T; error?: string }
@@ -53,14 +52,12 @@ type Api = {
   skillsList: (kind?: string) => Promise<Env<SkillLite[]>>;
   libraryAgentsList: () => Promise<Env<AgentLite[]>>;
   onTaskRunsChanged?: (fn: () => void) => () => void;
-  onLibrarySynced?: (fn: (info: { kind: string }) => void) => void;
 };
 const api = (): Api => window.glyphh as unknown as Api;
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
 let rows: ScheduleRow[] = [];
-/** The member's zone (Settings › Account): what "next" is read on. The
- *  device's own until the profile answers. */
+/** This machine's zone: what "next" is read on — the one schedules run on. */
 let zone = deviceZone();
 let recents: RecentRun[] = [];
 let tasks: TaskSpecLite[] = [];
@@ -176,15 +173,14 @@ const runsHere = (): boolean => !onWeb() && hostHas("scheduleRunNow");
 
 export async function loadSchedulesPage(): Promise<void> {
   wire();
-  const [r, rr, t, s, a, tz] = await Promise.all([
+  const [r, rr, t, s, a] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),
     api().tasksSpecs().catch(() => ({ ok: false } as Env<TaskSpecLite[]>)),
     api().skillsList("skill").catch(() => ({ ok: false } as Env<SkillLite[]>)),
     api().libraryAgentsList().catch(() => ({ ok: false } as Env<AgentLite[]>)),
-    accountApi().profile().then((p) => p.timezone).catch(() => ""),
   ]);
   if (!r.ok) { fail(r.error || "Couldn't load schedules."); return; }
-  zone = isZone(tz) ? tz : deviceZone();
+  zone = deviceZone();
   rows = r.data ?? [];
   recents = rr.ok ? rr.data ?? [] : [];
   tasks = t.ok ? t.data ?? [] : [];
@@ -462,12 +458,6 @@ function wire(): void {
   api().onTaskRunsChanged?.(() => {
     if (!el("schedules-list")?.isConnected) return;
     void api().scheduleRecentRuns().then((rr) => { if (rr.ok) { recents = rr.data ?? []; if (!editing) { paintRecents(); paintChart(); } else void paintRuns(editing.id); } });
-  });
-  // THE LIBRARY SYNCED (main/library-sync.ts pulled what the web saved, or
-  // dropped what it deleted): the list re-reads. An open editor is left alone.
-  api().onLibrarySynced?.((info) => {
-    if (info.kind !== "schedule" || editing) return;
-    if (el("schedules-list")?.isConnected) void loadSchedulesPage();
   });
 }
 

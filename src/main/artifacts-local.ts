@@ -11,12 +11,17 @@
  * and THE DIRECTORY IS THE INDEX. A file dropped in by hand is an artifact; a
  * file deleted is gone; there is no manifest to reconcile. The id is the
  * filename, so nothing has to be looked up to open one.
+ *
+ * An artifact's comments (artifact-comments.ts) sit beside `files/`, keyed by
+ * that id: a rename here moves them, a delete drops them, and a new artifact
+ * never inherits the threads of one deleted by hand under the same name.
  */
 
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 import { appDataDir } from "./glyphh-app-services.js";
+import { dropComments, moveComments } from "./artifact-comments.js";
 
 export type ArtifactKind = "code" | "text" | "markdown" | "image" | "pdf" | "other";
 
@@ -45,7 +50,11 @@ const MIME: Record<string, string> = {
   ".sh": "text/x-sh", ".sql": "text/x-sql", ".html": "text/html", ".css": "text/css",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
   ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif",
-  ".pdf": "application/pdf",
+  ".pdf": "application/pdf", ".zip": "application/zip",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav",
 };
 
 const CODE_EXT = new Set([
@@ -154,6 +163,7 @@ function uniqueName(name: string): string {
 
 export function create(name: string, content = ""): LocalArtifact {
   const chosen = uniqueName(name || "untitled.md");
+  dropComments(chosen);
   fs.writeFileSync(path.join(artifactsDir(), chosen), content, "utf8");
   return get(chosen);
 }
@@ -161,26 +171,40 @@ export function create(name: string, content = ""): LocalArtifact {
 /** Save an artifact the agent or a panel produced, bytes and all. */
 export function write(name: string, data: Buffer): LocalArtifact {
   const chosen = uniqueName(name);
+  dropComments(chosen);
   fs.writeFileSync(path.join(artifactsDir(), chosen), data);
   return get(chosen);
 }
 
-export function save(id: string, content: string): LocalArtifact {
+/** Replace an artifact's content in place: text from an editor, or bytes. */
+export function save(id: string, content: string | Buffer): LocalArtifact {
   const full = pathOf(id);
   if (!full) throw new Error("that artifact is no longer here");
-  fs.writeFileSync(full, content, "utf8");
+  if (typeof content === "string") fs.writeFileSync(full, content, "utf8");
+  else fs.writeFileSync(full, content);
   return get(id);
+}
+
+/** A rename that drops the extension keeps the old one: the type is the extension. */
+export function renameTarget(current: string, wanted: string): string {
+  const name = String(wanted || "").replace(/\s+/g, " ").trim();
+  if (!name) throw new Error("a name is required");
+  return path.extname(name) ? name : `${name}${path.extname(current)}`;
 }
 
 export function rename(id: string, name: string): LocalArtifact {
   const full = pathOf(id);
-  if (!full) throw new Error("that artifact is no longer here");
+  if (!full || !fs.existsSync(full)) throw new Error("that artifact is no longer here");
+  if (name === path.basename(full)) return get(id);
   const chosen = uniqueName(name);
   fs.renameSync(full, path.join(artifactsDir(), chosen));
+  moveComments(path.basename(full), chosen);
   return get(chosen);
 }
 
 export function remove(id: string): void {
   const full = pathOf(id);
-  if (full) fs.rmSync(full, { force: true });
+  if (!full) return;
+  fs.rmSync(full, { force: true });
+  dropComments(path.basename(full));
 }

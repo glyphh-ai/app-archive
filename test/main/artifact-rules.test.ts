@@ -1,13 +1,13 @@
 /**
  * artifact-rules.test.ts — THE ARTIFACTS PANEL'S RULES (his order, 2026-10-05:
- * an Artifacts work panel on web and desktop with Share and Comments; the
- * comments draw a region and "Send to Glyphh" hands it to the agent).
+ * an Artifacts work panel with Comments; the comments draw a region and
+ * "Send to Glyphh" hands it to the agent). Local only since 2026-10-18: one
+ * list, no sharing.
  * src/renderer/help/artifact-rules.ts is pure; this pins every answer.
  */
 import { describe, it, expect } from "vitest";
 import {
-  ARTIFACT_TABS, artifactKind, artifactRender, filterByTab, searchArtifacts, sortNewest, groupByMonth, monthLabel, editedLabel,
-  canManage, SHARE_OPTIONS, shareLabel, isLocked, shareLinkOf,
+  artifactKind, artifactRender, searchArtifacts, sortNewest, groupByMonth, monthLabel, editedLabel,
   regionFromDrag, regionToRect, regionIsReal, MIN_REGION_PX, pinPoint, regionLabel,
   editPrompt, startChatLine, artifactStandingLine, threadText, commentAge, initialOf, orderThreads, pinNumbers,
   type ArtifactMeta, type ArtifactComment,
@@ -15,26 +15,13 @@ import {
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
 const row = (o: Partial<ArtifactMeta> & { id: string }): ArtifactMeta => ({
-  name: `${o.id}.html`, mime: "text/html", sizeBytes: 10, access: "private", ownerId: "u1", ownerName: "Chris", mine: true,
-  createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", viewUrl: `/a/${o.id}`, ...o,
+  name: `${o.id}.html`, mime: "text/html", sizeBytes: 10,
+  createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", ...o,
 });
 const mascots = row({ id: "a1", name: "New-session mascots", updatedAt: "2026-08-10T10:00:00Z" });
 const mobile = row({ id: "a2", name: "Glyphh Mobile — Architecture", updatedAt: "2026-08-07T10:00:00Z" });
-const ada = row({ id: "a3", name: "Glyphh Ada", mime: "image/png", updatedAt: "2026-06-18T10:00:00Z", mine: false, ownerName: "Ada", ownerId: "u2", access: "org" });
+const ada = row({ id: "a3", name: "Glyphh Ada", mime: "image/png", updatedAt: "2026-06-18T10:00:00Z" });
 const notes = row({ id: "a4", name: "notes.md", mime: "text/markdown", updatedAt: "2025-12-02T10:00:00Z" });
-
-describe("the tabs: All / Yours / Shared with you", () => {
-  it("in that order, keyed like the server's scope", () => {
-    expect(ARTIFACT_TABS.map((t) => t.label)).toEqual(["All", "Yours", "Shared with you"]);
-    expect(ARTIFACT_TABS.map((t) => t.key)).toEqual(["all", "mine", "shared"]);
-  });
-  it("Yours = mine; Shared = someone else's; All = everything", () => {
-    const all = [mascots, mobile, ada, notes];
-    expect(filterByTab(all, "mine").map((a) => a.id)).toEqual(["a1", "a2", "a4"]);
-    expect(filterByTab(all, "shared").map((a) => a.id)).toEqual(["a3"]);
-    expect(filterByTab(all, "all")).toHaveLength(4);
-  });
-});
 
 describe("what an artifact is, and how it paints", () => {
   it("a page / code → code; markdown, text, pdf → doc; an image → image; the rest → file", () => {
@@ -60,7 +47,7 @@ describe("what an artifact is, and how it paints", () => {
 
 describe("the search box", () => {
   const all = [mascots, mobile, ada, notes];
-  it("every word must hit — name, owner, type; case-insensitive", () => {
+  it("every word must hit — name, type; case-insensitive", () => {
     expect(searchArtifacts(all, "glyphh").map((a) => a.id)).toEqual(["a2", "a3"]);
     expect(searchArtifacts(all, "glyphh ada").map((a) => a.id)).toEqual(["a3"]);
     expect(searchArtifacts(all, "IMAGE").map((a) => a.id)).toEqual(["a3"]);
@@ -83,24 +70,6 @@ describe("newest first, grouped by month (the screenshot's August / June heads)"
     expect(editedLabel(mascots, NOW)).toBe("Edited Aug 10");
     expect(editedLabel(notes, NOW)).toBe("Edited Dec 2, 2025");
     expect(editedLabel({ updatedAt: "", createdAt: "" }, NOW)).toBe("Edited —");
-  });
-});
-
-describe("share: Private / Organization / Public link", () => {
-  it("the rows, in order; only the owner manages", () => {
-    expect(SHARE_OPTIONS.map((o) => o.label)).toEqual(["Private", "Organization", "Public link"]);
-    expect(SHARE_OPTIONS.map((o) => o.access)).toEqual(["private", "org", "public"]);
-    expect(canManage(mascots)).toBe(true);
-    expect(canManage(ada)).toBe(false);
-  });
-  it("the lock shows on a private row; only a public one carries a link to copy", () => {
-    expect(isLocked(mascots)).toBe(true);
-    expect(isLocked(ada)).toBe(false);
-    expect(shareLinkOf({ access: "public", shareUrl: "https://app.glyphh.ai/a/x?t=1" })).toBe("https://app.glyphh.ai/a/x?t=1");
-    expect(shareLinkOf({ access: "org", shareUrl: "https://app.glyphh.ai/a/x" })).toBeNull();
-    expect(shareLinkOf({ access: "public", shareUrl: null })).toBeNull();
-    expect(shareLabel("org")).toBe("Organization");
-    expect(shareLabel("public")).toBe("Public link");
   });
 });
 

@@ -1,42 +1,21 @@
 /**
- * Auth — the desktop face of @glyphh/sdk.
+ * Auth — LOCAL ONLY. There is no Glyphh server: this machine has one fixed
+ * user, always signed in, scoped to ~/.glyphh/users/local. No device flow, no
+ * session tokens, no account or org polling.
  *
- * Sign-in is the SDK device flow: we start a device grant, open the user's
- * browser on the platform to approve it, and poll until the session lands.
- * The SDK owns the whole token lifecycle (storage, single-flight refresh,
- * rotation, sign-out) — this module only mirrors the bits the app needs
- * synchronously (signed-in state, a current bearer for legacy call sites)
- * and composes the account/heartbeat views the UI was built around.
+ * The exports keep the shapes the app's UI and IPC were built around, so the
+ * shell, the boot gate and the settings pages read a signed-in, active local
+ * account without knowing a server ever existed.
  */
 
-import fs from "fs";
-import { clearGatewayCreds } from "./gateway-token.js";
-import { refreshOrgModels } from "./org-models.js";
-import { refreshModelState, resetModelWatch, startModelWatch, stopModelWatch } from "./model-watch.js";
-import path from "path";
 import os from "os";
-import { shell } from "electron";
-import type { DevicePrompt } from "@glyphh/sdk";
-import { GLYPHH_DIR } from "./app-paths.js";
 import { setActiveUser } from "./user-scope.js";
+import { loadPreferences } from "./stores/preferences-db.js";
+import { LOCAL_USER_ID } from "./app-paths.js";
 import { setUserZone } from "./user-zone.js";
-import { getClient, resetClient, setSignedOutHandler, readSessionFileSync, SERVER_URL, SESSION_FILE, SERVER_FILE_SUFFIX, PLATFORM_URL as PLATFORM } from "./glyphh-client.js";
-import { loadPreferences, clearPreferences } from "./stores/preferences-db.js";
 
-export const AUTH_SERVER = SERVER_URL;
-export const PLATFORM_URL = PLATFORM;
-
-const ACCOUNT_POLL_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours (the old heartbeat cadence)
-/** How soon an ORG-ADMIN change reaches this machine (his report, 2026-09-18:
- *  "the app doesn't update right away"). The account poll is a four-hour
- *  heartbeat, so flipping the gateway, the plan or governance in the console
- *  used to mean a restart. This asks the cheap gates route on the minute and
- *  only does work when the answer actually moved. */
-const ORG_POLL_INTERVAL = 60 * 1000;
-// New-server session tokens are opaque (no JWT sub to decode), so the last
-// authenticated identity is mirrored to a sidecar file for OFFLINE boot: it
-// only scopes local per-user state, never authorization.
-const IDENTITY_FILE = path.join(GLYPHH_DIR, `.identity${SERVER_FILE_SUFFIX}`);
+/** The one user on this machine. Scopes local state; never authorization. */
+export { LOCAL_USER_ID };
 
 // ── Types (shapes the app's UI/IPC were built around) ────────
 
@@ -45,19 +24,12 @@ export interface AccountInfo {
   firstName: string;
   lastName: string;
   role: string;
-  /** The PLATFORM axis (users.is_platform_admin) — orthogonal to org roles;
-   *  gates the super-admin console. The bootstrap-seeded admin is an
-   *  org_admin MEMBER of glyphh with this flag true, so role alone is the
-   *  wrong gate. */
   isPlatformAdmin: boolean;
   orgName: string;
   orgSlug: string;
   tier: string;
   billingStatus: string;
-  /** The resolved avatar (uploaded image, else legacy URL, else Gravatar). */
   avatarUrl: string;
-  /** Set while THIS session impersonates an org (platform admin) — drives the
-   *  renderer's red impersonation banner. */
   impersonatingOrgId: string | null;
 }
 
@@ -70,482 +42,105 @@ export interface HeartbeatResult {
   user: { id: string; email: string; firstName: string | null; lastName: string | null; role: string };
 }
 
-// ── State ────────────────────────────────────────────────────
-
-let signedIn = false;
-let cachedToken: { value: string; expiresAt: number } | null = null;
-let cachedAccount: AccountInfo | null = null;
-let cachedHeartbeat: HeartbeatResult | null = null;
-let heartbeatObserver: ((result: HeartbeatResult) => void) | null = null;
-let accountTimer: ReturnType<typeof setInterval> | null = null;
-let orgTimer: ReturnType<typeof setInterval> | null = null;
-
-// ── Re-auth gate ─────────────────────────────────────────────
-// Fired when the SDK gives up on the session (refresh rejected) so the UI can
-// surface the login screen instead of silently degrading. Debounced so a burst
-// of failing calls only pops one prompt.
-let reauthHandler: (() => void) | null = null;
-let lastReauthAt = 0;
-
-/** Register the callback that surfaces the login gate (set by main.ts). */
-export function setReauthHandler(fn: () => void): void { reauthHandler = fn; }
-
-function triggerReauth(): void {
-  const now = Date.now();
-  if (now - lastReauthAt < 30_000) return;
-  lastReauthAt = now;
-  console.warn("[auth] session cannot be refreshed — prompting re-login");
-  try { reauthHandler?.(); } catch { /* noop */ }
+/** What the old device flow showed the user; kept for the renderer's types. */
+export interface DevicePrompt {
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  expiresIn: number;
+  interval: number;
 }
 
-// The outbound attach socket (RELAY-RESEARCH.md §4) is REMOTE CONTROL now
-// (2026-09-30): with the session it comes up only if this device has remote
-// control on (remote-control.ts), and it always goes with the session. Lazy
-// import: the host imports auth.
-function attachStart(): void {
-  void import("./remote-control.js").then((m) => m.remoteControlBoot()).catch((e) => console.warn("[remote-control] boot failed", String(e)));
-  // THE MEMBER LIBRARY AND THE THREADS SYNC WITH THE SERVER from sign-in on
-  // (his rule, 2026-10-04: database-as-truth) — late-bound like the attach
-  // socket so auth stays importable by the stores.
-  void import("./library-sync.js").then((m) => m.startLibrarySync()).catch((e) => console.warn("[library-sync] start failed", String(e)));
-  // TABS, WORKSPACES AND AGENTS come straight from the server (his order,
-  // 2026-10-07): the running copies load now and refresh every minute.
-  void import("./library-remote.js").then((m) => m.startRemoteRefresh()).catch((e) => console.warn("[library-remote] start failed", String(e)));
-  void import("./thread-publish.js").then((m) => m.publishThreadsNow()).catch((e) => console.warn("[threads] publish failed", String(e)));
-  // PRE-CLOUD APP FOLDERS ARE DELETED, NO MIGRATION (his word, 2026-10-05):
-  // once per user, the first sign-in after the cut sweeps them.
-  void import("./legacy-app-sweep.js").then((m) => m.runLocalAppSweep()).catch((e) => console.warn("[legacy-apps] sweep failed", String(e)));
-  // THE HOUSE APPS' FILES GO UP, ONCE (his order, 2026-10-06: migrate the
-  // data, delete everything local): designs, decks, media and Drive's folders
-  // into the member library, then their folders on this Mac are removed.
-  void import("./house-migration.js").then((m) => m.runHouseMigration()).catch((e) => console.warn("[house-migration] failed", String(e)));
-}
-function attachStop(): void {
-  void import("./remote-control.js").then((m) => m.remoteControlStop()).catch(() => undefined);
-  void import("./library-sync.js").then((m) => m.stopLibrarySync()).catch(() => undefined);
-  void import("./library-remote.js").then((m) => m.stopRemoteRefresh()).catch(() => undefined);
+function localName(): string {
+  try { return os.userInfo().username; } catch { return "you"; }
 }
 
-setSignedOutHandler(() => {
-  signedIn = false;
-  cachedToken = null;
-  cachedAccount = null;
-  cachedHeartbeat = null;
-  setActiveUser(null);
-  clearPreferences(); // the next user must never read this map
-  attachStop();
-  void import("./glyphh-loop.js").then((m) => m.forgetGlyphhLoops()).catch(() => undefined);
-  triggerReauth();
-});
+const account: AccountInfo = {
+  email: "",
+  firstName: localName(),
+  lastName: "",
+  role: "owner",
+  isPlatformAdmin: false,
+  orgName: "",
+  orgSlug: "",
+  tier: "local",
+  billingStatus: "",
+  avatarUrl: "",
+  impersonatingOrgId: null,
+};
 
-// ── Identity sidecar (offline boot scoping) ──────────────────
-
-function readIdentitySidecar(): string | null {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(IDENTITY_FILE, "utf-8")) as { userId?: string };
-    return typeof parsed.userId === "string" && parsed.userId ? parsed.userId : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeIdentitySidecar(userId: string): void {
-  try {
-    fs.mkdirSync(path.dirname(IDENTITY_FILE), { recursive: true });
-    fs.writeFileSync(IDENTITY_FILE, JSON.stringify({ userId }), { encoding: "utf-8", mode: 0o600 });
-  } catch { /* scoping falls back to the next successful me() */ }
-}
-
-function clearIdentitySidecar(): void {
-  try { fs.unlinkSync(IDENTITY_FILE); } catch { /* already gone */ }
-}
+const heartbeat: HeartbeatResult = {
+  status: "active",
+  tier: account.tier,
+  billingStatus: "",
+  entitlements: {},
+  org: null,
+  user: { id: LOCAL_USER_ID, email: "", firstName: account.firstName, lastName: null, role: account.role },
+};
 
 // ── Public API ───────────────────────────────────────────────
 
-/** Check if user is authenticated (has a live or refreshable session). */
-export function isAuthenticated(): boolean {
-  if (signedIn) return true;
-  // Pre-initAuth callers (early boot): a persisted session counts — the SDK
-  // refreshes it on first use; a failed refresh flips this false via onSignedOut.
-  if (readSessionFileSync()) { signedIn = true; return true; }
-  return false;
-}
+export function setReauthHandler(_fn: () => void): void { /* never re-auths */ }
 
-/** Get current access token, or null if not authenticated.
- *  Sync mirror for legacy call sites — prefer awaiting ensureFreshToken() first. */
-export function getAuthToken(): string | null {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
-  const session = readSessionFileSync();
-  if (session && session.expiresAt > Date.now()) {
-    cachedToken = { value: session.accessToken, expiresAt: session.expiresAt };
-    return session.accessToken;
-  }
-  return null;
-}
+export function isAuthenticated(): boolean { return true; }
 
-/**
- * Top up the sync token mirror. The SDK's token() refreshes as needed and
- * single-flights concurrent callers — cheap to call on every agent entry
- * point. Signed-out → no-op (mirror goes null).
- */
-export async function ensureFreshToken(): Promise<void> {
-  try {
-    const value = await getClient().token();
-    const session = await getClient().getSession();
-    cachedToken = session ? { value, expiresAt: session.expiresAt } : { value, expiresAt: Date.now() + 60_000 };
-    signedIn = true;
-  } catch {
-    cachedToken = null;
-  }
-}
+/** No bearer: nothing here talks to a Glyphh server. */
+export function getAuthToken(): string | null { return null; }
 
-/**
- * Force a refresh now, regardless of remaining life. Reactive path — call
- * after an API 401 to self-heal a token the server rejected. Resolves true
- * if a fresh token is in hand.
- */
-export async function forceTokenRefresh(): Promise<boolean> {
-  const ok = await getClient().refresh();
-  if (ok) await ensureFreshToken();
-  return ok;
-}
+export async function ensureFreshToken(): Promise<void> { /* no token */ }
 
-/** Scope local state to the last signed-in account from the identity sidecar —
- *  SYNCHRONOUS and offline-safe, for boot to call BEFORE the local DB opens.
- *  Without this, boot-time reads (window bounds, prefs, layouts) hit the
- *  default-scope DB while post-auth writes land in the user's — nothing
- *  "persists" across restarts. initAuth's own scoping then no-ops. */
+export async function forceTokenRefresh(): Promise<boolean> { return false; }
+
+/** Scope local state to the local user — synchronous, before the local DB opens. */
 export function restoreUserScopeFromSidecar(): void {
-  setActiveUser(readIdentitySidecar());
+  setActiveUser(LOCAL_USER_ID);
 }
 
-/** Initialize auth — restore session, scope local state, start the account poll. */
 export async function initAuth(): Promise<void> {
-  const session = await getClient().getSession();
-  signedIn = !!session;
-  if (session) {
-    // Scope local state to the restored account BEFORE anything reads it —
-    // offline-safe via the sidecar; corrected by the refresh below if stale.
-    setActiveUser(readIdentitySidecar());
-    // AWAITED on purpose: a locally-unexpired token can be DEAD server-side
-    // (revoked family). The first account fetch 401s, the SDK's forced refresh
-    // fails, onSignedOut flips `signedIn` — all BEFORE boot decides login vs
-    // workspace, so a ghost "signed in with no data" boot cannot happen. A
-    // plain network failure keeps the session (offline boot still works), and
-    // main.ts races this whole init against a 3s cap so splash never hangs.
-    await ensureFreshToken();
-    await refreshAccountState().catch(() => null);
-    if (signedIn) {
-      attachStart();
-      // Prefs are the SERVER map now (zero-local law); warm it with the session.
-      void loadPreferences();
-      // The org's lane and default model, so the first turn already knows
-      // what it runs on.
-      void refreshOrgModels();
-    }
-  }
-  if (accountTimer) clearInterval(accountTimer);
-  accountTimer = setInterval(() => {
-    if (isAuthenticated()) void refreshAccountState();
-  }, ACCOUNT_POLL_INTERVAL);
-  if (orgTimer) clearInterval(orgTimer);
-  orgTimer = setInterval(() => {
-    if (isAuthenticated()) void pollOrgConfig();
-  }, ORG_POLL_INTERVAL);
-  // The model list and the defaults, on their own quicker clock (model-watch.ts).
-  startModelWatch();
+  setActiveUser(LOCAL_USER_ID);
+  // Every schedule runs on this machine's own clock.
+  setUserZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  await loadPreferences();
 }
 
-/**
- * Watch the org's own switches and react when one moves.
- *
- * A change made in the console reached the desktop only on a restart: the
- * gateway credential is memoised for the life of the process and every loop's
- * env file is written once at sign-in. So when the answer changes here, the
- * credential is dropped, the env files are rewritten (or stripped, when the
- * lane went off), the account state is refreshed and the renderer is told, so
- * the rail and every other surface repaint with it.
- *
- * Already-RUNNING CLI sessions keep the environment they were spawned with.
- * That is not something a poll can fix; it takes a new session.
- */
-let lastOrgSignature: string | null = null;
+export function setOrgChangeObserver(_cb: (() => void) | null): void { /* no org */ }
 
-async function pollOrgConfig(): Promise<void> {
-  try {
-    const gates = (await getClient().plans.gates()) as unknown as Record<string, unknown>;
-    const signature = JSON.stringify([
-      gates.gatewayAllowed, gates.tier, gates.plan, gates.governance,
-      // The org's default model (2026-09-20): a change must reach the loops
-      // and the chip without a restart, like every other org switch.
-      gates.defaultModel,
-    ]);
-    if (lastOrgSignature === null) { lastOrgSignature = signature; return; }
-    if (signature === lastOrgSignature) return;
-    lastOrgSignature = signature;
-    clearGatewayCreds();
-    // The org's default model and lane travel with the gates (2026-09-20);
-    // model-watch re-reads them with the list and tells every surface.
-    await refreshModelState().catch(() => undefined);
-    await refreshAccountState().catch(() => null);
-    orgChangeObserver?.();
-  } catch {
-    // Offline, or the route is unavailable: the last answer stands.
-  }
-}
+export function cleanupAuthTimers(): void { /* no timers */ }
 
-let orgChangeObserver: (() => void) | null = null;
+/** Signing out of a local-only app has nothing to end. */
+export function logout(): void { /* the local user stays */ }
 
-/** Told when the org's config moved, so the shell can repaint. */
-export function setOrgChangeObserver(cb: (() => void) | null): void {
-  orgChangeObserver = cb;
-}
+export function getAccountInfo(): AccountInfo | null { return account; }
 
-/** Clean up timers — call on app shutdown. */
-export function cleanupAuthTimers(): void {
-  if (accountTimer) { clearInterval(accountTimer); accountTimer = null; }
-  if (orgTimer) { clearInterval(orgTimer); orgTimer = null; }
-  stopModelWatch();
-}
+export function getHeartbeatInfo(): HeartbeatResult | null { return heartbeat; }
 
-/** Log out — LOCAL-FIRST, then a best-effort server revoke.
- *
- *  The old order (SDK signOut = network revoke, THEN local clear) left the
- *  session file on disk for the whole revoke round-trip — and isAuthenticated()
- *  re-hydrates `signedIn` from that file on any check (window focus fires one
- *  immediately), so logout kept resurrecting and took two tries. Worse, quitting
- *  before the delete landed left a file whose token the revoke had ALREADY
- *  killed — the next boot opened "signed in" on a dead session.
- *
- *  Now: read the token, delete the file + drop the SDK client synchronously
- *  (nothing left to resurrect from), then fire the revoke in the background. */
-export function logout(): void {
-  const token = getAuthToken(); // read BEFORE clearing — the revoke needs it
-  signedIn = false;
-  cachedToken = null;
-  cachedAccount = null;
-  cachedHeartbeat = null;
-  resetModelWatch();
-  clearIdentitySidecar();
-  setActiveUser(null);
-  // THE CROSS-USER LEAK (his report, 2026-08-28: after sign-out/sign-in the
-  // wall showed the PREVIOUS user's stuff): only the server-driven signed-out
-  // handler cleared the prefs map — a user-clicked Sign out left it warm with
-  // `loaded=true`, so the next user's loadPreferences() no-opped and they
-  // booted from the prior user's wall state, icon order, and UI state.
-  clearPreferences();
-  // THE GATEWAY CREDENTIAL is the same class of leak: left behind, the next
-  // person at this machine keeps authenticating as the last one and billing
-  // their org. Memo + files, both.
-  clearGatewayCreds();
-  attachStop();
-  // The Glyphh loop's conversations are the member's: nothing stays for the next one.
-  void import("./glyphh-loop.js").then((m) => m.forgetGlyphhLoops()).catch(() => undefined);
-  try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
-  resetClient(); // the live instance still holds the old session in memory
-  if (token) {
-    // Per-device logout: revokes THIS session family only. Signing out of the
-    // desktop must never kill the platform's (or any other device's) login.
-    void fetch(`${SERVER_URL}/api/session/logout`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-    }).catch(() => { /* best-effort: the device is signed out regardless */ });
-  }
-}
+export function hasMcpAccess(): boolean { return true; }
 
-/** Get cached account info. */
-export function getAccountInfo(): AccountInfo | null {
-  return cachedAccount;
-}
-
-/** Get cached heartbeat result. */
-export function getHeartbeatInfo(): HeartbeatResult | null {
-  return cachedHeartbeat;
-}
-
-/**
- * MCP (connecting servers, the cloud relay, and the local MCP server) is
- * available to any signed-in, active account — there is no pay gate. Access
- * is denied only when not signed in, or when the account state explicitly
- * reports disabled.
- */
-export function hasMcpAccess(): boolean {
-  if (!isAuthenticated()) return false;
-  const hb = cachedHeartbeat;
-  if (hb && hb.status !== "active") return false;
-  return true;
-}
-
-/** Get auth status for the boot sequence. */
 export function getAuthStatus(): {
   authenticated: boolean;
   status: "active" | "disabled" | "unauthenticated";
   tier?: string;
 } {
-  if (!isAuthenticated()) {
-    return { authenticated: false, status: "unauthenticated" };
-  }
-  if (cachedHeartbeat) {
-    return { authenticated: true, status: cachedHeartbeat.status, tier: cachedHeartbeat.tier };
-  }
-  return { authenticated: true, status: "active" };
+  return { authenticated: true, status: "active", tier: account.tier };
 }
 
-// ── Device-flow sign-in ──────────────────────────────────────
+export function cancelDeviceLogin(): void { /* no device flow */ }
 
-export type { DevicePrompt };
-
-// One device grant in flight at a time: starting a new one aborts the old
-// poll (its code dies server-side unused), so "get a new code" is safe to
-// mash and a stuck poll can always be replaced.
-let deviceLoginAbort: AbortController | null = null;
-
-/** Abort the in-flight device login, if any (the renderer's cancel/reset). */
-export function cancelDeviceLogin(): void {
-  deviceLoginAbort?.abort();
-  deviceLoginAbort = null;
-}
-
-/**
- * Sign in via the SDK device flow: opens the user's default browser on the
- * platform's approval page and polls until they approve. `onPrompt` receives
- * the user code + URL so the renderer can display them (and offer the link
- * again if the browser hand-off didn't land). Resolves `{ ok: true }` once
- * the session is stored; failures carry the real error message.
- */
 export async function startDeviceLogin(
-  onPrompt?: (prompt: DevicePrompt) => void,
+  _onPrompt?: (prompt: DevicePrompt) => void,
 ): Promise<{ ok: boolean; error?: string }> {
-  cancelDeviceLogin();
-  const abort = new AbortController();
-  deviceLoginAbort = abort;
-  try {
-    await getClient().auth.deviceLogin({
-      machineId: os.hostname(),
-      signal: abort.signal,
-      onPrompt: (prompt) => {
-        void shell.openExternal(prompt.verificationUriComplete || prompt.verificationUri)
-          .catch((err) => console.warn("[auth] could not open browser for device approval:", err?.message || err));
-        try { onPrompt?.(prompt); } catch { /* renderer display is best-effort */ }
-      },
-    });
-    signedIn = true;
-    await ensureFreshToken();
-    await refreshAccountState();
-    attachStart();
-    void loadPreferences(); // server prefs map, warmed with the session
-    return { ok: true };
-  } catch (err) {
-    const message = (err as Error)?.message || String(err);
-    // A replaced/cancelled attempt is not a failure the user needs shown.
-    if (abort.signal.aborted) return { ok: false, error: "cancelled" };
-    console.error("[auth] device login failed:", message);
-    return { ok: false, error: message };
-  } finally {
-    if (deviceLoginAbort === abort) deviceLoginAbort = null;
-  }
+  return { ok: true };
 }
 
-/**
- * Legacy boolean face of the device flow. The `mode` argument is historical
- * (register/login were separate password flows); the device grant serves
- * both — the platform handles new accounts.
- */
 export async function startAuthFlow(
   _mode: "register" | "login" = "login",
-  onPrompt?: (prompt: DevicePrompt) => void,
+  _onPrompt?: (prompt: DevicePrompt) => void,
 ): Promise<boolean> {
-  return (await startDeviceLogin(onPrompt)).ok;
+  return true;
 }
 
-// ── Account state (the old heartbeat) ────────────────────────
+export function onServerReconnect(_fn: () => void): void { /* never offline */ }
 
-// Offline → online transition hooks: server-authoritative stores (prefs,
-// chats, app schedules) reconcile the moment connectivity returns instead
-// of waiting for the next restart.
-let accountDown = false;
-const reconnectHooks: Array<() => void> = [];
-export function onServerReconnect(fn: () => void): void {
-  reconnectHooks.push(fn);
-}
+export async function refreshHeartbeat(): Promise<HeartbeatResult | null> { return heartbeat; }
 
-/**
- * Refresh the composed account view (identity + profile + subscription + org)
- * that replaces the old server heartbeat. Also the observer feed that locks
- * the workspace when an account goes inactive.
- */
-async function refreshAccountState(): Promise<HeartbeatResult | null> {
-  const client = getClient();
-  const [id, prof, sub, org] = await Promise.allSettled([
-    client.me(),
-    client.profile.get(),
-    client.billing.status(),
-    client.org.get(),
-  ]);
-  if (id.status === "rejected") {
-    accountDown = true;
-    return null;
-  }
-
-  const identity = id.value;
-  const profile = prof.status === "fulfilled" ? prof.value : null;
-  const subscription = sub.status === "fulfilled" ? sub.value : null;
-  const orgInfo = org.status === "fulfilled" ? org.value : null;
-
-  writeIdentitySidecar(identity.userId);
-  setActiveUser(identity.userId);
-  // The profile's zone is the clock every schedule here reads (user-zone.ts).
-  if (profile) setUserZone(profile.timezone);
-
-  cachedAccount = {
-    email: identity.email,
-    firstName: profile?.firstName ?? identity.name ?? "",
-    lastName: profile?.lastName ?? "",
-    role: identity.role,
-    isPlatformAdmin: !!(identity as { isPlatformAdmin?: boolean }).isPlatformAdmin,
-    orgName: orgInfo?.name ?? "",
-    orgSlug: orgInfo?.slug ?? "",
-    tier: subscription?.tier ?? identity.tier,
-    billingStatus: subscription?.billingStatus ?? "",
-    avatarUrl: (identity as { avatarUrl?: string }).avatarUrl ?? "",
-    impersonatingOrgId: (identity as { impersonating?: { orgId: string } | null }).impersonating?.orgId ?? null,
-  };
-  cachedHeartbeat = {
-    // The new server has no account-disabled heartbeat signal (a revoked
-    // session simply 401s) — "disabled" is reserved for when it grows one.
-    status: "active",
-    tier: cachedAccount.tier,
-    billingStatus: cachedAccount.billingStatus,
-    entitlements: {},
-    org: orgInfo ? { id: orgInfo.id, name: orgInfo.name, maxSeats: orgInfo.maxSeats } : null,
-    user: {
-      id: identity.userId,
-      email: identity.email,
-      firstName: profile?.firstName ?? null,
-      lastName: profile?.lastName ?? null,
-      role: identity.role,
-    },
-  };
-
-  if (accountDown) {
-    accountDown = false;
-    for (const fn of reconnectHooks) {
-      try { fn(); } catch { /* a hook must not break the poll */ }
-    }
-  }
-  try { heartbeatObserver?.(cachedHeartbeat); } catch { /* observer must not break the poll */ }
-  return cachedHeartbeat;
-}
-
-/** Force an account-state check now (e.g. after returning from billing portal). */
-export async function refreshHeartbeat(): Promise<HeartbeatResult | null> {
-  return refreshAccountState();
-}
-
-/**
- * Register an observer notified on every account-state result. Used to lock
- * the client out of the workspace the moment an account is disabled.
- */
-export function setHeartbeatObserver(cb: ((result: HeartbeatResult) => void) | null): void {
-  heartbeatObserver = cb;
-}
+export function setHeartbeatObserver(_cb: ((result: HeartbeatResult) => void) | null): void { /* never changes */ }

@@ -19,10 +19,12 @@ import { createHash } from "node:crypto";
 import { listSkills } from "./skills-fs.js";
 import { callInstanceTool, listInstanceTools } from "./app-instances.js";
 import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
-import { gatewayCreds, mcpCreds } from "./gateway-token.js";
+import { createRouterFetch } from "@glyphh/sdk/router";
+import { routerConfig, routerCreds } from "./providers.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
+import { loopArtifacts } from "./loop-artifacts.js";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { bareModel, connectionsAvailable, orgHasPlan, orgRequiredModel, refreshOrgModels } from "./org-models.js";
+import { connectionsAvailable, defaultChatModel, modelRef } from "./org-models.js";
 import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { onModelStateChanged } from "./model-watch.js";
@@ -192,8 +194,8 @@ async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
     console.warn("[glyphh-loop] local MCP unavailable:", err instanceof Error ? err.message : err);
     return 0;
   });
-  const creds = await mcpCreds().catch(() => null);
-  const split = lendSplit({ localUp: local > 0, gatewayUp: !!creds, connections, belt: new Set(CORE_BELT) });
+  // No Glyphh server: the app's own local MCP server is the only one lent.
+  const split = lendSplit({ localUp: local > 0, gatewayUp: false, connections, belt: new Set(CORE_BELT) });
   if (local > 0) {
     const token = localMcpGenToken(unattended ? "glyphh-loop-unattended" : "glyphh-loop", 365).token;
     out.push({
@@ -202,8 +204,6 @@ async function mcpServersFor(unattended: boolean): Promise<LoopMcpServer[]> {
       allow: unattended ? (t: string) => split.local(t) && !UNATTENDED_HIDDEN.has(t) : split.local,
     });
   }
-  if (creds) out.push({ name: "glyphh-gateway", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` }, tag: "connection", allow: split.gateway });
-  if (!connections) console.warn("[glyphh-loop] connections lane off for this org — no connector tools lent");
   return out;
 }
 
@@ -232,7 +232,7 @@ async function agentDefs(): Promise<LoopAgentDef[]> {
         prompt: a.prompt,
         // Its own model, bare (records hold catalog ids); empty runs it on the
         // parent's model, which is the honest default for "no slot chosen".
-        ...(bareModel(a.model ?? "") ? { model: bareModel(a.model) } : {}),
+        ...(modelRef(a.model ?? "") ? { model: modelRef(a.model) } : {}),
       }));
   } catch (err) {
     console.warn("[glyphh-loop] agent roster unreadable:", err instanceof Error ? err.message : err);
@@ -240,17 +240,24 @@ async function agentDefs(): Promise<LoopAgentDef[]> {
   }
 }
 
+/** Every model call the loop makes goes through the router, which reads the
+ *  user's providers per call (providers.ts), so a key saved in Settings applies
+ *  to the next turn. Any other request (an MCP server) passes straight through. */
+const routerFetch = createRouterFetch(routerConfig);
+
 /** How long the last memory recall took — part of the turn timing line. */
 let lastFactsMs = 0;
 const loop = new GlyphhLoop({
   host: "desktop",
-  gateway: gatewayCreds,
+  gateway: routerCreds,
+  fetch: routerFetch,
   mcpServers,
   agents: agentDefs,
   catalog: catalogEntries,
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  artifacts: loopArtifacts,
   warn: (m) => console.warn(m),
 });
 /** THE UNATTENDED LOOP (his report, 2026-10-08): every headless run — a
@@ -259,13 +266,15 @@ const loop = new GlyphhLoop({
  *  clock starts can open a panel, a workspace, Settings or a terminal. */
 const unattendedLoop = new GlyphhLoop({
   host: "desktop",
-  gateway: gatewayCreds,
+  gateway: routerCreds,
+  fetch: routerFetch,
   mcpServers: () => mcpServersFor(true),
   agents: agentDefs,
   catalog: async () => (await catalogEntries()).filter((e) => !isScreenFamily(e.family)),
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
+  artifacts: loopArtifacts,
   warn: (m) => console.warn(m),
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
@@ -306,9 +315,7 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   // refuses in its own words when neither names one. With neither (or no plan
   // on record) the org's answer is read fresh first: a person who just signed
   // up, or just bought a plan, must not be judged on the last account's gates.
-  const picked = bareModel(p.model ?? "");
-  if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
-  const model = picked || orgRequiredModel();
+  const model = modelRef(p.model ?? "") || defaultChatModel();
   const n = p.history?.length ?? 0;
   const prev = seenTurns.get(p.chatId);
   if (prev !== undefined && n - prev > 2) loop.forget(p.chatId);
@@ -454,9 +461,7 @@ export async function runBotTurn(
   p: { chatId: string; text: string; model?: string; workdir?: string; history?: SeedTurn[] },
   onFrame: (ev: LoopFrame) => void,
 ): Promise<{ runId: string }> {
-  const picked = bareModel(p.model ?? "");
-  if ((!picked && !orgRequiredModel()) || !orgHasPlan()) await refreshOrgModels().catch(() => undefined);
-  const model = picked || orgRequiredModel();
+  const model = modelRef(p.model ?? "") || defaultChatModel();
   if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
   return loop.run({
     chatId: p.chatId, text: p.text, model, permission: "auto",
@@ -491,7 +496,7 @@ export async function runGlyphhHeadless(
   let error = "";
   try {
     await unattendedLoop.run({
-      chatId, text: prompt, model: bareModel(opts.model ?? "") || orgRequiredModel(), permission: "auto",
+      chatId, text: prompt, model: modelRef(opts.model ?? "") || defaultChatModel(), permission: "auto",
       // ONE TYPE (2026-10-08): a run with no folder of its own works in the
       // member's working folder (the set folder, else home).
       workdir: opts.workdir || getWorkingDirectory(),

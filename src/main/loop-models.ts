@@ -1,26 +1,12 @@
 /**
- * loop-models.ts — WHAT THE AGENT CAN RUN ON: the models this member's org
- * serves on the gateway, as the picker's rows.
- *
- * This file used to answer per CLI: three vendor dialects, a BYOK endpoint, a
- * ChatGPT login's own cache, and the lane law deciding which group a pick ran
- * in. All of that went with the bridge (his order, 2026-09-28: one loop, no CLI
- * switching). What is left is one honest list — our server's `models.available`
- * for this member.
- *
- * THAT LIST IS THEIR TEAM'S, AND ONLY THEIR TEAM'S (his order, 2026-09-29: "the
- * model list in the glyphh agent is 100% now gated by the team and the team
- * alone"). The server resolves it: the platform catalog, narrowed by the org
- * (its approvals, its own keys, its routers), narrowed again by the team the
- * member sits on — which is the same list the gateway authorizes their key
- * against, so a model the picker offers is a model the turn can run.
+ * loop-models.ts — WHAT THE AGENT CAN RUN ON: the user's chat models
+ * (Settings › Models, providers.ts), as the picker's rows.
  *
  * Asked once and cached briefly: every panel offers the same list.
  */
 
 import { ipcMain } from "electron";
-import { getClient } from "./glyphh-client";
-import { gatewayCreds } from "./gateway-token";
+import { hasChatModel, readStoredProviders, routerConfig } from "./providers";
 
 export interface LoopModel {
   id: string;
@@ -59,52 +45,18 @@ export function onLoopModelsFetched(cb: FetchListener): () => void {
   return () => { fetchListeners.delete(cb); };
 }
 
-/**
- * ONE NAME, ONE ROW (his report, 2026-09-25: the picker listed
- * claude-fable-5-1 and claude-haiku-4-5 twice each under anthropic). The same
- * model reaches the list by more than one road — the org's allow-list and an
- * org deployment of the same public name — and they arrive as separate rows.
- * The name is what a person sees, so a repeated name is the same pick twice.
- * First wins: the caller puts the more specific row first.
- */
-export function dedupeByName(rows: LoopModel[]): LoopModel[] {
-  const seen = new Set<string>();
-  return rows.filter((m) => {
-    const key = String(m.name ?? m.id).trim().toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 export async function listLoopModels(force = false): Promise<LoopModelsResult> {
   if (!force && cached && Date.now() - cached.at < TTL_MS) return cached.value;
-  let value: LoopModelsResult;
-  try {
-    // THE SERVER ANSWERS THIS, not the gateway's own /v1/models: a team-scoped
-    // deployment is renamed internally there (model_name_<team>_<uuid>), and an
-    // auto-router has no business being offered as a model name at all. Our own
-    // endpoint publishes the public name and applies the TEAM's list — the same
-    // list the member's key is authorized against.
-    const creds = await gatewayCreds().catch(() => null);
-    const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean; reasoning?: boolean; freePlan?: boolean; utility?: boolean; inputUsdPerMTok?: number; outputUsdPerMTok?: number }>;
-    const models = dedupeByName(rows
-      .filter((m) => m.modality === "chat")
-      .map((m): LoopModel => ({
-        id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug,
-        ...(typeof m.reasoning === "boolean" ? { reasoning: m.reasoning } : {}),
-        ...(typeof m.freePlan === "boolean" ? { freePlan: m.freePlan } : {}),
-        modality: m.modality,
-        ...(typeof m.utility === "boolean" ? { utility: m.utility } : {}),
-        ...(typeof m.inputUsdPerMTok === "number" ? { inputUsdPerMTok: m.inputUsdPerMTok } : {}),
-        ...(typeof m.outputUsdPerMTok === "number" ? { outputUsdPerMTok: m.outputUsdPerMTok } : {}),
-      })))
-      .sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
-    value = { ok: true, source: "gateway", baseUrl: creds?.baseUrl ?? null, models };
-  } catch (err) {
-    value = { ok: false, source: "none", baseUrl: null, models: [], error: err instanceof Error ? err.message : String(err) };
-  }
-  if (value.ok) cached = { at: Date.now(), value };
+  // THE USER'S OWN CHAT MODELS (Settings › Models), each under its provider,
+  // when that provider can be called (a key, or a keyless compatible server).
+  const cfg = routerConfig();
+  const callable = new Set(cfg.providers.filter((p) => p.kind === "openai-compatible" || !!p.apiKey).map((p) => p.id));
+  const names = new Map(readStoredProviders().providers.map((p) => [p.id, p.name]));
+  const models = cfg.models
+    .filter((m) => m.type === "chat" && callable.has(m.provider))
+    .map((m): LoopModel => ({ id: m.id, name: m.label || m.model, providerSlug: names.get(m.provider) ?? m.provider, reasoning: true, modality: "chat" }));
+  const value: LoopModelsResult = { ok: true, source: hasChatModel() ? "gateway" : "none", baseUrl: null, models };
+  cached = { at: Date.now(), value };
   for (const cb of fetchListeners) {
     try { cb(value, force); } catch (err) { console.warn("[models] fetch listener failed:", err instanceof Error ? err.message : err); }
   }

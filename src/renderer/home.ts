@@ -227,11 +227,9 @@ void (async () => {
           menu.appendChild(sep);
         }
         const MENU_ICONS: Record<string, string> = {
-          account: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>`,
           docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-          support: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>`,
         };
-        for (const [label, sub] of [["Account", "account"], ["Docs", "docs"], ["Support", "support"]] as const) {
+        for (const [label, sub] of [["Docs", "docs"]] as const) {
           const b = document.createElement("button");
           b.type = "button";
           b.innerHTML = `${MENU_ICONS[sub]}<span></span>`;
@@ -436,81 +434,3 @@ void (async () => {
   lift();
 })();
 
-// ── New-release card (left rail, above the account button) ──────────────────
-// Nothing downloads on its own: the card announces the release with a
-// "Download update" link; while it downloads the link becomes a progress bar;
-// once it is on disk the card says so and offers "Restart now" — otherwise the
-// update installs on whatever restart comes next.
-void (async () => {
-  const card = document.getElementById("app-rail-update");
-  const text = document.getElementById("app-rail-update-text");
-  const link = document.getElementById("app-rail-update-link") as HTMLButtonElement | null;
-  const bar = document.getElementById("app-rail-update-bar");
-  const fill = document.getElementById("app-rail-update-fill");
-  const close = document.getElementById("app-rail-update-close");
-  if (!card || !text || !link || !bar || !fill) return;
-
-  let state: "available" | "downloading" | "ready" = "available";
-  // "Not now": the card stays closed for this release until the app relaunches
-  // or a newer release shows up.
-  let dismissed = "";
-  const paint = (next: typeof state, version: string, percent = 0) => {
-    state = next;
-    if (next === "available" && dismissed && dismissed === (version || "next")) { card.classList.add("hidden"); return; }
-    const v = version ? `v${version}` : "the next release";
-    if (next === "available") {
-      text.textContent = `Glyphh ${v} is available`;
-      link.textContent = "Download update";
-      link.disabled = false;
-      link.classList.remove("hidden");
-      bar.classList.add("hidden");
-      card.title = `Download Glyphh ${v}`;
-    } else if (next === "downloading") {
-      text.textContent = `Downloading ${v}… ${Math.round(percent)}%`;
-      link.classList.add("hidden");
-      bar.classList.remove("hidden");
-      fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-      card.title = `Downloading Glyphh ${v}`;
-    } else {
-      text.textContent = `${v} downloaded. It installs on your next restart.`;
-      link.textContent = "Restart now";
-      link.disabled = false;
-      link.classList.remove("hidden");
-      bar.classList.add("hidden");
-      card.title = `Restart to finish updating to Glyphh ${v}`;
-    }
-    card.classList.remove("hidden");
-  };
-
-  const act = () => {
-    if (link.disabled) return;
-    if (state === "ready") { link.disabled = true; window.glyphh.updateInstall?.(); return; }
-    if (state === "downloading") return;
-    link.disabled = true;
-    void window.glyphh.updateDownload?.();
-  };
-  link.addEventListener("click", (e) => { e.stopPropagation(); act(); });
-  close?.addEventListener("click", (e) => { e.stopPropagation(); dismissed = version || "next"; card.classList.add("hidden"); });
-  // The icon-strip rail hides the text and link; the card itself is the door.
-  card.addEventListener("click", () => { if (document.getElementById("app-rail")?.classList.contains("rail-icons")) act(); });
-
-  let version = "";
-  window.glyphh.onUpdateStatus?.((info) => {
-    if (info.version) version = info.version;
-    if (info.status === "available") paint("available", version);
-    else if (info.status === "downloading") paint("downloading", version, info.percent ?? 0);
-    else if (info.status === "ready") paint("ready", version);
-    else if (info.status === "error") {
-      // A failed download falls back to the offer; the message is the tooltip.
-      paint("available", version);
-      card.title = `Update failed: ${info.error || "unknown error"}`;
-    }
-    else if (info.status === "restarting" || info.status === "none") card.classList.add("hidden");
-  });
-
-  // Panels mount after boot — ask main whether a release is already known.
-  const pending = await window.glyphh.getUpdateStatus?.();
-  if (!pending?.version) return;
-  version = pending.version;
-  paint(pending.ready ? "ready" : pending.downloading ? "downloading" : "available", version);
-})();
