@@ -55,7 +55,9 @@ export function effectiveToolMode(appSlug: string, tool: string, modes = storedM
   const byTool = modes[appSlug] ?? {};
   const set = byTool[tool] ?? byTool[`${appSlug}-${tool}`] ?? byTool[tool.replace(`${appSlug}-`, "")];
   if (set === "allow" || set === "ask" || set === "never") return set;
-  return isReadOnlyTool(tool, appSlug) ? "allow" : "ask";
+  // The page keys a connection by kind ("mcp:linear", "pd:gmail"); the name's
+  // prefix to drop is the bare slug.
+  return isReadOnlyTool(tool, appSlug.replace(/^(mcp|pd):/, "")) ? "allow" : "ask";
 }
 
 /** The same answer for a whole list, which is what the page renders. */

@@ -95,7 +95,6 @@ import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerLoopModelsIpc } from "./loop-models";
-import { registerSubAgentIpc } from "./subagent-ledger";
 import { registerAgentBriefIpc } from "./agent-brief";
 import { registerSessionTitleIpc } from "./session-title";
 import { registerSkillsIpc } from "./skills-fs";
@@ -103,10 +102,10 @@ import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
-import { installBotsIpc } from "./bots";
 import { onUserZoneChange } from "./user-zone";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
+import { registerPipedreamIpc } from "./pipedream-ipc";
 import { registerGitIpc } from "./git-ipc";
 import { registerHomeIpc } from "./home-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
@@ -435,7 +434,6 @@ async function boot() {
     // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
     registerNotifyIpc();
     registerAgentLiveIpc();
-    installBotsIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -769,7 +767,6 @@ async function boot() {
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
   registerLoopModelsIpc();
-  registerSubAgentIpc();
   registerAgentBriefIpc();
   registerSessionTitleIpc();
   registerSkillsIpc();
@@ -779,6 +776,7 @@ async function boot() {
   registerLocalAgentsIpc();
   registerTaskRunnerIpc();
   registerMcpConnectionsIpc();
+  registerPipedreamIpc();
   startLoopScheduler();
   // Agents own schedules too: a parked agent must not fire. Runs AFTER the
   // generic arming, which only knows each row own enabled flag.

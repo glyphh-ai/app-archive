@@ -28,6 +28,11 @@ describe("cli-auth", () => {
     expect(authFix("not logged in", "codex")?.command).toBe(LOGIN_CMD.codex);
     expect(authFix("not logged in", "cursor")?.command).toBe("cursor-agent login");
     expect(authFix("not logged in", "copilot")?.message).toContain("/login");
+    expect(authFix("not logged in", "gemini")?.message).toContain("/auth");
+    // A rejected API key is said as that, not as an expired login.
+    const key = authFix('{"code": 401, "message": "API key not valid. Please pass a valid API key."}', "gemini");
+    expect(key?.message).toContain("rejected");
+    expect(key?.message).not.toContain("expired");
     // An unknown CLI still gets a command: its own name.
     expect(authFix("401 Unauthorized", "someagent")?.command).toBe("someagent");
   });

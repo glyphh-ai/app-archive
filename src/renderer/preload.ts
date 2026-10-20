@@ -5,6 +5,9 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LoopEffort } from "@glyphh/sdk/loop";
 
+/** A Pipedream connect's progress (main/pipedream.ts PdConnectProgress). */
+type PdProgress = { phase: "opening"; app: string } | { phase: "waiting"; app: string; url: string } | { phase: "done"; app: string; ok: true; account: { id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string } } | { phase: "done"; app: string; ok: false; error: string; cancelled?: boolean };
+
 /** Server-authoritative Apps tab record — mirrors yo-server's SavedApp
  *  (saved-app-service.ts). `id` is the server row's UUID; `slug` is the
  *  human-readable identifier shown/edited in the UI. */
@@ -775,6 +778,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** A solo agent panel asks the shell for ANOTHER agent panel (a webview
    *  never nests one) — main relays it to the host document. */
   agentPanelOpen: (p: { loop?: string }) => ipcRenderer.invoke("agent-panel-open", p) as Promise<boolean>,
+  /** A solo agent panel asks the shell to close ITS card (the session stays in the recents). */
+  agentPanelClose: () => ipcRenderer.invoke("agent-panel-close") as Promise<boolean>,
+  onAgentPanelClose: (callback: (p: { wcId: number }) => void) => {
+    ipcRenderer.on("agent-panel:close", (_event, p) => callback(p));
+  },
   onAgentPanelOpen: (callback: (p: { loop?: string }) => void) => {
     ipcRenderer.on("agent-panel:open", (_event, p) => callback(p ?? {}));
   },
@@ -863,26 +871,6 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("session-title-generate", body) as Promise<string | null>,
   agentBriefGenerate: (input: { name?: string; description?: string; model?: string; draft?: string }) =>
     ipcRenderer.invoke("agent-brief-generate", input) as Promise<{ ok: true; brief: string; model: string } | { ok: false; error: string }>,
-  // ── THE BOTS PANEL (his order, 2026-10-08; main/bots.ts): a bot's thread,
-  //    asking it (the Glyphh loop on `bots/<slug>`), stopping it, the frames.
-  botsThread: (agent: string) =>
-    ipcRenderer.invoke("bots-thread", { agent }) as Promise<{ ok: true; chatId: string; messages: Array<{ role: "user" | "assistant"; text: string; at: number }>; running: boolean; partial?: string; startedAt?: number }>,
-  botsAsk: (agent: string, text: string, opts?: { workdir?: string }) =>
-    ipcRenderer.invoke("bots-ask", { agent, text, ...(opts?.workdir ? { workdir: opts.workdir } : {}) }) as Promise<{ ok: true; runId: string; text: string } | { ok: false; error: string; text?: string }>,
-  botsStop: (agent: string) => ipcRenderer.invoke("bots-stop", { agent }) as Promise<{ ok: true; stopped: boolean }>,
-  botsOrchestratorBrief: () => ipcRenderer.invoke("bots-orchestrator-brief") as Promise<string>,
-  onBotsFrame: (callback: (d: { bot: string; type: string; runId: string; [k: string]: unknown }) => void) => {
-    const handler = (_e: unknown, d: { bot: string; type: string; runId: string }): void => callback(d);
-    ipcRenderer.on("bots:frame", handler);
-    return () => { ipcRenderer.removeListener("bots:frame", handler); };
-  },
-  /** THE AGENTS PANEL's source: main's ledger of the sub-agents working under a live turn. */
-  subAgentsList: () => ipcRenderer.invoke("subagents-list") as Promise<unknown[]>,
-  onSubAgentsUpdate: (callback: (runs: unknown[]) => void) => {
-    const handler = (_e: unknown, runs: unknown): void => callback(Array.isArray(runs) ? runs : []);
-    ipcRenderer.on("subagents:update", handler);
-    return () => { ipcRenderer.removeListener("subagents:update", handler); };
-  },
   glyphhApprovalRespond: (id: string, allow: boolean) =>
     ipcRenderer.invoke("glyphh-agent-approval-respond", { id, allow }) as Promise<boolean>,
   onGlyphhAgentApproval: (callback: (d: { id: string; kind: string; title: string; detail: string }) => void) => {
@@ -988,6 +976,30 @@ contextBridge.exposeInMainWorld("glyphh", {
   mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => ipcRenderer.invoke("mcp-connections-update", slug, fields) as Promise<{ ok: boolean; error?: string; connection?: unknown }>,
   mcpConnectionsDelete: (slug: string) => ipcRenderer.invoke("mcp-connections-delete", slug) as Promise<{ ok: boolean; error?: string }>,
   mcpConnectionsTools: (slug: string) => ipcRenderer.invoke("mcp-connections-tools", slug) as Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>,
+  // Pipedream on the user's own project (main/pipedream-ipc.ts): the secret
+  // goes in, never comes back — the config view carries a masked hint only.
+  pipedreamConfigGet: () => ipcRenderer.invoke("pipedream-config-get") as Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>,
+  pipedreamConfigSet: (input: { projectId?: string; environment?: "development" | "production"; clientId?: string; clientSecret?: string }) => ipcRenderer.invoke("pipedream-config-set", input) as Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>,
+  pipedreamConfigClear: () => ipcRenderer.invoke("pipedream-config-clear") as Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>,
+  pipedreamTest: () => ipcRenderer.invoke("pipedream-test") as Promise<{ ok: true; data: { accounts: number } } | { ok: false; error: string }>,
+  pipedreamApps: (o: { q?: string; after?: string; category?: string }) => ipcRenderer.invoke("pipedream-apps", o) as Promise<{ ok: true; data: { apps: Array<{ slug: string; name: string; icon: string | null; description: string; categories: string[] }>; next: string; total: number } } | { ok: false; error: string }>,
+  pipedreamCategories: () => ipcRenderer.invoke("pipedream-categories") as Promise<{ ok: true; data: Array<{ id: string; name: string }> } | { ok: false; error: string }>,
+  pipedreamAccounts: (refresh?: boolean) => ipcRenderer.invoke("pipedream-accounts", !!refresh) as Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>,
+  pipedreamConnect: (app: string) => ipcRenderer.invoke("pipedream-connect", app) as Promise<{ ok: true; data: Extract<PdProgress, { phase: "done" }> } | { ok: false; error: string }>,
+  pipedreamConnectCancel: (app: string) => ipcRenderer.invoke("pipedream-connect-cancel", app) as Promise<{ ok: true; data: { cancelled: boolean } } | { ok: false; error: string }>,
+  pipedreamDisconnect: (accountId: string) => ipcRenderer.invoke("pipedream-disconnect", accountId) as Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>,
+  pipedreamAppEnable: (app: string, on: boolean) => ipcRenderer.invoke("pipedream-app-enable", app, on) as Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>,
+  pipedreamTools: (app: string) => ipcRenderer.invoke("pipedream-tools", app) as Promise<{ ok: true; data: Array<{ name: string; description: string }> } | { ok: false; error: string }>,
+  onPipedreamConnectProgress: (cb: (p: PdProgress) => void) => {
+    const h = (_e: unknown, p: PdProgress) => cb(p);
+    ipcRenderer.on("pipedream:connect-progress", h);
+    return () => { ipcRenderer.removeListener("pipedream:connect-progress", h); };
+  },
+  onPipedreamChanged: (cb: () => void) => {
+    const h = () => cb();
+    ipcRenderer.on("pipedream:changed", h);
+    return () => { ipcRenderer.removeListener("pipedream:changed", h); };
+  },
   // Workbench apps — the OS-window replacement. The renderer reports its
   // open app panels; main drives open/close/focus/switcher via wb:app-cmd.
   wbAppsChanged: (apps: Array<{ slug: string; name: string }>) => ipcRenderer.send("wb-apps-changed", apps),
@@ -1062,6 +1074,7 @@ contextBridge.exposeInMainWorld("glyphh", {
 // git, the lazy file tree / file readers / diff, and the per-id terminal pty
 // bridge the Files / Diff / Terminal slots need. Consumed by
 // code-workbench-bundle.js inside the Code section.
+type GitBranchesView = { isRepo: boolean; current?: string; branches: string[]; error?: string };
 contextBridge.exposeInMainWorld("wb", {
   getCwd: () => ipcRenderer.invoke("working-dir:get"),
   getCwdExplicit: () => ipcRenderer.invoke("working-dir:get-explicit"),
@@ -1069,6 +1082,11 @@ contextBridge.exposeInMainWorld("wb", {
   setCwd: (dir: string) => ipcRenderer.invoke("working-dir:set", dir),
   getCwdRecents: () => ipcRenderer.invoke("working-dir:recents"),
   gitInfo: (root: string) => ipcRenderer.invoke("files:git-info", root),
+  // The branch chip: a refusal rejects with git's reason, said plainly.
+  gitBranches: (root: string) => ipcRenderer.invoke("files:git-branches", root) as Promise<GitBranchesView>,
+  gitSwitch: (root: string, branch: string) => ipcRenderer.invoke("files:git-switch", root, branch) as Promise<GitBranchesView>,
+  gitCreateBranch: (root: string, name: string) => ipcRenderer.invoke("files:git-create-branch", root, name) as Promise<GitBranchesView>,
+  gitInit: (root: string) => ipcRenderer.invoke("files:git-init", root) as Promise<GitBranchesView>,
   onCwdChanged: (cb: (dir: string | null) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, dir: string | null) => cb(dir);
     ipcRenderer.on("working-dir-changed", handler);

@@ -33,7 +33,7 @@ describe("THE CAPABILITY MODEL (his order, 2026-10-06: one list, capability chec
     expect([...STREAMED_VIEWS]).toEqual(["preview"]);
     expect(surfaceHostsView("preview", DESKTOP_CAPS)).toBe(true);
     expect(surfaceHostsView("preview", BROWSER_CAPS)).toBe(false);
-    for (const v of ["files", "terminal", "monaco", "diff", "plan", "agents", "artifacts", "gdesign", "gpoint", "gimage", "gvideo", "gsound", "gdrive"]) {
+    for (const v of ["files", "terminal", "monaco", "diff", "plan", "artifacts", "gdesign", "gpoint", "gimage", "gvideo", "gsound", "gdrive"]) {
       expect(surfaceHostsView(v, DESKTOP_CAPS)).toBe(true);
       expect(surfaceHostsView(v, BROWSER_CAPS)).toBe(true);
     }
@@ -154,9 +154,9 @@ describe("WORKSPACE CELLS: the same capability rule per cell (surfaceLayoutCells
 
 describe("the tool views — one list through the caps", () => {
   it("the desktop's list is the one list; the browser's is the same minus the streamed Browser", () => {
-    expect([...DESKTOP_TOOL_VIEWS]).toEqual(["files", "terminal", "monaco", "preview", "diff", "plan", "agents"]);
+    expect([...DESKTOP_TOOL_VIEWS]).toEqual(["files", "terminal", "monaco", "preview", "diff", "plan"]);
     expect([...toolViewsHosted(DESKTOP_CAPS)]).toEqual([...DESKTOP_TOOL_VIEWS]);
-    expect([...WEB_TOOL_VIEWS]).toEqual(["files", "terminal", "monaco", "diff", "plan", "agents"]);
+    expect([...WEB_TOOL_VIEWS]).toEqual(["files", "terminal", "monaco", "diff", "plan"]);
     expect([...toolViewsHosted(BROWSER_CAPS)]).toEqual([...WEB_TOOL_VIEWS]);
     expect(webToolAllowed("preview")).toBe(false);
     expect(webToolAllowed("files")).toBe(true);

@@ -5351,7 +5351,8 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 .grid-cell.dragging { opacity: 0.35; }
 .grid-drag-ghost {
   position: fixed;
-  z-index: 3000;
+  /* Above the workspace modal (.wsc-overlay, 10050) the editor lives in. */
+  z-index: 10060;
   pointer-events: none;
   opacity: 0.85;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
@@ -14398,10 +14399,12 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .code-composer-bar .code-chip:not(.code-speak-stop):not(.recording):not(.mic-error):hover { color: var(--text); background: var(--hover); }
 .code-composer-bar .code-chip.warn { color: var(--warning); }
 .code-composer-bar .code-chip.code-plus-chip { font-size: 18px; padding: 0 5px; }
-.code-composer-bar .code-chip.code-mic-chip { padding: 2px 5px; }
+.code-composer-bar .code-chip.code-mic-chip { padding: 2px 3px; }
 .code-composer-bar .code-chip.code-mic-chip svg { width: 15px; height: 15px; }
-.code-composer-bar .code-chip.code-mic-caret { padding: 2px 2px; margin-left: -3px; }
-.code-composer-bar .code-chip.code-voice-mode { width: 30px; height: 30px; padding: 0; }
+.code-composer-bar .code-chip.code-mic-caret { padding: 2px 1px; margin-left: -5px; }
+.code-composer-bar .code-chip.code-voice-mode { width: 24px; height: 26px; padding: 0; }
+/* The mic, voice mode and its options read as one control: no gap between them. */
+.code-composer-bar #code-mic-wrap { gap: 0; }
 .code-chipwrap { position: relative; min-width: 0; }
 /* A CHIP NEVER GROWS PAST ITS OWN SLOT (his report + screenshot, 2026-08-28:
    a two-seat model label — "First seat: … / Second seat: …" — ran straight
@@ -14809,7 +14812,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
    check slot (a toggle — the slot is always there so the words line up). A
    sub-pane replaces the list behind a back row, the drop-up's own detail
    pattern, so nothing flies out past the panel's edge. */
-#code-plus-menu { width: min(272px, 92cqi); }
+#code-plus-menu { width: min(300px, 92cqi); }
 .code-drop-item.code-plus-item { justify-content: flex-start; gap: 10px; }
 .code-drop-item.code-plus-item .drop-icon { display: inline-flex; width: 16px; height: 16px; flex: none; color: var(--text-3); align-items: center; justify-content: center; }
 /* A connector row wears the Connections page's own logo (2026-10-06). */
@@ -15685,6 +15688,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* Name on line one, ONE sentence on line two — the row is never taller. */
 .loop-drop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%; }
 .loop-drop-item { position: relative; }
+/* The loop's name sits beside its mark; the check goes to the far right. */
+.code-drop-item .drop-main.loop-drop-main { justify-content: flex-start; gap: 0; }
+.loop-drop-main .drop-check { margin-left: auto; }
+.code-plus-menu .plus-section { margin-top: 2px; }
 
 /* ── Monaco landing: the website hero's gradient, the ghost mark overlaid ── */
 .ws-monaco-landing {
@@ -20248,11 +20255,29 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    head. Plain terminals keep their tabs; this styles only the agent face. */
 
 
-.ws-agent-termhead { display: flex; align-items: center; gap: 4px; padding: 3px 8px; }
-.ws-agent-term-title {
-  font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
+/* The row mirrors the chat's .code-agent-head: name left, the action cluster
+   right. The panel-row rules (.echo-card .ws-terminal-tabs) already give it
+   the shared height, rule and padding. Only the title's cursor differs: a
+   click goes back to the chat rather than renaming. The ⋮ menu opens
+   downward, as it does in the chat's head. */
+.ws-agent-termhead { display: flex; align-items: center; gap: 8px; }
+/* The card's tab-row rule stretches its children (tabs fill the row); this
+   row centres them, as the chat's head does. */
+.echo-card .ws-terminal-tabs.ws-agent-termhead {
+  align-items: center;
+  /* The chat head's own insets (.ws-agent-holder .code-agent-head): the name
+     at the far left, the actions at the far right. */
+  padding-left: 12px !important;
+  padding-right: 6px !important;
 }
+/* A loop's terminal in the agent's seat has no shell head, like the chat it
+   stands in for: its own row is the head. */
+.echo-card.echo-cli-card > .echo-card-head { display: none; }
+.ws-agent-termhead .code-spacer { flex: 1 1 auto; }
+.ws-agent-termhead .code-icon-btn { flex-shrink: 0; }
+.ws-agent-termhead .ws-agent-term-title { cursor: pointer; }
+.ws-agent-term-actions { display: inline-flex; align-items: center; gap: 2px; position: relative; }
+.ws-agent-termhead .code-view-more-menu { bottom: auto; top: calc(100% + 6px); }
 
 /* The agent terminal head's recents IS the chat head's dropdown —
    .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
@@ -20596,6 +20621,31 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .conn2-seg button.active { background: var(--hover); color: var(--text); }
 .conn2-seg button:disabled { cursor: default; }
 .conn2-perm-main { position: relative; display: flex; align-items: center; gap: 6px; cursor: default; }
+/* Settings › Connections — the Pipedream card: setup form, then the app directory. */
+.conn2-pd-card { margin: 0 0 22px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.conn2-pd-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.conn2-pd-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.conn2-pd-intro { font-size: 13.5px; line-height: 1.55; color: var(--text-2); margin: 0 0 10px; }
+.conn2-pd-steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.conn2-pd-note { line-height: 1.5; margin: 0 0 12px; }
+.conn2-pd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.conn2-pd-shelf { margin-bottom: 0; }
+.conn2-link { color: var(--text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.conn2-link:hover { color: var(--text); opacity: .8; }
+.conn2-plus { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.conn2-plus.done { color: #4ade80; border-color: transparent; background: rgba(74, 222, 128, .12); }
+.conn2-dir-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+.conn2-dir-search { flex: 1; max-width: none; }
+.conn2-filter { white-space: nowrap; }
+.conn2-dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.conn2-dir-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg, transparent); }
+.conn2-icon.lg { width: 32px; height: 32px; border-radius: 8px; }
+.conn2-dir-main { flex: 1; min-width: 0; }
+.conn2-dir-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.conn2-verified { color: #4ade80; display: inline-flex; }
+.conn2-dir-desc { font-size: 12.5px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.conn2-dir-desc.busy { color: var(--text); }
+.conn2-more { padding: 16px; text-align: center; font-size: 12.5px; color: var(--text-3); }
 /* ── Apps: the Overview's gallery and dependencies ── */
 .app-overview-extra { margin-top: 18px; }
 .app-gallery { margin-bottom: 18px; }
@@ -20885,50 +20935,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    own background still paints, so the panel is the surface colour meanwhile. */
 [data-solo-booting] body > * { visibility: hidden !important; }
 
-/* ── THE AGENTS WORK PANEL (his order, 2026-09-29: "a work panel for these
-   like Files, Plans, etc. Each agent is an expandable div with its feed under
-   the div as it works"). Every colour comes from the theme's own variables so
-   High Vis and its light mirror both read as deliberate; the state dot is the
-   same `.code-chat-dot` the rail and the recents use, so green/yellow/red mean
-   the same thing everywhere. ── */
-.agp-body { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; color: var(--text); }
-.agp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-2); flex: none; }
-.agp-count { font-size: 12px; color: var(--text-3); }
-.agp-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.agp-empty { margin: 24px auto; max-width: 320px; text-align: center; display: flex; flex-direction: column; gap: 6px; color: var(--text-3); font-size: 13px; line-height: 1.5; }
-.agp-empty strong { color: var(--text-2); font-weight: 600; }
-.agp-make { align-self: center; margin-top: 6px; font: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 7px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); cursor: pointer; }
-.agp-make:hover { background: var(--hover); color: var(--text); }
-/* One group per parent session: its title, then its agents. */
-.agp-group { display: flex; flex-direction: column; gap: 6px; }
-.agp-group + .agp-group { margin-top: 10px; }
-.agp-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 4px; }
-.agp-group-title { font-size: 12px; font-weight: 600; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agp-group-count { flex: none; font-size: 11.5px; color: var(--text-3); }
-
-.agp-row { border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface-2, transparent); overflow: hidden; }
-.agp-row.working { border-color: color-mix(in srgb, #34d399 35%, var(--border-2)); }
-.agp-row.waiting { border-color: color-mix(in srgb, #fbbf24 45%, var(--border-2)); }
-.agp-row.failed { border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, var(--border-2)); }
-
-.agp-bar { width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.agp-bar:hover { background: var(--hover); }
-.agp-chev { display: inline-flex; flex: none; color: var(--text-3); transition: transform 0.15s ease; }
-.agp-chev svg { width: 13px; height: 13px; }
-.agp-row.open .agp-chev { transform: rotate(90deg); }
-.agp-dot { flex: none; }
-.agp-name { font-weight: 600; font-size: 13px; flex: none; }
-.agp-model { flex: none; font-family: var(--mono, ui-monospace, monospace); font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border-2); color: var(--text-2); }
-.agp-bar-task { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-2); }
-.agp-meta { flex: none; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-
-.agp-feed { border-top: 1px solid var(--border-2); padding: 10px 12px 12px 32px; max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.agp-task { font-size: 12.5px; color: var(--text-2); padding: 7px 9px; border-radius: 7px; background: var(--surface-3, var(--hover)); white-space: pre-wrap; }
-.agp-text { font-size: 13px; line-height: 1.55; }
-.agp-starting, .agp-approval { font-size: 12px; color: var(--text-3); font-style: italic; }
-.agp-approval { color: var(--warning, #fbbf24); font-style: normal; }
-
-.agp-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.6px solid var(--border-2); border-top-color: var(--accent); animation: agp-spin 0.8s linear infinite; }
+/* The spinner the agent wand and the tool rows turn (.agents2-wand-spin, .tv-spin). */
 @keyframes agp-spin { to { transform: rotate(360deg); } }
 
 
@@ -21468,7 +21475,17 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    new-folder chips ride their own row ABOVE the box, always — the Glyphh
    mascot at that row's far right. */
 .code-source-mascot { display: none; flex: 0 0 auto; margin-left: 8px; width: 24px; height: 24px; opacity: 0.9; }
-.code-source-mascot img { width: 24px; height: 24px; display: block; }
+.code-source-mascot { position: relative; align-items: center; justify-content: center; }
+.code-source-mascot img { width: 24px; height: 24px; display: block; object-fit: contain; border-radius: 5px; }
+/* The loop's mark at full size in this seat (it is a small inline mark elsewhere). */
+.code-source-mascot .loop-mark { width: 22px; height: 22px; margin: 0; border-radius: 5px; }
+.code-source-mascot .loop-mark.cli-mark-glyphh { width: 24px; height: 24px; margin: 0; }
+/* Through the user's providers (our loop, or a CLI on the gateway): a small
+   router badge on the mark's corner. */
+.code-source-mascot.via-gateway::after {
+  content: ""; position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg);
+}
 .code-source-slot .code-source-mascot { display: inline-flex; }
 
 /* WHERE A CLI RUNS (his order, 2026-10-07): the environment chip's sections in
@@ -21517,93 +21534,6 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
    invisible, its webview untouched so the page (a meet, a sign-in) runs on. */
 .echo-card.echo-parked { visibility: hidden !important; pointer-events: none !important; left: -20000px !important; transition: none !important; }
 
-/* ── THE BOTS PANEL (his order, 2026-10-08; bots-panel.ts) ─────────────────
-   A rail of bots on the left, the selected bot on the right: head, thread,
-   swarm, composer. The swarm rows reuse the Agents panel's .agp-* rules. */
-.bots-body { display: flex; min-height: 0; height: 100%; overflow: hidden; color: var(--text); }
-.bots-rail { flex: none; width: 212px; min-width: 160px; border-right: 1px solid var(--border-2); display: flex; flex-direction: column; min-height: 0; background: var(--surface-1, transparent); }
-.bots-rail-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 6px 12px; flex: none; }
-.bots-rail-title { font: 700 12px/1 var(--font-display, "JetBrains Mono", ui-monospace, monospace); letter-spacing: .04em; text-transform: uppercase; color: var(--text-2); }
-.bots-add { font: 600 16px/1 inherit; width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--border-2); background: transparent; color: var(--text-2); cursor: pointer; }
-.bots-add:hover { background: var(--hover); color: var(--text); }
-.bots-rail-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 8px; display: flex; flex-direction: column; gap: 2px; }
-.bots-rail-section { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding: 8px 6px 3px; }
-.bots-rail-empty { font-size: 12px; color: var(--text-3); padding: 8px 6px; }
-.bots-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; border: 0; border-radius: 9px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.bots-row:hover { background: var(--hover); }
-.bots-row.active { background: var(--surface-3, var(--hover)); }
-.bots-row-avatar { flex: none; width: 34px; height: 34px; display: inline-flex; }
-.bots-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.bots-row-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bots-row-sub { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bots-row-live { flex: none; min-width: 8px; height: 8px; padding: 0 3px; border-radius: 6px; background: #34d399; color: #062; font-size: 9px; line-height: 8px; text-align: center; animation: bots-pulse 1.4s ease-in-out infinite; }
-@keyframes bots-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-
-.bots-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-.bots-empty { margin: auto; max-width: 360px; text-align: center; display: flex; flex-direction: column; gap: 8px; color: var(--text-3); font-size: 13px; line-height: 1.5; padding: 24px; }
-.bots-empty strong { color: var(--text-2); font-weight: 600; }
-.bots-head { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border-2); flex-wrap: wrap; }
-.bots-head-avatar { flex: none; width: 64px; height: 64px; padding: 0; border: 1px solid transparent; border-radius: 14px; background: transparent; cursor: pointer; }
-.bots-head-avatar:hover { border-color: var(--border-2); background: var(--hover); }
-.bots-head-text { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
-.bots-head-name { font: 700 16px/1.2 var(--font-display, "JetBrains Mono", ui-monospace, monospace); }
-.bots-head-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.bots-head-desc { font-size: 12.5px; color: var(--text-2); }
-.bots-role { font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border-2); background: var(--surface-2, transparent); color: var(--text); }
-.bots-chip { font-size: 11.5px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border-2); color: var(--text-2); }
-.bots-chip.mono { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; }
-.bots-picker { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; padding: 8px 0 2px; }
-.bots-picker-bodies { display: flex; flex-wrap: wrap; gap: 4px; }
-.bots-picker-body { width: 50px; height: 50px; padding: 2px; border: 1px solid var(--border-2); border-radius: 10px; background: transparent; cursor: pointer; }
-.bots-picker-body:hover { background: var(--hover); }
-.bots-picker-body.on { border-color: var(--accent); }
-.bots-picker-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.bots-picker-color { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
-.bots-picker-color.on { border-color: var(--text); }
-
-.bots-thread { flex: 1; min-height: 120px; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
-.bots-thread-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; max-width: 380px; color: var(--text-3); font-size: 13px; line-height: 1.5; }
-.bots-msg { display: flex; gap: 8px; align-items: flex-start; }
-.bots-msg.user { justify-content: flex-end; }
-.bots-msg.user .bots-msg-body { background: var(--surface-3, var(--hover)); border-radius: 12px 12px 4px 12px; padding: 7px 11px; max-width: 72%; white-space: pre-wrap; }
-.bots-msg.assistant .bots-msg-body { flex: 1; min-width: 0; font-size: 13px; line-height: 1.55; }
-.bots-msg-avatar { flex: none; width: 26px; height: 26px; display: inline-flex; margin-top: 2px; }
-.bots-error { font-size: 12px; color: var(--danger, #e5484d); padding: 6px 9px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--danger, #e5484d) 40%, var(--border-2)); }
-
-.bots-swarm { flex: none; max-height: 42%; overflow-y: auto; border-top: 1px solid var(--border-2); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-.bots-swarm-empty { font-size: 12px; color: var(--text-3); padding: 2px 4px 4px; }
-.bots-run-avatar { flex: none; width: 22px; height: 22px; display: inline-flex; }
-
-.bots-composer { flex: none; display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px 12px; border-top: 1px solid var(--border-2); }
-.bots-composer textarea { flex: 1; min-height: 40px; max-height: 160px; resize: vertical; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--surface-2, transparent); color: var(--text); }
-.bots-composer textarea:focus { outline: none; border-color: var(--accent); }
-.bots-send { font: inherit; font-size: 12.5px; font-weight: 600; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink, #fff); cursor: pointer; }
-.bots-send:hover { filter: brightness(1.08); }
-
-/* THE CATS (help/bot-avatar.ts): a silhouette's face is cut in the page's
-   colour; the moods move the tail, the ears and the body like the composer's
-   cat (mascot-cat-examples.html). */
-.bot-cat { display: block; overflow: visible; color: var(--surface-1, var(--bg, #1a1a1c)); }
-.bot-cat .tail { transition: transform .4s ease; }
-@keyframes bot-swish { 0% { transform: rotate(-14deg); } 50% { transform: rotate(22deg); } 100% { transform: rotate(-14deg); } }
-.bot-cat.generating .tail { animation: bot-swish 1.1s ease-in-out infinite; }
-@keyframes bot-sway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(8deg); } }
-.bot-cat.thinking .tail { animation: bot-sway 2.6s ease-in-out infinite; }
-@keyframes bot-twitch { 0%, 80%, 100% { transform: rotate(0); } 86% { transform: rotate(-9deg); } 93% { transform: rotate(5deg); } }
-.bot-cat.listening .ear-l, .bot-cat.curious .ear-l { animation: bot-twitch 2.4s ease-in-out infinite; }
-.bot-cat.listening .ear-r, .bot-cat.curious .ear-r { animation: bot-twitch 2.4s ease-in-out infinite .35s; }
-@keyframes bot-hop { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } 60% { transform: translateY(0); } }
-.bot-cat.playful .body { animation: bot-hop 1.4s ease-in-out infinite; }
-@keyframes bot-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
-.bot-cat.idle .eye { transform-origin: center; transform-box: fill-box; animation: bot-blink 5s infinite; }
-@keyframes bot-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
-.bot-cat.sleepy .body { transform-origin: 50px 74px; animation: bot-breathe 3.4s ease-in-out infinite; }
-.bot-cat.done .tail { transform: rotate(18deg); }
-.bot-cat.error .tail { transform: rotate(-28deg); }
-.bot-cat.dizzy .body { transform-origin: 50px 60px; animation: bot-sway 1s ease-in-out infinite; }
-/* The rail's bot rows wear the cat in place of the mascot tile. */
-.code-sess-mark .bot-cat { width: 18px; height: 18px; }
-
 /* ── SNUG PANELS (his order, 2026-10-08: "remove the padding around all the
    panels. They should all fit snug now"): no seams, no band inset (the
    workbench's gap/margin are 0), so the cards lose their float — square
@@ -21640,6 +21570,42 @@ body.rail-collapsed:not(.rail-peek) .web-full-head.clears-strip { padding-left: 
 .wsc-group-head { font-size: 12px; font-weight: 600; color: var(--text); }
 .wsc-cells { display: flex; flex-direction: column; gap: 12px; }
 .wsc-cells:empty { display: none; }
+
+/* ── The modal's GRID LAYOUT EDITOR (his order, 2026-10-20) — the old
+   Workspaces builder's left/right split: the form left, the grid right. The
+   builder's own rules (.grid-dims, #grid-preview, .grid-cell, the cell
+   picker) apply; only the sizing and the rings are the modal's. ── */
+.wsc-box.wsc-box-grid { width: min(1000px, calc(100vw - 48px)); }
+.wsc-split { display: flex; gap: 20px; align-items: stretch; }
+.wsc-split > .wsc-form { flex: 0 0 340px; min-width: 0; padding-right: 4px; }
+.wsc-layout { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.wsc-layout .grid-builder { padding: 0; }
+.wsc-layout .grid-dims { flex-wrap: wrap; margin-bottom: 10px; }
+.wsc-layout .grid-dims .action-btn { padding: 4px 10px; font-size: 12px; }
+.wsc-grid-preview { height: min(52vh, 420px); min-height: 0; }
+.wsc-grid-preview .grid-cell { min-height: 0; min-width: 0; padding: 6px; font-size: 12px; overflow: hidden; }
+.wsc-grid-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+/* Rings from the theme's own text tokens, so light reads like dark (the old
+   builder's white ring vanished on a light surface). */
+.wsc-grid-preview .grid-cell:hover { border-color: var(--text-3); }
+.wsc-grid-preview .grid-cell.assigned { border-color: var(--text-2); }
+.wsc-grid-preview .grid-cell.selected { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+.wsc-grid-preview .grid-cell.sticky { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.wsc-grid-preview .grid-cell.drop-swap { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.wsc-grid-preview .grid-cell.drop-before { box-shadow: inset 3px 0 0 var(--accent); border-color: var(--accent); }
+.wsc-grid-preview .grid-cell.drop-after { box-shadow: inset -3px 0 0 var(--accent); border-color: var(--accent); }
+body > .grid-drag-ghost { border-color: var(--accent); }
+.wsc-grid-hint { margin: 0; }
+.wsc-setup { display: flex; flex-direction: column; gap: 12px; }
+.wsc-setup:empty { display: none; }
+.wsc-cell-setup .settings-input { width: 100%; box-sizing: border-box; }
+.wsc-cell-setup .settings-toggles { margin-top: 2px; max-width: none; gap: 8px; }
+.wsc-cell-setup .settings-toggle { padding: 8px 12px; }
+@media (max-width: 760px) {
+  .wsc-split { flex-direction: column; }
+  .wsc-split > .wsc-form { flex: none; }
+  .wsc-grid-preview { height: 260px; }
+}
 
 /* ── NO HEADER ROW ON WORK PANELS (his order, 2026-10-09: "remove the headers
    off all work panels, move the title down to the next row of each panel —
@@ -21796,6 +21762,8 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 
 /* ── SETTINGS › MODELS (help/settings-models.ts): a card per provider with its
    models under it; the add/edit form is a card in the same list. ── */
+.pvd-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 28px 0 8px; }
+.pvd-section-head .settings-subheading { margin: 0; }
 .pvd-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 0 0 10px; background: var(--bg-2, transparent); }
 .pvd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .pvd-left { min-width: 0; }
@@ -21822,3 +21790,21 @@ body.rail-collapsed .artp-viewer-head.clears-strip { padding-left: var(--rail-st
 .pvd-listing-rows { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .pvd-listing-row { display: flex; align-items: center; gap: 8px; }
 .pvd-listing-row select.settings-input { width: 140px; margin-bottom: 0; }
+
+/* SETTINGS › MEMORY with no embeddings model (help/settings-memory.ts): the
+   line that says so, its door to Models, and the switches held off. */
+.mem-needs-model { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mem-needs-model .action-btn { flex-shrink: 0; }
+.settings-toggle.set-pref-row.mem-off { opacity: .5; cursor: default; }
+
+/* The branch chip is a picker: it reads as clickable. */
+.code-wd-branch.clickable { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+.code-wd-branch.clickable:hover { color: var(--text); background: var(--hover); }
+.yo-workdir-menu.code-branch-menu { position: fixed; max-height: 320px; overflow-y: auto; z-index: 100000; }
+
+/* Pipedream's Connect Link, in a modal over Customize: its own webview stays
+   visible while the modal guard hides the workbench's. */
+.conn-modal.pd-connect-modal { z-index: 999000; }
+.conn-modal-panel.pd-connect-panel { width: min(560px, 94vw); height: min(720px, 88vh); padding: 14px 14px 12px; }
+.pd-connect-view { flex: 1; min-height: 0; width: 100%; border-radius: 10px; overflow: hidden; background: #fff; }
+body.wb-modal-open .pd-connect-modal webview { visibility: visible !important; }

@@ -23,7 +23,7 @@ import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { runGlyphhHeadless } from "./glyphh-loop.js";
 import { slotAgentContext, slotAgentRoster, setTaskRunner, ensureTaskSchedule } from "./local-library.js";
-import { callConnectionTool, listConnRows } from "./mcp-connections.js";
+import { callConnectionTool, connModeKey, connectionSources, pdConnectionId } from "./mcp-connections.js";
 import { normalizeConnDeps, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
@@ -326,12 +326,16 @@ async function connectionCall(spec: TaskSpec, appSlug: string, tool: string, arg
   // ONE RULE (conn-tool-modes.ts): the same answer the Connections page shows,
   // defaults included. Reading the raw preference refused a read-only tool the
   // page displayed as Always allow, because that default was never written.
-  const mode = effectiveToolMode(appSlug, tool);
+  // A declared slug is a custom server of that name, else a connected
+  // Pipedream app ("gmail" → pd:gmail).
+  const live = new Set(connectionSources().map((c) => c.connection));
+  const connection = live.has(appSlug) ? appSlug : live.has(pdConnectionId(appSlug)) ? pdConnectionId(appSlug) : "";
+  if (!connection) throw new Error(`no connection named "${appSlug}" — add or connect it on the Connections page`);
+  const mode = effectiveToolMode(connModeKey(connection), tool);
   if (mode !== "allow") {
     throw new Error(`"${tool}" on ${appSlug} is set to ${mode === "never" ? "Never" : "Needs approval"} — an unattended run only uses tools set to Always allow on the Connections page`);
   }
-  if (!listConnRows().some((r) => r.slug === appSlug)) throw new Error(`no connection named "${appSlug}" — add it on the Connections page`);
-  return callConnectionTool(appSlug, tool, args && typeof args === "object" ? args as Record<string, unknown> : {});
+  return callConnectionTool(connection, tool, args && typeof args === "object" ? args as Record<string, unknown> : {});
 }
 
 function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<unknown> {

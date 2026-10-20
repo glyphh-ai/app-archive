@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ROUTER_BASE_URL, anthropicBody, baseUrlOf, claudeTakesEffort, createRouterFetch, guessModelType,
+  MODEL_TYPES, ROUTER_BASE_URL, anthropicBody, baseUrlOf, claudeTakesEffort, createRouterFetch, embed, guessModelType,
   listProviderModels, modelId, resolveModel, synthesize, transcribe,
   type FetchLike, type RouterConfig,
 } from "../../src/router/index.js";
@@ -122,6 +122,21 @@ describe("createRouterFetch", () => {
     expect(msg.stop_reason).toBe("tool_use");
   });
 
+  it("keeps reading past chunks that translate to nothing (an empty reasoning delta, a usage-only chunk)", async () => {
+    const f = fake(() => sse([
+      JSON.stringify({ choices: [{ delta: { role: "assistant", reasoning_content: "" } }] }),
+      JSON.stringify({ choices: [{ delta: { role: "assistant", reasoning_content: "" } }] }),
+      JSON.stringify({ choices: [{ delta: { content: "hi" }, finish_reason: "stop" }] }),
+      JSON.stringify({ choices: [], usage: { prompt_tokens: 3, completion_tokens: 1 } }),
+      "[DONE]",
+    ]));
+    const route = createRouterFetch(() => config, f.fetch);
+    const res = await route(`${ROUTER_BASE_URL}/v1/messages`, turn("ollama::qwen3"));
+    const msg = await assembleStream(sseEvents(res.body!));
+    expect(msg.content[0]).toMatchObject({ type: "text", text: "hi" });
+    expect(msg.stop_reason).toBe("end_turn");
+  });
+
   it("calls a keyless OpenAI-compatible server at its own address, with max_tokens and no effort field", async () => {
     const f = fake(() => sse([JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }), "[DONE]"]));
     const route = createRouterFetch(() => config, f.fetch);
@@ -205,6 +220,14 @@ describe("listProviderModels", () => {
     expect(guessModelType("gpt-4o-mini-transcribe")).toBe("transcription");
     expect(guessModelType("gpt-4o-mini-tts")).toBe("speech");
     expect(guessModelType("gpt-5.1")).toBe("chat");
+    for (const m of ["text-embedding-3-small", "gemini-embedding-001", "nomic-embed-text", "bge-m3", "BAAI/bge-large-en-v1.5", "intfloat/multilingual-e5-large"]) expect(guessModelType(m)).toBe("embeddings");
+    for (const m of ["black-forest-labs/FLUX.1-schnell", "sdxl-turbo", "stable-diffusion-3.5-large", "dall-e-3", "gpt-image-1", "imagen-4.0-generate-001"]) expect(guessModelType(m)).toBe("image");
+    for (const m of ["veo-3.0-generate-preview", "sora-2", "Wan-AI/Wan2.1-T2V-14B", "kling-v2", "hunyuan-video", "some-video-model"]) expect(guessModelType(m)).toBe("video");
+    for (const m of ["qwen3", "claude-sonnet-5-5", "gemini-2.5-pro", "gpt-4o-mini-transcribe", "gpt-4o-mini-tts"]) expect(guessModelType(m)).not.toMatch(/embeddings|image|video/);
+  });
+
+  it("names every model type the Models page offers", () => {
+    expect(MODEL_TYPES).toEqual(["chat", "transcription", "speech", "embeddings", "image", "video"]);
   });
 });
 
@@ -234,5 +257,45 @@ describe("voice", () => {
     await expect(transcribe(config.providers[0]!, "x", new Uint8Array(), "audio/webm", fake(() => new Response("")).fetch)).rejects.toThrow("does not transcribe");
     await expect(synthesize(config.providers[0]!, "x", "hi", null, fake(() => new Response("")).fetch)).rejects.toThrow("does not speak");
     await expect(synthesize(config.providers[1]!, "x", "hi", null, fake(() => new Response("nope", { status: 500 })).fetch)).rejects.toThrow("OpenAI could not speak (500): nope");
+  });
+});
+
+describe("embeddings", () => {
+  const vectors = (rows: Array<{ index: number; embedding: number[] }>): Response => new Response(JSON.stringify({ object: "list", data: rows }));
+
+  it("embeds through the provider's /embeddings with its key, one vector per text in order", async () => {
+    const f = fake(() => vectors([{ index: 1, embedding: [0, 1] }, { index: 0, embedding: [1, 0] }]));
+    expect(await embed(config.providers[1]!, "text-embedding-3-small", ["a", "b"], f.fetch)).toEqual([[1, 0], [0, 1]]);
+    const call = f.calls[0]!;
+    expect(call.url).toBe("https://api.openai.com/v1/embeddings");
+    expect(call.init.method).toBe("POST");
+    expect(headersOf(call).authorization).toBe("Bearer sk-oai");
+    expect(JSON.parse(String(call.init.body))).toEqual({ model: "text-embedding-3-small", input: ["a", "b"] });
+  });
+
+  it("calls Gemini's OpenAI-compatible surface and a keyless compatible server at their own addresses", async () => {
+    const f = fake(() => vectors([{ index: 0, embedding: [0.5, 0.5] }]));
+    await embed({ ...config.providers[3]!, apiKey: "g" }, "gemini-embedding-001", ["x"], f.fetch);
+    await embed(config.providers[2]!, "nomic-embed-text", ["x"], f.fetch);
+    expect(f.calls.map((c) => c.url)).toEqual([
+      "https://generativelanguage.googleapis.com/v1beta/openai/embeddings",
+      "http://localhost:11434/v1/embeddings",
+    ]);
+    expect(headersOf(f.calls[1]!).authorization).toBeUndefined();
+  });
+
+  it("makes no call for no texts", async () => {
+    const f = fake(() => vectors([]));
+    expect(await embed(config.providers[1]!, "m", [], f.fetch)).toEqual([]);
+    expect(f.calls).toHaveLength(0);
+  });
+
+  it("refuses in plain words: Anthropic, no key, no base URL, the provider's error, a short answer", async () => {
+    const none = fake(() => new Response("")).fetch;
+    await expect(embed(config.providers[0]!, "m", ["a"], none)).rejects.toThrow("Anthropic has no embeddings models");
+    await expect(embed(config.providers[3]!, "m", ["a"], none)).rejects.toThrow("Gemini has no API key");
+    await expect(embed({ id: "x", kind: "openai-compatible", name: "X" }, "m", ["a"], none)).rejects.toThrow("X has no base URL");
+    await expect(embed(config.providers[1]!, "m", ["a"], fake(() => new Response("bad model", { status: 404 })).fetch)).rejects.toThrow("OpenAI could not embed (404): bad model");
+    await expect(embed(config.providers[1]!, "m", ["a", "b"], fake(() => vectors([{ index: 0, embedding: [1] }])).fetch)).rejects.toThrow("OpenAI answered 1 embeddings for 2 texts");
   });
 });

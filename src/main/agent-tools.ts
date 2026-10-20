@@ -25,20 +25,13 @@ import { deleteAgent, getAgent, listAgents, saveAgent, slugify } from "./local-a
 import { generateAgentBrief } from "./agent-brief.js";
 import { listLoopModels } from "./loop-models.js";
 import { modelRef } from "./org-models.js";
-import { agentRoleOf, type AgentRole } from "../shared/member-library.js";
 
-interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown; role?: unknown }
+interface SaveParams { agent?: unknown; name?: unknown; description?: unknown; brief?: unknown; model?: unknown }
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
-function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; role: AgentRole; hasBrief: boolean } {
-  return { agent: a.slug, name: a.name, description: a.description, model: modelRef(a.model || "") || null, role: agentRoleOf(a), hasBrief: !!a.prompt.trim() };
-}
-/** THE BOTS PANEL's role (2026-10-08): an orchestrator plans and hands out; a worker does one kind of work. */
-function checkedRole(raw: unknown): AgentRole {
-  const r = str(raw);
-  if (r === "orchestrator" || r === "worker") return r;
-  throw new Error(`role must be "orchestrator" or "worker", not "${r}"`);
+function summary(a: ReturnType<typeof getAgent>): { agent: string; name: string; description: string; model: string | null; hasBrief: boolean } {
+  return { agent: a.slug, name: a.name, description: a.description, model: modelRef(a.model || "") || null, hasBrief: !!a.prompt.trim() };
 }
 
 async function checkedModel(raw: string): Promise<string> {
@@ -75,7 +68,6 @@ export function installAgentRelayHandlers(): void {
     }
     const description = p.description === undefined ? existing?.description ?? "" : str(p.description);
     const model = p.model === undefined ? existing?.model ?? "" : await checkedModel(str(p.model));
-    const role = p.role === undefined ? agentRoleOf(existing) : checkedRole(p.role);
     let brief = p.brief === undefined ? existing?.prompt ?? "" : str(p.brief);
     let generated = false;
     // NO BRIEF, THE APP WRITES ONE — the same generator as the page's wand, on
@@ -86,7 +78,7 @@ export function installAgentRelayHandlers(): void {
       brief = g.brief;
       generated = true;
     }
-    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model, role });
+    const row = saveAgent({ ...(existing ? { slug: existing.slug } : {}), name, description, prompt: brief, model });
     return { ...summary(row), created: !existing, generatedBrief: generated, brief: row.prompt };
   });
 

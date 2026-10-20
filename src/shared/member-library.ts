@@ -383,13 +383,6 @@ export interface AgentRowLike {
   prompt: string;
   provider: string;
   model: string;
-  /** THE BOTS PANEL (his order, 2026-10-08): an ORCHESTRATOR plans the work
-   *  and hands it to the swarm (the other bots, through spawn_agent); a
-   *  WORKER does one kind of work. A row without the field is a worker. */
-  role?: AgentRole;
-  /** The bot's cat (help/bot-avatar.ts): which of the twelve bodies, in
-   *  which colour. Absent, the avatar is drawn from the slug. */
-  avatar?: BotAvatarLike | null;
   skills: string[];
   apps: string[];
   live: boolean;
@@ -398,27 +391,10 @@ export interface AgentRowLike {
   updatedAt: string;
 }
 
-export type AgentRole = "orchestrator" | "worker";
-export interface BotAvatarLike { variant: number; color: string }
-
 export interface AgentInputLike {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
-  skills?: string[]; apps?: string[];
+  provider?: string; model?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicyLike | null;
-}
-
-/** A row's role, "worker" for every row that predates the field. */
-export const agentRoleOf = (a: Pick<AgentRowLike, "role"> | null | undefined): AgentRole => (a?.role === "orchestrator" ? "orchestrator" : "worker");
-
-/** The avatar as stored: a body 1..12 and a CSS colour; anything else is "none". */
-export function cleanAvatar(v: unknown): BotAvatarLike | null {
-  const a = v as BotAvatarLike | null;
-  if (!a || typeof a !== "object") return null;
-  const variant = Math.round(Number(a.variant));
-  const color = String(a.color ?? "").trim();
-  if (!Number.isFinite(variant) || variant < 1 || variant > 12 || !/^#[0-9a-f]{3,8}$/i.test(color)) return null;
-  return { variant, color };
 }
 
 export const agentSlug = (name: string): string =>
@@ -450,8 +426,6 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
   const name = String(input.name ?? existing?.name ?? "").trim();
   if (!name) throw new Error("an agent needs a name");
   const slug = agentSlug(String(input.slug || existing?.slug || name));
-  const role: AgentRole = input.role === undefined ? agentRoleOf(existing) : agentRoleOf(input);
-  const avatar = input.avatar === undefined ? cleanAvatar(existing?.avatar) : cleanAvatar(input.avatar);
   return {
     id: slug,
     slug,
@@ -460,8 +434,6 @@ export function buildAgentRow(input: AgentInputLike, existing: AgentRowLike | nu
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
     provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
     model: String(input.model ?? existing?.model ?? ""),
-    role,
-    avatar,
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
     apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
     live: input.live === undefined ? existing?.live ?? true : !!input.live,

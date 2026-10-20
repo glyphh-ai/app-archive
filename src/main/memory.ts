@@ -16,9 +16,14 @@
  * The store is the same per-app substrate (glyphh-app-ai) under the reserved
  * slug "glyphh-memory", so the semantic tools and the memory panel read exactly
  * what the loop wrote. Neither lane can fail a turn: both swallow their errors.
+ *
+ * Memory runs on the user's embeddings model (Settings › Models). With none,
+ * memory is OFF: both lanes skip without a word, and writing a page or editing
+ * a memory says to add one.
  */
 
 import { getPreference } from "./stores/preferences-db.js";
+import { defaultModel } from "./providers.js";
 import { llmChunk, vectorUpsert, vectorSearch, vectorDelete, vectorItems } from "./glyphh-app-ai.js";
 import { ipcMain } from "electron";
 
@@ -26,6 +31,16 @@ export const MEMORY_APP_SLUG = "glyphh-memory";
 export const MEMORY_COLLECTION = "turns";
 /** The house skill that compiles pages from the turns (seeded on the hub). */
 export const CURATOR_SLUG = "glyphh-memory";
+
+/** What memory says when there is no embeddings model to remember with. */
+export const MEMORY_NEEDS_MODEL = "Memory needs an embeddings model. Add one in Settings › Models.";
+/** Is there an embeddings model? Without one, memory is off. */
+export function memoryOn(): boolean {
+  return !!defaultModel("embeddings");
+}
+function needModel(): void {
+  if (!memoryOn()) throw new Error(MEMORY_NEEDS_MODEL);
+}
 
 // ── PAGES (his order, 2026-09-20): Profile, topics and areas, compiled from the
 // turns by the curator skill through the loop, since Glyphh makes no model
@@ -68,6 +83,7 @@ export async function writeMemoryPage(input: { section: PageSection; title: stri
   const title = String(input.title || "").trim().slice(0, 90);
   const details = (input.details ?? []).map((d) => String(d).trim()).filter(Boolean).slice(0, 40);
   if (!title || !details.length) throw new Error("a page needs a title and at least one detail");
+  needModel();
   const id = pageId(section, title);
   const old = rowsOf().filter(({ it, m }) => String(m.source ?? it.id.split("#")[0]) === id);
   const { chunks } = llmChunk({ text: details.join("\n"), maxChars: 1_200 });
@@ -101,11 +117,12 @@ async function lane(key: keyof typeof PREF): Promise<boolean> {
 const SENSITIVE = /\b(diagnos|therap|medication|prescri|pregnan|cancer|depress|anxiety|hiv|disabilit|religio|church|mosque|synagogue|prayer|atheis|politic|democrat|republican|election|vote|sexual|gay|lesbian|transgender|abortion|salary|bank account|credit card|ssn|social security|passport|immigration|arrest|lawsuit)\w*/i;
 
 export function registerMemoryIpc(): void {
-  ipcMain.handle("memory-stats", async () => {
+  // Counted from the stored rows, so the count needs no embeddings call.
+  ipcMain.handle("memory-stats", () => {
     try {
-      const r = await vectorSearch(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, query: "session", k: 500 });
-      const sources = new Set(r.matches.map((m) => String((m.metadata as { source?: string } | undefined)?.source ?? m.id.split("#")[0])));
-      return { ok: true, turns: sources.size, chunks: r.matches.length };
+      const items = vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION);
+      const sources = new Set(items.map((it) => String((it.metadata as { source?: string } | null)?.source ?? it.id.split("#")[0])));
+      return { ok: true, turns: sources.size, chunks: items.length };
     } catch { return { ok: true, turns: 0, chunks: 0 }; }
   });
   // THE MEMORY BROWSER (his order, 2026-09-20): one row per remembered turn or
@@ -137,6 +154,7 @@ export function registerMemoryIpc(): void {
       const source = String(input?.source || "");
       const details = (Array.isArray(input?.details) ? input.details : []).map((d) => String(d).trim()).filter(Boolean);
       if (!source || !details.length) throw new Error("nothing to keep");
+      needModel();
       const old = vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION).filter((it) => {
         const m = (it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>;
         return String(m.source ?? it.id.split("#")[0]) === source;
@@ -197,7 +215,7 @@ export interface MemoryScope { folder?: string; workspace?: string }
 export async function memoryFacts(userText: string, _scope: MemoryScope = {}): Promise<string> {
   // Retrieval spans every folder on purpose: a fact learned in one folder is
   // still true in the next. The scope rides on capture so the panel can group.
-  if (!(await lane("inject"))) return "";
+  if (!memoryOn() || !(await lane("inject"))) return "";
   return factBlock(userText);
 }
 
@@ -232,6 +250,7 @@ async function captureTurn(userText: string, assistantText: string, scope: Memor
   try {
     const key = `${userText}\u0000${assistantText}`;
     if (key === lastCaptured.key && Date.now() - lastCaptured.at < 10 * 60_000) return;
+    if (!memoryOn()) return;   // no embeddings model: memory is off, quietly
     lastCaptured = { key, at: Date.now() };
     if (!(await lane("capture"))) { console.warn("[memory] turn not captured: the capture switch is off"); return; }
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;

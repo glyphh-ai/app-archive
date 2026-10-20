@@ -32,7 +32,7 @@ import {
 } from "./local-library.js";
 // The record shape is shared with the web (shared/member-library.ts): one
 // builder, so an agent made on either surface is the same row.
-import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike, type AgentRole, type BotAvatarLike } from "../shared/member-library.js";
+import { agentSlug, buildAgentRow, isAgentRow, type GuardrailsPolicyLike } from "../shared/member-library.js";
 import { libraryDelete, libraryRows, libraryWrite } from "./member-library-local.js";
 
 /** Local caps. Blank fields mean "no cap" — the pre-purge page called these
@@ -52,9 +52,6 @@ export interface AgentRow {
   provider: string;
   /** Optional model override; empty = the loop's own model. */
   model: string;
-  /** THE BOTS PANEL (his order, 2026-10-08): orchestrator or worker; the cat it wears. */
-  role?: AgentRole;
-  avatar?: BotAvatarLike | null;
   /** Skill slugs this agent may load. */
   skills: string[];
   /** App slugs this agent may drive. */
@@ -127,8 +124,7 @@ export function getAgent(ref: string): AgentRow {
 
 interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
-  provider?: string; model?: string; role?: AgentRole; avatar?: BotAvatarLike | null;
-  skills?: string[]; apps?: string[];
+  provider?: string; model?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 

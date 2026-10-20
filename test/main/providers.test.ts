@@ -42,7 +42,7 @@ describe("before anything is saved", () => {
     const f = P.readStoredProviders();
     expect(f.providers.map((p) => p.id)).toEqual(["anthropic", "openai"]);
     expect(f.providers.every((p) => !p.apiKey)).toBe(true);
-    expect(f.defaults).toEqual({ chat: "anthropic::claude-opus-5-5", transcription: "openai::gpt-4o-mini-transcribe", speech: "openai::gpt-4o-mini-tts" });
+    expect(f.defaults).toEqual({ chat: "anthropic::claude-opus-5-5", transcription: "openai::gpt-4o-mini-transcribe", speech: "openai::gpt-4o-mini-tts", embeddings: "openai::text-embedding-3-small" });
     expect(P.routerConfig().providers.map((p) => p.apiKey)).toEqual(["sk-ant-env", "sk-oai-env"]);
     expect(P.hasChatModel()).toBe(true);
     expect(await P.routerCreds()).toEqual({ baseUrl: "http://glyphh-router.local", token: "glyphh-router" });
@@ -91,13 +91,13 @@ describe("Settings › Models edits", () => {
     expect(() => P.saveModel({ provider: "gone", model: "x", type: "chat" })).toThrow("no provider gone");
     P.saveProvider({ kind: "anthropic", apiKey: "k" });
     expect(() => P.saveModel({ provider: "anthropic", model: " ", type: "chat" })).toThrow("a model needs a name");
-    expect(() => P.saveModel({ provider: "anthropic", model: "x", type: "video" as P.ModelType })).toThrow("unknown model type");
+    expect(() => P.saveModel({ provider: "anthropic", model: "x", type: "hologram" as P.ModelType })).toThrow("unknown model type");
   });
 
   it("drops anything malformed when the file is read", () => {
     writeFileSync(join(home, "providers.json"), JSON.stringify({
       providers: [{ id: "a", kind: "anthropic" }, { id: "", kind: "openai" }, { id: "b", kind: "weird" }],
-      models: [{ provider: "a", model: "m", type: "chat" }, { provider: "zz", model: "m", type: "chat" }, { provider: "a", model: "n", type: "video" }],
+      models: [{ provider: "a", model: "m", type: "chat" }, { provider: "zz", model: "m", type: "chat" }, { provider: "a", model: "n", type: "hologram" }],
       defaults: { chat: "a::m", speech: "a::m", voice: 3 },
     }));
     expect(P.readStoredProviders()).toEqual({
@@ -105,6 +105,30 @@ describe("Settings › Models edits", () => {
       models: [{ id: "a::m", provider: "a", model: "m", type: "chat" }],
       defaults: { chat: "a::m" },
     });
+  });
+});
+
+describe("embeddings, image and video models", () => {
+  it("stores each type, keeps a default per type, and seeds an embeddings model with an OpenAI or Gemini key", () => {
+    P.saveProvider({ kind: "openai", apiKey: "k" });
+    P.saveModel({ provider: "openai", model: "text-embedding-3-large", type: "embeddings" });
+    P.saveModel({ provider: "openai", model: "gpt-image-1", type: "image" });
+    P.saveModel({ provider: "openai", model: "sora-2", type: "video" });
+    expect(P.modelsOfType("embeddings").map((m) => m.id)).toEqual(["openai::text-embedding-3-large"]);
+    expect(P.modelsOfType("image").map((m) => m.id)).toEqual(["openai::gpt-image-1"]);
+    expect(P.modelsOfType("video").map((m) => m.id)).toEqual(["openai::sora-2"]);
+    expect(P.defaultModel("embeddings")).toBe("openai::text-embedding-3-large");
+    expect(P.setDefault("image", "openai::gpt-image-1")).toMatchObject({ image: "openai::gpt-image-1" });
+    expect(P.setDefault("video", "openai::sora-2")).toMatchObject({ video: "openai::sora-2" });
+    expect(P.setDefault("embeddings", "openai::sora-2")).not.toHaveProperty("embeddings");
+    expect(stored().defaults).toEqual({ image: "openai::gpt-image-1", video: "openai::sora-2" });
+    // Chat, transcription and speech are untouched by the new types.
+    expect(P.defaultModel("chat")).toBe("");
+    expect(P.hasChatModel()).toBe(false);
+
+    rmSync(join(home, "providers.json"));
+    process.env.GEMINI_API_KEY = "g";
+    expect(P.readStoredProviders().defaults).toEqual({ chat: "gemini::gemini-2.5-pro", embeddings: "gemini::gemini-embedding-001" });
   });
 });
 

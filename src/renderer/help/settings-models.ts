@@ -1,14 +1,14 @@
 /**
  * Settings → Models: the user's own model providers, their keys, and the
- * models each serves — typed chat (the agent), transcription (dictation) or
- * speech (spoken replies) — plus the default of each type and the speaking
- * voice. Main stores it all (providers.ts) and the router calls the providers
+ * models each serves — typed chat (the agent), transcription (dictation),
+ * speech (spoken replies), embeddings (memory and search), image or video —
+ * plus the default of each type and the speaking voice. Main stores it all (providers.ts) and the router calls the providers
  * directly; a key goes to main once and only ever comes back masked.
  */
 import { confirmAction } from "./shared.js";
 import { toastOk } from "./toast.js";
 
-type ModelType = "chat" | "transcription" | "speech";
+type ModelType = "chat" | "transcription" | "speech" | "embeddings" | "image" | "video";
 type Kind = "anthropic" | "openai" | "gemini" | "openai-compatible";
 
 interface ProviderRow { id: string; kind: Kind; name: string; baseUrl?: string; keySet: boolean; keyFrom: "saved" | "environment" | null; keyHint: string }
@@ -35,11 +35,16 @@ interface Doors {
 }
 const doors = (): Doors => (window.glyphh ?? {}) as unknown as Doors;
 
-export const TYPE_LABEL: Record<ModelType, string> = { chat: "Chat", transcription: "Transcription", speech: "Speech" };
-const TYPE_HINT: Record<ModelType, string> = {
+export const TYPE_LABEL: Record<ModelType, string> = {
+  chat: "Chat", transcription: "Transcription", speech: "Speech", embeddings: "Embeddings", image: "Image", video: "Video",
+};
+export const TYPE_HINT: Record<ModelType, string> = {
   chat: "What a new session runs on.",
   transcription: "Turns your voice into text when you dictate.",
   speech: "Reads replies aloud in voice mode.",
+  embeddings: "Powers memory and search.",
+  image: "Makes images when a loop asks for one.",
+  video: "Makes video when a loop asks for one.",
 };
 
 /** Where a provider's key comes from, in words. */

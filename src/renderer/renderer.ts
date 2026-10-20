@@ -18,6 +18,8 @@ import type { CliAgentPatch, CliAgentRow, CliId, CliOpenOverrides, CliRoute, Cli
 /** The library kinds a bundle can be: every one of them is a skill, the kind
  *  says which sort (his ruling, 2026-09-17). */
 type SkillKind = "skill" | "app" | "plugin" | "task";
+/** A Pipedream connect's progress (main/pipedream.ts PdConnectProgress). */
+type PdConnectProgress = { phase: "opening"; app: string } | { phase: "waiting"; app: string; url: string } | { phase: "done"; app: string; ok: true; account: { id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string } } | { phase: "done"; app: string; ok: false; error: string; cancelled?: boolean };
 /** Settings → Remote control (mirrors main/remote-control.ts). */
 type RemoteControlView = { enabled: boolean; folders: string[]; device: string; allowed: boolean; attached: boolean; refused?: string; ada: { device_id: string; name: string } | null };
 
@@ -441,6 +443,21 @@ declare global {
       mcpConnectionsUpdate: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; connection?: unknown }>;
       mcpConnectionsDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       mcpConnectionsTools: (slug: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
+      // Pipedream on the user's own project (secret write-only)
+      pipedreamConfigGet: () => Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>;
+      pipedreamConfigSet: (input: { projectId?: string; environment?: "development" | "production"; clientId?: string; clientSecret?: string }) => Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>;
+      pipedreamConfigClear: () => Promise<{ ok: true; data: { configured: boolean; projectId: string; environment: "development" | "production"; clientId: string; secretSet: boolean; secretHint: string } } | { ok: false; error: string }>;
+      pipedreamTest: () => Promise<{ ok: true; data: { accounts: number } } | { ok: false; error: string }>;
+      pipedreamApps: (o: { q?: string; after?: string; category?: string }) => Promise<{ ok: true; data: { apps: Array<{ slug: string; name: string; icon: string | null; description: string; categories: string[] }>; next: string; total: number } } | { ok: false; error: string }>;
+      pipedreamCategories: () => Promise<{ ok: true; data: Array<{ id: string; name: string }> } | { ok: false; error: string }>;
+      pipedreamAccounts: (refresh?: boolean) => Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>;
+      pipedreamConnect: (app: string) => Promise<{ ok: true; data: Extract<PdConnectProgress, { phase: "done" }> } | { ok: false; error: string }>;
+      pipedreamConnectCancel: (app: string) => Promise<{ ok: true; data: { cancelled: boolean } } | { ok: false; error: string }>;
+      pipedreamDisconnect: (accountId: string) => Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>;
+      pipedreamAppEnable: (app: string, on: boolean) => Promise<{ ok: true; data: Array<{ id: string; app: string; appName: string; icon: string | null; healthy: boolean; dead: boolean; createdAt: string; enabled: boolean }> } | { ok: false; error: string }>;
+      pipedreamTools: (app: string) => Promise<{ ok: true; data: Array<{ name: string; description: string }> } | { ok: false; error: string }>;
+      onPipedreamConnectProgress: (cb: (p: PdConnectProgress) => void) => () => void;
+      onPipedreamChanged: (cb: () => void) => () => void;
     };
   }
 }

@@ -790,6 +790,8 @@ ${context}` : task;
           : toolKind(use.name, (c.catalog.find((e) => e.belt && e.name === use.name)?.readOnly ?? c.mcp.get(use.name)?.readOnly) === true);
         const title = inner?.name ? toolTitle(inner.name, inner.args) : toolTitle(use.name, use.input);
         let verdict = gate(c.permission, kind);
+        // A tool its host marked ask-always asks even in Auto; Plan runs nothing that does.
+        if (verdict === "allow" && innerEntry?.ask) verdict = c.permission === "plan" ? "deny" : "ask";
         if (verdict === "ask") {
           const askKind = kind === "exec" ? "command" : kind === "edit" ? "edit" : "tool";
           verdict = (await this.askPermission(c, askKind, title, JSON.stringify(use.input ?? {}, null, 2))) ? "allow" : "deny";

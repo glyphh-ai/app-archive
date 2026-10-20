@@ -18,7 +18,9 @@ import { GlyphhLoop, LOOP_EFFORTS, type LoopAgentDef, type LoopCatalogEntry, typ
 import { createHash } from "node:crypto";
 import { listSkills } from "./skills-fs.js";
 import { callInstanceTool, listInstanceTools } from "./app-instances.js";
-import { callConnectionTool, listConnRows, listConnectionTools } from "./mcp-connections.js";
+import { callConnectionTool, connectionSources, listConnectionTools } from "./mcp-connections.js";
+import { connectionCatalogEntries } from "./connection-catalog.js";
+import { preferencesByPrefix } from "./stores/preferences-db.js";
 import { createRouterFetch } from "@glyphh/sdk/router";
 import { routerConfig, routerCreds } from "./providers.js";
 import { memoryFacts, memoryCapture } from "./memory.js";
@@ -28,7 +30,6 @@ import { connectionsAvailable, defaultChatModel, modelRef } from "./org-models.j
 import { listAgents, onAgentsChanged } from "./local-agents.js";
 import { getWorkingDirectory } from "./working-directory.js";
 import { onModelStateChanged } from "./model-watch.js";
-import * as subagents from "./subagent-ledger.js";
 import { agentLive, noteRunDelta, registerRunRebinder } from "./agent-live.js";
 import { frameTargets, isRelaySink } from "./attach-run-frames.js";
 import { openRing, recordFrame } from "./attach-run-ring.js";
@@ -79,10 +80,11 @@ const CORE: Readonly<{ work: ReadonlySet<string>; code: ReadonlySet<string> }> =
 const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
 
-/** Each installed app's tools, and each of the member's own MCP connections'
- *  tools, as catalog entries. A connection that will not answer in a few
- *  seconds simply has no entries this time. */
-async function catalogEntries(): Promise<LoopCatalogEntry[]> {
+/** Each installed app's tools, and each connection's tools (the member's own
+ *  MCP servers and connected Pipedream apps), as catalog entries. A connection
+ *  that will not answer in a few seconds simply has no entries this time; an
+ *  unattended run carries only the connection tools set to Always allow. */
+async function catalogEntries(unattended = false): Promise<LoopCatalogEntry[]> {
   const out: LoopCatalogEntry[] = [];
   const apps = await listInstanceTools().catch(() => []);
   for (const a of apps) {
@@ -126,18 +128,7 @@ async function catalogEntries(): Promise<LoopCatalogEntry[]> {
       listConnectionTools().catch(() => []),
       new Promise<[]>((res) => setTimeout(() => res([]), 5000)),
     ]);
-    for (const t of conns) {
-      out.push({
-        name: safe(`${t.connection}_${t.name}`), description: (t.description || t.name).slice(0, 1000), family: `connection: ${t.connection}`,
-        ...(t.inputSchema && typeof t.inputSchema === "object" ? { inputSchema: t.inputSchema as Record<string, unknown> } : {}),
-        run: async (args) => {
-          try {
-            const r = await callConnectionTool(t.connection, t.name, args) as { isError?: boolean };
-            return { text: asText(r), failed: r?.isError === true };
-          } catch (err) { return { text: err instanceof Error ? err.message : String(err), failed: true }; }
-        },
-      });
-    }
+    out.push(...connectionCatalogEntries(conns, callConnectionTool, unattended));
   }
   return out;
 }
@@ -164,7 +155,10 @@ function libraryChanged(): boolean {
   let sig = "";
   try {
     const skills = listSkills(["skill", "task", "plugin"]).map((sk) => `${sk.id}:${sk.updatedAt}:${sk.enabled ? 1 : 0}`).sort();
-    const conns = listConnRows().map((c) => `${c.slug}:${c.enabled ? 1 : 0}:${c.hiddenTools.join(",")}`).sort();
+    // A connection on or off, a Pipedream app connected or removed, or a
+    // tool's permission changed all change what the catalog carries.
+    const conns = connectionSources().map((c) => `${c.connection}:${c.hidden.join(",")}`).sort();
+    conns.push(JSON.stringify(preferencesByPrefix("connToolModes:")));
     // A tab's RPA mapping changed (a command mapped, a sequence saved) → the
     // catalog carries a new tool; the tab rows ride the fingerprint for it.
     const tabs = tabRows().map((t) => `${t.slug}:${t.updatedAt}`).sort();
@@ -270,7 +264,7 @@ const unattendedLoop = new GlyphhLoop({
   fetch: routerFetch,
   mcpServers: () => mcpServersFor(true),
   agents: agentDefs,
-  catalog: async () => (await catalogEntries()).filter((e) => !isScreenFamily(e.family)),
+  catalog: async () => (await catalogEntries(true)).filter((e) => !isScreenFamily(e.family)),
   skills: skillIndex,
   facts: async (text, scope) => { const t0 = Date.now(); try { return await memoryFacts(text, scope); } finally { lastFactsMs = Date.now() - t0; } },
   capture: memoryCapture,
@@ -279,8 +273,8 @@ const unattendedLoop = new GlyphhLoop({
 });
 // An agent made or removed anywhere is on the next turn of every open chat.
 onAgentsChanged(() => { loop.invalidateTools(); unattendedLoop.invalidateTools(); });
-// THE CONNECTIONS LANE MOVED on the server (the org's Pipedream switch): the
-// next run lends, or withholds, the connector tools accordingly.
+// THE CONNECTIONS LANE MOVED (the first connection added, or the last one
+// removed): the next run lends, or withholds, the connection tools.
 let connectionsLent = connectionsAvailable();
 onModelStateChanged((c) => {
   if (c.connectionsOn === connectionsLent) return;
@@ -352,10 +346,8 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
     // A SUB-AGENT'S WORDS ARE NOT THE ANSWER (his order, 2026-09-29): a child's
     // deltas are its own feed, so they must never join the parent's reply or
     // the turn's committed text — the person would read the swarm's thinking
-    // spliced into one answer. They still reach the panel, tagged, and the
-    // Agents panel renders them under the child that said them.
+    // spliced into one answer.
     const child = !!ev.agent;
-    recordSwarmFrame(p.chatId, ev);
     if (type === "setup") { mark("working", ev.runId); clock.ready ||= Date.now(); }
     else if (type === "approval") mark("waiting", ev.runId);
     else if (type === "error" && !child) mark("error", ev.runId);
@@ -423,60 +415,6 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
 /** One engine event as the host sees it: the run it belongs to, and the
  *  sub-agent it came from when it is a child's. */
 export type LoopFrame = LoopEvent & { runId: string; agent?: { childId: string; slug: string; name: string; model: string } };
-
-/** THE SWARM'S FEED (his order, 2026-09-29): every sub-agent frame is written
- *  to main's ledger as well as sent on, because the panel that shows the
- *  swarm is not the panel that started the turn. The parent's `done` ends its
- *  swarm. One tap for the agent panel's turns and the Bots panel's. */
-function recordSwarmFrame(chatId: string, ev: LoopFrame): void {
-  const { type, ...payload } = ev;
-  if (ev.agent) {
-    if (type === "agent") {
-      const a = ev as unknown as { phase: "start" | "done"; task?: string; failed?: boolean; summary?: string };
-      if (a.phase === "start") subagents.start(ev.agent, chatId, ev.runId, String(a.task ?? ""));
-      else subagents.finish(ev.agent, !!a.failed, String(a.summary ?? ""));
-    } else if (type === "delta") {
-      subagents.text(ev.agent, String((payload as { delta?: string }).delta ?? ""));
-    } else if (type === "tool") {
-      const t = payload as { phase: "start" | "done"; name?: string; title?: string; failed?: boolean; preview?: string; detail?: unknown; input?: string; output?: string };
-      subagents.tool(ev.agent, t.phase, String(t.name ?? ""), String(t.title ?? t.name ?? ""), t.failed, t.preview, { detail: t.detail, input: t.input, output: t.output });
-    } else if (type === "approval") {
-      subagents.approval(ev.agent, String((payload as { title?: string }).title ?? ""));
-    }
-    return;
-  }
-  if (type === "done") subagents.endRun(ev.runId);
-}
-
-/**
- * A BOT'S TURN (his order, 2026-10-08: "use the glyphh agent loop as the
- * orchestrator and run it in the Bot ui. The orchestrator is just a set of
- * personality and instructions we feed into the loop"). The same interactive
- * engine as the agent panel, on the bot's own thread (`bots/<slug>`), so the
- * bot's conversation keeps its history and the swarm it spawns is ledgered
- * under it. The brief leads the first message of the thread; the frames go
- * to whoever asked (the Bots panel), never to an agent panel.
- */
-export async function runBotTurn(
-  p: { chatId: string; text: string; model?: string; workdir?: string; history?: SeedTurn[] },
-  onFrame: (ev: LoopFrame) => void,
-): Promise<{ runId: string }> {
-  const model = modelRef(p.model ?? "") || defaultChatModel();
-  if (libraryChanged()) { loop.invalidateTools(); unattendedLoop.invalidateTools(); }
-  return loop.run({
-    chatId: p.chatId, text: p.text, model, permission: "auto",
-    // ONE TYPE (2026-10-08): every turn works in a folder — the bot's, else
-    // the member's working folder (working-directory.ts: the set folder, else home).
-    workdir: p.workdir || getWorkingDirectory(),
-    ...(p.history?.length ? { history: p.history } : {}),
-  }, (ev) => {
-    const frame = ev as LoopFrame;
-    recordSwarmFrame(p.chatId, frame);
-    onFrame(frame);
-  });
-}
-
-export function stopBotTurn(chatId: string): boolean { return loop.stop(chatId); }
 
 /**
  * A TURN WITH NO PANEL — a schedule firing, a skill run, a task's slot (his

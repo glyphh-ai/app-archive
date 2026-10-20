@@ -294,17 +294,15 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "agent_save",
-    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, role, created, generatedBrief, brief }.",
+    "MAKE or UPDATE one of the user's agents. Omit `agent` to make a new one (a name already in use is refused — update it instead); pass `agent` to change an existing one (fields you leave out are kept). `description` is WHEN TO USE IT — the main agent reads it to decide what to hand over, so say what the agent is for. `brief` is its standing instruction; OMIT it and Glyphh writes one on the user's default model from the name and description. `model` must be one of the user's models (models_available); omit it to run on the main agent's. Returns { agent, name, description, model, created, generatedBrief, brief }.",
     {
       agent: z.string().optional().describe("The agent to update (its id from agents_list); omit to make a new one"),
       name: z.string().optional().describe("Its name, e.g. \"Researcher\" — required for a new agent"),
       description: z.string().optional().describe("When to use it: what it is for, in a sentence"),
       brief: z.string().optional().describe("Its standing instruction, second person. Omit to have Glyphh write it"),
       model: z.string().optional().describe("Its model slot — one of the user's models; omit for the main agent's"),
-      // THE BOTS PANEL (his order, 2026-10-08): an orchestrator plans the work and hands it to the other bots.
-      role: z.enum(["orchestrator", "worker"]).optional().describe("Its place among the bots: \"worker\" (default) does one kind of work; \"orchestrator\" plans and hands work to the others"),
     },
-    async ({ agent, name, description, brief, model, role }) => via("agents.save", { agent, name, description, brief, model, role }),
+    async ({ agent, name, description, brief, model }) => via("agents.save", { agent, name, description, brief, model }),
   );
   mcp.tool(
     "agent_delete",
@@ -509,10 +507,10 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
     },
   );
 
-  // ── Custom MCP connections — the user's own servers, aggregated ─────
+  // ── Connections — the user's own MCP servers and Pipedream apps ─────
   mcp.tool(
     "connections_list_tools",
-    "List the tools published by the user's CUSTOM MCP CONNECTIONS (their own servers, dialed locally). Returns [{ connection, name, description, inputSchema }]. Call one with connections_call_tool.",
+    "List the tools of the user's CONNECTIONS: their own MCP servers and the apps they connected through Pipedream (Gmail, Slack, GitHub…, connection \"pd:<app>\"), dialed locally. Returns [{ connection, label, name, description, inputSchema, mode }]; mode \"ask\" means the user wants to approve each call. Call one with connections_call_tool.",
     {},
     async () => {
       const tools = await listConnectionTools();
@@ -521,9 +519,9 @@ function buildMcpServer(opts: { unattended?: boolean } = {}): McpServer {
   );
   mcp.tool(
     "connections_call_tool",
-    "Call a tool on one of the user's custom MCP connections (discover with connections_list_tools).",
+    "Call a tool on one of the user's connections — an MCP server of their own or a connected Pipedream app (discover with connections_list_tools).",
     {
-      connection: z.string().describe("Connection slug"),
+      connection: z.string().describe("Connection id from connections_list_tools (a server's slug, or pd:<app>)"),
       tool: z.string().describe("Tool name on that connection"),
       args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments"),
     },

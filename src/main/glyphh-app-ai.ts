@@ -1,7 +1,7 @@
 /**
  * glyphh-app-ai — AI/data services for Glyphh apps (spec v2):
  *
- *   llm.embed        { text | texts, model? }     local embeddings (on-device)
+ *   llm.embed        { text | texts, model? }     embeddings on the user's model
  *   llm.chunk        { text, maxChars?, overlap? } split text for embedding pipelines
  *   vector.upsert    { collection, items }        per-app vector store
  *   vector.search    { collection, query|vector, k?, filter? }
@@ -9,10 +9,11 @@
  *   graph.cypher     { query, params? }           per-app knowledge graph (Kuzu,
  *                                                 embedded — real Cypher)
  *
- * Everything here is ON-DEVICE and slug-scoped like the other services:
- * vectors in ~/.glyphh/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
- * Embeddings run on this machine too (embeddings-config.ts): one built-in
- * local model, no download and no key. Remote chat access (llm.complete / agent.run) lives in
+ * The stores are ON-DEVICE and slug-scoped like the other services: vectors in
+ * ~/.glyphh/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/. Text is
+ * embedded with the user's own embeddings model from Settings › Models
+ * (embeddings-config.ts), through the router with that provider's key; with no
+ * embeddings model, embedding refuses in plain words. Remote chat access (llm.complete / agent.run) lives in
  * glyphh-app-agent.ts and runs on the app's own config-var key.
  *
  * Vector search is exact cosine over Float32 blobs — at desktop scale
@@ -25,7 +26,7 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
-import { localEmbed, offers, orgEmbedModels, resolveEmbedModel } from "./embeddings-config.js";
+import { embedModels, embedWith, offers, resolveEmbedModel } from "./embeddings-config.js";
 
 // kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
 // OPTIONAL feature, and on some machines the prebuilt can't load — most often a
@@ -51,11 +52,11 @@ function loadKuzu(): KuzuModule | null {
 // ── embeddings (llm.embed) ──────────────────────────────────
 const MAX_EMBED_BATCH = 64;
 const MAX_EMBED_CHARS = 8_000;
-const NO_EMBED_MODEL = "no embedding model is configured";
+const NO_EMBED_MODEL = "Memory needs an embeddings model. Add one in Settings › Models.";
 
 async function embedTexts(texts: string[], model: string): Promise<number[][]> {
   if (!model) throw new Error(NO_EMBED_MODEL);
-  return localEmbed(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
+  return embedWith(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
 }
 
 export async function llmEmbed(args: Record<string, unknown>): Promise<{ model: string; dim: number; vectors: number[][] }> {
@@ -146,15 +147,16 @@ function collectionOf(db: Database.Database, name: string): Collection | undefin
   return db.prepare("SELECT name, model, dim FROM collections WHERE name = ?").get(name) as Collection | undefined;
 }
 
-/** A collection embedded with a model the org no longer publishes follows the
- *  model embeds run on now: every stored text is embedded again, in batches, and
- *  an item that came as a bare vector cannot follow and is dropped. A collection
- *  with nothing to carry over is simply forgotten and made afresh by the next
- *  upsert. Nothing moves while the pinned model is still published, or the org
- *  publishes nothing to move to. */
+/** A collection embedded with a model the user no longer has (the old local
+ *  hashed-words model, a removed model) follows the model embeds run on now:
+ *  every stored text is embedded again, in batches, and an item that came as a
+ *  bare vector cannot follow and is dropped. A collection with nothing to carry
+ *  over is simply forgotten and made afresh by the next upsert. Nothing moves
+ *  while the pinned model is still among the user's embeddings models, or there
+ *  is no embeddings model to move to. */
 async function repinned(db: Database.Database, slug: string, coll: Collection): Promise<Collection | undefined> {
-  const models = await orgEmbedModels();
-  if (models === null || !models.length || offers(models, coll.model)) return coll;
+  const models = await embedModels();
+  if (!models.length || offers(models, coll.model)) return coll;
   const next = await resolveEmbedModel();
   if (!next || next === coll.model) return coll;
   const rows = db.prepare("SELECT id, text FROM items WHERE collection = ? AND text IS NOT NULL ORDER BY id").all(coll.name) as
@@ -172,7 +174,7 @@ async function repinned(db: Database.Database, slug: string, coll: Collection): 
     if (dim) db.prepare("UPDATE collections SET model = ?, dim = ? WHERE name = ?").run(next, dim, coll.name);
     else db.prepare("DELETE FROM collections WHERE name = ?").run(coll.name);
   })();
-  console.warn(`[glyphh-app-ai] ${slug}/${coll.name}: ${coll.model} is no longer published; ${rows.length} items embedded again with ${next}, ${dropped} bare vectors dropped`);
+  console.warn(`[glyphh-app-ai] ${slug}/${coll.name}: ${coll.model} is no longer offered; ${rows.length} items embedded again with ${next}, ${dropped} bare vectors dropped`);
   return dim ? { name: coll.name, model: next, dim } : undefined;
 }
 

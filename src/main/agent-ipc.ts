@@ -31,7 +31,7 @@ import { startCliSessionWatch } from "./cli-session-watch.js";
 import {
   bindCliSession, cliChatKnown, cliChatUsage, cliSessionOf, isCliApproval, respondCliApproval, runCliTurn, setCliPermission, stopCliChat,
 } from "./glyphh-cli-bridge.js";
-import { repairChatStore, mergeChats } from "./chat-store-repair.js";
+import { repairChatStore, mergeChats, withoutRetiredThreads } from "./chat-store-repair.js";
 import {
   compactGlyphhLoop, glyphhLoopHas, glyphhLoopUsage, isGlyphhApproval, respondGlyphhApproval,
   runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop, type LoopPermission,
@@ -98,15 +98,16 @@ let repairedFile = "";
 function loadSessionsFile(): SessionsSnapshot {
   adoptLegacySessions();
   const snap = readSnapshot(sessionsFile());
-  if (repairedFile === sessionsFile()) return snap;
+  const live = (chats: StoredChat[]): SessionsSnapshot => ({ ...snap, chats: withoutRetiredThreads(chats) });
+  if (repairedFile === sessionsFile()) return live(snap.chats as StoredChat[]);
   repairedFile = sessionsFile();
   const r = repairChatStore(snap.chats as StoredChat[]);
-  if (!Object.keys(r.repaired).length) return snap;
+  if (!Object.keys(r.repaired).length) return live(snap.chats as StoredChat[]);
   try {
     writeFileSync(sessionsFile(), JSON.stringify({ chats: r.chats, currentId: snap.currentId }), "utf-8");
     try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* announced by the watcher then */ }
   } catch { /* the in-memory copy is repaired either way */ }
-  return { ...snap, chats: r.chats };
+  return live(r.chats);
 }
 
 /** ANOTHER WRITER (the glyphh terminal, 2026-09-21): watch the store and tell
@@ -164,13 +165,7 @@ function storedChat(chatId: string): StoredChat | undefined {
 // replaced by the phone's plain {role, text} copies: the phone writes metadata,
 // and a relayed turn's two messages are appended here (attach-run.ts).
 
-export interface RelayChat extends StoredChat {
-  title?: string; createdAt?: number; mode?: string; workdir?: string; source?: unknown; pinned?: boolean;
-  /** A BOT'S THREAD (his order, 2026-10-08): the slug of the bot this
-   *  conversation is with. The rail lists it under the bot's cat and a click
-   *  opens the Bots panel on it, never the agent panel. */
-  bot?: string;
-}
+export interface RelayChat extends StoredChat { title?: string; createdAt?: number; mode?: string; workdir?: string; source?: unknown; pinned?: boolean }
 
 export function listStoredChats(): RelayChat[] {
   return (loadSessionsFile().chats as RelayChat[]).filter((c) => c && typeof c.id === "string");
@@ -182,7 +177,7 @@ export function getStoredChat(chatId: string): RelayChat | undefined {
 
 /** Create the chat if it is new, else patch its metadata. Messages are only
  *  ever seeded on creation. */
-export function upsertStoredChat(chatId: string, patch: { title?: string; mode?: string; workdir?: string; messages?: StoredMessage[]; bot?: string }): RelayChat {
+export function upsertStoredChat(chatId: string, patch: { title?: string; mode?: string; workdir?: string; messages?: StoredMessage[] }): RelayChat {
   const snap = loadSessionsFile();
   const chats = snap.chats as RelayChat[];
   const now = Date.now();
@@ -192,7 +187,6 @@ export function upsertStoredChat(chatId: string, patch: { title?: string; mode?:
       id: chatId, title: patch.title?.trim() || "New session", createdAt: now, updatedAt: now,
       mode: "code", messages: patch.messages ?? [],
       ...(patch.workdir ? { workdir: patch.workdir, source: { kind: "local", path: patch.workdir } } : {}),
-      ...(patch.bot ? { bot: patch.bot } : {}),
     };
     chats.unshift(chat);
   } else {
@@ -206,7 +200,7 @@ export function upsertStoredChat(chatId: string, patch: { title?: string; mode?:
 
 /** Append one message to a chat (creating it when a relayed turn is its first).
  *  A repeat of the last message is not written twice. */
-export function appendStoredMessage(chatId: string, msg: { role: "user" | "assistant"; text: string }, seed?: { title?: string; mode?: string; workdir?: string; bot?: string }): void {
+export function appendStoredMessage(chatId: string, msg: { role: "user" | "assistant"; text: string }, seed?: { title?: string; mode?: string; workdir?: string }): void {
   const text = msg.text.trim();
   if (!chatId || !text) return;
   const snap = loadSessionsFile();
@@ -221,14 +215,6 @@ export function appendStoredMessage(chatId: string, msg: { role: "user" | "assis
   msgs.push({ role: msg.role, text, at: Date.now() });
   chat.updatedAt = Date.now();
   saveSessionsFile({ chats, currentId: snap.currentId });
-}
-
-/** A chat's messages as plain turns — the Bots panel's thread after a restart. */
-export function storedMessages(chatId: string): Array<{ role: "user" | "assistant"; text: string; at: number }> {
-  const chat = storedChat(chatId);
-  return (Array.isArray(chat?.messages) ? chat.messages : [])
-    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
-    .map((m) => ({ role: m.role as "user" | "assistant", text: String(m.text), at: Number((m as { at?: number }).at ?? 0) || 0 }));
 }
 
 export function deleteStoredChat(chatId: string): boolean {

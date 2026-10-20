@@ -28,7 +28,7 @@ describe("repairChatStore — a transcript appended to itself collapses to its r
   });
 });
 
-import { mergeChats, boundMessages, MAX_THREAD_MESSAGES } from "../../src/main/chat-store-repair.js";
+import { mergeChats, boundMessages, MAX_THREAD_MESSAGES, withoutRetiredThreads } from "../../src/main/chat-store-repair.js";
 
 describe("mergeChats — a saver's stub never erases a stored transcript, and every transcript is bounded", () => {
   const have = [{ id: "a", updatedAt: 10, messages: [m("user", "hi", 1), m("assistant", "hey", 2)] }, { id: "b", updatedAt: 5, messages: [m("user", "b", 1)] }];
@@ -52,5 +52,18 @@ describe("mergeChats — a saver's stub never erases a stored transcript, and ev
     expect(b).toHaveLength(MAX_THREAD_MESSAGES);
     expect(b[0]).toEqual(m("user", "n10", 10));
     expect(mergeChats([], [{ id: "z", updatedAt: 1, messages: looped }])[0].messages).toEqual(turn);
+  });
+});
+
+describe("withoutRetiredThreads — the gone Bots panel's threads stay on disk, hidden", () => {
+  it("drops every bots/<slug> thread from what the store hands out and keeps the rest in order", () => {
+    const chats = [{ id: "a" }, { id: "bots/orchestrator" }, { id: "b" }, { id: "bots/scout" }, { id: "robots/x" }];
+    expect(withoutRetiredThreads(chats).map((c) => c.id)).toEqual(["a", "b", "robots/x"]);
+  });
+  it("a save never erases one: the stored copy survives a merge that does not list it", () => {
+    const have = [{ id: "bots/scout", updatedAt: 1, messages: [m("user", "hi", 1)] }, { id: "a", updatedAt: 1, messages: [] }];
+    const out = mergeChats(have, withoutRetiredThreads(have));
+    expect(out.map((c) => c.id)).toEqual(["a", "bots/scout"]);
+    expect(out[1].messages).toHaveLength(1);
   });
 });

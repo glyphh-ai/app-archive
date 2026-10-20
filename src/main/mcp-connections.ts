@@ -14,6 +14,13 @@
  * "URL" has no scheme (a command line). AUTH is the spec's own dance — on 401
  * the SDK's OAuth 2.1 client discovers/registers, the browser opens, and a
  * loopback listener catches the code; headers under Advanced stay write-only.
+ *
+ * PIPEDREAM APPS (pipedream.ts) are connections here too, under the id
+ * `pd:<app>`: one streamable-HTTP client per connected app at Pipedream's
+ * MCP endpoint, dialed with a freshly minted bearer and re-dialed when that
+ * token rotates or a call comes back 401. They are listed and called through
+ * the same two functions, so every loop — Glyphh's catalog and the CLIs over
+ * the local MCP server — reaches both kinds the same way.
  */
 
 import fs from "fs";
@@ -22,6 +29,8 @@ import os from "os";
 import http from "http";
 import { ipcMain, shell } from "electron";
 import { userScopedPath } from "./app-paths.js";
+import { effectiveToolMode, type ToolMode } from "./conn-tool-modes.js";
+import { currentPdToken, invalidatePdToken, pdMcpAuth, pdToolApps } from "./pipedream.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -30,6 +39,17 @@ import { UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotoc
 import type { OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
 const CONN_DIR = (): string => userScopedPath("connections");
+
+type OAuthPreset = { clientId: string; clientSecret?: string };
+
+/** A Pipedream app's connection id, and back. */
+export const PD_PREFIX = "pd:";
+export const pdConnectionId = (app: string): string => `${PD_PREFIX}${app}`;
+const pdAppOf = (connection: string): string | null => connection.startsWith(PD_PREFIX) ? connection.slice(PD_PREFIX.length) : null;
+
+/** The key a connection's tool permissions are stored under — the one the
+ *  Connections page writes (`connToolModes:<key>`). */
+export const connModeKey = (connection: string): string => pdAppOf(connection) !== null ? connection : `mcp:${connection}`;
 
 export interface McpConnRow {
   slug: string;
@@ -44,6 +64,8 @@ export interface McpConnRow {
 }
 interface ConnSecrets {
   headers?: Record<string, string>;
+  /** A pre-registered OAuth client the user typed in, used instead of dynamic registration. */
+  oauth?: OAuthPreset;
   clientInformation?: OAuthClientInformationFull;
   tokens?: OAuthTokens;
   codeVerifier?: string;
@@ -99,7 +121,7 @@ class LocalOAuthProvider implements OAuthClientProvider {
   authCode: Promise<string> | null = null;
   private server: http.Server | null = null;
   private port = 0;
-  constructor(private readonly slug: string, private readonly preset?: { clientId: string; clientSecret?: string }) {}
+  constructor(private readonly slug: string, private readonly preset?: OAuthPreset) {}
 
   get redirectUrl(): string { return `http://127.0.0.1:${this.port}/callback`; }
   get clientMetadata(): OAuthClientMetadata {
@@ -169,7 +191,8 @@ class LocalOAuthProvider implements OAuthClientProvider {
 
 // ── Connecting — live clients, one per enabled connection ────────────────────
 
-interface LiveConn { client: Client; close: () => Promise<void> }
+/** `token` is the Pipedream bearer a pd connection was dialed with. */
+interface LiveConn { client: Client; close: () => Promise<void>; token?: string }
 const live = new Map<string, LiveConn>();
 
 const isUrl = (s: string): boolean => /^https?:\/\//i.test(s);
@@ -188,7 +211,7 @@ async function dial(row: McpConnRow, interactive: boolean): Promise<LiveConn> {
     return { client, close: () => client.close() };
   }
 
-  const provider = new LocalOAuthProvider(row.slug);
+  const provider = new LocalOAuthProvider(row.slug, secrets.oauth ?? presetOf(secrets.clientInformation));
   const attempt = async (kind: "http" | "sse"): Promise<void> => {
     const mk = (): StreamableHTTPClientTransport | SSEClientTransport => kind === "http"
       ? new StreamableHTTPClientTransport(new URL(row.url), { authProvider: provider, requestInit: { headers } })
@@ -225,8 +248,34 @@ async function dial(row: McpConnRow, interactive: boolean): Promise<LiveConn> {
   return { client, close: () => client.close() };
 }
 
+/** Rows saved before the preset had its own field kept the typed client as
+ *  clientInformation with no redirect URIs; that is a preset, not a
+ *  registration the server handed back. */
+function presetOf(info: OAuthClientInformationFull | undefined): OAuthPreset | undefined {
+  if (!info?.client_id || (Array.isArray(info.redirect_uris) && info.redirect_uris.length)) return undefined;
+  return { clientId: info.client_id, ...(info.client_secret ? { clientSecret: info.client_secret } : {}) };
+}
+
+/** One Pipedream app's MCP server, with the bearer minted now. */
+async function dialPipedream(app: string): Promise<LiveConn> {
+  const auth = await pdMcpAuth(app);
+  const client = new Client({ name: "glyphh-desktop", version: "1.0.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(auth.url), { requestInit: { headers: auth.headers } }));
+  return { client, close: () => client.close(), token: auth.token };
+}
+
 async function getLive(slug: string, interactive = false): Promise<LiveConn> {
   const have = live.get(slug);
+  const app = pdAppOf(slug);
+  if (app !== null) {
+    // The bearer rides the headers fixed at dial: a rotated token re-dials.
+    if (have && have.token === currentPdToken()) return have;
+    if (have) await dropLive(slug);
+    if (!pdToolApps().some((a) => a.app === app)) throw new Error(`no connected Pipedream account for "${app}"`);
+    const conn = await dialPipedream(app);
+    live.set(slug, conn);
+    return conn;
+  }
   if (have) return have;
   const row = readRow(slug);
   if (!row) throw new Error(`connection "${slug}" not found`);
@@ -244,19 +293,64 @@ async function dropLive(slug: string): Promise<void> {
 
 // ── The aggregation surface the local MCP server serves ──────────────────────
 
-export interface ConnTool { connection: string; name: string; description: string; inputSchema: unknown }
+const isUnauthorized = (err: unknown): boolean =>
+  err instanceof UnauthorizedError || (err as { code?: unknown })?.code === 401;
 
-/** Every EXPOSED tool across enabled connections (hidden ones filtered). */
+/** Run against a live connection. A Pipedream server that answers 401 has
+ *  outlived its bearer: mint a new one, re-dial, and try once more. */
+async function withLive<T>(slug: string, work: (conn: LiveConn) => Promise<T>, interactive = false): Promise<T> {
+  try {
+    return await work(await getLive(slug, interactive));
+  } catch (err) {
+    if (pdAppOf(slug) === null || !isUnauthorized(err)) throw err;
+    invalidatePdToken();
+    await dropLive(slug);
+    return work(await getLive(slug));
+  }
+}
+
+/** Every connection the tools come from: the enabled custom servers and the
+ *  connected Pipedream apps that are turned on. */
+export function connectionSources(): Array<{ connection: string; label: string; hidden: string[] }> {
+  return [
+    ...listConnRows().filter((r) => r.enabled).map((r) => ({ connection: r.slug, label: r.name, hidden: r.hiddenTools })),
+    ...pdToolApps().map((a) => ({ connection: pdConnectionId(a.app), label: a.name, hidden: [] as string[] })),
+  ];
+}
+
+/** Is there anything to lend? Synchronous and offline: the custom rows and
+ *  the last Pipedream account list read. */
+export const hasConnections = (): boolean => connectionSources().length > 0;
+
+export interface ConnTool {
+  connection: string;
+  /** The connection's display name ("Gmail", "My CRM"). */
+  label: string;
+  name: string;
+  description: string;
+  inputSchema: unknown;
+  /** What the user allowed (conn-tool-modes.ts); a Never tool is never listed. */
+  mode: Exclude<ToolMode, "never">;
+}
+
+/** One connection's tools as its server publishes them. */
+export async function connectionTools(connection: string, interactive = false): Promise<Array<{ name: string; description: string; inputSchema: unknown }>> {
+  const res = await withLive(connection, (conn) => conn.client.listTools(), interactive);
+  return res.tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema }));
+}
+
+/** Every EXPOSED tool across enabled connections: a hidden or Never tool is
+ *  left out, and each carries the mode it runs under. */
 export async function listConnectionTools(): Promise<ConnTool[]> {
   const out: ConnTool[] = [];
-  for (const row of listConnRows()) {
-    if (!row.enabled) continue;
+  for (const src of connectionSources()) {
     try {
-      const conn = await getLive(row.slug);
-      const res = await conn.client.listTools();
-      for (const t of res.tools) {
-        if (row.hiddenTools.includes(t.name)) continue;
-        out.push({ connection: row.slug, name: t.name, description: t.description ?? "", inputSchema: t.inputSchema });
+      const key = connModeKey(src.connection);
+      for (const t of await connectionTools(src.connection)) {
+        if (src.hidden.includes(t.name)) continue;
+        const mode = effectiveToolMode(key, t.name);
+        if (mode === "never") continue;
+        out.push({ connection: src.connection, label: src.label, name: t.name, description: t.description, inputSchema: t.inputSchema, mode });
       }
     } catch { /* unreachable connection — its tools just don't appear */ }
   }
@@ -264,12 +358,21 @@ export async function listConnectionTools(): Promise<ConnTool[]> {
 }
 
 export async function callConnectionTool(slug: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
-  const row = readRow(slug);
-  if (!row) throw new Error(`connection "${slug}" not found`);
-  if (row.hiddenTools.includes(tool)) throw new Error(`tool "${tool}" is hidden on this connection`);
-  const conn = await getLive(slug);
-  return conn.client.callTool({ name: tool, arguments: args });
+  const app = pdAppOf(slug);
+  if (app === null) {
+    const row = readRow(slug);
+    if (!row) throw new Error(`connection "${slug}" not found`);
+    if (row.hiddenTools.includes(tool)) throw new Error(`tool "${tool}" is hidden on this connection`);
+  } else if (!pdToolApps().some((a) => a.app === app)) {
+    throw new Error(`no connected Pipedream account for "${app}" — connect it in Settings › Connections`);
+  }
+  if (effectiveToolMode(connModeKey(slug), tool) === "never") throw new Error(`tool "${tool}" is set to Never on this connection`);
+  return withLive(slug, (conn) => conn.client.callTool({ name: tool, arguments: args }));
 }
+
+/** Close a connection's live client so the next call dials it fresh — after a
+ *  Pipedream account is added, removed or switched. */
+export async function resetConnection(connection: string): Promise<void> { await dropLive(connection); }
 
 // ── IPC — the exact lanes the main-era page rides ────────────────────────────
 
@@ -296,7 +399,7 @@ export function registerMcpConnectionsIpc(): void {
       writeRow(row);
       writeSecrets(slug, {
         headers,
-        ...(fields.oauth?.clientId ? { clientInformation: { client_id: fields.oauth.clientId, ...(fields.oauth.clientSecret ? { client_secret: fields.oauth.clientSecret } : {}), redirect_uris: [] } as OAuthClientInformationFull } : {}),
+        ...(fields.oauth?.clientId ? { oauth: { clientId: String(fields.oauth.clientId).trim(), ...(fields.oauth.clientSecret ? { clientSecret: String(fields.oauth.clientSecret).trim() } : {}) } } : {}),
       });
       // The connect TEST — interactive: a 401 opens the browser sign-in.
       const conn = await dial(row, true);
@@ -346,11 +449,10 @@ export function registerMcpConnectionsIpc(): void {
     try {
       const row = readRow(String(slug));
       if (!row) return { ok: false, error: "connection not found", tools: [] };
-      const conn = await getLive(row.slug, true);
-      const res = await conn.client.listTools();
+      const tools = await connectionTools(row.slug, true);
       return {
         ok: true,
-        tools: res.tools.map((t) => ({ name: t.name, description: t.description ?? "", hidden: row.hiddenTools.includes(t.name) })),
+        tools: tools.map((t) => ({ name: t.name, description: t.description, hidden: row.hiddenTools.includes(t.name) })),
       };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] };

@@ -29,9 +29,10 @@ export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 export type ProviderKind = "anthropic" | "openai" | "gemini" | "openai-compatible";
 export const PROVIDER_KINDS: readonly ProviderKind[] = ["anthropic", "openai", "gemini", "openai-compatible"];
 
-/** What a model is for: the agent's turns, dictation, or reading replies aloud. */
-export type ModelType = "chat" | "transcription" | "speech";
-export const MODEL_TYPES: readonly ModelType[] = ["chat", "transcription", "speech"];
+/** What a model is for: the agent's turns, dictation, reading replies aloud,
+ *  embedding text for memory and search, or making images and video. */
+export type ModelType = "chat" | "transcription" | "speech" | "embeddings" | "image" | "video";
+export const MODEL_TYPES: readonly ModelType[] = ["chat", "transcription", "speech", "embeddings", "image", "video"];
 
 export interface RouterProvider {
   id: string;
@@ -174,16 +175,21 @@ async function translateOpenAI(p: RouterProvider, model: string, body: Anthropic
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const stream = new ReadableStream<Uint8Array>({
+    // Read until there is something to hand on: a pull that enqueues nothing
+    // is not called again, so a chunk that translates to no frames (an empty
+    // reasoning delta, a usage-only chunk) would stall the turn for good.
     async pull(controller) {
       try {
-        const next = reader ? await reader.read() : { done: true as const, value: undefined };
-        if (next.done) {
-          controller.enqueue(encoder.encode(translator.end()));
-          controller.close();
-          return;
+        for (;;) {
+          const next = reader ? await reader.read() : { done: true as const, value: undefined };
+          if (next.done) {
+            controller.enqueue(encoder.encode(translator.end()));
+            controller.close();
+            return;
+          }
+          const frames = translator.feed(decoder.decode(next.value, { stream: true }));
+          if (frames) { controller.enqueue(encoder.encode(frames)); return; }
         }
-        const frames = translator.feed(decoder.decode(next.value, { stream: true }));
-        if (frames) controller.enqueue(encoder.encode(frames));
       } catch (err) {
         controller.error(err);
       }
@@ -234,6 +240,9 @@ export async function listProviderModels(p: RouterProvider, upstream: FetchLike 
 
 /** A guess at what a listed model is for, so a fetched list arrives typed. */
 export function guessModelType(model: string): ModelType {
+  if (/embed|(^|[^a-z0-9])(bge|e5)([^a-z0-9]|$)|nomic/i.test(model)) return "embeddings";
+  if (/video|(^|[^a-z0-9])(veo|sora|wan|kling)([^a-z]|$)/i.test(model)) return "video";
+  if (/flux|sdxl|stable-diffusion|dall-e|gpt-image|imagen/i.test(model)) return "image";
   if (/whisper|transcri|stt/i.test(model)) return "transcription";
   if (/tts|speech/i.test(model)) return "speech";
   return "chat";
@@ -272,6 +281,34 @@ export async function synthesize(
   });
   if (!res.ok) throw new Error(`${p.name} could not speak (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
   return new Uint8Array(await res.arrayBuffer());
+}
+
+// ── EMBEDDINGS on the OpenAI /embeddings wire ───────────────────────────────
+
+/** Texts to vectors through a provider's `/embeddings`: OpenAI, Gemini's
+ *  OpenAI-compatible surface, Together, Ollama and the rest of the compatible
+ *  tail. Anthropic has no embeddings API. One vector per text, in order. */
+export async function embed(
+  p: RouterProvider, model: string, texts: readonly string[], upstream: FetchLike = (u, i) => fetch(u, i),
+): Promise<number[][]> {
+  if (p.kind === "anthropic") throw new Error(`${p.name} has no embeddings models — add one from OpenAI, Gemini or an OpenAI-compatible server`);
+  const base = baseUrlOf(p);
+  if (!base) throw new Error(`${p.name} has no base URL — set it in Settings › Models`);
+  if (p.kind !== "openai-compatible" && !p.apiKey?.trim()) throw new Error(`${p.name} has no API key — add it in Settings › Models`);
+  if (!texts.length) return [];
+  const res = await upstream(`${base}/embeddings`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders(p) },
+    body: JSON.stringify({ model, input: [...texts] }),
+  });
+  if (!res.ok) throw new Error(`${p.name} could not embed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const j = (await res.json()) as { data?: Array<{ index?: number; embedding?: unknown }> };
+  const rows = [...(j.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const vectors = rows.map((r) => (Array.isArray(r.embedding) ? r.embedding.map(Number) : []));
+  if (vectors.length !== texts.length || vectors.some((v) => !v.length)) {
+    throw new Error(`${p.name} answered ${vectors.length} embeddings for ${texts.length} texts`);
+  }
+  return vectors;
 }
 
 /** The voices the OpenAI speech wire names. Compatible servers mostly accept these too. */

@@ -192,15 +192,15 @@
               <!-- MODELS: the user's own providers, keys and models (help/settings-models.ts,
                    main/models-ipc.ts). The router calls each provider directly. -->
               <div class="settings-panel" data-sub="models">
-                <div class="set-title-row">
-                  <h2>Models</h2>
-                  <button class="action-btn" id="models-add-provider" type="button">Add provider</button>
-                </div>
+                <h2>Models</h2>
                 <p class="section-desc">Your model providers and their keys. Glyphh calls each provider directly with your own key; keys stay on this computer.</p>
                 <div id="models-error" class="settings-error hidden"></div>
                 <h3 class="settings-subheading" style="margin-top:0;">Defaults</h3>
                 <div id="models-defaults"></div>
-                <h3 class="settings-subheading">Providers</h3>
+                <div class="pvd-section-head">
+                  <h3 class="settings-subheading">Providers</h3>
+                  <button class="action-btn" id="models-add-provider" type="button">Add provider</button>
+                </div>
                 <div id="models-providers"></div>
               </div>
               <!-- LOOPS: Glyphh's own loop and the vendor CLIs — on/off and how each
@@ -215,6 +215,11 @@
               <div class="settings-panel" data-sub="memory">
                 <h2>Memory</h2>
                 <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
+                <!-- No embeddings model = memory is off (help/settings-memory.ts). -->
+                <div id="memory-needs-model" class="settings-warn mem-needs-model hidden" role="status">
+                  <span>Memory needs an embeddings model. Add one in Settings › Models.</span>
+                  <button id="memory-open-models" class="action-btn" type="button">Open Models</button>
+                </div>
 
                 <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
                 <label class="settings-toggle set-pref-row">
@@ -540,7 +545,8 @@
                     <button id="conn2-add" class="action-btn primary" type="button">+ Add</button>
                   </div>
                   <div class="skills-tabs">
-                    <button class="skills-tab active" type="button">Your connections</button>
+                    <button class="skills-tab active" data-conn-tab="mine" type="button">Connections</button>
+                    <button class="skills-tab" data-conn-tab="pd" type="button">Discover</button>
                     <div style="flex:1;"></div>
                     <span id="conn2-count" class="skills-count"></span>
                   </div>

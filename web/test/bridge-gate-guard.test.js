@@ -35,6 +35,20 @@ const ALLOWED = {
     localMcpSetPort: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
     localMcpTokensCreate: 'the local MCP section is hidden unless hostHas("localMcpSetEnabled") (f6d9e91f)',
   },
+  'src/renderer/help/settings-connections.ts': {
+    pipedreamAppEnable: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamTools: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamDisconnect: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamConfigSet: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamTest: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamConfigClear: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamApps: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamCategories: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+    pipedreamConnect: 'the Pipedream card and its pd: rows exist only when hostHas("pipedreamConfigGet") (settings-connections.ts pdHosted) — never on web',
+  },
+  'src/renderer/help/composer-plus.ts': {
+    pipedreamAppEnable: 'called only for a pd: row, and those exist only when pipedreamAccounts answered ok — on web it resolves undefined, so there are none',
+  },
   'src/renderer/onboarding.ts': {
     startDeviceLogin: "the desktop's device-login overlay; the web signs in through web/src/web-login.js",
   },

@@ -34,6 +34,16 @@ describe("the rows, per surface", () => {
     expect(rows.find((r) => r.id === "working-folder")?.label).toBe("Working folder: app");
     expect(rows.filter((r) => r.desktopOnly).every((r) => r.codeOnly)).toBe(true);
   });
+  it("the Loop section: the session's loop under its own heading, and a CLI loop's route", () => {
+    const glyphh = plusMenuRows(desktop, st({ loop: { name: "Glyphh", route: null } }));
+    expect(glyphh.map((r) => r.id)).toEqual(["attach", "skills", "connectors", "memory", "loop", "add-folder", "working-folder", "choose-folder"]);
+    expect(glyphh.find((r) => r.id === "loop")).toMatchObject({ label: "Loop: Glyphh", kind: "submenu", sectionBefore: "Loop", sepBefore: true });
+    const claude = plusMenuRows(desktop, st({ loop: { name: "Claude", route: "Direct" } }));
+    expect(claude.map((r) => r.id).slice(4, 6)).toEqual(["loop", "route"]);
+    expect(claude.find((r) => r.id === "route")).toMatchObject({ label: "Route: Direct", kind: "submenu" });
+    expect(claude.find((r) => r.id === "route")?.sectionBefore).toBeUndefined();
+    expect(plusMenuRows(desktop, st({ loop: null })).some((r) => r.id === "loop" || r.id === "route")).toBe(false);
+  });
   it("the web never lists a native row — no attach picker, no folder rows, even in Code", () => {
     const rows = plusMenuRows(web, st({ surface: "web" }));
     expect(rows.map((r) => r.id)).toEqual(["skills", "connectors", "memory"]);
@@ -114,6 +124,36 @@ describe("Connectors › — the custom MCP servers, one switch each", () => {
   it("a host without the read lists nothing; a failing read lists nothing", async () => {
     expect(await readConnectorRows({})).toEqual([]);
     expect(await readConnectorRows({ mcpConnectionsList: async () => { throw new Error("down"); } })).toEqual([]);
+  });
+});
+
+describe("Connectors › — Pipedream apps join the servers", () => {
+  const api: PlusApi = {
+    mcpConnectionsList: async () => ({ ok: true, connections: [{ slug: "linear-mcp", name: "Linear", enabled: true }] }),
+    pipedreamAccounts: async () => ({ ok: true, data: [
+      { app: "gmail", appName: "Gmail", icon: null, enabled: true },
+      { app: "gmail", appName: "Gmail", icon: null, enabled: true },
+      { app: "slack", appName: "Slack", icon: null, enabled: false },
+      { app: "zoom", appName: "Zoom", icon: null, enabled: true, dead: true },
+    ] }),
+    pipedreamAppEnable: vi.fn(async () => ({ ok: true })),
+    mcpConnectionsUpdate: vi.fn(async () => ({ ok: true })),
+  };
+  it("one row per connected app, by name with the servers, a dead account left out", async () => {
+    const rows = await readConnectorRows(api);
+    expect(rows.map((r) => [r.key, r.kind, r.on])).toEqual([["pd:gmail", "pd", true], ["mcp:linear-mcp", "mcp", true], ["pd:slack", "pd", false]]);
+  });
+  it("an app toggles through pipedreamAppEnable, never the server switch", async () => {
+    const rows = await readConnectorRows(api);
+    expect(await toggleConnector(api, rows.find((r) => r.key === "pd:slack")!, true)).toEqual({ ok: true });
+    expect(api.pipedreamAppEnable).toHaveBeenCalledWith("slack", true);
+    expect(api.mcpConnectionsUpdate).not.toHaveBeenCalled();
+    expect((await toggleConnector({}, rows[0]!, true)).ok).toBe(false);
+    expect(await toggleConnector({ pipedreamAppEnable: async () => ({ ok: false, error: "nope" }) }, rows[0]!, true)).toEqual({ ok: false, error: "nope" });
+  });
+  it("a failing account read still lists the servers", async () => {
+    const rows = await readConnectorRows({ ...api, pipedreamAccounts: async () => { throw new Error("down"); } });
+    expect(rows.map((r) => r.key)).toEqual(["mcp:linear-mcp"]);
   });
 });
 

@@ -5,9 +5,10 @@
  *
  *   providers   how to reach each one: its kind, name, base URL and key
  *   models      what each is used for: chat (the agent), transcription
- *               (dictation) or speech (reading replies aloud)
- *   defaults    the model of each type a new session, the mic and the
- *               speaker start on, and the speaking voice
+ *               (dictation), speech (reading replies aloud), embeddings
+ *               (memory and search), image or video (made when a loop asks)
+ *   defaults    the model of each type a new session, the mic, the speaker
+ *               and memory start on, and the speaking voice
  *
  * A provider saved without a key takes its kind's environment variable
  * (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY) at read time, so a key
@@ -28,7 +29,7 @@ import { userScopedPath } from "./app-paths.js";
 
 export type { ModelType, ProviderKind, RouterModel, RouterProvider };
 
-export interface ProviderDefaults { chat?: string; transcription?: string; speech?: string; voice?: string }
+export type ProviderDefaults = Partial<Record<ModelType, string>> & { voice?: string };
 
 export interface ProvidersFile {
   providers: RouterProvider[];
@@ -64,10 +65,12 @@ const STARTER_MODELS: Record<Exclude<ProviderKind, "openai-compatible">, Array<{
     { model: "gpt-5.1", type: "chat" },
     { model: "gpt-4o-mini-transcribe", type: "transcription" },
     { model: "gpt-4o-mini-tts", type: "speech" },
+    { model: "text-embedding-3-small", type: "embeddings" },
   ],
   gemini: [
     { model: "gemini-2.5-pro", type: "chat" },
     { model: "gemini-2.5-flash", type: "chat" },
+    { model: "gemini-embedding-001", type: "embeddings" },
   ],
 };
 

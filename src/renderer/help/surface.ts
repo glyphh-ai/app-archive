@@ -254,7 +254,7 @@ export const WEB_HIDDEN_SETTINGS_ROWS: ReadonlyArray<string> = Object.freeze([
 
 /** The workbench's in-document tool views in the ⋮ menu's order; the
  *  Browser among them needs a streamed panel. */
-export const DESKTOP_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "preview", "diff", "plan", "agents"]);
+export const DESKTOP_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze(["files", "terminal", "monaco", "preview", "diff", "plan"]);
 
 /** The tool views this surface hosts, in the one order. */
 export function toolViewsHosted(caps: Readonly<SurfaceCaps>): ReadonlyArray<string> {

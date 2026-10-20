@@ -25,6 +25,7 @@ export const LOGIN_CMD: Record<string, string> = {
 const AFTER: Record<string, string> = {
   claude: "Then type /login.",
   copilot: "Then type /login.",
+  gemini: "Then type /auth and pick how to sign in.",
 };
 
 /** Phrasings that mean the CLI's OWN LOGIN is out and only a fresh sign-in
@@ -162,6 +163,10 @@ export function authFix(text: string, cli: string): AuthFix | null {
     kind: "signin",
     cli,
     command,
-    message: `${cli}'s login has expired. Run \`${command}\` and sign in again.${after}`,
+    // An API key the provider turned down is not an expired login: say so,
+    // or the user signs in to the same rejected key again.
+    message: /api key not valid|invalid api key/i.test(String(text))
+      ? `${cli} is set to sign in with an API key, and the provider rejected it. Run \`${command}\` and sign in again with another key or another way.${after}`
+      : `${cli}'s login has expired. Run \`${command}\` and sign in again.${after}`,
   };
 }

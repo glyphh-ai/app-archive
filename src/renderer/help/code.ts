@@ -20,8 +20,6 @@ import { placeFixedMenu } from "./menu-place.js";
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { appIconInner, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
-import { avatarOf, botAvatarSvg } from "./bot-avatar.js";
-import { openBotsPanel } from "./bots-events.js";
 import { visibleAppRows } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal, openGroupTab } from "./navigation.js";
 import { turnError } from "./turn-errors.js";
@@ -29,7 +27,7 @@ import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown, streamStableCut } from "../format-markdown.js";
 import { artifactCardEl, artifactFromTool, openArtifactModal, type ArtifactRef } from "./artifacts.js";
 import { stepEl, summaryOf, trimForStore, type ToolDetail, type ToolRec } from "./tool-view.js";
-import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer, voiceState, onVoiceState, cancelRecording, acceptRecording, stopHandsFree, refreshMicChip } from "./voice-mic.js";
 import { composerSlot, composerListening, LISTENING_PLACEHOLDER } from "./composer-state.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
@@ -47,7 +45,6 @@ import { pickUtilityModel } from "./utility-model.js";
 import { toastOk, toastError } from "./toast.js";
 import { RAIL_SHOW_LAYOUTS_PREF, RAIL_SHOW_DEFAULT, RAIL_SECTIONS_CHANGED_EVENT, railTrayShown, RAIL_LAYOUTS_H_PREF, RAIL_LAYOUTS_MIN_H, clampRailLayoutsH } from "./wall-prefs.js";
 import { openCreateWorkspaceModal, openEditWorkspaceModal } from "./workspace-create.js";
-import { glyphhLoopMarkUrl } from "./mascots.js";
 import { hostHas, onWeb } from "./web-surface.js";
 import { mountAgentMenu } from "./agent-menu-ui.js";
 import { mountComposerPlus, manageTargetOf, PLUS_CHECK, type ManageTarget, type PlusApi, type PlusController } from "./composer-plus.js";
@@ -56,7 +53,6 @@ import { picksOf, environmentIdOf } from "./cloud-source.js";
 import { groupByDate } from "./recents-groups.js";
 import { APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS, parseOpenRef } from "./run-frames.js";
 import * as threadStore from "./thread-store.js";
-import { subAgentFeed } from "./subagent-feed.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
@@ -74,8 +70,6 @@ interface CodeChat {
   workdir?: string;
   /** Pinned sessions float to the top of the history dropdown. */
   pinned?: boolean;
-  /** A BOT'S THREAD (main/bots.ts): the slug of the bot this conversation is with. */
-  bot?: string;
   /** LEGACY flag (pre-mode) — kept for back-compat with old stored sessions. */
   chat?: boolean;
   /** THIS SESSION'S TYPE (his order, 2026-09-29: "bring the two types back…
@@ -478,52 +472,22 @@ function paintChips(): void {
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
-  paintLoopChip();
-  paintRouteChip();
-}
-
-/** The loop chip: the loop's name; its menu picks another. */
-function paintLoopChip(): void {
-  const lc = el("code-loop-chip");
-  if (!lc) return;
-  // The CLIs are this machine's: the web runs Glyphh's own loop alone.
-  el("code-loop-wrap")?.classList.toggle("hidden", onWebTarget());
-  const id = activeLoop();
-  lc.textContent = loopName(id);
-  lc.title = `${LOOP_BLURBS[id as keyof typeof LOOP_BLURBS] ?? "The loop that runs this session"} — click to change`;
-  lc.className = `code-chip code-loop-chip loop-${cliOfLoop(id)}`;
-}
-
-/** The route chip: only on a CLI loop — Direct (its own login) or Gateway
- *  (the user's providers through the local router). */
-function paintRouteChip(): void {
-  const wrap = el("code-route-wrap");
-  const rc = el("code-route-chip");
-  if (!wrap || !rc) return;
-  const cli = activeCli();
-  const onCli = isVendorLoop(cli);
-  wrap.classList.toggle("hidden", !onCli);
-  if (!onCli) { el("code-route-menu")?.classList.add("hidden"); return; }
-  const route = routeOf(current());
-  const why = gatewayBlockedWhy(routeLoopOf(activeLoop()), gatewayReady);
-  rc.textContent = ROUTE_LABELS[route];
-  rc.title = why ? `${ROUTE_HINTS[route]} Gateway: ${why}` : `${ROUTE_HINTS[route]} — click to change`;
-  rc.className = `code-chip code-route-chip route-${route}`;
 }
 
 const DROP_CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-/** The loop drop-up: every loop the member has on, its one line under the
- *  name, and on a session with turns, the note that another loop starts a
- *  new session. */
-function renderLoopMenu(): void {
-  const menu = el("code-loop-menu");
-  if (!menu) return;
-  menu.textContent = "";
-  const head = document.createElement("div");
-  head.className = "code-drop-head";
-  head.textContent = "Loop";
-  menu.appendChild(head);
+/** What the + menu's Loop section shows: the session's loop, and on a CLI
+ *  loop its route. Null on the web, where Glyphh's own loop runs alone. */
+function loopSectionState(): { name: string; route: string | null } | null {
+  if (onWebTarget()) return null;
+  const id = activeLoop();
+  return { name: loopName(id), route: isVendorLoop(activeCli()) ? ROUTE_LABELS[routeOf(current())] : null };
+}
+
+/** The Loop pane: every loop the member has on (its mark, its name beside it,
+ *  one line under), and on a session with turns the note that another loop
+ *  starts a new session. */
+function fillLoopList(menu: HTMLElement, done: () => void): void {
   const ids = enabledLoopIds();
   for (const id of LOOP_IDS.filter((x) => ids.includes(x))) {
     const item = document.createElement("button");
@@ -531,7 +495,7 @@ function renderLoopMenu(): void {
     const on = id === activeLoop();
     item.className = "code-drop-item drop-item-2line loop-drop-item" + (on ? " selected" : "");
     const main = document.createElement("div");
-    main.className = "drop-main";
+    main.className = "drop-main loop-drop-main";
     main.appendChild(loopMarkEl(cliOfLoop(id)));
     const name = document.createElement("span");
     name.textContent = loopName(id);
@@ -543,8 +507,9 @@ function renderLoopMenu(): void {
     sub.textContent = boundary ? "Starts a new session — this one stays in Recents" : LOOP_BLURBS[id];
     if (boundary) item.classList.add("loop-drop-boundary");
     item.append(main, sub);
-    item.addEventListener("click", () => {
-      menu.classList.add("hidden");
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      done();
       if (!on) setLoop(id);
     });
     menu.appendChild(item);
@@ -553,20 +518,13 @@ function renderLoopMenu(): void {
   manage.type = "button";
   manage.className = "code-drop-item loop-drop-manage";
   manage.textContent = "Manage loops…";
-  manage.addEventListener("click", () => { menu.classList.add("hidden"); openSettingsModal("loops"); });
+  manage.addEventListener("click", (e) => { e.stopPropagation(); done(); openSettingsModal("loops"); });
   menu.appendChild(manage);
 }
 
-/** The route drop-up: Direct and Gateway, the gateway greyed with the reason
+/** The Route pane: Direct and Gateway, the gateway greyed with the reason
  *  when the loop or the setup cannot take it. */
-function renderRouteMenu(): void {
-  const menu = el("code-route-menu");
-  if (!menu) return;
-  menu.textContent = "";
-  const head = document.createElement("div");
-  head.className = "code-drop-head";
-  head.textContent = "Route";
-  menu.appendChild(head);
+function fillRouteList(menu: HTMLElement, done: () => void): void {
   const now = routeOf(current());
   const why = gatewayBlockedWhy(routeLoopOf(activeLoop()), gatewayReady);
   for (const r of ["direct", "gateway"] as const) {
@@ -585,7 +543,7 @@ function renderRouteMenu(): void {
     sub.className = "drop-sub";
     sub.textContent = blocked ? why! : ROUTE_HINTS[r];
     item.append(main, sub);
-    if (!blocked) item.addEventListener("click", () => { menu.classList.add("hidden"); setRoute(r); });
+    if (!blocked) item.addEventListener("click", (e) => { e.stopPropagation(); done(); setRoute(r); });
     menu.appendChild(item);
   }
 }
@@ -761,6 +719,7 @@ function resolvedDefaultModel(): string {
 }
 
 function paintModelChip(): void {
+  paintSourceMascot();
   const mc = el("code-model-chip");
   if (!mc) return;
   if (activeLane() === "cli") {
@@ -1119,35 +1078,6 @@ function initComposerControls(): void {
     });
     void refreshModelList();
   }
-  // The loop and route chips, left of the model: each its own drop-up.
-  const loopWrap = el("code-loop-wrap");
-  const routeWrap = el("code-route-wrap");
-  const chipDrop = (wrap: HTMLElement | null, chipId: string, menuId: string, render: () => void, onOpen?: () => void): void => {
-    if (!wrap) return;
-    const menu = document.createElement("div");
-    menu.id = menuId;
-    menu.className = "code-drop-up hidden";
-    wrap.appendChild(menu);
-    menu.addEventListener("click", (e) => e.stopPropagation());
-    menu.addEventListener("keydown", (e) => chipMenuKeys(menu, chipId, e));
-    el(chipId)?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      for (const id of ["code-mode-menu", "code-model-menu", "code-level-pop", "code-ctx-pop", "code-loop-menu", "code-route-menu"]) {
-        if (id !== menuId) el(id)?.classList.add("hidden");
-      }
-      const opening = menu.classList.contains("hidden");
-      if (!opening) { menu.classList.add("hidden"); return; }
-      render();
-      menu.classList.remove("hidden");
-      openChipDropUp(menu);
-      onOpen?.();
-    });
-  };
-  // The roster is re-read behind an open menu: a loop turned on in Settings shows at once.
-  chipDrop(loopWrap, "code-loop-chip", "code-loop-menu", renderLoopMenu, () => {
-    void refreshLoops().then(() => { if (!el("code-loop-menu")?.classList.contains("hidden")) renderLoopMenu(); });
-  });
-  chipDrop(routeWrap, "code-route-chip", "code-route-menu", renderRouteMenu);
   void refreshLoops();
   // The effort dial, right of the model chip: a drop-up with the track.
   const levelWrap = el("code-level-wrap");
@@ -1228,8 +1158,6 @@ function initComposerControls(): void {
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (levelWrap && !levelWrap.contains(t)) el("code-level-pop")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
-    if (loopWrap && !loopWrap.contains(t)) el("code-loop-menu")?.classList.add("hidden");
-    if (routeWrap && !routeWrap.contains(t)) el("code-route-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -1407,7 +1335,7 @@ function noteArtifact(chat: CodeChat, art: ArtifactRef): void {
   chat.messages.push({ role: "assistant", kind: "artifact", text: "", artifact: art, at: Date.now() });
 }
 
-/** A frame a SUB-AGENT sent: it carries the child's ref (see subagent-ledger.ts). */
+/** A frame a SUB-AGENT sent: it carries the child's ref (run-frames.ts SubAgentRef). */
 const isChildFrame = (d: unknown): boolean => !!(d as { agent?: unknown } | null)?.agent;
 function pushToolRow(chat: CodeChat, name: string, label: string, title?: string): CodeMsg {
   const msg: CodeMsg = { role: "assistant", kind: "tool", text: label, at: Date.now() };
@@ -2494,6 +2422,9 @@ function selectChat(c: CodeChat): void {
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+/** What to type once the CLI is open, when signing in is not automatic. */
+const SIGNIN_HINT: Record<string, string> = { claude: "(type /login)", copilot: "(type /login)", gemini: "(type /auth)" };
+
 /** The sign-in card: a CLI whose login ran out says which CLI and what
  *  command fixes it (main's glyphh-agent:error `fix`), instead of the raw
  *  error echo. */
@@ -2511,15 +2442,27 @@ function declineCardEl(d: { kind: string; url: string; cli?: string; command?: s
     </div>`;
   const name = d.cli ? LOOP_NAMES[d.cli as keyof typeof LOOP_NAMES] ?? d.cli : "";
   (card.querySelector(".decline-card-title") as HTMLElement).textContent = "Sign in to continue";
-  (card.querySelector(".decline-card-body") as HTMLElement).textContent = d.command
-    ? `${name || "The CLI"} needs you to sign in again — run \`${d.command}\` in a terminal, then send this message once more.`
-    : "The agent needs you to sign in again before a turn can run. Then send this message once more.";
-  const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta")!;
-  // A CLI's login runs in the system terminal (main's cli-login); anything else is Settings' business.
   const cli = d.cli && isVendorLoop(d.cli) ? d.cli : "";
+  // THE PANEL'S OWN TERMINAL VIEW (his report, 2026-10-19: the button opened
+  // an outside terminal while he had already signed in in the panel's): the
+  // CLI opens interactive right here, on this conversation, to sign in.
+  const termView = (): HTMLElement | null => document.getElementById("code-term-toggle");
+  const hint = SIGNIN_HINT[cli] ? ` ${SIGNIN_HINT[cli]}` : "";
+  (card.querySelector(".decline-card-body") as HTMLElement).textContent = !d.command
+    ? "The agent needs you to sign in again before a turn can run. Then send this message once more."
+    : termView()
+      ? `${name || "The CLI"} needs you to sign in again. Sign in from the terminal view${hint}, then come back to chat and send this message once more.`
+      : `${name || "The CLI"} needs you to sign in again — run \`${d.command}\` in a terminal${hint}, then send this message once more.`;
+  const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta")!;
   cta.textContent = cli ? `Sign in to ${name}` : "Open settings";
   cta.addEventListener("click", () => {
-    if (cli) { void window.glyphh.cliLogin?.(cli).then((r) => { if (r && !r.ok) toastError(r.error || "The terminal could not be opened."); }); return; }
+    if (cli) {
+      const toggle = termView();
+      if (toggle) { toggle.click(); return; }
+      // No terminal view here: the CLI's login runs in the system terminal (main's cli-login).
+      void window.glyphh.cliLogin?.(cli).then((r) => { if (r && !r.ok) toastError(r.error || "The terminal could not be opened."); });
+      return;
+    }
     (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
   });
   return card;
@@ -3017,7 +2960,12 @@ type WbBridge = {
   getCwdExplicit?: () => Promise<string | null>;
   pickCwd?: (opts?: { nullOnCancel?: boolean }) => Promise<string | null>;
   onCwdChanged?: (cb: (dir: string | null) => void) => void;
+  gitBranches?: (root: string) => Promise<GitBranchesView>;
+  gitSwitch?: (root: string, branch: string) => Promise<GitBranchesView>;
+  gitCreateBranch?: (root: string, name: string) => Promise<GitBranchesView>;
+  gitInit?: (root: string) => Promise<GitBranchesView>;
 };
+type GitBranchesView = { isRepo: boolean; current?: string; branches: string[]; error?: string };
 const wb = () => (window as unknown as { wb?: WbBridge }).wb;
 
 // The composer gates ONLY when no working folder has ever been chosen —
@@ -3303,11 +3251,100 @@ function paintGitState(): void {
       : "No git repository in this folder yet");
   };
   if (src.kind !== "local") { hide(); return; }
-  // The DESKTOP's local source carries no path — the machine's own working
-  // directory is the folder in play there, so fall back to it.
-  const dirOf = async (): Promise<string> => src.path
-    || (await (wb() as unknown as { getCwdExplicit?: () => Promise<string | null> })?.getCwdExplicit?.().catch(() => null)) || "";
-  void dirOf().then((dir) => (dir ? gitStateFor(dir) : null)).then(paint);
+  wireBranchChip(wrap as HTMLElement);
+  void gitDir().then((dir) => (dir ? gitStateFor(dir) : null)).then(paint);
+}
+
+/** The folder the branch chip speaks for. The DESKTOP's local source carries
+ *  no path — the machine's own working directory is the folder in play there. */
+async function gitDir(): Promise<string> {
+  const src = activeSource();
+  if (src.kind !== "local") return "";
+  return src.path || (await wb()?.getCwdExplicit?.().catch(() => null)) || "";
+}
+
+const BRANCH_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+const BRANCH_IC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>`;
+let branchMenu: HTMLElement | null = null;
+const closeBranchMenu = (): void => { branchMenu?.remove(); branchMenu = null; };
+
+/** THE BRANCH CHIP IS A PICKER: click → the folder's branches (switch), New
+ *  branch…, or — on a folder without git — Turn on git. Wired once per chip. */
+function wireBranchChip(wrap: HTMLElement): void {
+  if (wrap.dataset.picker) return;
+  wrap.dataset.picker = "1";
+  wrap.classList.add("clickable");
+  wrap.setAttribute("role", "button");
+  wrap.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (branchMenu) { closeBranchMenu(); return; }
+    void openBranchMenu(wrap);
+  });
+}
+
+async function openBranchMenu(anchor: HTMLElement): Promise<void> {
+  const bridge = wb();
+  const dir = await gitDir();
+  if (!bridge?.gitBranches || !dir) return;
+  const state = await bridge.gitBranches(dir).catch((err: unknown) => ({ isRepo: false, branches: [], error: err instanceof Error ? err.message : String(err) }) as GitBranchesView);
+  closeBranchMenu();
+  const menu = document.createElement("div");
+  menu.className = "yo-workdir-menu open code-branch-menu";
+  menu.setAttribute("role", "menu");
+  const item = (label: string, opts: { check?: boolean; icon?: string; onClick: () => void }): void => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "yo-workdir-menu-item";
+    b.innerHTML = `<span class="check">${opts.check ? BRANCH_CHECK : ""}</span><span class="ic">${opts.icon ?? ""}</span><span class="nm"></span>`;
+    (b.querySelector(".nm") as HTMLElement).textContent = label;
+    b.title = label;
+    b.addEventListener("click", () => { closeBranchMenu(); opts.onClick(); });
+    menu.appendChild(b);
+  };
+  const after = (p: Promise<GitBranchesView>): void => {
+    void p.then(() => paintGitState(), (err: unknown) => { toastError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)); paintGitState(); });
+  };
+  if (!state.isRepo) {
+    item("Turn on git for this folder", { onClick: () => { if (bridge.gitInit) after(bridge.gitInit(dir)); } });
+  } else {
+    for (const name of state.branches) {
+      item(name, { check: name === state.current, icon: BRANCH_IC, onClick: () => { if (name !== state.current && bridge.gitSwitch) after(bridge.gitSwitch(dir, name)); } });
+    }
+    const sep = document.createElement("div");
+    sep.className = "yo-workdir-menu-sep";
+    menu.appendChild(sep);
+    item("New branch…", { onClick: () => void newBranch(dir) });
+  }
+  document.body.appendChild(menu);
+  branchMenu = menu;
+  // Open UP from the composer row, the folder chip's direction.
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  if (r.top > window.innerHeight / 2) { menu.style.top = "auto"; menu.style.bottom = `${window.innerHeight - r.top + 4}px`; }
+  else { menu.style.bottom = "auto"; menu.style.top = `${r.bottom + 4}px`; }
+  const dismiss = (ev: MouseEvent): void => {
+    if (branchMenu && branchMenu.contains(ev.target as Node)) return;
+    document.removeEventListener("mousedown", dismiss, true);
+    closeBranchMenu();
+  };
+  setTimeout(() => document.addEventListener("mousedown", dismiss, true), 0);
+}
+
+async function newBranch(dir: string): Promise<void> {
+  const bridge = wb();
+  if (!bridge?.gitCreateBranch) return;
+  const { formModal } = await import("./settings-list-page.js");
+  await formModal({
+    title: "New branch",
+    submitLabel: "Create & switch",
+    fields: [{ key: "name", label: "Branch name", required: true, placeholder: "feature/my-change" }],
+    onSubmit: async (v) => {
+      try { await bridge.gitCreateBranch!(dir, v.name.trim()); }
+      catch (err) { return { ok: false as const, error: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err) }; }
+      paintGitState();
+      return { ok: true as const };
+    },
+  });
 }
 
 
@@ -3939,6 +3976,13 @@ function wireComposerAttachments(): void {
       addConnector: () => { toTarget(manageTargetOf(onWeb() ? "web" : "desktop", "connectors")); },
       toast: toastOk,
       place: openChipDropUp,
+      // The Loop section: the roster is re-read first, so a loop turned on in
+      // Settings shows at once.
+      loop: {
+        state: loopSectionState,
+        fillLoops: async (pane, done) => { await refreshLoops().catch(() => undefined); fillLoopList(pane, done); },
+        fillRoutes: fillRouteList,
+      },
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
@@ -4094,6 +4138,8 @@ let orgDefaultModel = "";
       const menu = el("code-model-menu");
       if (menu && !menu.classList.contains("hidden")) renderModelMenu();
     } catch { /* not mounted yet */ }
+    // A transcription or speech model added or removed shows or hides the voice controls.
+    void refreshMicChip(true);
   });
 async function loadDefaultModelPref(): Promise<void> {
   try {
@@ -4158,10 +4204,10 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
     return true;
   }
-  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor", "bots", "agents",
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor",
     "gpoint", "slides", "gdrive", "drive", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", bots: "agents", slides: "gpoint", drive: "gdrive", design: "gdesign",
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", slides: "gpoint", drive: "gdrive", design: "gdesign",
       image: "gimage", video: "gvideo", sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
@@ -4543,7 +4589,6 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   // artifact — it sends through the seated agent and paints the reply from
   // here. Detail: the session, the reply text, whether it was stopped.
   document.dispatchEvent(new CustomEvent("glyphh-agent:turn-finished", { detail: { chatId, text, stopped } }));
-  subAgentFeed.endParent(chatId);   // the swarm leaves with its parent's turn
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
   // restarts the countdown for whatever card is now on top, or stops it.)
@@ -4913,9 +4958,8 @@ function initGlyphhAgentEvents(): void {
   // Agent-loop activity → compact breadcrumb rows in the thread (persisted,
   // so a re-render or restart keeps the run's story).
   window.glyphh.onGlyphhAgentTool?.((d) => {
-    // A SUB-AGENT'S STEP is its own (his order, 2026-09-29): it belongs to the
-    // Agents panel, which reads main's ledger. In this transcript the main
-    // agent's own spawn_agent row already says who took the work.
+    // A SUB-AGENT'S STEP is its own (his order, 2026-09-29): in this transcript
+    // the main agent's own spawn_agent row already says who took the work.
     if (isChildFrame(d)) return;
     const e = runEntry(d.runId);
     if (!e) return;
@@ -5182,7 +5226,8 @@ let railLayouts: RailLayout[] = [];
 interface RailCliAgent { id: string; name: string; cli?: string; icon?: string; cwd?: string }
 const railAgents: RailCliAgent[] = [{ id: GLYPHH_LOOP, name: "Glyphh", cli: GLYPHH_LOOP }];
 /** The loop wears the brand mascot every other surface wears. */
-const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
+// Glyphh's own loop wears the Glyphh mascot (the cat mark the composer shows).
+const railCliMarks: Record<string, string> = { glyphh: GLYPHH_MASCOT_SRC };
 // THE LOOP MARKS ARE BACK ON THE RAIL (his order, 2026-09-30: "the left rail
 // recents needs the 'loop' icon back and the icon for cli vs desktop"). The
 // vendor CLIs wear their public marks, fetched once through main on the
@@ -5200,10 +5245,38 @@ function primeVendorMarks(): void {
       if (!d) return;
       vendorMarks[cli] = d;
       renderRailSessions();
-      paintLoopChip();
+      paintSourceMascot();
     }).catch(() => {});
   }
 }
+/** THE MARK AT THE INPUT'S TOP RIGHT: the loop this session runs on (the
+ *  Glyphh cat, or the CLI's own mark), badged when the turn goes through the
+ *  user's providers — our loop always, a CLI on its gateway route. The tooltip
+ *  names the loop, the model and the route in words. */
+function paintSourceMascot(): void {
+  const host = el("code-source-mascot");
+  if (!host) return;
+  const loop = activeLoop();
+  const cli = cliOfLoop(loop);
+  const viaGateway = activeLane() !== "cli";
+  let modelName: string;
+  if (viaGateway) {
+    const sel = selectedModel();
+    modelName = sel?.name ?? (resolvedDefaultModel() || "no model yet");
+  } else {
+    const pick = cliPick(current(), cli);
+    modelName = pick ? (cliModelChoices(cli).find((m) => m.id === pick)?.name ?? pick) : (loopRowOf(loop)?.model || "its default model");
+  }
+  host.textContent = "";
+  host.appendChild(loopMarkEl(cli));
+  host.classList.toggle("via-gateway", viaGateway);
+  host.title = viaGateway
+    ? `${loopName(loop)} · ${modelName} · through your providers`
+    : `${loopName(loop)} · ${modelName} · on your ${loopName(loop)} login`;
+  host.removeAttribute("aria-hidden");
+  host.setAttribute("aria-label", host.title);
+}
+
 /** A loop's mark: the brand mascot for Glyphh, the vendor's own for a CLI
  *  (its first letter until the mark has loaded, or when it cannot). */
 function loopMarkEl(cli: string): HTMLSpanElement {
@@ -5326,13 +5399,6 @@ void Promise.all([
 function sessMarkEl(sess: RailSession): HTMLSpanElement {
   const mark = document.createElement("span");
   mark.className = "code-sess-mark";
-  if (sess.bot) {
-    // A bot's thread wears the bot's cat (help/bot-avatar.ts) — the record's
-    // own pick when the rail has read it, else the slug's default.
-    mark.innerHTML = botAvatarSvg(avatarOf({ slug: sess.bot, avatar: railBotAvatars.get(sess.bot) ?? null }), "idle", { size: 18 });
-    mark.title = "Bot";
-    return mark;
-  }
   // A session on a CLI wears that CLI's mark, whichever store it came from.
   const cli = cliOfLoop(sess.loop || sess.cli || GLYPHH_LOOP);
   if (isVendorLoop(cli)) {
@@ -5378,9 +5444,6 @@ interface RailSession {
   id: string; cli: string; title: string; cwd: string; mtime: number;
   /** The loop a chat runs on (absent on a CLI's own row: its cli is its loop). */
   loop?: string;
-  /** A BOT'S THREAD (his order, 2026-10-08): the bot's slug. The row wears the
-   *  bot's cat and opens the Bots panel on it, never the agent panel. */
-  bot?: string;
   /** Where the thread runs (his rule, 2026-10-04): the desktop, or the cloud. */
   locus?: Locus;
   /** WEB ONLY: a desktop session whose folder the attached desktop has not
@@ -5388,17 +5451,6 @@ interface RailSession {
   locked?: boolean;
 }
 let railSessions: RailSession[] = [];
-/** The bots' avatars by slug (their agent records), for the rail's bot rows. */
-const railBotAvatars = new Map<string, { variant: number; color: string } | null>();
-async function primeBotAvatars(): Promise<void> {
-  const api = window.glyphh as unknown as { libraryAgentsList?: () => Promise<{ ok: boolean; data?: unknown }> };
-  const env = await api.libraryAgentsList?.().catch(() => null);
-  if (!env?.ok || !Array.isArray(env.data)) return;
-  railBotAvatars.clear();
-  for (const a of env.data as Array<{ slug?: string; avatar?: { variant: number; color: string } | null }>) {
-    if (a && typeof a.slug === "string") railBotAvatars.set(a.slug, a.avatar ?? null);
-  }
-}
 
 // ── THE LIVE LEDGER (main's agent-live.ts) — which sessions have a turn
 //    running ANYWHERE in the app: this document, another agent panel, the CLI.
@@ -5544,7 +5596,6 @@ async function loadRailSessions(): Promise<void> {
         // worth reading.
         mode: SESSION_MODE,
         locus,
-        ...(c.bot ? { bot: c.bot } : {}),
       };
     })
     .sort((a, b) => b.mtime - a.mtime);
@@ -5557,7 +5608,6 @@ async function loadRailSessions(): Promise<void> {
     .map((x) => ({ id: x.id, cli: x.cli, title: x.title, cwd: x.cwd, mtime: x.mtime, locus: "local" as const }));
   railSessions = [...railSessions, ...cliRows].sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
-  if (railSessions.some((s) => s.bot)) await primeBotAvatars();
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // a line pins what this surface actually read — but only when it CHANGED
   // (his report, 2026-10-01: every panel save printed the same pair again).
@@ -5721,8 +5771,6 @@ function sessGrantCard(sess: RailSession): void {
 
 function sessOpen(sess: RailSession): void {
   if (sess.locked) { sessGrantCard(sess); return; }
-  // A BOT'S THREAD opens the Bots panel on that bot (his order, 2026-10-08).
-  if (sess.bot) { openBotsPanel(sess.bot); return; }
   // AGENT PANELS ARE INSTANCES in the shell (his ruling, 2026-09-26): a
   // running session fronts the panel that runs it; any other lands in the
   // panel the user touched last, else in a fresh one. The shell's own
@@ -6189,14 +6237,12 @@ function paintLayoutsGrid(host: RailGridHost): void {
   if (!layouts.length) {
     if (q) railEmpty(list, q, "Workspace", "layouts");
     else {
-      // No workspaces yet: the one action is the same + as the head's.
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "app-rail-empty-btn";
-      btn.textContent = "+ Workspace";
-      btn.title = "Create workspace — save what is on screen";
-      btn.addEventListener("click", (e) => { e.stopPropagation(); void openCreateWorkspaceModal(); });
-      list.appendChild(btn);
+      // No workspaces yet: the section's own + is the way to make one, so the
+      // empty list only says so.
+      const none = document.createElement("div");
+      none.className = "code-empty app-rail-empty";
+      none.textContent = "No workspaces yet.";
+      list.appendChild(none);
     }
   }
 }
@@ -6833,6 +6879,28 @@ export function initCode(): void {
   // "Edit with <loop>"): loop + folder are held for the session the first send
   // creates; the prompt waits in the composer for the user to send.
   (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void }).__glyphhOpenSessionWith = (o) => {
+    // Agent panels are instances: the ask goes to one the way the rail's +
+    // does — a fresh session in the open agent, else a new agent panel in the
+    // loop asked for (the default, Glyphh's). Starting it on the host
+    // document left a blank wall.
+    const w = window as unknown as {
+      __initCodeWorkbench?: () => void;
+      __wbAgentInstanced?: () => boolean;
+      __wbAgentRoute?: (cmd: { type: "prompt"; text: string; cwd?: string; send?: boolean }) => boolean;
+      __wbOpenAgentInstanceWith?: (loop: string | undefined, cmd: { type: "prompt"; text: string; cwd?: string; send?: boolean }) => void;
+    };
+    w.__initCodeWorkbench?.();
+    const route = (tries = 0): void => {
+      if (!w.__wbAgentInstanced) { if (tries < 40) requestAnimationFrame(() => route(tries + 1)); else inPlace(o); return; }
+      if (!w.__wbAgentInstanced()) { inPlace(o); return; }
+      const cmd = { type: "prompt" as const, text: o.prompt, ...(o.cwd ? { cwd: o.cwd } : {}), send: false };
+      if (!o.loop && w.__wbAgentRoute?.(cmd)) return;
+      w.__wbOpenAgentInstanceWith?.(o.loop || GLYPHH_LOOP, cmd);
+    };
+    route();
+  };
+  // No agent instances (the web's single agent): the session starts here.
+  function inPlace(o: { cwd?: string; prompt: string }): void {
     newSessionInPlace();
     if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
     const put = (tries = 0): void => {
@@ -6841,7 +6909,7 @@ export function initCode(): void {
       if (tries < 40) requestAnimationFrame(() => put(tries + 1));
     };
     put();
-  };
+  }
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
@@ -7288,6 +7356,20 @@ export function initCode(): void {
   {
     const moreBtn = el("code-tools-more");
     const menu = el("code-tools-menu");
+    // × — an agent PANEL (a solo shell in the desktop's webview) closes its own
+    // card; the card's head is hidden, so this is the only way out of one.
+    const g = window.glyphh as unknown as { agentPanelClose?: () => Promise<boolean> };
+    const inPanel = (new URLSearchParams(window.location.search).get("solo") || "").startsWith("tool:");
+    if (moreBtn && inPanel && g.agentPanelClose && !el("code-panel-close")) {
+      const close = document.createElement("button");
+      close.id = "code-panel-close";
+      close.type = "button";
+      close.className = "code-icon-btn";
+      close.title = "Close panel";
+      close.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+      close.addEventListener("click", (ev) => { ev.stopPropagation(); void g.agentPanelClose?.(); });
+      (moreBtn.closest(".code-view-more-wrap") ?? moreBtn).after(close);
+    }
     if (moreBtn && menu) {
       mountAgentMenu(menu, moreBtn, {
         session: () => { const c = current(); return c ? { pinned: !!c.pinned } : null; },

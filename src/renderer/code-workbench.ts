@@ -17,7 +17,6 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { formatMarkdown } from "./format-markdown.js";
-import { mountBotsPanel } from "./bots-panel.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle, type RemotePtyTarget } from "./remote-terminal.js";
 import { terminalTransport, type TerminalTransport } from "./help/terminal-target.js";
@@ -44,7 +43,9 @@ function forgetWorkspaceMemory(name: string): void {
 }
 import { webToolReachable, agentCardMovable, webNewSessionInPlace, webNewClosesEverything, panelOpensFullScreen, webFullScreenTitle, webCloseAllOpensNew, surfaceCaps, surfaceHostsTile, surfaceHostsView, surfaceLayoutCells, workspaceOpenLines, GROUP_PAGE_ALIASES } from "./help/surface.js";
 import { HOUSE_VIEW_OF_APP } from "./help/house-relay.js";
+import { evenFractions, fractionsFor, gridShapeSig } from "./help/workspace-grid.js";
 import { mountArtifactsPanel, type ArtifactsPanelHandle } from "./help/artifacts-panel.js";
+import { mountAgentMenu } from "./help/agent-menu-ui.js";
 import { cssColorToHex } from "./help/css-color.js";
 import { AGENT_LAST_VIEW_KEY, LOOP_IDS, DEFAULT_LOOP_PREF, DEFAULT_VIEW_PREF, defaultLoopOf, gatewayHintOf, hopBack, resolveAgentView as resolveViewRule, resolveStartLoop, scopedHopSessions, type AgentView, type CliHop } from "./help/cli-loops.js";
 import type { CliAgentRow, CliRouteHints, MissingCli } from "./help/cli-types.js";
@@ -114,7 +115,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "artifacts";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -225,10 +226,6 @@ interface PreviewSlot {
 
 
 
-/** THE AGENTS PANEL (his order, 2026-09-29): every sub-agent the Glyphh loop
- *  started, each an expandable row with its own feed. It holds no state of its
- *  own — main's ledger is the source (agents-panel.ts). */
-interface AgentsSlot { id: number; view: "agents"; sticky?: boolean }
 /** THE ARTIFACTS PANEL (his order, 2026-10-05) — help/artifacts-panel.ts owns the body; `panel` is its handle for teardown. */
 interface ArtifactsSlot { id: number; view: "artifacts"; sticky?: boolean; panel?: ArtifactsPanelHandle }
 
@@ -275,7 +272,7 @@ interface GDriveSlot {
 interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 /** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
 interface GMediaSlot extends MediaSlotState { sticky?: boolean }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | AgentsSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | ArtifactsSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -316,9 +313,6 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   // as the Echo agent card ("Glyphh") — the internal view key stays "coding"
   // (persisted layouts reference it).
   coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
-  // BOTS (his order, 2026-10-08): the Agents panel, renamed and grown — the
-  // view's id stays `agents` so every saved workspace still opens it.
-  agents:   { title: "Bots",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg>` },
   artifacts: { title: "Artifacts", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
@@ -476,7 +470,7 @@ const legacyKey = (k: unknown): string => {
   }
   return KEY_ALIASES[s] ?? s;
 };
-type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string };
+type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string; cwd?: string };
 /** ONE SHAPE ON BOTH SURFACES (his order, 2026-10-06): the open layout by
  *  name, else the ad-hoc cards in their order — saved and replayed the same
  *  way on the desktop and the web. */
@@ -1255,7 +1249,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "agents" || v === "echo" || v === "monaco" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -1421,7 +1415,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "artifacts");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1516,7 +1510,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "artifacts"): void;
     /** THE WEB'S FULL-SCREEN PANELS (his order, 2026-10-05; help/surface.ts):
      *  Artifacts / Build / Customize fill the page over the agent and every
      *  open card (kept mounted); close restores exactly what was showing. */
@@ -1656,7 +1650,6 @@ async function init(): Promise<void> {
     if (view === "gdesign") return { id, view };
     if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
-    if (view === "agents") return { id, view };
     if (view === "artifacts") return { id, view };
     return { id, view: "preview", url: "" };
   }
@@ -2264,7 +2257,6 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "agents") mountBotsPanel(body);
     else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "gpoint") {
@@ -2801,7 +2793,12 @@ async function init(): Promise<void> {
         if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
         // A CLI agent card is NOT a bare terminal — losing the id here is why
         // a reopened app "reverted to claude" (his report, 2026-09-10).
-        else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
+        else if (t.slug && t.slug.startsWith("agent:")) {
+          // Its folder too: the boot reopens the loop there and the CLI resumes
+          // its own last conversation in it, so the app comes back to it.
+          const cwd = (e.toolSlot as TermSlot | undefined)?.cwd;
+          cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name, ...(cwd ? { cwd } : {}) });
+        }
         else if (t.kind === "tool" && t.toolView) {
           cards.push({ kind: "tool", toolView: t.toolView });
         }
@@ -2897,6 +2894,9 @@ async function init(): Promise<void> {
           const caps = surfaceCaps(IS_WEB_TARGET);
           for (const c of saved.cards) {
             if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
+            // A loop's terminal (the >_ view) comes back on its own CLI's last
+            // conversation in the folder it had.
+            else if (c.kind === "agent" && c.agent) openAgentCliCard(c.agent, undefined, { resumeLast: true, ...(c.cwd ? { cwd: c.cwd } : {}) });
             else if (c.kind === "tool" && c.toolView) {
               if (surfaceHostsView(c.toolView, caps)) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
               else console.warn("[echo] saved panel needs a streamed panel here:", c.toolView);
@@ -3463,6 +3463,11 @@ async function init(): Promise<void> {
         onAgentPanelDrag?: (cb: (p: { wcId: number; phase: "down" | "move" | "up"; cx: number; cy: number; sx: number; sy: number }) => void) => void;
       } }).glyphh;
       let fwd: { x0: number; y0: number; sx0: number; sy0: number } | null = null;
+      // The panel's own × (its card head is hidden): close that card, keep the session.
+      (g as { onAgentPanelClose?: (cb: (p: { wcId: number }) => void) => void } | undefined)?.onAgentPanelClose?.((p) => {
+        const x = entryForWebContents(p.wcId);
+        if (x?.card) closeCard(x, { keepSession: true });
+      });
       g?.onAgentPanelDrag?.((p) => {
         if (p.phase === "down") {
           const x = entryForWebContents(p.wcId);
@@ -4674,7 +4679,7 @@ async function init(): Promise<void> {
      *  already up, is typed into it. */
     /** parkKey: a workspace cell's own key (layout::cell), so two cells or two
      *  workspaces never hand each other their terminals. */
-    type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string; route?: CliRouteHints; parkKey?: string };
+    type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string; route?: CliRouteHints; parkKey?: string; /** The CLI resumes its own last conversation (a boot restore). */ resumeLast?: boolean };
     const openAgentCliCard = (loopId: string, prompt?: string, opts?: AgentOpenOpts): TileEntry | null => {
       const row = cliAgentRows.find((x) => x.id === loopId);
       const name = row?.name ?? loopId;
@@ -4707,7 +4712,7 @@ async function init(): Promise<void> {
       void (g?.cliAgentOpen?.(loopId, {
         light: appIsLight(),
         // "last" with nothing parked: the CLI resumes its own last conversation.
-        ...(opts?.resumeId ? { resume: opts.resumeId } : mode === "last" ? { resume: true } : {}),
+        ...(opts?.resumeId ? { resume: opts.resumeId } : mode === "last" || opts?.resumeLast ? { resume: true } : {}),
         ...(opts?.cwd ? { cwd: opts.cwd } : {}),
         ...(prompt ? { prompt } : {}),
         ...(opts?.route ? { route: opts.route } : {}),
@@ -5431,7 +5436,6 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-        else if (slot.view === "agents") mountBotsPanel(body);
         else if (slot.view === "artifacts") mountArtifactsIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
         else if (slot.view === "gpoint") {
@@ -5801,13 +5805,58 @@ async function init(): Promise<void> {
     };
     /** loop / view / gateway: how the workspace's agent starts — on which
      *  loop, in which face, on which route (null = the member's default). */
-    const saveWorkspace = async (o: { name: string; model?: string; session: "keep" | "new" | "last"; folder?: string; loop?: string | null; view?: "glyphh" | "cli" | null; gateway?: "on" | "off" | null }): Promise<{ ok: boolean; error?: string }> => {
+    type WsEditedGrid = { cols: number; rows: number; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: Record<string, unknown> }> };
+    /** A Create whose grid the user reshaped in the modal: the definition is
+     *  saved as drawn, then opened like any workspace (the screen cannot
+     *  become that shape in place). */
+    const saveWorkspaceReshaped = async (
+      o: { name: string; model?: string; session: "keep" | "new" | "last"; folder?: string; loop?: string | null; view?: "glyphh" | "cli" | null; gateway?: "on" | "off" | null; grid: WsEditedGrid },
+      a: WsArrangement | null,
+    ): Promise<{ ok: boolean; error?: string }> => {
+      const yo = (window as unknown as { glyphh?: { layoutsSaveGrid?: (g: unknown) => Promise<unknown> } }).glyphh;
+      const g = o.grid;
+      const res = await (yo?.layoutsSaveGrid?.({
+        name: o.name, cols: g.cols, rows: g.rows,
+        colWidths: fractionsFor(a && a.cols === g.cols ? a.colWidths : null, g.cols),
+        rowHeights: evenFractions(g.rows),
+        cells: g.cells.map(({ panelId, col, row, colSpan, rowSpan, sticky, config }) => ({ panelId, col, row, colSpan, rowSpan, ...(sticky ? { sticky: true } : {}), ...(config && Object.keys(config).length ? { config } : {}) })),
+        sessionMode: o.session,
+        folder: o.folder || null,
+        ...(o.model ? { modelSelections: { default: o.model } } : {}),
+        loop: o.loop || null,
+        view: o.view ?? null,
+        gateway: o.gateway ?? null,
+      }) ?? Promise.resolve(null)).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+      if (!res) return { ok: false, error: "The workspace could not be saved." };
+      if (typeof res === "object" && (res as { error?: string }).error) return { ok: false, error: (res as { error: string }).error };
+      // "Resume" carries on with the conversation on screen, as the in-place save does.
+      if (o.session === "last") {
+        const cur = (window as unknown as { __agentSessions?: { currentId(): string | null } }).__agentSessions?.currentId?.();
+        if (cur) { try { uiStateSet(layoutSessionKey(o.name), cur); } catch { /* best effort */ } }
+      }
+      saveEchoLayoutMem();   // an outgoing workspace keeps its memory
+      document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+      const open = (window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> }).__wbOpenLayoutByName;
+      if (open) await open(o.name).catch(() => false);
+      return { ok: true };
+    };
+    /** `grid` is the arrangement the modal's grid editor settled on (his
+     *  order, 2026-10-20). The screen's own shape saves IN PLACE as before
+     *  (its cells' pins and setup ride along); another shape is saved and
+     *  then opened through the one open path. */
+    const saveWorkspace = async (o: { name: string; model?: string; session: "keep" | "new" | "last"; folder?: string; loop?: string | null; view?: "glyphh" | "cli" | null; gateway?: "on" | "off" | null; grid?: WsEditedGrid }): Promise<{ ok: boolean; error?: string }> => {
       const a = currentArrangement();
+      if (!a && !o.grid) return { ok: false, error: "Nothing is open to save." };
+      if (o.grid && (!a || gridShapeSig(a.cols, a.rows, a.cells) !== gridShapeSig(o.grid.cols, o.grid.rows, o.grid.cells))) {
+        return saveWorkspaceReshaped(o as typeof o & { grid: WsEditedGrid }, a);
+      }
       if (!a) return { ok: false, error: "Nothing is open to save." };
       const yo = (window as unknown as { glyphh?: { layoutsSaveGrid?: (g: unknown) => Promise<unknown> } }).glyphh;
       const res = await (yo?.layoutsSaveGrid?.({
         name: o.name, ...gridPayload(a),
-        cells: a.cells.map(({ panelId, col, row, colSpan, rowSpan }) => ({ panelId, col, row, colSpan, rowSpan })),
+        cells: o.grid
+          ? o.grid.cells.map(({ panelId, col, row, colSpan, rowSpan, sticky, config }) => ({ panelId, col, row, colSpan, rowSpan, ...(sticky ? { sticky: true } : {}), ...(config && Object.keys(config).length ? { config } : {}) }))
+          : a.cells.map(({ panelId, col, row, colSpan, rowSpan }) => ({ panelId, col, row, colSpan, rowSpan })),
         sessionMode: o.session,
         folder: o.folder || null,
         ...(o.model ? { modelSelections: { default: o.model } } : {}),
@@ -5842,6 +5891,13 @@ async function init(): Promise<void> {
       return { ok: true };
     };
     (window as unknown as { __wbSaveWorkspace?: typeof saveWorkspace }).__wbSaveWorkspace = saveWorkspace;
+    /** The modal's grid editor starts a Create from the arrangement on screen. */
+    (window as unknown as { __wbCurrentArrangement?: () => WsEditedGrid | null }).__wbCurrentArrangement = () => {
+      const a = currentArrangement();
+      return a ? { cols: a.cols, rows: a.rows, cells: a.cells.map(({ panelId, col, row, colSpan, rowSpan }) => ({ panelId, col, row, colSpan, rowSpan })) } : null;
+    };
+    /** The workspace on screen, by name (null when none is open). */
+    (window as unknown as { __wbOpenWorkspaceName?: () => string | null }).__wbOpenWorkspaceName = () => echoLayoutName ?? echoActiveLayout?.name ?? null;
     let wsPersistTimer = 0;
     const persistOpenWorkspace = (): void => {
       if (!echoLayoutName) return;
@@ -6063,7 +6119,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "artifacts"): TileEntry => {
       // An agent's CLI card is a terminal too (slug agent:<loop>) — but it is
       // the AGENT, not the Terminal tool (his report, 2026-09-26: with a
       // Glyphh agent open, Terminal from the ⋮ menu "can't / won't open" — it
@@ -6131,6 +6187,11 @@ async function init(): Promise<void> {
       for (const x of [...openList]) if (x !== opening && x.card && isPagePanel(x)) closeCard(x);
       (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen?.();
     }
+    /** Close the card a node sits in (a CLI card's own ×, whose card head is hidden). */
+    (window as unknown as { __wbCloseCardOf?: (node: HTMLElement) => void }).__wbCloseCardOf = (node) => {
+      const x = openList.find((o) => o.card?.contains(node));
+      if (x) closeCard(x, { keepSession: true });
+    };
     (window as unknown as { __wbClosePagePanels?: () => void }).__wbClosePagePanels = () => {
       for (const x of [...openList]) if (x.card && isPagePanel(x)) closeCard(x);
       (window as unknown as { __wbCloseFullScreen?: () => void }).__wbCloseFullScreen?.();
@@ -8932,16 +8993,21 @@ async function init(): Promise<void> {
       b.addEventListener("click", (ev) => { ev.stopPropagation(); onClick(ev); });
       return b;
     };
-    const back = mkBtn("Back to chat", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`, toChat);
+    // THE SAME ROW AS THE CHAT'S HEAD (sections/code.html .code-agent-head),
+    // laid out the same way: the session's name on the left, and on the right
+    // the chat-view button in the >_ slot, then recents, + and the one ⋮ menu —
+    // so switching views never moves or drops a control. Its own classes, not
+    // the chat head's: the chat code finds its head and actions by class
+    // across the document, and a landing rule hides .code-agent-head.
     const title = document.createElement("span");
-    title.className = "ws-agent-term-title";
+    title.className = "session-head-title ws-agent-term-title";
     title.textContent = agent.name;
     title.title = "Back to chat";
     title.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
-    // The newest session in this loop's lane names the row.
-    if (cli !== "glyphh") void scopedCliSessions(agent.id, slot.cwd).then((rows) => { if (rows[0]?.title) title.textContent = `${agent.name} · ${rows[0].title}`; });
-    const spacer = document.createElement("span");
-    spacer.style.flex = "1";
+    // The newest session in this loop's lane names the row, as the chat names its own.
+    if (cli !== "glyphh") void scopedCliSessions(agent.id, slot.cwd).then((rows) => { if (rows[0]?.title) title.textContent = rows[0].title; });
+    const spacer = document.createElement("div");
+    spacer.className = "code-spacer";
     const chat = mkBtn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`, toChat);
     const recents = mkBtn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`, (ev) => {
       // THE recents dropdown the chat head opens (help/code.ts). A session of
@@ -8973,7 +9039,34 @@ async function init(): Promise<void> {
         mountTerminal(hostEl, slot);
       })();
     });
-    tabsEl.append(back, title, spacer, chat, recents, fresh);
+    // THE ONE ⋮ MENU (help/agent-menu-ui.ts): the panels, apps and workspaces,
+    // as on the chat. The session actions (rename, pin, delete) belong to a
+    // chat row, so the terminal face leaves them to the chat.
+    const moreWrap = document.createElement("div");
+    moreWrap.className = "code-view-more-wrap";
+    const more = mkBtn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>`, () => undefined);
+    more.setAttribute("aria-haspopup", "true");
+    const menu = document.createElement("div");
+    menu.className = "code-view-more-menu hidden";
+    moreWrap.append(more, menu);
+    mountAgentMenu(menu, more, { session: () => null, onSession: () => undefined });
+    // One outside-click listener per painted head: a repaint drops the last one.
+    const headWithAbort = tabsEl as HTMLElement & { __headAbort?: AbortController };
+    headWithAbort.__headAbort?.abort();
+    const abort = new AbortController();
+    headWithAbort.__headAbort = abort;
+    document.addEventListener("pointerdown", (ev) => {
+      if (!menu.classList.contains("hidden") && !moreWrap.contains(ev.target as Node)) menu.classList.add("hidden");
+    }, { capture: true, signal: abort.signal });
+    // × — the card's own close (its card head is hidden): the CLI session stays in the recents.
+    const close = mkBtn("Close panel", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`, () => {
+      (window as unknown as { __wbCloseCardOf?: (node: HTMLElement) => void }).__wbCloseCardOf?.(tabsEl);
+    });
+    close.classList.add("ws-agent-close");
+    const actions = document.createElement("div");
+    actions.className = "ws-agent-term-actions";
+    actions.append(chat, recents, fresh, moreWrap, close);
+    tabsEl.append(title, spacer, actions);
   }
 
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {
@@ -9929,6 +10022,15 @@ async function init(): Promise<void> {
     uiStateRemovePrefix(namedLayoutKey(name));
     return wbApp.__wbOpenLayoutByName!(name);
   };
+  /** AN EDITED WORKSPACE THAT IS OPEN SHOWS THE EDIT (his order, 2026-10-20):
+   *  the workspace modal saved a new design for it, so it re-opens from that
+   *  design the way a reset does — the old arrangement memory forgotten, the
+   *  conversation kept. False when the named workspace is not the open one. */
+  (window as unknown as { __wbRefreshWorkspace?: (name: string) => Promise<boolean> }).__wbRefreshWorkspace = async (name: string): Promise<boolean> => {
+    const open = (window as unknown as { __wbOpenWorkspaceName?: () => string | null }).__wbOpenWorkspaceName?.() ?? activeLayoutName;
+    if (!open || open.trim().toLowerCase() !== name.trim().toLowerCase()) return false;
+    return wbApp.__wbResetLayout!();
+  };
   /** `.dip refresh` — reload whatever webview is on top (a panel card first,
    *  then a rail slot). A native panel has nothing to reload; it is left be. */
   (window as unknown as { __wbReloadFocused?: () => void }).__wbReloadFocused = () => {
@@ -10014,7 +10116,7 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "agents", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound", "artifacts"].includes(v)) return;
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound", "artifacts"].includes(v)) return;
     // THE WEB CUT (his order, 2026-10-05): the Browser is a streamed panel —
     // not reachable on the web from any door (help/surface.ts).
     if (IS_WEB_TARGET && !webToolReachable(v)) { console.warn("[surface] the Browser needs a streamed panel — not reachable here:", v); return; }
@@ -10031,7 +10133,7 @@ async function init(): Promise<void> {
         ?.agentPanelOpenTool?.({ view: v, ...(cwdNow ? { cwd: cwdNow } : {}) });
       return;
     }
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "agents" | "artifacts"); return; }
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound" | "artifacts"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

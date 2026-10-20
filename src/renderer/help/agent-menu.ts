@@ -76,7 +76,7 @@ export const ARTIFACTS_VIEW = "artifacts";
 export const CODE_TOOL_VIEWS: ReadonlyArray<string> = Object.freeze([...DESKTOP_TOOL_VIEWS, ARTIFACTS_VIEW]);
 
 const TOOL_LABELS: Record<string, string> = {
-  files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", agents: "Bots", preview: "Browser", artifacts: "Artifacts",
+  files: "Files", terminal: "Terminal", monaco: "Editor", diff: "Diff", plan: "Plan", preview: "Browser", artifacts: "Artifacts",
 };
 
 /** The one app kind the Apps section lists: an installed Glyphh app

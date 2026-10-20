@@ -3,8 +3,13 @@
  * machine, what it has remembered, and the door to clear it all. Main reads
  * the same preferences (memory.ts), so what this page shows is what the loop
  * does.
+ *
+ * Memory runs on the user's embeddings model (Settings › Models). With none,
+ * memory is off: a line at the top says so with a door to Models, and the
+ * switches are held off until one exists.
  */
 import { keepIfHost } from "./web-surface.js";
+import { openSettingsModal } from "./navigation.js";
 import { confirmAction } from "./shared.js";
 import { toastOk } from "./toast.js";
 import { createGlyphhSpinner } from "../glyphh-spinner.js";
@@ -15,17 +20,38 @@ const notice = (msg: string): void => { toastOk(msg); };
 const PREFS = { inject: "memoryInject", capture: "memoryCapture", sensitive: "memorySensitive" } as const;
 const DEFAULTS: Record<keyof typeof PREFS, boolean> = { inject: true, capture: true, sensitive: false };
 
+/** What Settings › Memory says with no embeddings model. */
+export const MEMORY_NEEDS_MODEL = "Memory needs an embeddings model. Add one in Settings › Models.";
+
+interface EmbedConfig { ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }
+
+/** Whether memory can run: there is an embeddings model to remember with. A
+ *  surface that cannot say (no door, a failed read) is taken as ready, so the
+ *  page never claims a model is missing when it does not know. */
+export function memoryHasModel(cfg: EmbedConfig | null | undefined): boolean {
+  if (!cfg || !cfg.ok) return true;
+  return !!cfg.model;
+}
+
 export async function loadMemorySettings(): Promise<void> {
   const g = window.glyphh as unknown as {
     getPreference?: (k: string, d: unknown) => Promise<unknown>;
     setPreference?: (k: string, v: unknown) => void;
     memoryStats?: () => Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>;
     memoryClear?: () => Promise<{ ok: boolean; deleted?: number; error?: string }>;
+    embeddingsConfigGet?: () => Promise<EmbedConfig>;
   };
+  const ready = memoryHasModel(await g.embeddingsConfigGet?.().catch(() => null));
+  const needs = el("memory-needs-model");
+  needs?.classList.toggle("hidden", ready);
+  const openModels = el<HTMLButtonElement>("memory-open-models");
+  if (openModels) openModels.onclick = () => { openSettingsModal("models"); };
   for (const key of Object.keys(PREFS) as Array<keyof typeof PREFS>) {
     const box = el<HTMLInputElement>(`toggle-memory-${key}`);
     if (!box) continue;
     box.checked = (await g.getPreference?.(PREFS[key], DEFAULTS[key])) === true;
+    box.disabled = !ready;
+    box.closest(".set-pref-row")?.classList.toggle("mem-off", !ready);
     box.onchange = () => { g.setPreference?.(PREFS[key], box.checked); };
   }
 
@@ -159,7 +185,7 @@ export async function renderMemoryBrowser(): Promise<void> {
 }
 
 /** The embeddings model chip under the composer: shows the model the memory
- *  is embedded through and opens a picker of the org's embedding models.
+ *  is embedded through and opens a picker of the user's embeddings models.
  *  Same preference the Settings → Memory select writes (embeddingsConfigSet). */
 async function wireMemoryModelChip(chip: HTMLButtonElement): Promise<void> {
   const g = window.glyphh as unknown as {
@@ -175,7 +201,7 @@ async function wireMemoryModelChip(chip: HTMLButtonElement): Promise<void> {
     chip.classList.toggle("warn", !current);
   };
   label();
-  if (!models.length) { chip.classList.add("is-locked"); chip.title = "No embeddings models are published for your organization."; return; }
+  if (!models.length) { chip.classList.add("is-locked"); chip.title = MEMORY_NEEDS_MODEL; return; }
   let menu: HTMLDivElement | null = null;
   const close = (): void => { menu?.remove(); menu = null; document.removeEventListener("click", onOutside, true); };
   const onOutside = (ev: MouseEvent): void => { if (!(ev.target as HTMLElement).closest(".mem-model-menu, .mem-model-chip")) close(); };

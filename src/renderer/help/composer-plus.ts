@@ -10,15 +10,21 @@
  *                              and drag-drop stay as shortcuts)
  *   Skills ›                   the member's skills, a check toggles each
  *                              (skillSetEnabled); Manage skills → Build › Skills
- *   Connectors ›               the member's custom MCP servers — a check
+ *   Connectors ›               the member's custom MCP servers and the
+ *                              apps connected through Pipedream — a check
  *                              toggles a server's enabled flag
- *                              (mcpConnectionsUpdate, the Connections page's
- *                              own switch); Add connector / Manage
+ *                              (mcpConnectionsUpdate) or an app's switch
+ *                              (pipedreamAppEnable), the Connections page's
+ *                              own switches; Add connector / Manage
  *                              connectors → Connections
  *   Memory ✓                   the member's memory preference (the Settings →
  *                              Memory switches `memoryInject` + `memoryCapture`
  *                              — there is no per-session memory flag, so this
  *                              is the same preference the page toggles)
+ *   ── Loop (desktop) ──
+ *   Loop: <name> ›             the loop that runs this session (Glyphh or a CLI)
+ *   Route: <Direct|Gateway> ›  a CLI loop's route: its own login, or the
+ *                              user's providers through the local router
  *   ── desktop only ──
  *   Add folder…                read access to another directory (Code)
  *   Working folder / Choose…   the session's folder (the OS picker)
@@ -31,7 +37,7 @@ import { appIconInner } from "./app-icon.js";
 
 export type PlusSurface = "desktop" | "web";
 export type PlusSpace = "code";
-export type PlusRowId = "attach" | "skills" | "connectors" | "memory" | "add-folder" | "working-folder" | "choose-folder";
+export type PlusRowId = "attach" | "skills" | "connectors" | "memory" | "loop" | "route" | "add-folder" | "working-folder" | "choose-folder";
 export type PlusRowKind = "action" | "submenu" | "check";
 
 export interface PlusRow {
@@ -48,6 +54,8 @@ export interface PlusRow {
   codeOnly?: boolean;
   /** A separator above this row. */
   sepBefore?: boolean;
+  /** A section heading above this row. */
+  sectionBefore?: string;
   hint?: string;
 }
 
@@ -84,6 +92,8 @@ export const PLUS_ICONS = {
   plus: `<svg viewBox="0 0 24 24" ${S}><path d="M12 5v14M5 12h14"/></svg>`,
   gear: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`,
   back: `<svg viewBox="0 0 24 24" ${S}><polyline points="15 18 9 12 15 6"/></svg>`,
+  loop: `<svg viewBox="0 0 24 24" ${S}><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
+  route: `<svg viewBox="0 0 24 24" ${S}><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7"/><path d="M18 11.5c0 3-4 3.5-10 5"/></svg>`,
 } as const;
 export const PLUS_CHECK = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 export const PLUS_CARET = `<svg class="drop-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
@@ -100,6 +110,8 @@ export interface PlusState {
   memoryOn: boolean;
   /** The session's working folder name (desktop; null = not set). */
   workingFolder?: string | null;
+  /** The session's loop, and on a CLI loop its route; absent where loops are not offered. */
+  loop?: { name: string; route: string | null } | null;
 }
 
 /** THE ROWS, per surface: the web (hostHas) never sees a native row; Chat
@@ -111,6 +123,11 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
   if (caps.skills) rows.push({ id: "skills", label: "Skills", icon: PLUS_ICONS.skills, kind: "submenu", sepBefore: rows.length > 0 });
   if (caps.connectors) rows.push({ id: "connectors", label: "Connectors", icon: PLUS_ICONS.connectors, kind: "submenu" });
   if (caps.memory) rows.push({ id: "memory", label: "Memory", icon: PLUS_ICONS.memory, kind: "check", checked: st.memoryOn, sepBefore: rows.length > 0, hint: st.memoryOn ? "Glyphh remembers this session" : "Off — nothing is remembered" });
+  // THE LOOP SECTION (desktop): which loop runs the session, and a CLI's route.
+  if (st.loop) {
+    rows.push({ id: "loop", label: `Loop: ${st.loop.name}`, icon: PLUS_ICONS.loop, kind: "submenu", sepBefore: rows.length > 0, sectionBefore: "Loop", hint: "The loop that runs this session" });
+    if (st.loop.route) rows.push({ id: "route", label: `Route: ${st.loop.route}`, icon: PLUS_ICONS.route, kind: "submenu", hint: "Its own login, or your providers through Glyphh" });
+  }
   // The folder family is the DESKTOP's (the OS pickers), where a session has
   // a folder to walk.
   if (st.surface === "desktop") {
@@ -128,11 +145,14 @@ export function plusMenuRows(caps: PlusCaps, st: PlusState): PlusRow[] {
 type Env<T> = { ok: boolean; data?: T; error?: string };
 export interface PlusSkill { id: string; name: string; enabled: boolean; type?: string }
 export interface PlusMcp { slug: string; name: string; enabled: boolean; iconUrl?: string | null }
+export interface PlusPdAccount { app: string; appName: string; icon: string | null; enabled: boolean; dead?: boolean }
 export interface PlusApi {
   skillsList?: (kinds: string[]) => Promise<Env<PlusSkill[]>>;
   skillSetEnabled?: (id: string, on: boolean) => Promise<Env<PlusSkill>>;
   mcpConnectionsList?: () => Promise<{ ok: boolean; connections: PlusMcp[] }>;
   mcpConnectionsUpdate?: (slug: string, fields: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+  pipedreamAccounts?: (refresh?: boolean) => Promise<Env<PlusPdAccount[]>>;
+  pipedreamAppEnable?: (app: string, on: boolean) => Promise<{ ok: boolean; error?: string }>;
   getPreference?: (key: string, defaultVal?: unknown) => Promise<unknown>;
   setPreference?: (key: string, value: unknown) => unknown;
 }
@@ -153,12 +173,15 @@ export async function toggleSkill(api: PlusApi, id: string, on: boolean): Promis
   catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
 }
 
-/** One connector row of the submenu: a custom MCP server and its switch. */
+/** One connector row of the submenu: a custom MCP server or a connected
+ *  Pipedream app, and its switch. */
 export interface PlusConnectorRow {
   key: string;
   name: string;
   on: boolean;
+  /** The server's slug, or the Pipedream app's. */
   slug: string;
+  kind: "mcp" | "pd";
   /** The server's logo, built exactly as the Connections page builds it
    *  (app-icon.ts appIconInner: its iconUrl, else the monogram). His order,
    *  2026-10-06: "pulled from the same place they are pulled from on the
@@ -166,21 +189,36 @@ export interface PlusConnectorRow {
   icon: string;
 }
 export async function readConnectorRows(api: PlusApi): Promise<PlusConnectorRow[]> {
-  const custom = await (api.mcpConnectionsList?.().catch(() => ({ ok: false, connections: [] as PlusMcp[] })) ?? Promise.resolve({ ok: false, connections: [] as PlusMcp[] }));
-  return (custom?.connections ?? [])
-    .map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, on: !!m.enabled, slug: m.slug, icon: connectorIcon({ iconUrl: m.iconUrl ?? null }, m.name) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const [custom, pd] = await Promise.all([
+    api.mcpConnectionsList?.().catch(() => ({ ok: false, connections: [] as PlusMcp[] })) ?? Promise.resolve({ ok: false, connections: [] as PlusMcp[] }),
+    api.pipedreamAccounts?.().catch(() => null) ?? Promise.resolve(null),
+  ]);
+  const rows = (custom?.connections ?? [])
+    .map((m): PlusConnectorRow => ({ key: `mcp:${m.slug}`, name: m.name, on: !!m.enabled, slug: m.slug, kind: "mcp", icon: connectorIcon({ iconUrl: m.iconUrl ?? null }, m.name) }));
+  // One row per connected app: two accounts of one app share its switch.
+  const apps = new Map<string, PlusConnectorRow>();
+  for (const a of pd?.ok ? pd.data ?? [] : []) {
+    if (a.dead || apps.has(a.app)) continue;
+    apps.set(a.app, { key: `pd:${a.app}`, name: a.appName || a.app, on: a.enabled !== false, slug: a.app, kind: "pd", icon: connectorIcon({ iconUrl: a.icon }, a.appName || a.app) });
+  }
+  return [...rows, ...apps.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 /** One connector's icon markup — the Connections page's own builder. */
 export function connectorIcon(app: { iconUrl: string | null }, name: string): string {
   return appIconInner(app, name, "drop-icon-initial");
 }
 
-/** A server's switch — the same door the Connections page's "Turn on/off" calls. */
+/** A connector's switch — the same door the Connections page's "Turn on/off" calls. */
 export async function toggleConnector(api: PlusApi, row: PlusConnectorRow, on: boolean): Promise<{ ok: boolean; error?: string }> {
-  if (!api.mcpConnectionsUpdate) return { ok: false, error: "This host cannot switch a server." };
-  try { return await api.mcpConnectionsUpdate(row.slug, { enabled: on }); }
-  catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  try {
+    if (row.kind === "pd") {
+      if (!api.pipedreamAppEnable) return { ok: false, error: "This host cannot switch an app." };
+      const r = await api.pipedreamAppEnable(row.slug, on);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    }
+    if (!api.mcpConnectionsUpdate) return { ok: false, error: "This host cannot switch a server." };
+    return await api.mcpConnectionsUpdate(row.slug, { enabled: on });
+  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
 }
 
 // ── Memory: the member's preference (there is no per-session flag) ───────
@@ -238,6 +276,13 @@ export interface PlusDoors {
   toast: (msg: string) => void;
   /** Place an opened drop-up (openChipDropUp on the live renderer). */
   place: (menu: HTMLElement) => void;
+  /** The Loop section: the session's loop and route, and the panes that pick
+   *  them (the composer owns the loops). Absent = no Loop section. */
+  loop?: {
+    state: () => { name: string; route: string | null } | null;
+    fillLoops: (pane: HTMLElement, done: () => void) => void | Promise<void>;
+    fillRoutes: (pane: HTMLElement, done: () => void) => void;
+  };
 }
 
 export interface PlusController {
@@ -333,10 +378,16 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     const pane = document.createElement("div");
     pane.className = "drop-pane plus-root";
     menu.appendChild(pane);
-    const st: PlusState = { surface: doors.surface, space: doors.space(), memoryOn: memory.on, workingFolder: null };
+    const st: PlusState = { surface: doors.surface, space: doors.space(), memoryOn: memory.on, workingFolder: null, loop: doors.loop?.state() ?? null };
     const rows = plusMenuRows(caps, st);
     for (const r of rows) {
       if (r.sepBefore) pane.appendChild(sepEl());
+      if (r.sectionBefore) {
+        const head = document.createElement("div");
+        head.className = "code-drop-head plus-section";
+        head.textContent = r.sectionBefore;
+        pane.appendChild(head);
+      }
       const b = rowEl({ label: r.label, icon: r.icon, kind: r.kind, checked: r.checked, shortcut: r.shortcut, hint: r.hint });
       b.dataset.plusRow = r.id;
       if (r.codeOnly) b.classList.add("plus-folder-only");
@@ -348,6 +399,8 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
           case "working-folder": case "choose-folder": close(); doors.pickWorkingFolder(); break;
           case "skills": void openSkills(); break;
           case "connectors": void openConnectors(); break;
+          case "loop": void openLoops(); break;
+          case "route": openRoutes(); break;
           case "memory": {
             const verdict = toggleMemory(doors.api, memory);
             if (verdict === "needs-policy") { close(); doors.openTarget(manageTargetOf(doors.surface, "memory")); doors.toast("Accept the memory policy first — Settings › Memory."); break; }
@@ -418,6 +471,20 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     pane.appendChild(d);
   };
 
+  const openLoops = async (): Promise<void> => {
+    const pane = subPane("Loop");
+    await doors.loop?.fillLoops(pane, close);
+    if (!pane.isConnected) return;
+    doors.place(menu);
+    focusFirst(pane);
+  };
+  const openRoutes = (): void => {
+    const pane = subPane("Route");
+    doors.loop?.fillRoutes(pane, close);
+    doors.place(menu);
+    focusFirst(pane);
+  };
+
   const openSkills = async (): Promise<void> => {
     const pane = subPane("Skills");
     const loading = loadingRow(pane, "Loading your skills…");
@@ -458,7 +525,7 @@ export function mountComposerPlus(wrap: HTMLElement, chip: HTMLButtonElement | n
     if (!rows.length) emptyRow(pane, "Nothing connected yet.");
     for (const r of rows) {
       const b = rowEl({
-        label: r.name, icon: r.icon, kind: "check", checked: r.on, sub: "MCP server",
+        label: r.name, icon: r.icon, kind: "check", checked: r.on, sub: r.kind === "pd" ? "Pipedream" : "MCP server",
         hint: r.on ? "On — click to turn off" : "Off — click to turn on",
       });
       b.dataset.connKey = r.key;

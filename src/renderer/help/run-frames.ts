@@ -32,11 +32,6 @@ export type HarnessWireFrame = (
 /** A sub-agent as the engine names it on every frame of its work. */
 export interface SubAgentRef { childId: string; slug: string; name: string; model: string }
 
-/** A frame that belongs to the swarm view, not the thread: a child's own
- *  delta / thinking / tool / approval (tagged `agent`), or the `agent`
- *  start/done frame itself. */
-export type SubAgentWireFrame = HarnessWireFrame & { agent: SubAgentRef };
-
 /** How long the loop waits before deciding FOR the user — identical to main's
  *  local gate, so the dock's countdown is honest. */
 export const APPROVAL_TIMEOUT_MS = 120_000;

@@ -62,7 +62,7 @@ export function registerVoiceIpc(): void {
   ipcMain.handle("catalog-voices", () => OPENAI_VOICES.map((v) => ({ id: v, name: v, providerSlug: "openai" })));
   ipcMain.handle("catalog-models", () => {
     const names = new Map(readStoredProviders().providers.map((p) => [p.id, p.name]));
-    const modality: Record<ModelType, string> = { chat: "chat", transcription: "stt", speech: "tts" };
+    const modality: Record<ModelType, string> = { chat: "chat", transcription: "stt", speech: "tts", embeddings: "embedding", image: "image", video: "video" };
     return routerConfig().models.map((m) => ({ id: m.id, name: m.label || m.model, providerSlug: names.get(m.provider) ?? m.provider, modality: modality[m.type], active: true }));
   });
 }

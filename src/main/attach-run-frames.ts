@@ -12,11 +12,9 @@ export interface RelayChatMessage { role: "system" | "user" | "assistant"; conte
  *  wire mapping. `data` carries the emit payload (minus seq/runId/at). */
 export function toWireFrame(channel: string, data: Record<string, unknown>, seq: number, runId: string, now: number = Date.now()): Record<string, unknown> | null {
   const base = { seq, runId, at: now };
-  // A SUB-AGENT's frames ride the wire WITH their `agent` tag (his report,
-  // 2026-10-05: "on the web the agents stream is not coming through to the
-  // Agents work panel"): the web renders them under the child the way the
-  // desktop's Agents panel does, and never in the parent's bubble — every
-  // consumer keys on the tag (remote-run.ts dispatchFrame, isChildFrame).
+  // A SUB-AGENT's frames ride the wire WITH their `agent` tag, so they never
+  // land in the parent's bubble — every consumer keys on the tag (code.ts
+  // isChildFrame).
   const tag = data.agent && typeof data.agent === "object" ? { agent: data.agent } : {};
   switch (channel) {
     // The user's prompt as the FIRST frame of a run, so an observing surface
@@ -27,7 +25,7 @@ export function toWireFrame(channel: string, data: Record<string, unknown>, seq:
     case "glyphh-agent:thinking": return { ...base, type: "thinking", text: data.text ?? "", ...tag };
     case "glyphh-agent:tool": return { ...base, ...data, type: "tool" };
     // A sub-agent's life: `start` (who, on what model, asked what) and `done`
-    // (how it ended). The swarm view is built from these plus the tagged frames.
+    // (how it ended).
     case "glyphh-agent:agent": {
       if (!data.agent || typeof data.agent !== "object") return null;
       return {

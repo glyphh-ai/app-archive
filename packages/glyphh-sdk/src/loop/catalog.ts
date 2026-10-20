@@ -35,6 +35,9 @@ export interface LoopCatalogEntry {
   family: string;
   /** Runs without an approval in Ask mode. */
   readOnly?: boolean;
+  /** Asks before every run, whatever the permission mode (Auto included):
+   *  the host's user set this tool to need an approval. Plan mode still denies. */
+  ask?: boolean;
   /** ON THE BELT (2026-10-07): a host tool the model must see by name, not
    *  find — the worker's app_install / glyphh_app_scaffold. The belt stays
    *  fixed-size by construction: a host lends a handful, never a catalog. */

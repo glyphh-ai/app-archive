@@ -221,14 +221,19 @@ export function toggleMute(): void {
   paintMute();
 }
 
-/** Show the voice controls only when a transcription model is set and the
- *  member has not turned the mic off in Settings › Voice. */
-export async function refreshMicChip(): Promise<void> {
+/** Show each voice control only when its models exist: the mic (dictation)
+ *  needs a transcription model; voice mode — listen, then read the reply
+ *  aloud — needs a speech model too. `fresh` drops the cached setup, for when
+ *  Settings › Models changed it. */
+export async function refreshMicChip(fresh = false): Promise<void> {
   const wrap = el("code-mic-wrap");
   if (!wrap) return;
+  if (fresh) configCache = null;
   const p = await voicePref();
-  // ALWAYS ON (his order, 2026-10-07): the controls show whenever a transcription model exists.
   wrap.classList.toggle("hidden", !p.inputModel);
+  const canSpeak = !!p.inputModel && !!p.outputModel;
+  el("code-voice-mode")?.classList.toggle("hidden", !canSpeak);
+  if (!canSpeak && voiceModeOn) stopHandsFree();
   const chip = el("code-mic-chip");
   if (chip && !chip.classList.contains("mic-error")) chip.title = "Dictate";
   paintVoiceMode();

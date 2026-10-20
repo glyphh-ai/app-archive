@@ -43,6 +43,14 @@ export function repairChatStore<C extends { id?: unknown; messages?: unknown }>(
   return { chats: out, repaired };
 }
 
+/** THE BOTS PANEL IS GONE (2026-10-19). The threads it wrote (`bots/<slug>`)
+ *  stay in the file untouched — no conversation is deleted — but no surface
+ *  lists or opens them: the store hands out the rest. A save merges over the
+ *  file (mergeChats), so a hidden thread survives every write. */
+export function withoutRetiredThreads<C extends { id?: unknown }>(chats: C[]): C[] {
+  return chats.filter((c) => !(c && typeof c.id === "string" && c.id.startsWith("bots/")));
+}
+
 /** Merge a saver's chats over the stored ones by id: the newer `updatedAt`
  *  wins, EXCEPT that a row carrying no messages never erases stored
  *  messages — a renderer that lists a thread without having opened it saves

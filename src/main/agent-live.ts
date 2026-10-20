@@ -68,6 +68,13 @@ export function registerAgentLiveIpc(): void {
     console.warn("[agent] run adopted", JSON.stringify({ chatId, runId: run.runId, from: previous?.id ?? null, to: e.sender.id }));
     return { ok: true as const, runId: run.runId, cliSessionId: run.cliSessionId, cli: run.cli, startedAt: run.startedAt, text: turnText.get(chatId) ?? "" };
   });
+  // A PANEL CLOSES ITSELF (his report, 2026-10-19: with two agents open there
+  // was no way to close one): its card lives in the shell, found by this
+  // webContents id. The session stays in the recents.
+  ipcMain.handle("agent-panel-close", (e) => {
+    sendToHomeShell("agent-panel:close", { wcId: e.sender.id });
+    return true;
+  });
   ipcMain.handle("agent-panel-open", (_e, p: { loop?: string } | undefined) => {
     broadcast("agent-panel:open", { loop: String(p?.loop ?? "") });
     return true;

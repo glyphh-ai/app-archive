@@ -680,4 +680,33 @@ describe("a dropped stream is not a failed turn (his report, 2026-10-08)", () =>
     expect(ev2.some((e) => e.type === "error")).toBe(true);
     expect(refusals).toBe(1);
   });
+
+  it("a catalog entry marked ask asks even in Auto; a readOnly one runs without asking; Plan denies the ask one", async () => {
+    const runs: string[] = [];
+    const entries = () => [
+      { name: "crm_delete_contact", description: "Delete a contact", family: "connection: CRM", ask: true, run: async () => { runs.push("delete"); return { text: "deleted", failed: false }; } },
+      { name: "crm_list_contacts", description: "List contacts", family: "connection: CRM", readOnly: true, run: async () => { runs.push("list"); return { text: "[]", failed: false }; } },
+    ];
+    const wire = fakeWire([
+      { tools: [
+        { id: "t1", name: "call_tool", input: { name: "crm_delete_contact", arguments: { id: 1 } } },
+        { id: "t2", name: "call_tool", input: { name: "crm_list_contacts", arguments: {} } },
+      ], stop: "tool_use" },
+      { text: "done", stop: "end_turn" },
+      { tool: { id: "t3", name: "call_tool", input: { name: "crm_delete_contact", arguments: { id: 2 } } }, stop: "tool_use" },
+      { text: "done", stop: "end_turn" },
+    ]);
+    const loop = new GlyphhLoop({ gateway, fetch: wire.fetchLike, shell: plainShell, catalog: async () => entries() });
+    const asked: string[] = [];
+    await collect(loop, { chatId: "ask-auto", text: "tidy", model: "m", permission: "auto" }, (ev, l) => {
+      if (ev.type === "approval") { asked.push(ev.title); setTimeout(() => l.respondApproval(ev.id, true), 0); }
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain("crm_delete_contact");
+    expect(runs.sort()).toEqual(["delete", "list"]);
+    runs.length = 0;
+    const plan = await collect(loop, { chatId: "ask-plan", text: "tidy", model: "m", permission: "plan" });
+    expect(plan.some((e) => e.type === "approval")).toBe(false);
+    expect(runs).toEqual([]);
+  });
 });

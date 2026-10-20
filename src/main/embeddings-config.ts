@@ -1,42 +1,42 @@
 /**
- * embeddings-config — embeddings run ON THIS MACHINE.
+ * embeddings-config — WHAT MEMORY AND SEARCH EMBED WITH: the user's own
+ * embeddings model, from Settings › Models (providers.ts), called through the
+ * router's `/embeddings` wire with that provider's key.
  *
- * There is no Glyphh gateway to embed through, and the providers the loop
- * talks to do not all offer embeddings. So memory, search and app data embed
- * locally with one built-in model: hashed word and word-pair features, scaled
- * by log frequency and normalised. It is lexical (it finds what shares words,
- * not what shares meaning), it needs no download and no key, and it is the
- * same on every machine.
+ * The model is the default embeddings model (or, with none picked, the first
+ * one added). With no embeddings model at all there is nothing to embed with,
+ * so memory is off: capture and recall skip quietly and Settings › Memory says
+ * to add one. There is no built-in fallback embedder.
  *
- * A collection pinned to a model that is no longer offered (an old gateway
- * model) is embedded again with this one by glyphh-app-ai's repin, on first use.
+ * A collection pinned to a model that is no longer offered (the old local
+ * hashed-words model, a gateway model, a model since removed) is embedded
+ * again with the current one by glyphh-app-ai's repin, on first use.
  */
 import { ipcMain } from "electron";
-import { createHash } from "node:crypto";
-import { registerMemoryIpc } from "./memory.js";
+import { embed, resolveModel } from "@glyphh/sdk/router";
+import { defaultModel, modelsOfType, readStoredProviders, routerConfig, setDefault } from "./providers.js";
+import { MEMORY_NEEDS_MODEL, registerMemoryIpc } from "./memory.js";
 
 export interface EmbedModel { id: string; name: string; providerSlug: string }
 
-export const LOCAL_EMBED_MODEL: EmbedModel = { id: "local::hashed-words-512", name: "On this computer", providerSlug: "local" };
-const DIM = 512;
-
-/** The embedding models on offer: the one local model. */
-export async function orgEmbedModels(_force = false): Promise<EmbedModel[]> {
-  return [LOCAL_EMBED_MODEL];
+/** The embeddings models on offer: the user's embeddings-type models. */
+export async function embedModels(): Promise<EmbedModel[]> {
+  const names = new Map(readStoredProviders().providers.map((p) => [p.id, p.name]));
+  return modelsOfType("embeddings").map((m) => ({ id: m.id, name: m.label || m.model, providerSlug: names.get(m.provider) ?? m.provider }));
 }
 
-/** The model embeds run on. */
+/** The model embeds run on: the default embeddings model, or "" with none. */
 export function selectedEmbedModel(): string {
-  return LOCAL_EMBED_MODEL.id;
+  return defaultModel("embeddings");
+}
+
+export async function resolveEmbedModel(): Promise<string> {
+  return selectedEmbedModel();
 }
 
 /** Whether an offered model is this one: by its id, or by its bare name. */
 export function offers(models: EmbedModel[], model: string): boolean {
   return models.some((m) => m.id === model || routeName(m.id) === model);
-}
-
-export async function resolveEmbedModel(): Promise<string> {
-  return LOCAL_EMBED_MODEL.id;
 }
 
 /** A model id without its provider prefix. */
@@ -45,46 +45,21 @@ export function routeName(id: string): string {
   return cut === -1 ? id : id.slice(cut + 2);
 }
 
-/** Lowercased word tokens: letters and digits, any script. */
-export function words(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-}
-
-/** A feature's slot and sign, from a stable hash of the feature. */
-function slot(feature: string): { at: number; sign: number } {
-  const h = createHash("sha1").update(feature).digest();
-  return { at: h.readUInt32BE(0) % DIM, sign: h[4]! & 1 ? 1 : -1 };
-}
-
-/** One text as a unit vector: words and adjacent word pairs, each counted
- *  1 + log(count), hashed into DIM signed slots. Empty text is the zero vector. */
-export function embedOne(text: string): number[] {
-  const toks = words(text);
-  const counts = new Map<string, number>();
-  for (let i = 0; i < toks.length; i++) {
-    counts.set(toks[i]!, (counts.get(toks[i]!) ?? 0) + 1);
-    if (i + 1 < toks.length) {
-      const pair = `${toks[i]} ${toks[i + 1]}`;
-      counts.set(pair, (counts.get(pair) ?? 0) + 1);
-    }
-  }
-  const vec = new Array<number>(DIM).fill(0);
-  for (const [feature, n] of counts) {
-    const { at, sign } = slot(feature);
-    vec[at]! += sign * (1 + Math.log(n));
-  }
-  const norm = Math.hypot(...vec);
-  return norm ? vec.map((v) => v / norm) : vec;
-}
-
-/** Embed texts on this machine. The model argument is the collection's pin;
- *  there is one local model, so every pin embeds the same way. */
-export async function localEmbed(texts: string[], _model: string): Promise<number[][]> {
-  return texts.map(embedOne);
+/** Embed texts with a model (a collection's pin), through its provider. */
+export async function embedWith(texts: string[], model: string): Promise<number[][]> {
+  if (!model) throw new Error(MEMORY_NEEDS_MODEL);
+  const route = resolveModel(routerConfig(), model);
+  if (!route) throw new Error(`No provider serves the embeddings model "${model}" — add it in Settings › Models`);
+  return embed(route.provider, route.model, texts);
 }
 
 export function registerEmbeddingsIpc(): void {
   registerMemoryIpc();
-  ipcMain.handle("embeddings-config-get", async () => ({ ok: true, model: LOCAL_EMBED_MODEL.id, models: [LOCAL_EMBED_MODEL] }));
-  ipcMain.handle("embeddings-config-set", () => ({ ok: true, model: LOCAL_EMBED_MODEL.id }));
+  ipcMain.handle("embeddings-config-get", async () => ({ ok: true, model: selectedEmbedModel(), models: await embedModels() }));
+  ipcMain.handle("embeddings-config-set", async (_e, input: { model?: string } = {}) => {
+    const model = String(input?.model ?? "");
+    if (!(await embedModels()).some((m) => m.id === model)) return { ok: false, error: `${model || "That"} is not one of your embeddings models` };
+    setDefault("embeddings", model);
+    return { ok: true, model: selectedEmbedModel() };
+  });
 }

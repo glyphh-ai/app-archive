@@ -14,8 +14,7 @@
  * new and edit are the DRIPS form (his order, 2026-09-29: "look at the drips
  * new / edit form") — an inline form that takes the page, the edit head,
  * stacked labels, Delete · Cancel · Save. The records are local-agents.ts's
- * (the library-agent-* channels); the running swarm is a different thing and
- * lives in the Agents work panel (agents-panel.ts).
+ * (the library-agent-* channels).
  */
 
 import { clearInvalid, confirmAction } from "./shared.js";
