@@ -3,7 +3,7 @@
   "version": "1.7.1",
   "productName": "Glyphh",
   "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/glyphh-ai/app.git"

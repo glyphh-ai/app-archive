@@ -62,3 +62,8 @@ secret with publish rights on the `@glyphh-ai` scope.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## License
+
+Apache-2.0. See LICENSE and NOTICE. Copyright 2026 Chris Timmerman / Glyphh AI LLC. More about it: https://glyphh.ai/projects/glyphh-desktop
